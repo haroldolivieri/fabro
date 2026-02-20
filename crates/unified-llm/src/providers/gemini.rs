@@ -328,7 +328,10 @@ fn translate_response_format(
 }
 
 /// Build the Gemini API request body from a unified `Request`.
-fn build_api_request(request: &Request) -> ApiRequest {
+///
+/// Returns a `serde_json::Value` so that `provider_options.gemini` fields can be
+/// merged into the request before sending.
+fn build_api_request(request: &Request) -> serde_json::Value {
     let (system_text, other_messages) = extract_system_prompt(&request.messages);
 
     let system_instruction = system_text.map(|text| SystemInstruction {
@@ -354,12 +357,37 @@ fn build_api_request(request: &Request) -> ApiRequest {
     let api_tools = request.tools.as_ref().map(|t| translate_tools(t));
     let tool_config = request.tool_choice.as_ref().map(translate_tool_choice);
 
-    ApiRequest {
+    let api_request = ApiRequest {
         contents,
         system_instruction,
         generation_config: Some(generation_config),
         tools: api_tools,
         tool_config,
+    };
+
+    let mut body = serde_json::to_value(&api_request).unwrap_or_default();
+    merge_provider_options(&mut body, request.provider_options.as_ref());
+    body
+}
+
+/// Merge `provider_options.gemini` fields into the serialized API request body.
+///
+/// Known fields like `safety_settings` and `cached_content` are set directly.
+/// Any other fields are merged at the top level, allowing pass-through of
+/// Gemini-specific options not covered by the unified schema.
+fn merge_provider_options(body: &mut serde_json::Value, provider_options: Option<&serde_json::Value>) {
+    let Some(gemini_opts) = provider_options.and_then(|opts| opts.get("gemini")) else {
+        return;
+    };
+    let Some(body_map) = body.as_object_mut() else {
+        return;
+    };
+    let Some(gemini_map) = gemini_opts.as_object() else {
+        return;
+    };
+
+    for (key, value) in gemini_map {
+        body_map.insert(key.clone(), value.clone());
     }
 }
 
@@ -688,7 +716,7 @@ impl ProviderAdapter for Adapter {
     }
 
     async fn complete(&self, request: &Request) -> Result<Response, SdkError> {
-        let api_request = build_api_request(request);
+        let api_body = build_api_request(request);
 
         let url = format!(
             "{}/models/{}:generateContent?key={}",
@@ -696,7 +724,7 @@ impl ProviderAdapter for Adapter {
         );
 
         let body = send_and_read_body(
-            self.client.post(&url).json(&api_request).timeout(self.request_timeout),
+            self.client.post(&url).json(&api_body).timeout(self.request_timeout),
             "gemini",
             "status",
         )
@@ -751,7 +779,7 @@ impl ProviderAdapter for Adapter {
     }
 
     async fn stream(&self, request: &Request) -> Result<StreamEventStream, SdkError> {
-        let api_request = build_api_request(request);
+        let api_body = build_api_request(request);
 
         let url = format!(
             "{}/models/{}:streamGenerateContent?alt=sse&key={}",
@@ -759,8 +787,139 @@ impl ProviderAdapter for Adapter {
         );
 
         let http_resp =
-            send_streaming_request(self.client.post(&url).json(&api_request)).await?;
+            send_streaming_request(self.client.post(&url).json(&api_body)).await?;
 
         Ok(process_sse_stream(http_resp, request.model.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_request() -> Request {
+        Request {
+            model: "gemini-2.0-flash".to_string(),
+            messages: vec![Message::user("Hello")],
+            provider: None,
+            tools: None,
+            tool_choice: None,
+            response_format: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            reasoning_effort: None,
+            metadata: None,
+            provider_options: None,
+        }
+    }
+
+    #[test]
+    fn provider_options_none_produces_standard_body() {
+        let request = minimal_request();
+        let body = build_api_request(&request);
+        assert!(body.get("safetySettings").is_none());
+        assert!(body.get("cachedContent").is_none());
+    }
+
+    #[test]
+    fn provider_options_gemini_safety_settings_merged() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "gemini": {
+                "safetySettings": [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}
+                ]
+            }
+        }));
+
+        let body = build_api_request(&request);
+        let safety = body.get("safetySettings").expect("safetySettings should be present");
+        let arr = safety.as_array().expect("should be an array");
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["category"], "HARM_CATEGORY_HARASSMENT");
+    }
+
+    #[test]
+    fn provider_options_gemini_cached_content_merged() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "gemini": {
+                "cachedContent": "projects/my-project/cachedContents/abc123"
+            }
+        }));
+
+        let body = build_api_request(&request);
+        assert_eq!(
+            body.get("cachedContent").and_then(serde_json::Value::as_str),
+            Some("projects/my-project/cachedContents/abc123")
+        );
+    }
+
+    #[test]
+    fn provider_options_gemini_multiple_fields_merged() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "gemini": {
+                "safetySettings": [{"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_LOW_AND_ABOVE"}],
+                "cachedContent": "cache-id",
+                "customField": "custom-value"
+            }
+        }));
+
+        let body = build_api_request(&request);
+        assert!(body.get("safetySettings").is_some());
+        assert_eq!(
+            body.get("cachedContent").and_then(serde_json::Value::as_str),
+            Some("cache-id")
+        );
+        assert_eq!(
+            body.get("customField").and_then(serde_json::Value::as_str),
+            Some("custom-value")
+        );
+    }
+
+    #[test]
+    fn provider_options_other_provider_ignored() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "anthropic": {
+                "auto_cache": false
+            }
+        }));
+
+        let body = build_api_request(&request);
+        assert!(body.get("auto_cache").is_none());
+    }
+
+    #[test]
+    fn provider_options_gemini_preserves_standard_fields() {
+        let mut request = minimal_request();
+        request.temperature = Some(0.5);
+        request.max_tokens = Some(100);
+        request.provider_options = Some(serde_json::json!({
+            "gemini": {
+                "cachedContent": "cache-id"
+            }
+        }));
+
+        let body = build_api_request(&request);
+        let gen_config = body.get("generationConfig").expect("generationConfig should exist");
+        assert_eq!(gen_config.get("temperature").and_then(serde_json::Value::as_f64), Some(0.5));
+        assert_eq!(gen_config.get("maxOutputTokens").and_then(serde_json::Value::as_i64), Some(100));
+        assert_eq!(
+            body.get("cachedContent").and_then(serde_json::Value::as_str),
+            Some("cache-id")
+        );
+    }
+
+    #[test]
+    fn merge_provider_options_with_non_object_gemini_value() {
+        let mut body = serde_json::json!({"contents": []});
+        let opts = serde_json::json!({"gemini": "not-an-object"});
+        merge_provider_options(&mut body, Some(&opts));
+        // Should not crash and body should be unchanged
+        assert!(body.get("contents").is_some());
     }
 }

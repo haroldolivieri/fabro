@@ -291,8 +291,11 @@ fn translate_response_format(format: &ResponseFormat) -> serde_json::Value {
     }
 }
 
-/// Build an `ApiRequest` from a unified `Request`.
-fn build_api_request(request: &Request, stream: Option<bool>) -> ApiRequest {
+/// Build the API request body from a unified `Request`.
+///
+/// Returns a `serde_json::Value` so that `provider_options.<provider_name>` fields
+/// can be merged into the request before sending.
+fn build_api_request(request: &Request, stream: Option<bool>, provider_name: &str) -> serde_json::Value {
     let chat_messages = translate_messages(&request.messages);
     let tools = request.tools.as_ref().map(|t| translate_tools(t));
     let tool_choice = request.tool_choice.as_ref().map(translate_tool_choice);
@@ -301,7 +304,7 @@ fn build_api_request(request: &Request, stream: Option<bool>) -> ApiRequest {
         .as_ref()
         .map(translate_response_format);
 
-    ApiRequest {
+    let api_request = ApiRequest {
         model: request.model.clone(),
         messages: chat_messages,
         temperature: request.temperature,
@@ -312,6 +315,34 @@ fn build_api_request(request: &Request, stream: Option<bool>) -> ApiRequest {
         tool_choice,
         response_format,
         stream,
+    };
+
+    let mut body = serde_json::to_value(&api_request).unwrap_or_default();
+    merge_provider_options(&mut body, request.provider_options.as_ref(), provider_name);
+    body
+}
+
+/// Merge `provider_options.<provider_name>` fields into the serialized API request body.
+///
+/// The provider name is configurable (e.g. "groq", "together", "openai-compatible"),
+/// allowing each instance to have its own namespace in `provider_options`.
+fn merge_provider_options(
+    body: &mut serde_json::Value,
+    provider_options: Option<&serde_json::Value>,
+    provider_name: &str,
+) {
+    let Some(opts) = provider_options.and_then(|opts| opts.get(provider_name)) else {
+        return;
+    };
+    let Some(body_map) = body.as_object_mut() else {
+        return;
+    };
+    let Some(opts_map) = opts.as_object() else {
+        return;
+    };
+
+    for (key, value) in opts_map {
+        body_map.insert(key.clone(), value.clone());
     }
 }
 
@@ -323,14 +354,14 @@ impl ProviderAdapter for Adapter {
     }
 
     async fn complete(&self, request: &Request) -> Result<Response, SdkError> {
-        let api_request = build_api_request(request, None);
+        let api_body = build_api_request(request, None, &self.provider_name);
         let url = format!("{}/chat/completions", self.base_url);
 
         let (body, headers) = send_and_read_response(
             self.client
                 .post(&url)
                 .bearer_auth(&self.api_key)
-                .json(&api_request)
+                .json(&api_body)
                 .timeout(self.request_timeout),
             &self.provider_name,
             "type",
@@ -397,14 +428,14 @@ impl ProviderAdapter for Adapter {
     }
 
     async fn stream(&self, request: &Request) -> Result<StreamEventStream, SdkError> {
-        let api_request = build_api_request(request, Some(true));
+        let api_body = build_api_request(request, Some(true), &self.provider_name);
         let url = format!("{}/chat/completions", self.base_url);
 
         let http_resp = self
             .client
             .post(&url)
             .bearer_auth(&self.api_key)
-            .json(&api_request)
+            .json(&api_body)
             .send()
             .await
             .map_err(|e| SdkError::Network {
@@ -1110,5 +1141,112 @@ mod tests {
         assert_eq!(tool_calls[0]["type"], "function");
         assert_eq!(tool_calls[0]["id"], "call_1");
         assert_eq!(tool_calls[0]["function"]["name"], "get_weather");
+    }
+
+    fn minimal_request() -> Request {
+        Request {
+            model: "llama-3.1-70b".to_string(),
+            messages: vec![Message::user("Hello")],
+            provider: None,
+            tools: None,
+            tool_choice: None,
+            response_format: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            reasoning_effort: None,
+            metadata: None,
+            provider_options: None,
+        }
+    }
+
+    #[test]
+    fn provider_options_none_produces_standard_body() {
+        let request = minimal_request();
+        let body = build_api_request(&request, None, "groq");
+        assert_eq!(body["model"], "llama-3.1-70b");
+        assert!(body.get("stream").is_none());
+    }
+
+    #[test]
+    fn provider_options_matching_name_merged() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "groq": {
+                "frequency_penalty": 0.5,
+                "presence_penalty": 0.3
+            }
+        }));
+
+        let body = build_api_request(&request, None, "groq");
+        assert_eq!(body["frequency_penalty"], 0.5);
+        assert_eq!(body["presence_penalty"], 0.3);
+    }
+
+    #[test]
+    fn provider_options_different_name_ignored() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "together": {
+                "repetition_penalty": 1.2
+            }
+        }));
+
+        let body = build_api_request(&request, None, "groq");
+        assert!(body.get("repetition_penalty").is_none());
+    }
+
+    #[test]
+    fn provider_options_uses_adapter_name() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "together": {
+                "repetition_penalty": 1.2
+            }
+        }));
+
+        let body = build_api_request(&request, None, "together");
+        assert_eq!(body["repetition_penalty"], 1.2);
+    }
+
+    #[test]
+    fn provider_options_preserves_standard_fields() {
+        let mut request = minimal_request();
+        request.temperature = Some(0.7);
+        request.max_tokens = Some(200);
+        request.provider_options = Some(serde_json::json!({
+            "groq": {
+                "frequency_penalty": 0.5
+            }
+        }));
+
+        let body = build_api_request(&request, Some(true), "groq");
+        assert_eq!(body["temperature"], 0.7);
+        assert_eq!(body["max_tokens"], 200);
+        assert_eq!(body["stream"], true);
+        assert_eq!(body["frequency_penalty"], 0.5);
+    }
+
+    #[test]
+    fn provider_options_can_override_model() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "groq": {
+                "model": "custom-model"
+            }
+        }));
+
+        let body = build_api_request(&request, None, "groq");
+        assert_eq!(body["model"], "custom-model");
+    }
+
+    #[test]
+    fn merge_provider_options_with_non_object_value() {
+        let mut body = serde_json::json!({"model": "test"});
+        let opts = serde_json::json!({"groq": "not-an-object"});
+        merge_provider_options(&mut body, Some(&opts), "groq");
+        // Should not crash and body should be unchanged
+        assert_eq!(body["model"], "test");
     }
 }

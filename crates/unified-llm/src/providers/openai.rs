@@ -67,6 +67,8 @@ struct ApiRequest {
     reasoning: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     text: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     stream: bool,
 }
@@ -294,8 +296,29 @@ fn build_api_request(request: &Request, stream: bool) -> ApiRequest {
         tool_choice,
         reasoning,
         text,
+        metadata: request.metadata.clone(),
         stream,
     }
+}
+
+/// Serialize an `ApiRequest` to JSON and merge any `provider_options.openai` keys into it.
+fn build_request_body(request: &Request, stream: bool) -> serde_json::Value {
+    let api_request = build_api_request(request, stream);
+    let mut body = serde_json::to_value(&api_request).unwrap_or_else(|_| serde_json::json!({}));
+
+    if let Some(openai_opts) = request
+        .provider_options
+        .as_ref()
+        .and_then(|opts| opts.get("openai"))
+    {
+        if let (Some(base), Some(overrides)) = (body.as_object_mut(), openai_opts.as_object()) {
+            for (key, value) in overrides {
+                base.insert(key.clone(), value.clone());
+            }
+        }
+    }
+
+    body
 }
 
 /// Parse output items from the Responses API into content parts.
@@ -744,14 +767,14 @@ impl ProviderAdapter for Adapter {
     }
 
     async fn complete(&self, request: &Request) -> Result<Response, SdkError> {
-        let api_request = build_api_request(request, false);
+        let request_body = build_request_body(request, false);
         let url = format!("{}/responses", self.base_url);
 
         let (body, headers) = send_and_read_response(
             self.client
                 .post(&url)
                 .bearer_auth(&self.api_key)
-                .json(&api_request)
+                .json(&request_body)
                 .timeout(self.request_timeout),
             "openai",
             "type",
@@ -803,14 +826,14 @@ impl ProviderAdapter for Adapter {
     }
 
     async fn stream(&self, request: &Request) -> Result<StreamEventStream, SdkError> {
-        let api_request = build_api_request(request, true);
+        let request_body = build_request_body(request, true);
         let url = format!("{}/responses", self.base_url);
 
         let http_resp = self
             .client
             .post(&url)
             .bearer_auth(&self.api_key)
-            .json(&api_request)
+            .json(&request_body)
             .send()
             .await
             .map_err(|e| SdkError::Network {
@@ -866,5 +889,129 @@ impl ProviderAdapter for Adapter {
         .flatten();
 
         Ok(Box::pin(stream))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn minimal_request() -> Request {
+        Request {
+            model: "gpt-4o".to_string(),
+            messages: vec![Message::user("Hello")],
+            provider: None,
+            tools: None,
+            tool_choice: None,
+            response_format: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stop_sequences: None,
+            reasoning_effort: None,
+            metadata: None,
+            provider_options: None,
+        }
+    }
+
+    #[test]
+    fn build_request_body_includes_metadata() {
+        let mut metadata = HashMap::new();
+        metadata.insert("user_id".to_string(), "u123".to_string());
+        metadata.insert("session".to_string(), "s456".to_string());
+
+        let mut request = minimal_request();
+        request.metadata = Some(metadata);
+
+        let body = build_request_body(&request, false);
+        let meta = body.get("metadata").expect("metadata should be present");
+        assert_eq!(meta["user_id"], "u123");
+        assert_eq!(meta["session"], "s456");
+    }
+
+    #[test]
+    fn build_request_body_omits_metadata_when_none() {
+        let request = minimal_request();
+        let body = build_request_body(&request, false);
+        assert!(body.get("metadata").is_none());
+    }
+
+    #[test]
+    fn build_request_body_merges_provider_options_openai() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "openai": {
+                "store": true,
+                "previous_response_id": "resp_abc123"
+            }
+        }));
+
+        let body = build_request_body(&request, false);
+        assert_eq!(body["store"], true);
+        assert_eq!(body["previous_response_id"], "resp_abc123");
+    }
+
+    #[test]
+    fn build_request_body_provider_options_override_fields() {
+        let mut request = minimal_request();
+        request.temperature = Some(0.5);
+        request.provider_options = Some(serde_json::json!({
+            "openai": {
+                "temperature": 0.9
+            }
+        }));
+
+        let body = build_request_body(&request, false);
+        // provider_options should override the base field
+        assert_eq!(body["temperature"], 0.9);
+    }
+
+    #[test]
+    fn build_request_body_ignores_non_openai_provider_options() {
+        let mut request = minimal_request();
+        request.provider_options = Some(serde_json::json!({
+            "anthropic": {
+                "thinking": {"type": "enabled", "budget_tokens": 10000}
+            }
+        }));
+
+        let body = build_request_body(&request, false);
+        // anthropic options should not leak into the OpenAI request
+        assert!(body.get("thinking").is_none());
+    }
+
+    #[test]
+    fn build_request_body_no_provider_options() {
+        let request = minimal_request();
+        let body = build_request_body(&request, false);
+        assert_eq!(body["model"], "gpt-4o");
+        // stream field is omitted when false (skip_serializing_if)
+        assert!(body.get("stream").is_none());
+    }
+
+    #[test]
+    fn build_request_body_stream_flag() {
+        let request = minimal_request();
+        let body = build_request_body(&request, true);
+        assert!(body["stream"].as_bool().unwrap_or(false));
+    }
+
+    #[test]
+    fn build_request_body_metadata_and_provider_options_together() {
+        let mut metadata = HashMap::new();
+        metadata.insert("trace_id".to_string(), "t789".to_string());
+
+        let mut request = minimal_request();
+        request.metadata = Some(metadata);
+        request.provider_options = Some(serde_json::json!({
+            "openai": {
+                "store": true
+            }
+        }));
+
+        let body = build_request_body(&request, false);
+        assert_eq!(body["metadata"]["trace_id"], "t789");
+        assert_eq!(body["store"], true);
     }
 }

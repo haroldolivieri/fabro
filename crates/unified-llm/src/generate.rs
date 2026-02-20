@@ -8,10 +8,12 @@ use crate::types::{
     ResponseFormatType, RetryPolicy, StepResult, StreamEvent, TimeoutConfig, ToolCall, ToolChoice,
     ToolDefinition, Usage,
 };
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use tokio::sync::OnceCell;
+use tokio_util::sync::CancellationToken;
 
 /// Module-level default client (Section 2.5).
 static DEFAULT_CLIENT: OnceCell<Arc<Client>> = OnceCell::const_new();
@@ -95,6 +97,7 @@ fn build_generate_result(steps: Vec<StepResult>, total_usage: Usage) -> Generate
 /// # Panics
 ///
 /// Panics if a tool's `execute` handler is `None` when matched during tool execution.
+#[allow(clippy::too_many_lines)]
 pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError> {
     let client = params.client.clone().unwrap_or_else(get_default_client);
     let retry_policy = RetryPolicy {
@@ -112,12 +115,22 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
 
     let max_tool_rounds = params.max_tool_rounds;
 
+    let abort_signal = params.abort_signal.clone();
+
     let generate_future = async {
         let mut steps: Vec<StepResult> = Vec::new();
         let mut total_usage = Usage::default();
 
         let mut round = 0u32;
         loop {
+            if let Some(ref token) = abort_signal {
+                if token.is_cancelled() {
+                    return Err(SdkError::Abort {
+                        message: "Generation aborted by cancellation token".into(),
+                    });
+                }
+            }
+
             let request = build_request(&params, &messages, tool_definitions.as_deref());
 
             let client_ref = client.clone();
@@ -148,6 +161,7 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
             if !tool_calls.is_empty()
                 && response.finish_reason == FinishReason::ToolCalls
                 && params.tools.is_some()
+                && max_tool_rounds > 0
             {
                 let tools = params.tools.as_ref().expect("checked above");
                 if tools.iter().any(|t| t.is_active()) {
@@ -173,6 +187,14 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
 
             if !should_continue {
                 break;
+            }
+
+            if let Some(ref token) = abort_signal {
+                if token.is_cancelled() {
+                    return Err(SdkError::Abort {
+                        message: "Generation aborted by cancellation token".into(),
+                    });
+                }
             }
 
             let last = steps.last().expect("just pushed");
@@ -228,6 +250,8 @@ pub struct GenerateParams {
     pub max_retries: u32,
     pub timeout: Option<TimeoutConfig>,
     pub client: Option<Arc<Client>>,
+    /// Cancellation token to abort generation (Section 4.8).
+    pub abort_signal: Option<CancellationToken>,
     /// Custom stop condition checked after each tool round (Section 4.3).
     pub stop_when: Option<StopCondition>,
 }
@@ -254,6 +278,7 @@ impl GenerateParams {
             max_retries: 2,
             timeout: None,
             client: None,
+            abort_signal: None,
             stop_when: None,
         }
     }
@@ -366,6 +391,12 @@ impl GenerateParams {
         self
     }
 
+    #[must_use]
+    pub fn abort_signal(mut self, token: CancellationToken) -> Self {
+        self.abort_signal = Some(token);
+        self
+    }
+
     /// Set a custom stop condition for the tool loop (Section 4.3).
     ///
     /// The callback receives the accumulated steps so far and returns `true`
@@ -453,15 +484,237 @@ impl Default for StreamAccumulator {
     }
 }
 
+/// Wraps a streaming response with an internal `StreamAccumulator` and convenience methods.
+///
+/// Implements `Stream<Item = Result<StreamEvent, SdkError>>` so it can be used
+/// as a drop-in replacement for `StreamEventStream`. Also supports multi-step
+/// tool loops when active tools are provided.
+pub struct StreamResult {
+    inner: StreamEventStream,
+    accumulator: StreamAccumulator,
+}
+
+impl StreamResult {
+    fn new(inner: StreamEventStream) -> Self {
+        Self {
+            inner,
+            accumulator: StreamAccumulator::new(),
+        }
+    }
+
+    /// Returns the accumulated response after the stream has ended.
+    #[must_use]
+    pub const fn response(&self) -> Option<&Response> {
+        self.accumulator.response()
+    }
+
+    /// Returns the current partially accumulated response state.
+    #[must_use]
+    pub const fn partial_response(&self) -> Option<&Response> {
+        self.accumulator.response()
+    }
+
+    /// Returns a stream that yields only text delta strings.
+    #[must_use]
+    pub fn text_stream(self) -> Pin<Box<dyn Stream<Item = Result<String, SdkError>> + Send>> {
+        Box::pin(self.filter_map(|result| {
+            futures::future::ready(match result {
+                Ok(StreamEvent::TextDelta { delta, .. }) => Some(Ok(delta)),
+                Err(e) => Some(Err(e)),
+                _ => None,
+            })
+        }))
+    }
+}
+
+impl Stream for StreamResult {
+    type Item = Result<StreamEvent, SdkError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let inner = self.inner.as_mut();
+        match inner.poll_next(cx) {
+            Poll::Ready(Some(Ok(event))) => {
+                self.accumulator.process(&event);
+                Poll::Ready(Some(Ok(event)))
+            }
+            other => other,
+        }
+    }
+}
+
 /// High-level streaming generation (Section 4.4).
-/// Returns a `StreamEventStream` that the caller can iterate over.
+/// Returns a `StreamResult` that the caller can iterate over.
+/// Supports multi-step tool loops when active tools are provided.
 ///
 /// # Errors
 ///
 /// Returns `SdkError::Configuration` if both `prompt` and `messages` are set,
 /// or any provider error encountered during streaming setup.
-pub async fn stream(params: GenerateParams) -> Result<StreamEventStream, SdkError> {
-    stream_generate(params).await
+pub async fn stream(params: GenerateParams) -> Result<StreamResult, SdkError> {
+    let inner = stream_with_tool_loop(params).await?;
+    Ok(StreamResult::new(inner))
+}
+
+/// Streaming generation with multi-step tool loop support.
+///
+/// When active tools are provided and the model returns tool calls:
+/// - Collects the stream to get the complete first response
+/// - Executes tools concurrently
+/// - Starts a new stream with updated conversation
+/// - Yields all events from all rounds seamlessly
+/// - Continues until no more tool calls or `max_tool_rounds` reached
+///
+/// # Errors
+///
+/// Returns `SdkError::Configuration` if both `prompt` and `messages` are set,
+/// or any provider error encountered during streaming setup.
+#[allow(clippy::too_many_lines)]
+async fn stream_with_tool_loop(params: GenerateParams) -> Result<StreamEventStream, SdkError> {
+    let client = params.client.clone().unwrap_or_else(get_default_client);
+    let mut messages = build_initial_messages(&params)?;
+    let tool_definitions: Option<Vec<ToolDefinition>> = params
+        .tools
+        .as_ref()
+        .map(|tools| tools.iter().map(|t| t.definition.clone()).collect());
+    let abort_signal = params.abort_signal.clone();
+    let max_tool_rounds = params.max_tool_rounds;
+
+    let has_active_tools = max_tool_rounds > 0
+        && params
+            .tools
+            .as_ref()
+            .is_some_and(|tools| tools.iter().any(|t| t.is_active()));
+
+    if !has_active_tools {
+        // No tool loop needed, just stream directly
+        return stream_generate_raw(&client, &params, &messages, tool_definitions.as_deref())
+            .await;
+    }
+
+    // Tool loop: collect events from each round, execute tools, continue
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<StreamEvent, SdkError>>(64);
+
+    let tools = params.tools.clone();
+
+    tokio::spawn(async move {
+        let mut round = 0u32;
+
+        loop {
+            if let Some(ref token) = abort_signal {
+                if token.is_cancelled() {
+                    let _ = tx
+                        .send(Err(SdkError::Abort {
+                            message: "Stream aborted by cancellation token".into(),
+                        }))
+                        .await;
+                    return;
+                }
+            }
+
+            let request = build_request(&params, &messages, tool_definitions.as_deref());
+            let stream_result = client.stream(&request).await;
+
+            let mut inner_stream = match stream_result {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = tx.send(Err(e)).await;
+                    return;
+                }
+            };
+
+            // Collect stream and forward events, accumulating for tool call detection
+            let mut accumulator = StreamAccumulator::new();
+
+            while let Some(item) = inner_stream.next().await {
+                if let Some(ref token) = abort_signal {
+                    if token.is_cancelled() {
+                        let _ = tx
+                            .send(Err(SdkError::Abort {
+                                message: "Stream aborted by cancellation token".into(),
+                            }))
+                            .await;
+                        return;
+                    }
+                }
+
+                if let Ok(event) = &item {
+                    accumulator.process(event);
+                } else {
+                    let _ = tx.send(item).await;
+                    return;
+                }
+
+                // Forward the event to the consumer
+                if tx.send(item).await.is_err() {
+                    return; // Consumer dropped
+                }
+            }
+
+            // Check if we should continue with tool calls
+            let response = match accumulator.response() {
+                Some(r) => r.clone(),
+                None => return, // No response accumulated, stream ended
+            };
+
+            let tool_calls = response.tool_calls();
+            if tool_calls.is_empty()
+                || response.finish_reason != FinishReason::ToolCalls
+                || round >= max_tool_rounds
+            {
+                return; // No more tool rounds needed
+            }
+
+            // Execute tools
+            let Some(tool_list) = &tools else { return };
+
+            let tool_refs: Vec<&Tool> = tool_list.iter().map(std::convert::AsRef::as_ref).collect();
+            let tool_results = execute_all_tools(&tool_refs, &tool_calls).await;
+
+            if tool_results.is_empty() {
+                return;
+            }
+
+            // Append assistant message and tool results to conversation
+            messages.push(response.message.clone());
+            for result in &tool_results {
+                messages.push(Message::tool_result(
+                    &result.tool_call_id,
+                    result.content.to_string(),
+                    result.is_error,
+                ));
+            }
+
+            round += 1;
+        }
+    });
+
+    Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)))
+}
+
+/// Internal single-round streaming (no tool loop). Used by `stream_object()`.
+async fn stream_generate_raw(
+    client: &Arc<Client>,
+    params: &GenerateParams,
+    messages: &[Message],
+    tool_definitions: Option<&[ToolDefinition]>,
+) -> Result<StreamEventStream, SdkError> {
+    let request = build_request(params, messages, tool_definitions);
+    let inner_stream = client.stream(&request).await?;
+
+    if let Some(ref token) = params.abort_signal {
+        let token = token.clone();
+        let mapped = inner_stream.map(move |item| {
+            if token.is_cancelled() {
+                return Err(SdkError::Abort {
+                    message: "Stream aborted by cancellation token".into(),
+                });
+            }
+            item
+        });
+        Ok(Box::pin(mapped))
+    } else {
+        Ok(inner_stream)
+    }
 }
 
 /// High-level streaming generation (Section 4.4).
@@ -481,8 +734,7 @@ pub async fn stream_generate(params: GenerateParams) -> Result<StreamEventStream
         .as_ref()
         .map(|tools| tools.iter().map(|t| t.definition.clone()).collect());
 
-    let request = build_request(&params, &messages, tool_definitions.as_deref());
-    client.stream(&request).await
+    stream_generate_raw(&client, &params, &messages, tool_definitions.as_deref()).await
 }
 
 /// Structured output generation with schema validation (Section 4.5).
@@ -1293,5 +1545,415 @@ mod tests {
 
         let has_error = results.iter().any(|r| r.is_err());
         assert!(has_error, "Expected an error for invalid final JSON");
+    }
+
+    #[tokio::test]
+    async fn generate_abort_signal_before_call() {
+        let token = CancellationToken::new();
+        token.cancel();
+
+        let result = generate(
+            GenerateParams::new("mock-model")
+                .prompt("Hello")
+                .client(mock_client("Hi"))
+                .abort_signal(token),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), SdkError::Abort { .. }));
+    }
+
+    #[tokio::test]
+    async fn generate_abort_signal_between_tool_rounds() {
+        let call_count = Arc::new(AtomicU32::new(0));
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+
+        // Provider that always returns tool calls
+        struct AlwaysToolCallProvider {
+            call_count: Arc<AtomicU32>,
+            cancel_token: CancellationToken,
+        }
+
+        #[async_trait::async_trait]
+        impl ProviderAdapter for AlwaysToolCallProvider {
+            fn name(&self) -> &str {
+                "mock"
+            }
+
+            async fn complete(&self, _request: &Request) -> Result<Response, SdkError> {
+                let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+                // Cancel after first call completes
+                if count == 0 {
+                    self.cancel_token.cancel();
+                }
+                Ok(Response {
+                    id: format!("resp_{count}"),
+                    model: "mock-model".into(),
+                    provider: "mock".into(),
+                    message: Message {
+                        role: Role::Assistant,
+                        content: vec![ContentPart::ToolCall(ToolCall::new(
+                            format!("call_{count}"),
+                            "get_weather",
+                            serde_json::json!({"city": "SF"}),
+                        ))],
+                        name: None,
+                        tool_call_id: None,
+                    },
+                    finish_reason: FinishReason::ToolCalls,
+                    usage: Usage::default(),
+                    raw: None,
+                    warnings: vec![],
+                    rate_limit: None,
+                })
+            }
+
+            async fn stream(
+                &self,
+                _request: &Request,
+            ) -> Result<StreamEventStream, SdkError> {
+                Ok(Box::pin(stream::empty()))
+            }
+        }
+
+        let provider: Arc<dyn ProviderAdapter> = Arc::new(AlwaysToolCallProvider {
+            call_count: call_count.clone(),
+            cancel_token: token_clone,
+        });
+        let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
+        providers.insert("mock".to_string(), provider);
+        let client = Arc::new(Client::new(
+            providers,
+            Some("mock".to_string()),
+            vec![],
+        ));
+
+        let result = generate(
+            GenerateParams::new("mock-model")
+                .prompt("What's the weather?")
+                .tools(vec![Tool::active(
+                    "get_weather",
+                    "Get weather",
+                    serde_json::json!({"type": "object", "properties": {"city": {"type": "string"}}}),
+                    |_args| async { Ok(serde_json::json!("72F")) },
+                )])
+                .max_tool_rounds(10)
+                .abort_signal(token)
+                .client(client),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), SdkError::Abort { .. }));
+        // Should have only made 1 call before aborting
+        assert_eq!(call_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn stream_abort_signal_terminates_stream() {
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+
+        // Create a mock that produces events, but cancel after stream starts
+        let client = mock_client("Hello stream!");
+        token_clone.cancel();
+
+        let mut stream_result = stream(
+            GenerateParams::new("mock-model")
+                .prompt("Hi")
+                .client(client)
+                .abort_signal(token),
+        )
+        .await
+        .unwrap();
+
+        let first = stream_result.next().await.unwrap();
+        assert!(first.is_err());
+        assert!(matches!(first.unwrap_err(), SdkError::Abort { .. }));
+    }
+
+    #[tokio::test]
+    async fn generate_max_tool_rounds_zero_skips_tool_execution() {
+        let call_count = Arc::new(AtomicU32::new(0));
+        let provider: Arc<dyn ProviderAdapter> = Arc::new(ToolCallMockProvider {
+            call_count: call_count.clone(),
+        });
+
+        let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
+        providers.insert("mock".to_string(), provider);
+        let client = Arc::new(Client::new(
+            providers,
+            Some("mock".to_string()),
+            vec![],
+        ));
+
+        let tool_executed = Arc::new(AtomicU32::new(0));
+        let tool_executed_clone = tool_executed.clone();
+
+        let result = generate(
+            GenerateParams::new("mock-model")
+                .prompt("What's the weather in SF?")
+                .tools(vec![Tool::active(
+                    "get_weather",
+                    "Get weather",
+                    serde_json::json!({"type": "object", "properties": {"city": {"type": "string"}}}),
+                    move |_args| {
+                        let counter = tool_executed_clone.clone();
+                        async move {
+                            counter.fetch_add(1, Ordering::SeqCst);
+                            Ok(serde_json::json!("72F"))
+                        }
+                    },
+                )])
+                .max_tool_rounds(0)
+                .client(client),
+        )
+        .await
+        .unwrap();
+
+        // Should return after first LLM call without executing any tools
+        assert_eq!(result.steps.len(), 1);
+        assert_eq!(call_count.load(Ordering::SeqCst), 1);
+        assert_eq!(tool_executed.load(Ordering::SeqCst), 0);
+        // The tool results should be empty since tools were not executed
+        assert!(result.tool_results.is_empty());
+    }
+
+    #[test]
+    fn generate_params_abort_signal_builder() {
+        let token = CancellationToken::new();
+        let params = GenerateParams::new("test-model")
+            .abort_signal(token);
+        assert!(params.abort_signal.is_some());
+    }
+
+    #[tokio::test]
+    async fn stream_result_accumulates_response() {
+        let client = mock_client("Hello!");
+        let mut result = stream(
+            GenerateParams::new("mock-model")
+                .prompt("Hi")
+                .client(client),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.response().is_none());
+        assert!(result.partial_response().is_none());
+
+        // Consume all events
+        while result.next().await.is_some() {}
+
+        assert!(result.response().is_some());
+        assert_eq!(result.response().unwrap().text(), "Hello!");
+    }
+
+    #[tokio::test]
+    async fn stream_result_text_stream() {
+        let client = streaming_json_mock_client(vec!["Hello", " ", "world"]);
+        let result = stream(
+            GenerateParams::new("mock-model")
+                .prompt("Hi")
+                .client(client),
+        )
+        .await
+        .unwrap();
+
+        let texts: Vec<String> = result
+            .text_stream()
+            .filter_map(|r| futures::future::ready(r.ok()))
+            .collect()
+            .await;
+
+        assert_eq!(texts, vec!["Hello", " ", "world"]);
+    }
+
+    /// Mock provider that streams tool calls then text on second stream
+    struct StreamingToolCallMockProvider {
+        call_count: Arc<AtomicU32>,
+    }
+
+    #[async_trait::async_trait]
+    impl ProviderAdapter for StreamingToolCallMockProvider {
+        fn name(&self) -> &str {
+            "mock"
+        }
+
+        async fn complete(&self, _request: &Request) -> Result<Response, SdkError> {
+            Ok(Response {
+                id: "resp_1".into(),
+                model: "mock-model".into(),
+                provider: "mock".into(),
+                message: Message::assistant("fallback"),
+                finish_reason: FinishReason::Stop,
+                usage: Usage::default(),
+                raw: None,
+                warnings: vec![],
+                rate_limit: None,
+            })
+        }
+
+        async fn stream(
+            &self,
+            _request: &Request,
+        ) -> Result<StreamEventStream, SdkError> {
+            let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+
+            if count == 0 {
+                // First stream: return tool call
+                let tool_call = ToolCall::new("call_1", "get_weather", serde_json::json!({"city": "SF"}));
+                let response = Response {
+                    id: "resp_1".into(),
+                    model: "mock-model".into(),
+                    provider: "mock".into(),
+                    message: Message {
+                        role: Role::Assistant,
+                        content: vec![ContentPart::ToolCall(tool_call.clone())],
+                        name: None,
+                        tool_call_id: None,
+                    },
+                    finish_reason: FinishReason::ToolCalls,
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        total_tokens: 15,
+                        ..Default::default()
+                    },
+                    raw: None,
+                    warnings: vec![],
+                    rate_limit: None,
+                };
+                let events = vec![
+                    Ok(StreamEvent::ToolCallEnd { tool_call }),
+                    Ok(StreamEvent::finish(
+                        FinishReason::ToolCalls,
+                        response.usage.clone(),
+                        response,
+                    )),
+                ];
+                Ok(Box::pin(stream::iter(events)))
+            } else {
+                // Second stream: return text
+                let text = "The weather in SF is 72F";
+                let response = Response {
+                    id: "resp_2".into(),
+                    model: "mock-model".into(),
+                    provider: "mock".into(),
+                    message: Message::assistant(text),
+                    finish_reason: FinishReason::Stop,
+                    usage: Usage {
+                        input_tokens: 20,
+                        output_tokens: 10,
+                        total_tokens: 30,
+                        ..Default::default()
+                    },
+                    raw: None,
+                    warnings: vec![],
+                    rate_limit: None,
+                };
+                let events = vec![
+                    Ok(StreamEvent::text_delta(text, Some("t1".into()))),
+                    Ok(StreamEvent::finish(
+                        FinishReason::Stop,
+                        response.usage.clone(),
+                        response,
+                    )),
+                ];
+                Ok(Box::pin(stream::iter(events)))
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_with_tool_loop_executes_tools() {
+        let call_count = Arc::new(AtomicU32::new(0));
+        let provider: Arc<dyn ProviderAdapter> = Arc::new(StreamingToolCallMockProvider {
+            call_count: call_count.clone(),
+        });
+
+        let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
+        providers.insert("mock".to_string(), provider);
+        let client = Arc::new(Client::new(
+            providers,
+            Some("mock".to_string()),
+            vec![],
+        ));
+
+        let mut result = stream(
+            GenerateParams::new("mock-model")
+                .prompt("What's the weather in SF?")
+                .tools(vec![Tool::active(
+                    "get_weather",
+                    "Get weather",
+                    serde_json::json!({"type": "object", "properties": {"city": {"type": "string"}}}),
+                    |_args| async { Ok(serde_json::json!("72F")) },
+                )])
+                .max_tool_rounds(5)
+                .client(client),
+        )
+        .await
+        .unwrap();
+
+        // Collect all events
+        let mut events = Vec::new();
+        while let Some(item) = result.next().await {
+            events.push(item);
+        }
+
+        // Should have events from both rounds
+        assert_eq!(call_count.load(Ordering::SeqCst), 2);
+
+        // Should have text deltas from the second round
+        let text_deltas: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                Ok(StreamEvent::TextDelta { delta, .. }) => Some(delta.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text_deltas, vec!["The weather in SF is 72F"]);
+
+        // The final response should be the text response
+        assert!(result.response().is_some());
+        assert_eq!(result.response().unwrap().text(), "The weather in SF is 72F");
+    }
+
+    #[tokio::test]
+    async fn stream_no_tool_loop_when_max_rounds_zero() {
+        let call_count = Arc::new(AtomicU32::new(0));
+        let provider: Arc<dyn ProviderAdapter> = Arc::new(StreamingToolCallMockProvider {
+            call_count: call_count.clone(),
+        });
+
+        let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
+        providers.insert("mock".to_string(), provider);
+        let client = Arc::new(Client::new(
+            providers,
+            Some("mock".to_string()),
+            vec![],
+        ));
+
+        let mut result = stream(
+            GenerateParams::new("mock-model")
+                .prompt("What's the weather?")
+                .tools(vec![Tool::active(
+                    "get_weather",
+                    "Get weather",
+                    serde_json::json!({"type": "object", "properties": {"city": {"type": "string"}}}),
+                    |_args| async { Ok(serde_json::json!("72F")) },
+                )])
+                .max_tool_rounds(0)
+                .client(client),
+        )
+        .await
+        .unwrap();
+
+        // Consume all events
+        while result.next().await.is_some() {}
+
+        // Only one stream call, no tool execution
+        assert_eq!(call_count.load(Ordering::SeqCst), 1);
     }
 }

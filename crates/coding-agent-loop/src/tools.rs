@@ -276,7 +276,7 @@ pub fn make_glob_tool() -> RegisteredTool {
 }
 
 #[must_use]
-pub fn make_read_many_files_tool() -> RegisteredTool {
+pub(crate) fn make_read_many_files_tool() -> RegisteredTool {
     RegisteredTool {
         definition: ToolDefinition {
             name: "read_many_files".into(),
@@ -320,7 +320,7 @@ pub fn make_read_many_files_tool() -> RegisteredTool {
 }
 
 #[must_use]
-pub fn make_list_dir_tool() -> RegisteredTool {
+pub(crate) fn make_list_dir_tool() -> RegisteredTool {
     RegisteredTool {
         definition: ToolDefinition {
             name: "list_dir".into(),
@@ -363,7 +363,7 @@ pub fn make_list_dir_tool() -> RegisteredTool {
 }
 
 #[must_use]
-pub fn make_web_search_tool() -> RegisteredTool {
+pub(crate) fn make_web_search_tool() -> RegisteredTool {
     RegisteredTool {
         definition: ToolDefinition {
             name: "web_search".into(),
@@ -386,7 +386,7 @@ pub fn make_web_search_tool() -> RegisteredTool {
 }
 
 #[must_use]
-pub fn make_web_fetch_tool() -> RegisteredTool {
+pub(crate) fn make_web_fetch_tool() -> RegisteredTool {
     RegisteredTool {
         definition: ToolDefinition {
             name: "web_fetch".into(),
@@ -411,9 +411,11 @@ pub fn make_web_fetch_tool() -> RegisteredTool {
 mod tests {
     use super::*;
     use crate::execution_env::*;
+    use crate::test_support::MockExecutionEnvironment;
     use async_trait::async_trait;
     use std::sync::Mutex;
 
+    /// A specialized mock that applies offset/limit to file content (for read_file tool tests).
     struct ReadFileEnv {
         content: String,
     }
@@ -428,6 +430,9 @@ mod tests {
             Ok(selected.join("\n"))
         }
         async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn delete_file(&self, _: &str) -> Result<(), String> {
             Ok(())
         }
         async fn file_exists(&self, _: &str) -> Result<bool, String> {
@@ -479,6 +484,9 @@ mod tests {
         }
         async fn write_file(&self, path: &str, content: &str) -> Result<(), String> {
             *self.written.lock().unwrap() = Some((path.into(), content.into()));
+            Ok(())
+        }
+        async fn delete_file(&self, _: &str) -> Result<(), String> {
             Ok(())
         }
         async fn file_exists(&self, _: &str) -> Result<bool, String> {
@@ -533,6 +541,9 @@ mod tests {
             *self.written.lock().unwrap() = Some(content.into());
             Ok(())
         }
+        async fn delete_file(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
         async fn file_exists(&self, _: &str) -> Result<bool, String> {
             Ok(false)
         }
@@ -571,49 +582,6 @@ mod tests {
         }
     }
 
-    struct ShellEnv {
-        result: ExecResult,
-    }
-
-    #[async_trait]
-    impl ExecutionEnvironment for ShellEnv {
-        async fn read_file(&self, _: &str, _offset: Option<usize>, _limit: Option<usize>) -> Result<String, String> {
-            Ok(String::new())
-        }
-        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
-            Ok(())
-        }
-        async fn file_exists(&self, _: &str) -> Result<bool, String> {
-            Ok(false)
-        }
-        async fn list_directory(&self, _: &str, _depth: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-        async fn exec_command(&self, _: &str, _: u64, _: Option<&str>, _: Option<&std::collections::HashMap<String, String>>) -> Result<ExecResult, String> {
-            Ok(self.result.clone())
-        }
-        async fn grep(&self, _: &str, _: &str, _: &GrepOptions) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn glob(&self, _: &str, _path: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &str {
-            "/tmp"
-        }
-        fn platform(&self) -> &str {
-            "darwin"
-        }
-        fn os_version(&self) -> String {
-            String::new()
-        }
-    }
 
     struct ShellCapturingEnv {
         captured_timeout: Mutex<Option<u64>>,
@@ -625,6 +593,9 @@ mod tests {
             Ok(String::new())
         }
         async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn delete_file(&self, _: &str) -> Result<(), String> {
             Ok(())
         }
         async fn file_exists(&self, _: &str) -> Result<bool, String> {
@@ -672,105 +643,6 @@ mod tests {
         }
     }
 
-    struct GrepEnv {
-        results: Vec<String>,
-    }
-
-    #[async_trait]
-    impl ExecutionEnvironment for GrepEnv {
-        async fn read_file(&self, _: &str, _offset: Option<usize>, _limit: Option<usize>) -> Result<String, String> {
-            Ok(String::new())
-        }
-        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
-            Ok(())
-        }
-        async fn file_exists(&self, _: &str) -> Result<bool, String> {
-            Ok(false)
-        }
-        async fn list_directory(&self, _: &str, _depth: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-        async fn exec_command(&self, _: &str, _: u64, _: Option<&str>, _: Option<&std::collections::HashMap<String, String>>) -> Result<ExecResult, String> {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                exit_code: 0,
-                timed_out: false,
-                duration_ms: 0,
-            })
-        }
-        async fn grep(&self, _: &str, _: &str, _: &GrepOptions) -> Result<Vec<String>, String> {
-            Ok(self.results.clone())
-        }
-        async fn glob(&self, _: &str, _path: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &str {
-            "/tmp"
-        }
-        fn platform(&self) -> &str {
-            "darwin"
-        }
-        fn os_version(&self) -> String {
-            String::new()
-        }
-    }
-
-    struct GlobEnv {
-        results: Vec<String>,
-    }
-
-    #[async_trait]
-    impl ExecutionEnvironment for GlobEnv {
-        async fn read_file(&self, _: &str, _offset: Option<usize>, _limit: Option<usize>) -> Result<String, String> {
-            Ok(String::new())
-        }
-        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
-            Ok(())
-        }
-        async fn file_exists(&self, _: &str) -> Result<bool, String> {
-            Ok(false)
-        }
-        async fn list_directory(&self, _: &str, _depth: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-        async fn exec_command(&self, _: &str, _: u64, _: Option<&str>, _: Option<&std::collections::HashMap<String, String>>) -> Result<ExecResult, String> {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                exit_code: 0,
-                timed_out: false,
-                duration_ms: 0,
-            })
-        }
-        async fn grep(&self, _: &str, _: &str, _: &GrepOptions) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn glob(&self, _: &str, _path: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(self.results.clone())
-        }
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &str {
-            "/tmp"
-        }
-        fn platform(&self) -> &str {
-            "darwin"
-        }
-        fn os_version(&self) -> String {
-            String::new()
-        }
-    }
 
     #[tokio::test]
     async fn read_file_returns_content() {
@@ -903,14 +775,15 @@ mod tests {
     #[tokio::test]
     async fn shell_basic_command() {
         let tool = make_shell_tool();
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(ShellEnv {
-            result: ExecResult {
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            exec_result: ExecResult {
                 stdout: "hello".into(),
                 stderr: String::new(),
                 exit_code: 0,
                 timed_out: false,
                 duration_ms: 10,
             },
+            ..Default::default()
         });
         let result = (tool.executor)(serde_json::json!({"command": "echo hello"}), env).await;
         let output = result.unwrap();
@@ -936,14 +809,15 @@ mod tests {
     #[tokio::test]
     async fn shell_nonzero_exit_code() {
         let tool = make_shell_tool();
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(ShellEnv {
-            result: ExecResult {
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            exec_result: ExecResult {
                 stdout: String::new(),
                 stderr: "error".into(),
                 exit_code: 1,
                 timed_out: false,
                 duration_ms: 10,
             },
+            ..Default::default()
         });
         let result = (tool.executor)(serde_json::json!({"command": "false"}), env).await;
         let output = result.unwrap();
@@ -954,14 +828,15 @@ mod tests {
     #[tokio::test]
     async fn shell_timeout_output() {
         let tool = make_shell_tool();
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(ShellEnv {
-            result: ExecResult {
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            exec_result: ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
                 exit_code: -1,
                 timed_out: true,
                 duration_ms: 10000,
             },
+            ..Default::default()
         });
         let result = (tool.executor)(serde_json::json!({"command": "sleep 100"}), env).await;
         let output = result.unwrap();
@@ -971,8 +846,9 @@ mod tests {
     #[tokio::test]
     async fn grep_basic() {
         let tool = make_grep_tool();
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(GrepEnv {
-            results: vec!["src/main.rs:10:fn main()".into(), "src/lib.rs:5:pub fn".into()],
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            grep_results: vec!["src/main.rs:10:fn main()".into(), "src/lib.rs:5:pub fn".into()],
+            ..Default::default()
         });
         let result = (tool.executor)(serde_json::json!({"pattern": "fn"}), env).await;
         let output = result.unwrap();
@@ -983,8 +859,9 @@ mod tests {
     #[tokio::test]
     async fn glob_basic() {
         let tool = make_glob_tool();
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(GlobEnv {
-            results: vec!["src/main.rs".into(), "src/lib.rs".into()],
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            glob_results: vec!["src/main.rs".into(), "src/lib.rs".into()],
+            ..Default::default()
         });
         let result = (tool.executor)(serde_json::json!({"pattern": "src/**/*.rs"}), env).await;
         let output = result.unwrap();

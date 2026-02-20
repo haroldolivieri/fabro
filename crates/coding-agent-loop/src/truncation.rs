@@ -1,5 +1,4 @@
 use crate::config::SessionConfig;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TruncationMode {
@@ -7,35 +6,34 @@ pub enum TruncationMode {
     Tail,
 }
 
-fn default_char_limits() -> HashMap<&'static str, usize> {
-    let mut m = HashMap::new();
-    m.insert("read_file", 50_000);
-    m.insert("shell", 30_000);
-    m.insert("grep", 20_000);
-    m.insert("glob", 20_000);
-    m.insert("edit_file", 10_000);
-    m.insert("write_file", 1_000);
-    m.insert("apply_patch", 10_000);
-    m.insert("spawn_agent", 20_000);
-    m
+fn default_char_limit(tool_name: &str) -> Option<usize> {
+    match tool_name {
+        "read_file" => Some(50_000),
+        "shell" => Some(30_000),
+        "grep" => Some(20_000),
+        "glob" => Some(20_000),
+        "edit_file" => Some(10_000),
+        "write_file" => Some(1_000),
+        "apply_patch" => Some(10_000),
+        "spawn_agent" => Some(20_000),
+        _ => None,
+    }
 }
 
-fn default_line_limits() -> HashMap<&'static str, usize> {
-    let mut m = HashMap::new();
-    m.insert("shell", 256);
-    m.insert("grep", 200);
-    m.insert("glob", 500);
-    m
+fn default_line_limit(tool_name: &str) -> Option<usize> {
+    match tool_name {
+        "shell" => Some(256),
+        "grep" => Some(200),
+        "glob" => Some(500),
+        _ => None,
+    }
 }
 
-fn default_truncation_modes() -> HashMap<&'static str, TruncationMode> {
-    let mut m = HashMap::new();
-    m.insert("grep", TruncationMode::Tail);
-    m.insert("glob", TruncationMode::Tail);
-    m.insert("edit_file", TruncationMode::Tail);
-    m.insert("apply_patch", TruncationMode::Tail);
-    m.insert("write_file", TruncationMode::Tail);
-    m
+fn default_truncation_mode(tool_name: &str) -> TruncationMode {
+    match tool_name {
+        "grep" | "glob" | "edit_file" | "apply_patch" | "write_file" => TruncationMode::Tail,
+        _ => TruncationMode::HeadTail,
+    }
 }
 
 pub fn truncate_output(output: &str, max_chars: usize, mode: TruncationMode) -> String {
@@ -85,22 +83,14 @@ pub fn truncate_lines(output: &str, max_lines: usize) -> String {
 }
 
 pub fn truncate_tool_output(output: &str, tool_name: &str, config: &SessionConfig) -> String {
-    let builtin_char_limits = default_char_limits();
-    let builtin_line_limits = default_line_limits();
-    let builtin_modes = default_truncation_modes();
-
-    // Determine truncation mode for this tool (default HeadTail)
-    let mode = builtin_modes
-        .get(tool_name)
-        .copied()
-        .unwrap_or(TruncationMode::HeadTail);
+    let mode = default_truncation_mode(tool_name);
 
     // Char truncation first
     let char_limit = config
         .tool_output_limits
         .get(tool_name)
         .copied()
-        .or_else(|| builtin_char_limits.get(tool_name).copied());
+        .or_else(|| default_char_limit(tool_name));
 
     let after_chars = match char_limit {
         Some(limit) => truncate_output(output, limit, mode),
@@ -112,7 +102,7 @@ pub fn truncate_tool_output(output: &str, tool_name: &str, config: &SessionConfi
         .tool_line_limits
         .get(tool_name)
         .copied()
-        .or_else(|| builtin_line_limits.get(tool_name).copied());
+        .or_else(|| default_line_limit(tool_name));
 
     match line_limit {
         Some(limit) => truncate_lines(&after_chars, limit),
@@ -211,23 +201,23 @@ mod tests {
 
     #[test]
     fn default_char_limits_match_spec() {
-        let limits = default_char_limits();
-        assert_eq!(limits.get("read_file"), Some(&50_000));
-        assert_eq!(limits.get("shell"), Some(&30_000));
-        assert_eq!(limits.get("grep"), Some(&20_000));
-        assert_eq!(limits.get("glob"), Some(&20_000));
-        assert_eq!(limits.get("edit_file"), Some(&10_000));
-        assert_eq!(limits.get("write_file"), Some(&1_000));
-        assert_eq!(limits.get("apply_patch"), Some(&10_000));
-        assert_eq!(limits.get("spawn_agent"), Some(&20_000));
+        assert_eq!(default_char_limit("read_file"), Some(50_000));
+        assert_eq!(default_char_limit("shell"), Some(30_000));
+        assert_eq!(default_char_limit("grep"), Some(20_000));
+        assert_eq!(default_char_limit("glob"), Some(20_000));
+        assert_eq!(default_char_limit("edit_file"), Some(10_000));
+        assert_eq!(default_char_limit("write_file"), Some(1_000));
+        assert_eq!(default_char_limit("apply_patch"), Some(10_000));
+        assert_eq!(default_char_limit("spawn_agent"), Some(20_000));
+        assert_eq!(default_char_limit("unknown"), None);
     }
 
     #[test]
     fn default_line_limits_match_spec() {
-        let limits = default_line_limits();
-        assert_eq!(limits.get("shell"), Some(&256));
-        assert_eq!(limits.get("grep"), Some(&200));
-        assert_eq!(limits.get("glob"), Some(&500));
+        assert_eq!(default_line_limit("shell"), Some(256));
+        assert_eq!(default_line_limit("grep"), Some(200));
+        assert_eq!(default_line_limit("glob"), Some(500));
+        assert_eq!(default_line_limit("unknown"), None);
     }
 
     #[test]

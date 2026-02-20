@@ -1,22 +1,22 @@
 use crate::config::SessionConfig;
 use crate::error::AgentError;
 use crate::event::EventEmitter;
+use crate::execution_env::ExecutionEnvironment;
 use crate::history::History;
 use crate::loop_detection::detect_loop;
 use crate::profiles::EnvContext;
 use crate::project_docs::discover_project_docs;
 use crate::provider_profile::ProviderProfile;
+use crate::tool_registry::ToolRegistry;
 use crate::truncation::truncate_tool_output;
-use crate::types::{EventKind, SessionEvent, SessionState, Turn};
-use std::collections::{HashMap, VecDeque};
+use crate::types::{EventData, EventKind, SessionState, Turn};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 use unified_llm::client::Client;
 use unified_llm::error::{ProviderErrorKind, SdkError};
 use unified_llm::types::{Message, Request, ToolChoice, ToolResult};
-
-use crate::execution_env::ExecutionEnvironment;
 
 pub struct Session {
     id: String,
@@ -133,7 +133,7 @@ impl Session {
         self.state
     }
 
-    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<SessionEvent> {
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<crate::types::SessionEvent> {
         self.event_emitter.subscribe()
     }
 
@@ -184,11 +184,8 @@ impl Session {
             return Err(AgentError::SessionClosed);
         }
 
-        self.event_emitter.emit(
-            EventKind::SessionStart,
-            self.id.clone(),
-            HashMap::new(),
-        );
+        self.event_emitter
+            .emit(EventKind::SessionStart, self.id.clone(), EventData::Empty);
 
         // Use a queue to avoid recursive async calls for followups
         let mut current_input = input.to_string();
@@ -211,11 +208,8 @@ impl Session {
         }
 
         self.state = SessionState::Idle;
-        self.event_emitter.emit(
-            EventKind::SessionEnd,
-            self.id.clone(),
-            HashMap::new(),
-        );
+        self.event_emitter
+            .emit(EventKind::SessionEnd, self.id.clone(), EventData::Empty);
 
         Ok(())
     }
@@ -232,11 +226,8 @@ impl Session {
             content: input.to_string(),
             timestamp: SystemTime::now(),
         });
-        self.event_emitter.emit(
-            EventKind::UserInput,
-            self.id.clone(),
-            HashMap::new(),
-        );
+        self.event_emitter
+            .emit(EventKind::UserInput, self.id.clone(), EventData::Empty);
 
         // Drain steering queue before first LLM call
         self.drain_steering();
@@ -246,32 +237,23 @@ impl Session {
         loop {
             // Check max_tool_rounds_per_input
             if round_count >= self.config.max_tool_rounds_per_input {
-                self.event_emitter.emit(
-                    EventKind::TurnLimit,
-                    self.id.clone(),
-                    HashMap::new(),
-                );
+                self.event_emitter
+                    .emit(EventKind::TurnLimit, self.id.clone(), EventData::Empty);
                 break;
             }
 
             // Check max_turns
-            if self.config.max_turns > 0 && self.history.count_turns() >= self.config.max_turns {
-                self.event_emitter.emit(
-                    EventKind::TurnLimit,
-                    self.id.clone(),
-                    HashMap::new(),
-                );
+            if self.config.max_turns > 0 && self.history.turns().len() >= self.config.max_turns {
+                self.event_emitter
+                    .emit(EventKind::TurnLimit, self.id.clone(), EventData::Empty);
                 break;
             }
 
             // Check abort flag
             if self.abort_flag.load(Ordering::SeqCst) {
                 self.state = SessionState::Closed;
-                self.event_emitter.emit(
-                    EventKind::SessionEnd,
-                    self.id.clone(),
-                    HashMap::new(),
-                );
+                self.event_emitter
+                    .emit(EventKind::SessionEnd, self.id.clone(), EventData::Empty);
                 return Err(AgentError::Aborted);
             }
 
@@ -282,22 +264,19 @@ impl Session {
             self.event_emitter.emit(
                 EventKind::AssistantTextStart,
                 self.id.clone(),
-                HashMap::new(),
+                EventData::Empty,
             );
 
             // Call LLM
             let response = match self.llm_client.complete(&request).await {
                 Ok(resp) => resp,
                 Err(err) => {
-                    let mut error_data = HashMap::new();
-                    error_data.insert(
-                        "error".to_string(),
-                        serde_json::json!(err.to_string()),
-                    );
                     self.event_emitter.emit(
                         EventKind::Error,
                         self.id.clone(),
-                        error_data,
+                        EventData::Error {
+                            error: err.to_string(),
+                        },
                     );
                     if is_auth_error(&err) {
                         self.state = SessionState::Closed;
@@ -325,7 +304,7 @@ impl Session {
             self.event_emitter.emit(
                 EventKind::AssistantTextEnd,
                 self.id.clone(),
-                HashMap::new(),
+                EventData::Empty,
             );
 
             // Check context window usage
@@ -361,7 +340,7 @@ impl Session {
                 self.event_emitter.emit(
                     EventKind::LoopDetection,
                     self.id.clone(),
-                    HashMap::new(),
+                    EventData::Empty,
                 );
             }
         }
@@ -384,7 +363,7 @@ impl Session {
             self.event_emitter.emit(
                 EventKind::SteeringInjected,
                 self.id.clone(),
-                HashMap::new(),
+                EventData::Empty,
             );
         }
     }
@@ -400,16 +379,17 @@ impl Session {
         messages.extend(self.history.convert_to_messages());
 
         let tools = self.provider_profile.tools();
+        let has_tools = !tools.is_empty();
 
         Request {
             model: self.provider_profile.model(),
             messages,
             provider: Some(self.provider_profile.id()),
-            tools: if tools.is_empty() { None } else { Some(tools) },
-            tool_choice: if self.provider_profile.tools().is_empty() {
-                None
-            } else {
+            tools: if has_tools { Some(tools) } else { None },
+            tool_choice: if has_tools {
                 Some(ToolChoice::Auto)
+            } else {
+                None
             },
             response_format: None,
             temperature: None,
@@ -419,56 +399,6 @@ impl Session {
             reasoning_effort: self.config.reasoning_effort.clone(),
             metadata: None,
             provider_options: self.provider_profile.provider_options(),
-        }
-    }
-
-    async fn execute_single_tool(
-        &self,
-        tool_call_id: &str,
-        tool_name: &str,
-        arguments: &serde_json::Value,
-    ) -> ToolResult {
-        let registry = self.provider_profile.tool_registry();
-        match registry.get(tool_name) {
-            Some(registered_tool) => {
-                // Validate arguments against schema
-                if let Err(validation_error) =
-                    validate_tool_args(&registered_tool.definition.parameters, arguments)
-                {
-                    return ToolResult {
-                        tool_call_id: tool_call_id.to_string(),
-                        content: serde_json::json!(validation_error),
-                        is_error: true,
-                        image_data: None,
-                        image_media_type: None,
-                    };
-                }
-
-                let executor = &registered_tool.executor;
-                match executor(arguments.clone(), self.execution_env.clone()).await {
-                    Ok(output) => ToolResult {
-                        tool_call_id: tool_call_id.to_string(),
-                        content: serde_json::json!(output),
-                        is_error: false,
-                        image_data: None,
-                        image_media_type: None,
-                    },
-                    Err(err) => ToolResult {
-                        tool_call_id: tool_call_id.to_string(),
-                        content: serde_json::json!(err),
-                        is_error: true,
-                        image_data: None,
-                        image_media_type: None,
-                    },
-                }
-            }
-            None => ToolResult {
-                tool_call_id: tool_call_id.to_string(),
-                content: serde_json::json!(format!("Unknown tool: {tool_name}")),
-                is_error: true,
-                image_data: None,
-                image_media_type: None,
-            },
         }
     }
 
@@ -489,7 +419,37 @@ impl Session {
     ) -> Vec<ToolResult> {
         let mut results = Vec::new();
         for tc in tool_calls {
-            results.push(self.emit_execute_and_truncate(tc).await);
+            self.event_emitter.emit(
+                EventKind::ToolCallStart,
+                self.id.clone(),
+                EventData::ToolCall {
+                    tool_name: tc.name.clone(),
+                    tool_call_id: tc.id.clone(),
+                },
+            );
+
+            let result = execute_one_tool(
+                &tc.id,
+                &tc.name,
+                &tc.arguments,
+                self.provider_profile.tool_registry(),
+                self.execution_env.clone(),
+            )
+            .await;
+
+            self.event_emitter.emit(
+                EventKind::ToolCallEnd,
+                self.id.clone(),
+                EventData::ToolCallEnd {
+                    tool_name: tc.name.clone(),
+                    tool_call_id: tc.id.clone(),
+                    output: result.content.clone(),
+                    is_error: result.is_error,
+                },
+            );
+
+            let truncated = truncate_tool_result(&result, &tc.name, &self.config);
+            results.push(truncated);
         }
         results
     }
@@ -514,157 +474,41 @@ impl Session {
                 let config = config.clone();
                 let tc = tc.clone();
                 async move {
-                    // Emit ToolCallStart
-                    let mut start_data = HashMap::new();
-                    start_data
-                        .insert("tool_name".to_string(), serde_json::json!(&tc.name));
-                    start_data
-                        .insert("tool_call_id".to_string(), serde_json::json!(&tc.id));
                     emitter.emit(
                         EventKind::ToolCallStart,
                         session_id.clone(),
-                        start_data,
-                    );
-
-                    // Execute tool
-                    let registry = profile.tool_registry();
-                    let result = match registry.get(&tc.name) {
-                        Some(registered_tool) => {
-                            // Validate arguments against schema
-                            if let Err(validation_error) = validate_tool_args(
-                                &registered_tool.definition.parameters,
-                                &tc.arguments,
-                            ) {
-                                ToolResult {
-                                    tool_call_id: tc.id.clone(),
-                                    content: serde_json::json!(validation_error),
-                                    is_error: true,
-                                    image_data: None,
-                                    image_media_type: None,
-                                }
-                            } else {
-                                match (registered_tool.executor)(tc.arguments.clone(), env).await {
-                                    Ok(output) => ToolResult {
-                                        tool_call_id: tc.id.clone(),
-                                        content: serde_json::json!(output),
-                                        is_error: false,
-                                        image_data: None,
-                                        image_media_type: None,
-                                    },
-                                    Err(err) => ToolResult {
-                                        tool_call_id: tc.id.clone(),
-                                        content: serde_json::json!(err),
-                                        is_error: true,
-                                        image_data: None,
-                                        image_media_type: None,
-                                    },
-                                }
-                            }
-                        }
-                        None => ToolResult {
+                        EventData::ToolCall {
+                            tool_name: tc.name.clone(),
                             tool_call_id: tc.id.clone(),
-                            content: serde_json::json!(format!("Unknown tool: {}", tc.name)),
-                            is_error: true,
-                            image_data: None,
-                            image_media_type: None,
                         },
-                    };
-
-                    // Emit ToolCallEnd
-                    let mut end_data = HashMap::new();
-                    end_data
-                        .insert("tool_name".to_string(), serde_json::json!(&tc.name));
-                    end_data
-                        .insert("tool_call_id".to_string(), serde_json::json!(&tc.id));
-                    match &result.content {
-                        serde_json::Value::String(s) => {
-                            end_data.insert("output".to_string(), serde_json::json!(s));
-                        }
-                        other => {
-                            end_data.insert("output".to_string(), other.clone());
-                        }
-                    }
-                    end_data.insert(
-                        "is_error".to_string(),
-                        serde_json::json!(result.is_error),
                     );
-                    emitter.emit(EventKind::ToolCallEnd, session_id, end_data);
 
-                    // Truncate for history
-                    let truncated_content = match &result.content {
-                        serde_json::Value::String(s) => {
-                            serde_json::json!(truncate_tool_output(s, &tc.name, &config))
-                        }
-                        other => other.clone(),
-                    };
+                    let result = execute_one_tool(
+                        &tc.id,
+                        &tc.name,
+                        &tc.arguments,
+                        profile.tool_registry(),
+                        env,
+                    )
+                    .await;
 
-                    ToolResult {
-                        tool_call_id: result.tool_call_id,
-                        content: truncated_content,
-                        is_error: result.is_error,
-                        image_data: result.image_data,
-                        image_media_type: result.image_media_type,
-                    }
+                    emitter.emit(
+                        EventKind::ToolCallEnd,
+                        session_id,
+                        EventData::ToolCallEnd {
+                            tool_name: tc.name.clone(),
+                            tool_call_id: tc.id.clone(),
+                            output: result.content.clone(),
+                            is_error: result.is_error,
+                        },
+                    );
+
+                    truncate_tool_result(&result, &tc.name, &config)
                 }
             })
             .collect();
 
         futures::future::join_all(futures).await
-    }
-
-    async fn emit_execute_and_truncate(
-        &self,
-        tc: &unified_llm::types::ToolCall,
-    ) -> ToolResult {
-        // Emit ToolCallStart
-        let mut start_data = HashMap::new();
-        start_data.insert("tool_name".to_string(), serde_json::json!(tc.name));
-        start_data.insert("tool_call_id".to_string(), serde_json::json!(tc.id));
-        self.event_emitter.emit(
-            EventKind::ToolCallStart,
-            self.id.clone(),
-            start_data,
-        );
-
-        let result = self
-            .execute_single_tool(&tc.id, &tc.name, &tc.arguments)
-            .await;
-
-        // Emit ToolCallEnd with full untruncated output
-        let mut end_data = HashMap::new();
-        end_data.insert("tool_name".to_string(), serde_json::json!(tc.name));
-        end_data.insert("tool_call_id".to_string(), serde_json::json!(tc.id));
-        match &result.content {
-            serde_json::Value::String(s) => {
-                end_data.insert("output".to_string(), serde_json::json!(s));
-            }
-            other => {
-                end_data.insert("output".to_string(), other.clone());
-            }
-        }
-        end_data.insert("is_error".to_string(), serde_json::json!(result.is_error));
-        self.event_emitter.emit(
-            EventKind::ToolCallEnd,
-            self.id.clone(),
-            end_data,
-        );
-
-        // Truncate output for history
-        let truncated_content = match &result.content {
-            serde_json::Value::String(s) => {
-                let truncated = truncate_tool_output(s, &tc.name, &self.config);
-                serde_json::json!(truncated)
-            }
-            other => other.clone(),
-        };
-
-        ToolResult {
-            tool_call_id: result.tool_call_id,
-            content: truncated_content,
-            is_error: result.is_error,
-            image_data: result.image_data,
-            image_media_type: result.image_media_type,
-        }
     }
 
     fn estimate_token_count(&self) -> usize {
@@ -714,25 +558,88 @@ impl Session {
         let threshold = context_window * 80 / 100;
 
         if estimated_tokens > threshold {
-            let mut data = HashMap::new();
-            data.insert(
-                "estimated_tokens".to_string(),
-                serde_json::json!(estimated_tokens),
-            );
-            data.insert(
-                "context_window_size".to_string(),
-                serde_json::json!(context_window),
-            );
-            data.insert(
-                "usage_percent".to_string(),
-                serde_json::json!(estimated_tokens * 100 / context_window),
-            );
             self.event_emitter.emit(
                 EventKind::ContextWindowWarning,
                 self.id.clone(),
-                data,
+                EventData::ContextWarning {
+                    estimated_tokens,
+                    context_window_size: context_window,
+                    usage_percent: estimated_tokens * 100 / context_window,
+                },
             );
         }
+    }
+}
+
+/// Execute a single tool call: registry lookup, argument validation, and execution.
+/// Shared by both sequential and parallel execution paths.
+async fn execute_one_tool(
+    tool_call_id: &str,
+    tool_name: &str,
+    arguments: &serde_json::Value,
+    registry: &ToolRegistry,
+    env: Arc<dyn ExecutionEnvironment>,
+) -> ToolResult {
+    match registry.get(tool_name) {
+        Some(registered_tool) => {
+            if let Err(validation_error) =
+                validate_tool_args(&registered_tool.definition.parameters, arguments)
+            {
+                return ToolResult {
+                    tool_call_id: tool_call_id.to_string(),
+                    content: serde_json::json!(validation_error),
+                    is_error: true,
+                    image_data: None,
+                    image_media_type: None,
+                };
+            }
+
+            match (registered_tool.executor)(arguments.clone(), env).await {
+                Ok(output) => ToolResult {
+                    tool_call_id: tool_call_id.to_string(),
+                    content: serde_json::json!(output),
+                    is_error: false,
+                    image_data: None,
+                    image_media_type: None,
+                },
+                Err(err) => ToolResult {
+                    tool_call_id: tool_call_id.to_string(),
+                    content: serde_json::json!(err),
+                    is_error: true,
+                    image_data: None,
+                    image_media_type: None,
+                },
+            }
+        }
+        None => ToolResult {
+            tool_call_id: tool_call_id.to_string(),
+            content: serde_json::json!(format!("Unknown tool: {tool_name}")),
+            is_error: true,
+            image_data: None,
+            image_media_type: None,
+        },
+    }
+}
+
+/// Truncate tool output for history storage while preserving identity fields.
+fn truncate_tool_result(
+    result: &ToolResult,
+    tool_name: &str,
+    config: &SessionConfig,
+) -> ToolResult {
+    let truncated_content = match &result.content {
+        serde_json::Value::String(s) => {
+            serde_json::json!(truncate_tool_output(s, tool_name, config))
+        }
+        other => other.clone(),
+    };
+
+    ToolResult {
+        tool_call_id: result.tool_call_id.clone(),
+        content: truncated_content,
+        is_error: result.is_error,
+        image_data: result.image_data.clone(),
+        image_media_type: result.image_media_type.clone(),
     }
 }
 
@@ -769,370 +676,12 @@ fn validate_tool_args(schema: &serde_json::Value, args: &serde_json::Value) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution_env::*;
+    use crate::test_support::*;
     use crate::tool_registry::{RegisteredTool, ToolRegistry};
     use async_trait::async_trait;
-    use std::collections::HashMap;
-    use std::sync::atomic::AtomicUsize;
     use unified_llm::error::ProviderErrorDetail;
     use unified_llm::provider::{ProviderAdapter, StreamEventStream};
-    use unified_llm::types::{
-        ContentPart, FinishReason, Response, ToolCall, ToolDefinition, Usage,
-    };
-
-    // --- Mock LLM Provider ---
-
-    struct MockLlmProvider {
-        responses: Vec<Response>,
-        call_index: AtomicUsize,
-    }
-
-    impl MockLlmProvider {
-        fn new(responses: Vec<Response>) -> Self {
-            Self {
-                responses,
-                call_index: AtomicUsize::new(0),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl ProviderAdapter for MockLlmProvider {
-        fn name(&self) -> &str {
-            "mock"
-        }
-
-        async fn complete(&self, _request: &Request) -> Result<Response, SdkError> {
-            let idx = self.call_index.fetch_add(1, Ordering::SeqCst);
-            if idx < self.responses.len() {
-                Ok(self.responses[idx].clone())
-            } else {
-                // Return last response if we exceed
-                Ok(self.responses[self.responses.len() - 1].clone())
-            }
-        }
-
-        async fn stream(
-            &self,
-            _request: &Request,
-        ) -> Result<StreamEventStream, SdkError> {
-            Err(SdkError::Configuration {
-                message: "streaming not supported in mock".into(),
-            })
-        }
-    }
-
-    // --- Mock Error Provider ---
-
-    struct MockErrorProvider {
-        error: SdkError,
-    }
-
-    #[async_trait]
-    impl ProviderAdapter for MockErrorProvider {
-        fn name(&self) -> &str {
-            "mock"
-        }
-
-        async fn complete(&self, _request: &Request) -> Result<Response, SdkError> {
-            Err(self.error.clone())
-        }
-
-        async fn stream(
-            &self,
-            _request: &Request,
-        ) -> Result<StreamEventStream, SdkError> {
-            Err(SdkError::Configuration {
-                message: "streaming not supported in mock".into(),
-            })
-        }
-    }
-
-    // --- Memory Execution Environment ---
-
-    struct MemoryExecutionEnvironment {
-        files: HashMap<String, String>,
-    }
-
-    impl MemoryExecutionEnvironment {
-        fn new() -> Self {
-            Self {
-                files: HashMap::new(),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl ExecutionEnvironment for MemoryExecutionEnvironment {
-        async fn read_file(&self, path: &str, _offset: Option<usize>, _limit: Option<usize>) -> Result<String, String> {
-            self.files
-                .get(path)
-                .cloned()
-                .ok_or_else(|| format!("File not found: {path}"))
-        }
-
-        async fn write_file(&self, _path: &str, _content: &str) -> Result<(), String> {
-            Ok(())
-        }
-
-        async fn file_exists(&self, path: &str) -> Result<bool, String> {
-            Ok(self.files.contains_key(path))
-        }
-
-        async fn list_directory(&self, _path: &str, _depth: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-
-        async fn exec_command(
-            &self,
-            _command: &str,
-            _timeout_ms: u64,
-            _working_dir: Option<&str>,
-            _env_vars: Option<&std::collections::HashMap<String, String>>,
-        ) -> Result<ExecResult, String> {
-            Ok(ExecResult {
-                stdout: "mock output".into(),
-                stderr: String::new(),
-                exit_code: 0,
-                timed_out: false,
-                duration_ms: 10,
-            })
-        }
-
-        async fn grep(
-            &self,
-            _pattern: &str,
-            _path: &str,
-            _options: &GrepOptions,
-        ) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-
-        async fn glob(&self, _pattern: &str, _path: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-
-        fn working_directory(&self) -> &str {
-            "/tmp/test"
-        }
-
-        fn platform(&self) -> &str {
-            "darwin"
-        }
-
-        fn os_version(&self) -> String {
-            "Darwin 24.0.0".into()
-        }
-    }
-
-    // --- Test Profile ---
-
-    struct TestProfile {
-        registry: ToolRegistry,
-    }
-
-    impl TestProfile {
-        fn new() -> Self {
-            Self {
-                registry: ToolRegistry::new(),
-            }
-        }
-
-        fn with_tools(registry: ToolRegistry) -> Self {
-            Self { registry }
-        }
-    }
-
-    impl ProviderProfile for TestProfile {
-        fn id(&self) -> String {
-            "mock".into()
-        }
-
-        fn model(&self) -> String {
-            "mock-model".into()
-        }
-
-        fn tool_registry(&self) -> &ToolRegistry {
-            &self.registry
-        }
-
-        fn tool_registry_mut(&mut self) -> &mut ToolRegistry {
-            &mut self.registry
-        }
-
-        fn build_system_prompt(
-            &self,
-            _env: &dyn ExecutionEnvironment,
-            _env_context: &crate::profiles::EnvContext,
-            _project_docs: &[String],
-            _user_instructions: Option<&str>,
-        ) -> String {
-            "You are a test assistant.".into()
-        }
-
-        fn tools(&self) -> Vec<ToolDefinition> {
-            self.registry.definitions()
-        }
-
-        fn provider_options(&self) -> Option<serde_json::Value> {
-            None
-        }
-
-        fn supports_reasoning(&self) -> bool {
-            false
-        }
-
-        fn supports_streaming(&self) -> bool {
-            false
-        }
-
-        fn supports_parallel_tool_calls(&self) -> bool {
-            false
-        }
-
-        fn context_window_size(&self) -> usize {
-            200_000
-        }
-        fn knowledge_cutoff(&self) -> &str {
-            "May 2025"
-        }
-    }
-
-    // --- Helper functions ---
-
-    fn text_response(text: &str) -> Response {
-        Response {
-            id: format!("resp_{text}"),
-            model: "mock-model".into(),
-            provider: "mock".into(),
-            message: Message::assistant(text),
-            finish_reason: FinishReason::Stop,
-            usage: Usage {
-                input_tokens: 10,
-                output_tokens: 5,
-                total_tokens: 15,
-                ..Default::default()
-            },
-            raw: None,
-            warnings: vec![],
-            rate_limit: None,
-        }
-    }
-
-    fn tool_call_response(tool_name: &str, tool_call_id: &str, args: serde_json::Value) -> Response {
-        Response {
-            id: format!("resp_{tool_call_id}"),
-            model: "mock-model".into(),
-            provider: "mock".into(),
-            message: Message {
-                role: unified_llm::types::Role::Assistant,
-                content: vec![
-                    ContentPart::text("Let me use a tool."),
-                    ContentPart::ToolCall(ToolCall::new(tool_call_id, tool_name, args)),
-                ],
-                name: None,
-                tool_call_id: None,
-            },
-            finish_reason: FinishReason::ToolCalls,
-            usage: Usage {
-                input_tokens: 10,
-                output_tokens: 5,
-                total_tokens: 15,
-                ..Default::default()
-            },
-            raw: None,
-            warnings: vec![],
-            rate_limit: None,
-        }
-    }
-
-    fn make_echo_tool() -> RegisteredTool {
-        RegisteredTool {
-            definition: ToolDefinition {
-                name: "echo".into(),
-                description: "Echoes the input".into(),
-                parameters: serde_json::json!({"type": "object", "properties": {"text": {"type": "string"}}}),
-            },
-            executor: Arc::new(|args, _env| {
-                Box::pin(async move {
-                    let text = args
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("no text");
-                    Ok(format!("echo: {text}"))
-                })
-            }),
-        }
-    }
-
-    fn make_error_tool() -> RegisteredTool {
-        RegisteredTool {
-            definition: ToolDefinition {
-                name: "fail_tool".into(),
-                description: "Always fails".into(),
-                parameters: serde_json::json!({"type": "object"}),
-            },
-            executor: Arc::new(|_args, _env| {
-                Box::pin(async move { Err("tool execution failed".to_string()) })
-            }),
-        }
-    }
-
-    async fn make_client(provider: Arc<dyn ProviderAdapter>) -> Client {
-        let mut providers = HashMap::new();
-        providers.insert(provider.name().to_string(), provider);
-        Client::new(providers, Some("mock".into()), vec![])
-    }
-
-    async fn make_session(responses: Vec<Response>) -> Session {
-        let provider = Arc::new(MockLlmProvider::new(responses));
-        let client = make_client(provider).await;
-        let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MemoryExecutionEnvironment::new());
-        Session::new(client, profile, env, SessionConfig::default())
-    }
-
-    async fn make_session_with_tools(
-        responses: Vec<Response>,
-        registry: ToolRegistry,
-    ) -> Session {
-        let provider = Arc::new(MockLlmProvider::new(responses));
-        let client = make_client(provider).await;
-        let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MemoryExecutionEnvironment::new());
-        Session::new(client, profile, env, SessionConfig::default())
-    }
-
-    async fn make_session_with_config(
-        responses: Vec<Response>,
-        config: SessionConfig,
-    ) -> Session {
-        let provider = Arc::new(MockLlmProvider::new(responses));
-        let client = make_client(provider).await;
-        let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MemoryExecutionEnvironment::new());
-        Session::new(client, profile, env, config)
-    }
-
-    async fn make_session_with_tools_and_config(
-        responses: Vec<Response>,
-        registry: ToolRegistry,
-        config: SessionConfig,
-    ) -> Session {
-        let provider = Arc::new(MockLlmProvider::new(responses));
-        let client = make_client(provider).await;
-        let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MemoryExecutionEnvironment::new());
-        Session::new(client, profile, env, config)
-    }
+    use unified_llm::types::{Response, ToolDefinition};
 
     // --- Tests ---
 
@@ -1232,12 +781,12 @@ mod tests {
 
         // First input: adds User + Assistant = 2 turns
         session.process_input("one").await.unwrap();
-        assert_eq!(session.history().count_turns(), 2);
+        assert_eq!(session.history().turns().len(), 2);
 
         // Second input: adds User (now 3 turns), then max_turns check triggers
         session.process_input("two").await.unwrap();
         // Should have 3 turns total (User + Asst + User), max_turns hit before LLM call
-        assert_eq!(session.history().count_turns(), 3);
+        assert_eq!(session.history().turns().len(), 3);
     }
 
     #[tokio::test]
@@ -1319,8 +868,12 @@ mod tests {
         }
 
         assert_eq!(tool_end_events.len(), 1);
-        let output = tool_end_events[0].data.get("output").unwrap();
-        assert_eq!(output, &serde_json::json!("echo: hello world"));
+        match &tool_end_events[0].data {
+            EventData::ToolCallEnd { output, .. } => {
+                assert_eq!(output, &serde_json::json!("echo: hello world"));
+            }
+            _ => panic!("Expected ToolCallEnd event data"),
+        }
     }
 
     #[tokio::test]
@@ -1475,7 +1028,7 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MemoryExecutionEnvironment::new());
+        let env = Arc::new(MockExecutionEnvironment::default());
         let config = SessionConfig {
             enable_loop_detection: false,
             ..Default::default()
@@ -1510,7 +1063,7 @@ mod tests {
         });
         let client = make_client(error_provider).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MemoryExecutionEnvironment::new());
+        let env = Arc::new(MockExecutionEnvironment::default());
         let mut session = Session::new(client, profile, env, SessionConfig::default());
 
         let result = session.process_input("Hello").await;
@@ -1573,116 +1126,6 @@ mod tests {
         );
     }
 
-    // --- Parallel execution support ---
-
-    struct ParallelTestProfile {
-        registry: ToolRegistry,
-        context_window: usize,
-    }
-
-    impl ParallelTestProfile {
-        fn with_tools(registry: ToolRegistry) -> Self {
-            Self {
-                registry,
-                context_window: 200_000,
-            }
-        }
-
-        fn with_tools_and_context_window(registry: ToolRegistry, context_window: usize) -> Self {
-            Self {
-                registry,
-                context_window,
-            }
-        }
-    }
-
-    impl ProviderProfile for ParallelTestProfile {
-        fn id(&self) -> String {
-            "mock".into()
-        }
-
-        fn model(&self) -> String {
-            "mock-model".into()
-        }
-
-        fn tool_registry(&self) -> &ToolRegistry {
-            &self.registry
-        }
-
-        fn tool_registry_mut(&mut self) -> &mut ToolRegistry {
-            &mut self.registry
-        }
-
-        fn build_system_prompt(
-            &self,
-            _env: &dyn ExecutionEnvironment,
-            _env_context: &crate::profiles::EnvContext,
-            _project_docs: &[String],
-            _user_instructions: Option<&str>,
-        ) -> String {
-            "You are a test assistant.".into()
-        }
-
-        fn tools(&self) -> Vec<ToolDefinition> {
-            self.registry.definitions()
-        }
-
-        fn provider_options(&self) -> Option<serde_json::Value> {
-            None
-        }
-
-        fn supports_reasoning(&self) -> bool {
-            false
-        }
-
-        fn supports_streaming(&self) -> bool {
-            false
-        }
-
-        fn supports_parallel_tool_calls(&self) -> bool {
-            true
-        }
-
-        fn context_window_size(&self) -> usize {
-            self.context_window
-        }
-        fn knowledge_cutoff(&self) -> &str {
-            "May 2025"
-        }
-    }
-
-    fn multi_tool_call_response(calls: Vec<(&str, &str, serde_json::Value)>) -> Response {
-        let mut content = vec![ContentPart::text("Let me use multiple tools.")];
-        for (tool_name, tool_call_id, args) in &calls {
-            content.push(ContentPart::ToolCall(ToolCall::new(
-                *tool_call_id,
-                *tool_name,
-                args.clone(),
-            )));
-        }
-        Response {
-            id: "resp_multi".into(),
-            model: "mock-model".into(),
-            provider: "mock".into(),
-            message: Message {
-                role: unified_llm::types::Role::Assistant,
-                content,
-                name: None,
-                tool_call_id: None,
-            },
-            finish_reason: FinishReason::ToolCalls,
-            usage: Usage {
-                input_tokens: 10,
-                output_tokens: 5,
-                total_tokens: 15,
-                ..Default::default()
-            },
-            raw: None,
-            warnings: vec![],
-            rate_limit: None,
-        }
-    }
-
     #[tokio::test]
     async fn parallel_tool_execution_all_results_returned() {
         let mut registry = ToolRegistry::new();
@@ -1700,7 +1143,7 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile = Arc::new(ParallelTestProfile::with_tools(registry));
-        let env = Arc::new(MemoryExecutionEnvironment::new());
+        let env = Arc::new(MockExecutionEnvironment::default());
         let mut session = Session::new(client, profile, env, SessionConfig::default());
         let mut rx = session.subscribe();
 
@@ -1753,7 +1196,7 @@ mod tests {
         let profile = Arc::new(ParallelTestProfile::with_tools_and_context_window(
             registry, 100,
         ));
-        let env = Arc::new(MemoryExecutionEnvironment::new());
+        let env = Arc::new(MockExecutionEnvironment::default());
         let mut session = Session::new(client, profile, env, SessionConfig::default());
         let mut rx = session.subscribe();
 
@@ -1763,14 +1206,15 @@ mod tests {
         while let Ok(event) = rx.try_recv() {
             if event.kind == EventKind::ContextWindowWarning {
                 found_warning = true;
-                // Verify event data
-                assert!(event.data.contains_key("estimated_tokens"));
-                assert!(event.data.contains_key("context_window_size"));
-                assert!(event.data.contains_key("usage_percent"));
-                assert_eq!(
-                    event.data["context_window_size"],
-                    serde_json::json!(100)
-                );
+                match &event.data {
+                    EventData::ContextWarning {
+                        context_window_size,
+                        ..
+                    } => {
+                        assert_eq!(*context_window_size, 100);
+                    }
+                    _ => panic!("Expected ContextWarning event data"),
+                }
             }
         }
         assert!(found_warning);
@@ -1815,7 +1259,7 @@ mod tests {
         let provider = Arc::new(CapturingLlmProvider::new(captured_effort.clone()));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MemoryExecutionEnvironment::new());
+        let env = Arc::new(MockExecutionEnvironment::default());
         let mut session = Session::new(client, profile, env, SessionConfig::default());
 
         // Default reasoning_effort is None
@@ -1837,7 +1281,7 @@ mod tests {
         let profile = Arc::new(ParallelTestProfile::with_tools_and_context_window(
             registry, 200_000,
         ));
-        let env = Arc::new(MemoryExecutionEnvironment::new());
+        let env = Arc::new(MockExecutionEnvironment::default());
         let mut session = Session::new(client, profile, env, SessionConfig::default());
         let mut rx = session.subscribe();
 
@@ -1992,7 +1436,7 @@ mod tests {
         });
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MemoryExecutionEnvironment::new());
+        let env = Arc::new(MockExecutionEnvironment::default());
         let config = SessionConfig {
             user_instructions: Some("Always use TDD".into()),
             ..Default::default()

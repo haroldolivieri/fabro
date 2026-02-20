@@ -27,6 +27,7 @@ pub struct GrepOptions {
 pub trait ExecutionEnvironment: Send + Sync {
     async fn read_file(&self, path: &str, offset: Option<usize>, limit: Option<usize>) -> Result<String, String>;
     async fn write_file(&self, path: &str, content: &str) -> Result<(), String>;
+    async fn delete_file(&self, path: &str) -> Result<(), String>;
     async fn file_exists(&self, path: &str) -> Result<bool, String>;
     async fn list_directory(&self, path: &str, depth: Option<usize>) -> Result<Vec<DirEntry>, String>;
     async fn exec_command(
@@ -53,81 +54,25 @@ pub trait ExecutionEnvironment: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::MockExecutionEnvironment;
+    use std::collections::HashMap;
     use std::sync::Arc;
-
-    struct MockEnv;
-
-    #[async_trait]
-    impl ExecutionEnvironment for MockEnv {
-        async fn read_file(&self, _path: &str, _offset: Option<usize>, _limit: Option<usize>) -> Result<String, String> {
-            Ok("hello".into())
-        }
-        async fn write_file(&self, _path: &str, _content: &str) -> Result<(), String> {
-            Ok(())
-        }
-        async fn file_exists(&self, _path: &str) -> Result<bool, String> {
-            Ok(true)
-        }
-        async fn list_directory(&self, _path: &str, _depth: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![DirEntry {
-                name: "test.rs".into(),
-                is_dir: false,
-                size: Some(100),
-            }])
-        }
-        async fn exec_command(
-            &self,
-            _command: &str,
-            _timeout_ms: u64,
-            _working_dir: Option<&str>,
-            _env_vars: Option<&std::collections::HashMap<String, String>>,
-        ) -> Result<ExecResult, String> {
-            Ok(ExecResult {
-                stdout: "output".into(),
-                stderr: String::new(),
-                exit_code: 0,
-                timed_out: false,
-                duration_ms: 10,
-            })
-        }
-        async fn grep(
-            &self,
-            _pattern: &str,
-            _path: &str,
-            _options: &GrepOptions,
-        ) -> Result<Vec<String>, String> {
-            Ok(vec!["match".into()])
-        }
-        async fn glob(&self, _pattern: &str, _path: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(vec!["file.rs".into()])
-        }
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &str {
-            "/tmp"
-        }
-        fn platform(&self) -> &str {
-            "darwin"
-        }
-        fn os_version(&self) -> String {
-            "Darwin 24.0.0".into()
-        }
-    }
 
     #[tokio::test]
     async fn mock_env_read_file() {
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockEnv);
+        let mut files = HashMap::new();
+        files.insert("test.rs".into(), "hello".into());
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            files,
+            ..Default::default()
+        });
         let result = env.read_file("test.rs", None, None).await.unwrap();
         assert_eq!(result, "hello");
     }
 
     #[tokio::test]
     async fn mock_env_exec_command() {
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockEnv);
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment::default());
         let result = env.exec_command("echo", 5000, None, None).await.unwrap();
         assert_eq!(result.exit_code, 0);
         assert!(!result.timed_out);
@@ -135,11 +80,9 @@ mod tests {
 
     #[tokio::test]
     async fn mock_env_list_directory() {
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockEnv);
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment::default());
         let entries = env.list_directory("/tmp", None).await.unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].name, "test.rs");
-        assert!(!entries[0].is_dir);
+        assert_eq!(entries.len(), 0);
     }
 
     #[test]
@@ -178,9 +121,9 @@ mod tests {
 
     #[test]
     fn mock_env_platform() {
-        let env = MockEnv;
+        let env = MockExecutionEnvironment::default();
         assert_eq!(env.platform(), "darwin");
-        assert_eq!(env.working_directory(), "/tmp");
+        assert_eq!(env.working_directory(), "/tmp/test");
         assert_eq!(env.os_version(), "Darwin 24.0.0");
     }
 }

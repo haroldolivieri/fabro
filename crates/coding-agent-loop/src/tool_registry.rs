@@ -163,69 +163,10 @@ mod tests {
 
         let tool = registry.get("echo").unwrap();
 
-        use crate::execution_env::*;
-        use async_trait::async_trait;
+        use crate::execution_env::ExecutionEnvironment;
+        use crate::test_support::MockExecutionEnvironment;
 
-        struct DummyEnv;
-
-        #[async_trait]
-        impl ExecutionEnvironment for DummyEnv {
-            async fn read_file(&self, _: &str, _: Option<usize>, _: Option<usize>) -> Result<String, String> {
-                Ok(String::new())
-            }
-            async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
-                Ok(())
-            }
-            async fn file_exists(&self, _: &str) -> Result<bool, String> {
-                Ok(false)
-            }
-            async fn list_directory(&self, _: &str, _: Option<usize>) -> Result<Vec<DirEntry>, String> {
-                Ok(vec![])
-            }
-            async fn exec_command(
-                &self,
-                _: &str,
-                _: u64,
-                _: Option<&str>,
-                _: Option<&std::collections::HashMap<String, String>>,
-            ) -> Result<ExecResult, String> {
-                Ok(ExecResult {
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    exit_code: 0,
-                    timed_out: false,
-                    duration_ms: 0,
-                })
-            }
-            async fn grep(
-                &self,
-                _: &str,
-                _: &str,
-                _: &GrepOptions,
-            ) -> Result<Vec<String>, String> {
-                Ok(vec![])
-            }
-            async fn glob(&self, _: &str, _: Option<&str>) -> Result<Vec<String>, String> {
-                Ok(vec![])
-            }
-            async fn initialize(&self) -> Result<(), String> {
-                Ok(())
-            }
-            async fn cleanup(&self) -> Result<(), String> {
-                Ok(())
-            }
-            fn working_directory(&self) -> &str {
-                "/tmp"
-            }
-            fn platform(&self) -> &str {
-                "darwin"
-            }
-            fn os_version(&self) -> String {
-                String::new()
-            }
-        }
-
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(DummyEnv);
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment::default());
         let result = (tool.executor)(serde_json::json!({}), env).await;
         assert_eq!(result.unwrap(), "ok");
     }

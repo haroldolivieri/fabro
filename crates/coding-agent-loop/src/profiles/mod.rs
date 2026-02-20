@@ -20,6 +20,33 @@ pub struct EnvContext {
     pub git_recent_commits: Option<String>,
 }
 
+/// Assembles a complete system prompt from a core prompt template and standard sections.
+///
+/// The `core_prompt` should contain `{env_block}` as a placeholder where the environment
+/// context block will be inserted. Project docs and user instructions are appended at the end.
+#[must_use]
+pub fn assemble_system_prompt(
+    core_prompt: &str,
+    env: &dyn ExecutionEnvironment,
+    env_context: &EnvContext,
+    project_docs: &[String],
+    user_instructions: Option<&str>,
+) -> String {
+    let env_block = build_env_context_block_with(env, env_context);
+    let docs_section = if project_docs.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n{}", project_docs.join("\n\n"))
+    };
+    let user_section = match user_instructions {
+        Some(instructions) => format!("\n\n# User Instructions\n{instructions}"),
+        None => String::new(),
+    };
+
+    let prompt = core_prompt.replace("{env_block}", &env_block);
+    format!("{prompt}{docs_section}{user_section}")
+}
+
 #[must_use]
 pub fn build_env_context_block(env: &dyn ExecutionEnvironment) -> String {
     build_env_context_block_with(env, &EnvContext::default())
@@ -50,6 +77,13 @@ pub fn build_env_context_block_with(env: &dyn ExecutionEnvironment, ctx: &EnvCon
         lines.push(format!("Knowledge cutoff: {}", ctx.knowledge_cutoff));
     }
 
+    if let Some(ref status) = ctx.git_status_short {
+        lines.push(format!("Git status:\n{status}"));
+    }
+    if let Some(ref commits) = ctx.git_recent_commits {
+        lines.push(format!("Recent commits:\n{commits}"));
+    }
+
     lines.push("</environment>".to_string());
     lines.join("\n")
 }
@@ -57,71 +91,20 @@ pub fn build_env_context_block_with(env: &dyn ExecutionEnvironment, ctx: &EnvCon
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution_env::*;
-    use async_trait::async_trait;
+    use crate::test_support::MockExecutionEnvironment;
 
-    struct TestEnv;
-
-    #[async_trait]
-    impl ExecutionEnvironment for TestEnv {
-        async fn read_file(&self, _: &str, _: Option<usize>, _: Option<usize>) -> Result<String, String> {
-            Ok(String::new())
-        }
-        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
-            Ok(())
-        }
-        async fn file_exists(&self, _: &str) -> Result<bool, String> {
-            Ok(false)
-        }
-        async fn list_directory(&self, _: &str, _: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-        async fn exec_command(
-            &self,
-            _: &str,
-            _: u64,
-            _: Option<&str>,
-            _: Option<&std::collections::HashMap<String, String>>,
-        ) -> Result<ExecResult, String> {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                exit_code: 0,
-                timed_out: false,
-                duration_ms: 0,
-            })
-        }
-        async fn grep(
-            &self,
-            _: &str,
-            _: &str,
-            _: &GrepOptions,
-        ) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn glob(&self, _: &str, _: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &str {
-            "/home/test"
-        }
-        fn platform(&self) -> &str {
-            "linux"
-        }
-        fn os_version(&self) -> String {
-            "Linux 6.1.0".into()
+    fn linux_env() -> MockExecutionEnvironment {
+        MockExecutionEnvironment {
+            working_dir: "/home/test",
+            platform_str: "linux",
+            os_version_str: "Linux 6.1.0".into(),
+            ..Default::default()
         }
     }
 
     #[test]
     fn env_context_block_contains_platform() {
-        let env = TestEnv;
+        let env = linux_env();
         let block = build_env_context_block(&env);
         assert!(block.contains("<environment>"));
         assert!(block.contains("</environment>"));
@@ -132,7 +115,7 @@ mod tests {
 
     #[test]
     fn env_context_block_with_extra_context() {
-        let env = TestEnv;
+        let env = linux_env();
         let ctx = EnvContext {
             git_branch: Some("main".into()),
             is_git_repo: true,

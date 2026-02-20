@@ -14,9 +14,6 @@ pub enum AgentError {
     #[error("Tool execution error: {0}")]
     ToolExecution(String),
 
-    #[error("IO error: {0}")]
-    Io(String),
-
     #[error("Aborted")]
     Aborted,
 }
@@ -51,12 +48,6 @@ mod tests {
     fn tool_execution_display() {
         let err = AgentError::ToolExecution("command failed".into());
         assert_eq!(err.to_string(), "Tool execution error: command failed");
-    }
-
-    #[test]
-    fn io_error_display() {
-        let err = AgentError::Io("file not found".into());
-        assert_eq!(err.to_string(), "IO error: file not found");
     }
 
     #[test]

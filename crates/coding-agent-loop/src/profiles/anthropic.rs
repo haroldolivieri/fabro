@@ -1,19 +1,14 @@
 use crate::config::SessionConfig;
 use crate::execution_env::ExecutionEnvironment;
-use crate::provider_profile::ProviderProfile;
-use crate::subagent::{
-    make_close_agent_tool, make_send_input_tool, make_spawn_agent_tool, make_wait_tool,
-    SessionFactory, SubAgentManager,
-};
+use crate::profiles::assemble_system_prompt;
+use crate::provider_profile::{ProfileCapabilities, ProviderProfile};
 use crate::tool_registry::ToolRegistry;
 use crate::tools::{
     make_edit_file_tool, make_glob_tool, make_grep_tool, make_read_file_tool,
     make_shell_tool_with_config, make_write_file_tool,
 };
-use std::sync::Arc;
-use unified_llm::types::ToolDefinition;
 
-use super::{build_env_context_block_with, EnvContext};
+use super::EnvContext;
 
 pub struct AnthropicProfile {
     model: String,
@@ -41,23 +36,6 @@ impl AnthropicProfile {
             registry,
         }
     }
-
-    pub fn register_subagent_tools(
-        &mut self,
-        manager: Arc<tokio::sync::Mutex<SubAgentManager>>,
-        session_factory: SessionFactory,
-        current_depth: usize,
-    ) {
-        self.registry.register(make_spawn_agent_tool(
-            manager.clone(),
-            session_factory,
-            current_depth,
-        ));
-        self.registry
-            .register(make_send_input_tool(manager.clone()));
-        self.registry.register(make_wait_tool(manager.clone()));
-        self.registry.register(make_close_agent_tool(manager));
-    }
 }
 
 impl ProviderProfile for AnthropicProfile {
@@ -84,19 +62,7 @@ impl ProviderProfile for AnthropicProfile {
         project_docs: &[String],
         user_instructions: Option<&str>,
     ) -> String {
-        let env_block = build_env_context_block_with(env, env_context);
-        let docs_section = if project_docs.is_empty() {
-            String::new()
-        } else {
-            format!("\n\n{}", project_docs.join("\n\n"))
-        };
-        let user_section = match user_instructions {
-            Some(instructions) => format!("\n\n# User Instructions\n{instructions}"),
-            None => String::new(),
-        };
-
-        format!(
-            "\
+        let core_prompt = "\
 You are Claude, an AI coding assistant made by Anthropic. You help users with software \
 engineering tasks including solving bugs, adding new functionality, refactoring code, \
 explaining code, and more.
@@ -163,14 +129,18 @@ finding files rather than using shell find or ls commands.
 # Coding Best Practices
 
 Write clean, maintainable code. Handle errors appropriately. Follow existing code conventions \
-in the project. Keep changes minimal and focused on the task.\
-{docs_section}\
-{user_section}"
-        )
+in the project. Keep changes minimal and focused on the task.";
+
+        assemble_system_prompt(core_prompt, env, env_context, project_docs, user_instructions)
     }
 
-    fn tools(&self) -> Vec<ToolDefinition> {
-        self.registry.definitions()
+    fn capabilities(&self) -> ProfileCapabilities {
+        ProfileCapabilities {
+            supports_reasoning: true,
+            supports_streaming: true,
+            supports_parallel_tool_calls: true,
+            context_window_size: 200_000,
+        }
     }
 
     fn provider_options(&self) -> Option<serde_json::Value> {
@@ -181,22 +151,6 @@ in the project. Keep changes minimal and focused on the task.\
         }))
     }
 
-    fn supports_reasoning(&self) -> bool {
-        true
-    }
-
-    fn supports_streaming(&self) -> bool {
-        true
-    }
-
-    fn supports_parallel_tool_calls(&self) -> bool {
-        true
-    }
-
-    fn context_window_size(&self) -> usize {
-        200_000
-    }
-
     fn knowledge_cutoff(&self) -> &str {
         "May 2025"
     }
@@ -205,65 +159,14 @@ in the project. Keep changes minimal and focused on the task.\
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution_env::*;
-    use async_trait::async_trait;
+    use crate::test_support::MockExecutionEnvironment;
 
-    struct TestEnv;
-
-    #[async_trait]
-    impl ExecutionEnvironment for TestEnv {
-        async fn read_file(&self, _: &str, _: Option<usize>, _: Option<usize>) -> Result<String, String> {
-            Ok(String::new())
-        }
-        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
-            Ok(())
-        }
-        async fn file_exists(&self, _: &str) -> Result<bool, String> {
-            Ok(false)
-        }
-        async fn list_directory(&self, _: &str, _: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-        async fn exec_command(
-            &self,
-            _: &str,
-            _: u64,
-            _: Option<&str>,
-            _: Option<&std::collections::HashMap<String, String>>,
-        ) -> Result<ExecResult, String> {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                exit_code: 0,
-                timed_out: false,
-                duration_ms: 0,
-            })
-        }
-        async fn grep(
-            &self,
-            _: &str,
-            _: &str,
-            _: &GrepOptions,
-        ) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn glob(&self, _: &str, _: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &str {
-            "/home/test"
-        }
-        fn platform(&self) -> &str {
-            "linux"
-        }
-        fn os_version(&self) -> String {
-            "Linux 6.1.0".into()
+    fn linux_env() -> MockExecutionEnvironment {
+        MockExecutionEnvironment {
+            working_dir: "/home/test",
+            platform_str: "linux",
+            os_version_str: "Linux 6.1.0".into(),
+            ..Default::default()
         }
     }
 
@@ -286,7 +189,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_contains_env_context() {
         let profile = AnthropicProfile::new("claude-sonnet-4-20250514");
-        let env = TestEnv;
+        let env = linux_env();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None);
         assert!(prompt.contains("You are Claude, an AI coding assistant made by Anthropic"));
         assert!(prompt.contains("<environment>"));
@@ -319,7 +222,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_includes_project_docs() {
         let profile = AnthropicProfile::new("claude-sonnet-4-20250514");
-        let env = TestEnv;
+        let env = linux_env();
         let docs = vec!["# Project README".into(), "# CONTRIBUTING guide".into()];
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &docs, None);
         assert!(prompt.contains("# Project README"));
@@ -329,7 +232,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_includes_env_context() {
         let profile = AnthropicProfile::new("claude-opus-4-6");
-        let env = TestEnv;
+        let env = linux_env();
         let ctx = EnvContext {
             git_branch: Some("feature-branch".into()),
             is_git_repo: true,
@@ -350,7 +253,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_includes_user_instructions() {
         let profile = AnthropicProfile::new("claude-opus-4-6");
-        let env = TestEnv;
+        let env = linux_env();
         let ctx = EnvContext::default();
         let prompt = profile.build_system_prompt(&env, &ctx, &[], Some("Always write tests first"));
         assert!(prompt.contains("Always write tests first"));

@@ -19,10 +19,6 @@ impl History {
         &self.turns
     }
 
-    pub fn count_turns(&self) -> usize {
-        self.turns.len()
-    }
-
     pub fn convert_to_messages(&self) -> Vec<Message> {
         self.turns
             .iter()
@@ -93,7 +89,7 @@ mod tests {
     fn empty_history_produces_empty_messages() {
         let history = History::new();
         assert!(history.convert_to_messages().is_empty());
-        assert_eq!(history.count_turns(), 0);
+        assert_eq!(history.turns().len(), 0);
     }
 
     #[test]
@@ -215,14 +211,14 @@ mod tests {
     }
 
     #[test]
-    fn count_turns_matches_push_count() {
+    fn turns_len_matches_push_count() {
         let mut history = History::new();
-        assert_eq!(history.count_turns(), 0);
+        assert_eq!(history.turns().len(), 0);
         history.push(Turn::User {
             content: "First".into(),
             timestamp: SystemTime::now(),
         });
-        assert_eq!(history.count_turns(), 1);
+        assert_eq!(history.turns().len(), 1);
         history.push(Turn::Assistant {
             content: "Second".into(),
             tool_calls: vec![],
@@ -231,7 +227,7 @@ mod tests {
             response_id: "resp_1".into(),
             timestamp: SystemTime::now(),
         });
-        assert_eq!(history.count_turns(), 2);
+        assert_eq!(history.turns().len(), 2);
     }
 
     #[test]

@@ -1,17 +1,14 @@
 use crate::execution_env::ExecutionEnvironment;
-use crate::provider_profile::ProviderProfile;
-use crate::subagent::{
-    make_close_agent_tool, make_send_input_tool, make_spawn_agent_tool, make_wait_tool,
-    SessionFactory, SubAgentManager,
-};
+use crate::profiles::assemble_system_prompt;
+use crate::provider_profile::{ProfileCapabilities, ProviderProfile};
 use crate::tool_registry::{RegisteredTool, ToolRegistry};
+use unified_llm::types::ToolDefinition;
 use crate::tools::{
     make_glob_tool, make_grep_tool, make_read_file_tool, make_shell_tool, make_write_file_tool,
 };
 use std::sync::Arc;
-use unified_llm::types::ToolDefinition;
 
-use super::{build_env_context_block_with, EnvContext};
+use super::EnvContext;
 
 pub struct OpenAiProfile {
     model: String,
@@ -41,23 +38,6 @@ impl OpenAiProfile {
     pub fn set_reasoning_effort(&mut self, effort: Option<String>) {
         self.reasoning_effort = effort;
     }
-
-    pub fn register_subagent_tools(
-        &mut self,
-        manager: Arc<tokio::sync::Mutex<SubAgentManager>>,
-        session_factory: SessionFactory,
-        current_depth: usize,
-    ) {
-        self.registry.register(make_spawn_agent_tool(
-            manager.clone(),
-            session_factory,
-            current_depth,
-        ));
-        self.registry
-            .register(make_send_input_tool(manager.clone()));
-        self.registry.register(make_wait_tool(manager.clone()));
-        self.registry.register(make_close_agent_tool(manager));
-    }
 }
 
 impl ProviderProfile for OpenAiProfile {
@@ -84,19 +64,7 @@ impl ProviderProfile for OpenAiProfile {
         project_docs: &[String],
         user_instructions: Option<&str>,
     ) -> String {
-        let env_block = build_env_context_block_with(env, env_context);
-        let docs_section = if project_docs.is_empty() {
-            String::new()
-        } else {
-            format!("\n\n{}", project_docs.join("\n\n"))
-        };
-        let user_section = match user_instructions {
-            Some(instructions) => format!("\n\n# User Instructions\n{instructions}"),
-            None => String::new(),
-        };
-
-        format!(
-            "\
+        let core_prompt = "\
 You are a coding agent powered by OpenAI, running in a terminal-based agentic coding assistant. \
 You are expected to be precise, safe, and helpful.
 
@@ -174,14 +142,18 @@ Find files by name pattern.
 # Coding Best Practices
 
 Write clean, maintainable code. Handle errors appropriately. Follow existing code conventions \
-in the project.\
-{docs_section}\
-{user_section}"
-        )
+in the project.";
+
+        assemble_system_prompt(core_prompt, env, env_context, project_docs, user_instructions)
     }
 
-    fn tools(&self) -> Vec<ToolDefinition> {
-        self.registry.definitions()
+    fn capabilities(&self) -> ProfileCapabilities {
+        ProfileCapabilities {
+            supports_reasoning: true,
+            supports_streaming: true,
+            supports_parallel_tool_calls: true,
+            context_window_size: 128_000,
+        }
     }
 
     fn provider_options(&self) -> Option<serde_json::Value> {
@@ -194,22 +166,6 @@ in the project.\
                 }
             })
         })
-    }
-
-    fn supports_reasoning(&self) -> bool {
-        true
-    }
-
-    fn supports_streaming(&self) -> bool {
-        true
-    }
-
-    fn supports_parallel_tool_calls(&self) -> bool {
-        true
-    }
-
-    fn context_window_size(&self) -> usize {
-        128_000
     }
 
     fn knowledge_cutoff(&self) -> &str {
@@ -357,7 +313,7 @@ pub async fn apply_patch_operations(
                 results.push(format!("Added file: {path}"));
             }
             PatchOperation::Delete { path } => {
-                env.write_file(path, "").await?;
+                env.delete_file(path).await?;
                 results.push(format!("Deleted file: {path}"));
             }
             PatchOperation::Update { path, hunks } => {
@@ -461,69 +417,22 @@ fn make_apply_patch_tool() -> RegisteredTool {
 mod tests {
     use super::*;
     use crate::execution_env::*;
+    use crate::test_support::MockExecutionEnvironment;
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    struct TestEnv;
-
-    #[async_trait]
-    impl ExecutionEnvironment for TestEnv {
-        async fn read_file(&self, _: &str, _: Option<usize>, _: Option<usize>) -> Result<String, String> {
-            Ok(String::new())
-        }
-        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
-            Ok(())
-        }
-        async fn file_exists(&self, _: &str) -> Result<bool, String> {
-            Ok(false)
-        }
-        async fn list_directory(&self, _: &str, _: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-        async fn exec_command(
-            &self,
-            _: &str,
-            _: u64,
-            _: Option<&str>,
-            _: Option<&std::collections::HashMap<String, String>>,
-        ) -> Result<ExecResult, String> {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                exit_code: 0,
-                timed_out: false,
-                duration_ms: 0,
-            })
-        }
-        async fn grep(
-            &self,
-            _: &str,
-            _: &str,
-            _: &GrepOptions,
-        ) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn glob(&self, _: &str, _: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &str {
-            "/home/test"
-        }
-        fn platform(&self) -> &str {
-            "linux"
-        }
-        fn os_version(&self) -> String {
-            "Linux 6.1.0".into()
+    fn linux_env() -> MockExecutionEnvironment {
+        MockExecutionEnvironment {
+            working_dir: "/home/test",
+            platform_str: "linux",
+            os_version_str: "Linux 6.1.0".into(),
+            ..Default::default()
         }
     }
 
+    /// A specialized mock with Mutex-protected files for apply_patch tests that
+    /// need mutable write/delete operations.
     struct MockFileEnv {
         files: Mutex<HashMap<String, String>>,
     }
@@ -551,6 +460,10 @@ mod tests {
                 .lock()
                 .unwrap()
                 .insert(path.to_string(), content.to_string());
+            Ok(())
+        }
+        async fn delete_file(&self, path: &str) -> Result<(), String> {
+            self.files.lock().unwrap().remove(path);
             Ok(())
         }
         async fn file_exists(&self, path: &str) -> Result<bool, String> {
@@ -621,7 +534,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_contains_env_context() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = TestEnv;
+        let env = linux_env();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None);
         assert!(prompt.contains("You are a coding agent powered by OpenAI"));
         assert!(prompt.contains("<environment>"));
@@ -633,7 +546,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_contains_tool_guidance() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = TestEnv;
+        let env = linux_env();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None);
         assert!(prompt.contains("read_file"));
         assert!(prompt.contains("apply_patch"));
@@ -647,7 +560,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_contains_coding_best_practices() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = TestEnv;
+        let env = linux_env();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None);
         assert!(prompt.contains("clean, maintainable code"));
         assert!(prompt.contains("existing code conventions"));
@@ -656,7 +569,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_includes_project_docs() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = TestEnv;
+        let env = linux_env();
         let docs = vec!["# Project README".into(), "# CONTRIBUTING guide".into()];
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &docs, None);
         assert!(prompt.contains("# Project README"));
@@ -666,7 +579,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_includes_user_instructions() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = TestEnv;
+        let env = linux_env();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], Some("Always write tests first"));
         assert!(prompt.contains("Always write tests first"));
         assert!(prompt.contains("# User Instructions"));

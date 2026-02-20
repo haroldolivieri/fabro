@@ -77,6 +77,13 @@ impl ExecutionEnvironment for LocalExecutionEnvironment {
             .map_err(|e| format!("Failed to write {}: {e}", full_path.display()))
     }
 
+    async fn delete_file(&self, path: &str) -> Result<(), String> {
+        let full_path = self.resolve_path(path);
+        tokio::fs::remove_file(&full_path)
+            .await
+            .map_err(|e| format!("Failed to delete {}: {e}", full_path.display()))
+    }
+
     async fn file_exists(&self, path: &str) -> Result<bool, String> {
         let full_path = self.resolve_path(path);
         Ok(full_path.exists())
@@ -248,7 +255,8 @@ impl ExecutionEnvironment for LocalExecutionEnvironment {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
-            .is_ok();
+            .map(|s| s.success())
+            .unwrap_or(false);
 
         let output = if use_rg {
             let mut args = vec!["-n".to_string()];
@@ -309,14 +317,11 @@ impl ExecutionEnvironment for LocalExecutionEnvironment {
             format!("{}/{pattern}", base_dir.display())
         };
 
-        // Use shell globbing via ls
-        let output = std::process::Command::new("sh")
-            .args(["-c", &format!("ls -d {full_pattern} 2>/dev/null")])
-            .output()
-            .map_err(|e| format!("Failed to run glob: {e}"))?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut results: Vec<String> = stdout.lines().map(String::from).filter(|l| !l.is_empty()).collect();
+        let mut results: Vec<String> = glob::glob(&full_pattern)
+            .map_err(|e| format!("Invalid glob pattern: {e}"))?
+            .filter_map(Result::ok)
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
 
         // Sort by mtime (newest first)
         results.sort_by(|a, b| {

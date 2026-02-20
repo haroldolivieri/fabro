@@ -86,69 +86,19 @@ fn truncate_to_budget(content: &str, budget: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution_env::*;
-    use async_trait::async_trait;
+    use crate::execution_env::ExecutionEnvironment;
+    use crate::test_support::MockExecutionEnvironment;
     use std::collections::HashMap;
     use std::sync::Arc;
-
-    struct DocEnv {
-        files: HashMap<String, String>,
-    }
-
-    #[async_trait]
-    impl ExecutionEnvironment for DocEnv {
-        async fn read_file(&self, path: &str, _: Option<usize>, _: Option<usize>) -> Result<String, String> {
-            self.files
-                .get(path)
-                .cloned()
-                .ok_or_else(|| format!("not found: {path}"))
-        }
-        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
-            Ok(())
-        }
-        async fn file_exists(&self, path: &str) -> Result<bool, String> {
-            Ok(self.files.contains_key(path))
-        }
-        async fn list_directory(&self, _: &str, _: Option<usize>) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-        async fn exec_command(&self, _: &str, _: u64, _: Option<&str>, _: Option<&std::collections::HashMap<String, String>>) -> Result<ExecResult, String> {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                exit_code: 0,
-                timed_out: false,
-                duration_ms: 0,
-            })
-        }
-        async fn grep(&self, _: &str, _: &str, _: &GrepOptions) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn glob(&self, _: &str, _: Option<&str>) -> Result<Vec<String>, String> {
-            Ok(vec![])
-        }
-        async fn initialize(&self) -> Result<(), String> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> Result<(), String> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &str {
-            "/tmp"
-        }
-        fn platform(&self) -> &str {
-            "darwin"
-        }
-        fn os_version(&self) -> String {
-            String::new()
-        }
-    }
 
     #[tokio::test]
     async fn discovers_agents_md() {
         let mut files = HashMap::new();
         files.insert("/repo/AGENTS.md".into(), "Agent instructions".into());
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(DocEnv { files });
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            files,
+            ..Default::default()
+        });
         let docs = discover_project_docs(env.as_ref(), "/repo", "/repo", "anthropic").await;
         assert_eq!(docs.len(), 1);
         assert_eq!(docs[0], "Agent instructions");
@@ -165,8 +115,9 @@ mod tests {
         );
         files.insert("/repo/GEMINI.md".into(), "gemini".into());
 
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(DocEnv {
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
             files: files.clone(),
+            ..Default::default()
         });
         let anthropic_docs =
             discover_project_docs(env.as_ref(), "/repo", "/repo", "anthropic").await;
@@ -174,15 +125,19 @@ mod tests {
         assert_eq!(anthropic_docs[0], "agents");
         assert_eq!(anthropic_docs[1], "claude");
 
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(DocEnv {
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
             files: files.clone(),
+            ..Default::default()
         });
         let openai_docs = discover_project_docs(env.as_ref(), "/repo", "/repo", "openai").await;
         assert_eq!(openai_docs.len(), 2);
         assert_eq!(openai_docs[0], "agents");
         assert_eq!(openai_docs[1], "copilot");
 
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(DocEnv { files });
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            files,
+            ..Default::default()
+        });
         let gemini_docs = discover_project_docs(env.as_ref(), "/repo", "/repo", "gemini").await;
         assert_eq!(gemini_docs.len(), 2);
         assert_eq!(gemini_docs[0], "agents");
@@ -198,7 +153,10 @@ mod tests {
         files.insert("/repo/AGENTS.md".into(), large_content.clone());
         files.insert("/repo/CLAUDE.md".into(), second_content);
 
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(DocEnv { files });
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            files,
+            ..Default::default()
+        });
         let docs = discover_project_docs(env.as_ref(), "/repo", "/repo", "anthropic").await;
         assert_eq!(docs.len(), 2);
         assert_eq!(docs[0], large_content);
@@ -214,7 +172,10 @@ mod tests {
         files.insert("/repo/src/AGENTS.md".into(), "src agents".into());
         files.insert("/repo/src/app/AGENTS.md".into(), "app agents".into());
 
-        let env: Arc<dyn ExecutionEnvironment> = Arc::new(DocEnv { files });
+        let env: Arc<dyn ExecutionEnvironment> = Arc::new(MockExecutionEnvironment {
+            files,
+            ..Default::default()
+        });
         let docs =
             discover_project_docs(env.as_ref(), "/repo", "/repo/src/app", "anthropic").await;
         assert_eq!(docs.len(), 3);

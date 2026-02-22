@@ -187,24 +187,16 @@ impl Session {
         self.event_emitter
             .emit(EventKind::SessionStart, self.id.clone(), EventData::Empty);
 
-        // Use a queue to avoid recursive async calls for followups
-        let mut current_input = input.to_string();
-
+        // Process the initial input, then drain any followups
+        self.run_single_input(input).await?;
         loop {
-            self.run_single_input(&current_input).await?;
-
-            // Check followup queue
-            let next_followup = self
+            let followup = self
                 .followup_queue
                 .lock()
                 .expect("followup queue lock poisoned")
                 .pop_front();
-            match next_followup {
-                Some(followup) => {
-                    current_input = followup;
-                }
-                None => break,
-            }
+            let Some(followup) = followup else { break };
+            self.run_single_input(&followup).await?;
         }
 
         self.state = SessionState::Idle;
@@ -232,6 +224,14 @@ impl Session {
         // Drain steering queue before first LLM call
         self.drain_steering();
 
+        // Cache system prompt for this input cycle (it doesn't change during tool rounds)
+        let system_prompt = self.provider_profile.build_system_prompt(
+            self.execution_env.as_ref(),
+            &self.env_context,
+            &self.project_docs,
+            self.config.user_instructions.as_deref(),
+        );
+
         let mut round_count: usize = 0;
 
         loop {
@@ -258,7 +258,7 @@ impl Session {
             }
 
             // Build request
-            let request = self.build_request();
+            let request = self.build_request(&system_prompt);
 
             // Emit AssistantTextStart before LLM call
             self.event_emitter.emit(
@@ -308,7 +308,7 @@ impl Session {
             );
 
             // Check context window usage
-            self.check_context_usage();
+            self.check_context_usage(&system_prompt);
 
             // If no tool calls, natural completion
             if tool_calls.is_empty() {
@@ -368,14 +368,8 @@ impl Session {
         }
     }
 
-    fn build_request(&self) -> Request {
-        let system_prompt = self.provider_profile.build_system_prompt(
-            self.execution_env.as_ref(),
-            &self.env_context,
-            &self.project_docs,
-            self.config.user_instructions.as_deref(),
-        );
-        let mut messages = vec![Message::system(system_prompt)];
+    fn build_request(&self, system_prompt: &str) -> Request {
+        let mut messages = vec![Message::system(system_prompt.to_string())];
         messages.extend(self.history.convert_to_messages());
 
         let tools = self.provider_profile.tools();
@@ -511,13 +505,7 @@ impl Session {
         futures::future::join_all(futures).await
     }
 
-    fn estimate_token_count(&self) -> usize {
-        let system_prompt = self.provider_profile.build_system_prompt(
-            self.execution_env.as_ref(),
-            &self.env_context,
-            &self.project_docs,
-            self.config.user_instructions.as_deref(),
-        );
+    fn estimate_token_count(&self, system_prompt: &str) -> usize {
         let mut total_chars = system_prompt.len();
 
         for turn in self.history.turns() {
@@ -552,8 +540,8 @@ impl Session {
         total_chars / 4 // rough estimate: ~4 chars per token
     }
 
-    fn check_context_usage(&self) {
-        let estimated_tokens = self.estimate_token_count();
+    fn check_context_usage(&self, system_prompt: &str) {
+        let estimated_tokens = self.estimate_token_count(system_prompt);
         let context_window = self.provider_profile.context_window_size();
         let threshold = context_window * 80 / 100;
 
@@ -652,10 +640,13 @@ fn is_auth_error(err: &SdkError) -> bool {
 
 fn validate_tool_args(schema: &serde_json::Value, args: &serde_json::Value) -> Result<(), String> {
     // Skip validation for empty/trivial schemas
-    if schema.is_null()
-        || (schema.is_object() && schema.as_object().map_or(true, |o| o.is_empty()))
-    {
+    if schema.is_null() {
         return Ok(());
+    }
+    if let Some(obj) = schema.as_object() {
+        if obj.is_empty() {
+            return Ok(());
+        }
     }
 
     let validator = jsonschema::validator_for(schema)

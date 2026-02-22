@@ -1,6 +1,7 @@
 use crate::config::SessionConfig;
 use crate::execution_env::ExecutionEnvironment;
 use crate::profiles::assemble_system_prompt;
+use crate::profiles::BaseProfile;
 use crate::provider_profile::{ProfileCapabilities, ProviderProfile};
 use crate::tool_registry::ToolRegistry;
 use crate::tools::{
@@ -11,8 +12,7 @@ use crate::tools::{
 use super::EnvContext;
 
 pub struct AnthropicProfile {
-    model: String,
-    registry: ToolRegistry,
+    base: BaseProfile,
 }
 
 impl AnthropicProfile {
@@ -32,27 +32,30 @@ impl AnthropicProfile {
         registry.register(make_glob_tool());
 
         Self {
-            model: model.into(),
-            registry,
+            base: BaseProfile {
+                id: "anthropic",
+                model: model.into(),
+                registry,
+            },
         }
     }
 }
 
 impl ProviderProfile for AnthropicProfile {
-    fn id(&self) -> String {
-        "anthropic".into()
+    fn id(&self) -> &str {
+        self.base.id
     }
 
-    fn model(&self) -> String {
-        self.model.clone()
+    fn model(&self) -> &str {
+        &self.base.model
     }
 
     fn tool_registry(&self) -> &ToolRegistry {
-        &self.registry
+        &self.base.registry
     }
 
     fn tool_registry_mut(&mut self) -> &mut ToolRegistry {
-        &mut self.registry
+        &mut self.base.registry
     }
 
     fn build_system_prompt(
@@ -236,8 +239,8 @@ mod tests {
         let ctx = EnvContext {
             git_branch: Some("feature-branch".into()),
             is_git_repo: true,
-            date: "2026-02-20".into(),
-            model_name: "claude-opus-4-6".into(),
+            current_date: "2026-02-20".into(),
+            model: "claude-opus-4-6".into(),
             knowledge_cutoff: "May 2025".into(),
             git_status_short: None,
             git_recent_commits: None,

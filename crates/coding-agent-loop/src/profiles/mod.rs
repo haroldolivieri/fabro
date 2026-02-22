@@ -7,14 +7,25 @@ pub use gemini::GeminiProfile;
 pub use openai::OpenAiProfile;
 
 use crate::execution_env::ExecutionEnvironment;
+use crate::tool_registry::ToolRegistry;
+
+/// Common fields shared by all provider profiles.
+///
+/// Each concrete profile embeds this struct and delegates `id()`, `model()`,
+/// `tool_registry()`, and `tool_registry_mut()` to it.
+pub struct BaseProfile {
+    pub id: &'static str,
+    pub model: String,
+    pub registry: ToolRegistry,
+}
 
 /// Additional context for building environment blocks
 #[derive(Default)]
 pub struct EnvContext {
     pub git_branch: Option<String>,
     pub is_git_repo: bool,
-    pub date: String,
-    pub model_name: String,
+    pub current_date: String,
+    pub model: String,
     pub knowledge_cutoff: String,
     pub git_status_short: Option<String>,
     pub git_recent_commits: Option<String>,
@@ -47,6 +58,7 @@ pub fn assemble_system_prompt(
     format!("{prompt}{docs_section}{user_section}")
 }
 
+#[cfg(test)]
 #[must_use]
 pub fn build_env_context_block(env: &dyn ExecutionEnvironment) -> String {
     build_env_context_block_with(env, &EnvContext::default())
@@ -67,11 +79,11 @@ pub fn build_env_context_block_with(env: &dyn ExecutionEnvironment, ctx: &EnvCon
     lines.push(format!("Platform: {}", env.platform()));
     lines.push(format!("OS version: {}", env.os_version()));
 
-    if !ctx.date.is_empty() {
-        lines.push(format!("Today's date: {}", ctx.date));
+    if !ctx.current_date.is_empty() {
+        lines.push(format!("Today's date: {}", ctx.current_date));
     }
-    if !ctx.model_name.is_empty() {
-        lines.push(format!("Model: {}", ctx.model_name));
+    if !ctx.model.is_empty() {
+        lines.push(format!("Model: {}", ctx.model));
     }
     if !ctx.knowledge_cutoff.is_empty() {
         lines.push(format!("Knowledge cutoff: {}", ctx.knowledge_cutoff));
@@ -119,8 +131,8 @@ mod tests {
         let ctx = EnvContext {
             git_branch: Some("main".into()),
             is_git_repo: true,
-            date: "2026-02-20".into(),
-            model_name: "claude-opus-4-6".into(),
+            current_date: "2026-02-20".into(),
+            model: "claude-opus-4-6".into(),
             knowledge_cutoff: "May 2025".into(),
             git_status_short: None,
             git_recent_commits: None,

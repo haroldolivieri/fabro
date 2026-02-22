@@ -1,5 +1,6 @@
 use crate::execution_env::ExecutionEnvironment;
 use crate::profiles::assemble_system_prompt;
+use crate::profiles::BaseProfile;
 use crate::provider_profile::{ProfileCapabilities, ProviderProfile};
 use crate::tool_registry::ToolRegistry;
 use crate::tools::{
@@ -11,8 +12,7 @@ use crate::tools::{
 use super::EnvContext;
 
 pub struct GeminiProfile {
-    model: String,
-    registry: ToolRegistry,
+    base: BaseProfile,
 }
 
 impl GeminiProfile {
@@ -32,27 +32,30 @@ impl GeminiProfile {
         registry.register(make_web_fetch_tool());
 
         Self {
-            model: model.into(),
-            registry,
+            base: BaseProfile {
+                id: "gemini",
+                model: model.into(),
+                registry,
+            },
         }
     }
 }
 
 impl ProviderProfile for GeminiProfile {
-    fn id(&self) -> String {
-        "gemini".into()
+    fn id(&self) -> &str {
+        self.base.id
     }
 
-    fn model(&self) -> String {
-        self.model.clone()
+    fn model(&self) -> &str {
+        &self.base.model
     }
 
     fn tool_registry(&self) -> &ToolRegistry {
-        &self.registry
+        &self.base.registry
     }
 
     fn tool_registry_mut(&mut self) -> &mut ToolRegistry {
-        &mut self.registry
+        &mut self.base.registry
     }
 
     fn build_system_prompt(

@@ -71,7 +71,7 @@ impl Session {
             self.execution_env.as_ref(),
             &doc_root,
             self.execution_env.working_directory(),
-            &self.provider_profile.id(),
+            self.provider_profile.id(),
         )
         .await;
 
@@ -81,7 +81,7 @@ impl Session {
 
     async fn build_env_context(&self) -> EnvContext {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let model_name = self.provider_profile.model();
+        let model_name = self.provider_profile.model().to_string();
 
         // Detect git info via execution environment
         let git_branch = self
@@ -121,8 +121,8 @@ impl Session {
         EnvContext {
             git_branch,
             is_git_repo,
-            date: today,
-            model_name,
+            current_date: today,
+            model: model_name,
             knowledge_cutoff: self.provider_profile.knowledge_cutoff().to_string(),
             git_status_short,
             git_recent_commits,
@@ -382,9 +382,9 @@ impl Session {
         let has_tools = !tools.is_empty();
 
         Request {
-            model: self.provider_profile.model(),
+            model: self.provider_profile.model().to_string(),
             messages,
-            provider: Some(self.provider_profile.id()),
+            provider: Some(self.provider_profile.id().to_string()),
             tools: if has_tools { Some(tools) } else { None },
             tool_choice: if has_tools {
                 Some(ToolChoice::Auto)

@@ -1,5 +1,6 @@
 use crate::execution_env::ExecutionEnvironment;
 use crate::profiles::assemble_system_prompt;
+use crate::profiles::BaseProfile;
 use crate::provider_profile::{ProfileCapabilities, ProviderProfile};
 use crate::tool_registry::{RegisteredTool, ToolRegistry};
 use unified_llm::types::ToolDefinition;
@@ -11,8 +12,7 @@ use std::sync::Arc;
 use super::EnvContext;
 
 pub struct OpenAiProfile {
-    model: String,
-    registry: ToolRegistry,
+    base: BaseProfile,
     reasoning_effort: Option<String>,
 }
 
@@ -29,8 +29,11 @@ impl OpenAiProfile {
         registry.register(make_apply_patch_tool());
 
         Self {
-            model: model.into(),
-            registry,
+            base: BaseProfile {
+                id: "openai",
+                model: model.into(),
+                registry,
+            },
             reasoning_effort: None,
         }
     }
@@ -41,20 +44,20 @@ impl OpenAiProfile {
 }
 
 impl ProviderProfile for OpenAiProfile {
-    fn id(&self) -> String {
-        "openai".into()
+    fn id(&self) -> &str {
+        self.base.id
     }
 
-    fn model(&self) -> String {
-        self.model.clone()
+    fn model(&self) -> &str {
+        &self.base.model
     }
 
     fn tool_registry(&self) -> &ToolRegistry {
-        &self.registry
+        &self.base.registry
     }
 
     fn tool_registry_mut(&mut self) -> &mut ToolRegistry {
-        &mut self.registry
+        &mut self.base.registry
     }
 
     fn build_system_prompt(

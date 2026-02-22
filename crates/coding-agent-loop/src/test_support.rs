@@ -142,12 +142,12 @@ impl TestProfile {
 }
 
 impl ProviderProfile for TestProfile {
-    fn id(&self) -> String {
-        "mock".into()
+    fn id(&self) -> &str {
+        "mock"
     }
 
-    fn model(&self) -> String {
-        "mock-model".into()
+    fn model(&self) -> &str {
+        "mock-model"
     }
 
     fn tool_registry(&self) -> &ToolRegistry {
@@ -379,12 +379,12 @@ impl ParallelTestProfile {
 }
 
 impl ProviderProfile for ParallelTestProfile {
-    fn id(&self) -> String {
-        "mock".into()
+    fn id(&self) -> &str {
+        "mock"
     }
 
-    fn model(&self) -> String {
-        "mock-model".into()
+    fn model(&self) -> &str {
+        "mock-model"
     }
 
     fn tool_registry(&self) -> &ToolRegistry {

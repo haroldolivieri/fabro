@@ -17,8 +17,8 @@ pub struct ProfileCapabilities {
 }
 
 pub trait ProviderProfile: Send + Sync {
-    fn id(&self) -> String;
-    fn model(&self) -> String;
+    fn id(&self) -> &str;
+    fn model(&self) -> &str;
     fn tool_registry(&self) -> &ToolRegistry;
     fn tool_registry_mut(&mut self) -> &mut ToolRegistry;
     fn build_system_prompt(
@@ -96,11 +96,11 @@ mod tests {
     }
 
     impl ProviderProfile for ProviderTestProfile {
-        fn id(&self) -> String {
-            "test-provider".into()
+        fn id(&self) -> &str {
+            "test-provider"
         }
-        fn model(&self) -> String {
-            "test-model".into()
+        fn model(&self) -> &str {
+            "test-model"
         }
         fn tool_registry(&self) -> &ToolRegistry {
             &self.registry

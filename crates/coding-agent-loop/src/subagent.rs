@@ -52,12 +52,12 @@ impl SubAgentManager {
         mut session: Session,
         task_prompt: String,
         depth: usize,
-    ) -> Result<String, String> {
+    ) -> Result<String, AgentError> {
         if depth >= self.max_depth {
-            return Err(format!(
+            return Err(AgentError::InvalidState(format!(
                 "Maximum subagent depth ({}) reached",
                 self.max_depth
-            ));
+            )));
         }
 
         let agent_id = uuid::Uuid::new_v4().to_string();
@@ -65,9 +65,8 @@ impl SubAgentManager {
         let abort_flag = session.abort_flag_handle();
 
         let task = tokio::spawn(async move {
-            let result = session.process_input(&task_prompt).await;
+            session.process_input(&task_prompt).await?;
             let turns = session.history().turns();
-            let turns_used = turns.len();
             let last_text = turns.iter().rev().find_map(|t| {
                 if let Turn::Assistant { content, .. } = t {
                     Some(content.clone())
@@ -75,14 +74,10 @@ impl SubAgentManager {
                     None
                 }
             });
-            let success = result.is_ok();
-            if let Err(e) = result {
-                return Err(e);
-            }
             Ok(SubAgentResult {
                 output: last_text.unwrap_or_default(),
-                success,
-                turns_used,
+                success: true,
+                turns_used: turns.len(),
             })
         });
 
@@ -100,11 +95,13 @@ impl SubAgentManager {
         Ok(agent_id)
     }
 
-    pub fn send_input(&self, agent_id: &str, message: &str) -> Result<(), String> {
+    pub fn send_input(&self, agent_id: &str, message: &str) -> Result<(), AgentError> {
         let agent = self
             .agents
             .get(agent_id)
-            .ok_or_else(|| format!("No agent found with id: {agent_id}"))?;
+            .ok_or_else(|| {
+                AgentError::InvalidState(format!("No agent found with id: {agent_id}"))
+            })?;
 
         agent
             .followup_queue
@@ -115,26 +112,34 @@ impl SubAgentManager {
         Ok(())
     }
 
-    pub async fn wait(&mut self, agent_id: &str) -> Result<SubAgentResult, String> {
+    pub async fn wait(&mut self, agent_id: &str) -> Result<SubAgentResult, AgentError> {
         let mut agent = self
             .agents
             .remove(agent_id)
-            .ok_or_else(|| format!("No agent found with id: {agent_id}"))?;
+            .ok_or_else(|| {
+                AgentError::InvalidState(format!("No agent found with id: {agent_id}"))
+            })?;
 
         match agent.task.take() {
             Some(join_handle) => match join_handle.await {
-                Ok(result) => result.map_err(|e| e.to_string()),
-                Err(e) => Err(format!("Agent task panicked: {e}")),
+                Ok(result) => result,
+                Err(e) => Err(AgentError::InvalidState(format!(
+                    "Agent task panicked: {e}"
+                ))),
             },
-            None => Err(format!("Agent {agent_id} has no running task")),
+            None => Err(AgentError::InvalidState(format!(
+                "Agent {agent_id} has no running task"
+            ))),
         }
     }
 
-    pub fn close(&mut self, agent_id: &str) -> Result<(), String> {
+    pub fn close(&mut self, agent_id: &str) -> Result<(), AgentError> {
         let agent = self
             .agents
             .remove(agent_id)
-            .ok_or_else(|| format!("No agent found with id: {agent_id}"))?;
+            .ok_or_else(|| {
+                AgentError::InvalidState(format!("No agent found with id: {agent_id}"))
+            })?;
 
         agent.abort_flag.store(true, Ordering::SeqCst);
 
@@ -204,6 +209,7 @@ pub fn make_spawn_agent_tool(
                 session.set_max_turns(max_turns.unwrap_or(50));
                 let mut mgr = manager.lock().await;
                 mgr.spawn(session, task.to_string(), current_depth)
+                    .map_err(|e| e.to_string())
             })
         }),
     }
@@ -244,7 +250,8 @@ pub fn make_send_input_tool(
                     .ok_or_else(|| "Missing required parameter: message".to_string())?;
 
                 let mgr = manager.lock().await;
-                mgr.send_input(agent_id, message)?;
+                mgr.send_input(agent_id, message)
+                    .map_err(|e| e.to_string())?;
                 Ok(format!("Message sent to agent {agent_id}"))
             })
         }),
@@ -278,7 +285,8 @@ pub fn make_wait_tool(
                     .ok_or_else(|| "Missing required parameter: agent_id".to_string())?;
 
                 let mut mgr = manager.lock().await;
-                let result = mgr.wait(agent_id).await?;
+                let result = mgr.wait(agent_id).await
+                    .map_err(|e| e.to_string())?;
                 Ok(format!(
                     "Agent completed (success: {}, turns: {})\n\n{}",
                     result.success, result.turns_used, result.output
@@ -315,7 +323,8 @@ pub fn make_close_agent_tool(
                     .ok_or_else(|| "Missing required parameter: agent_id".to_string())?;
 
                 let mut mgr = manager.lock().await;
-                mgr.close(agent_id)?;
+                mgr.close(agent_id)
+                    .map_err(|e| e.to_string())?;
                 Ok(format!("Agent {agent_id} closed"))
             })
         }),
@@ -354,7 +363,7 @@ mod tests {
         let session = make_session(vec![text_response("Hello")]).await;
         let result = manager.spawn(session, "Do something".into(), 2);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Maximum subagent depth"));
+        assert!(result.unwrap_err().to_string().contains("Maximum subagent depth"));
     }
 
     #[tokio::test]
@@ -374,7 +383,7 @@ mod tests {
         let manager = SubAgentManager::new(3);
         let result = manager.send_input("nonexistent-id", "hello");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("No agent found"));
+        assert!(result.unwrap_err().to_string().contains("No agent found"));
     }
 
     #[tokio::test]
@@ -382,7 +391,7 @@ mod tests {
         let mut manager = SubAgentManager::new(3);
         let result = manager.wait("nonexistent-id").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("No agent found"));
+        assert!(result.unwrap_err().to_string().contains("No agent found"));
     }
 
     #[tokio::test]

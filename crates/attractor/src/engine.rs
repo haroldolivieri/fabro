@@ -97,9 +97,9 @@ impl std::fmt::Debug for RetryPolicy {
     }
 }
 
-/// Default should_retry predicate: retries all errors.
+/// Default should_retry predicate: retries transient errors only.
 fn default_should_retry() -> ShouldRetryFn {
-    std::sync::Arc::new(|_| true)
+    std::sync::Arc::new(|err| err.is_retryable())
 }
 
 impl RetryPolicy {
@@ -211,6 +211,43 @@ pub fn resolve_fidelity(incoming_edge: Option<&Edge>, node: &Node, graph: &Graph
     "compact".to_string()
 }
 
+// --- Thread ID resolution (spec 5.4) ---
+
+/// Resolve the thread ID for a node, following the precedence (spec lines 1196-1204):
+/// 1. Target node `thread_id` attribute
+/// 2. Incoming edge `thread_id` attribute
+/// 3. Graph-level default thread
+/// 4. Derived class from enclosing subgraph (first class from the node's classes list)
+/// 5. Fallback to previous node ID
+#[must_use]
+pub fn resolve_thread_id(
+    incoming_edge: Option<&Edge>,
+    node: &Node,
+    graph: &Graph,
+    previous_node_id: Option<&str>,
+) -> Option<String> {
+    // Step 1: Node thread_id
+    if let Some(tid) = node.thread_id() {
+        return Some(tid.to_string());
+    }
+    // Step 2: Edge thread_id
+    if let Some(edge) = incoming_edge {
+        if let Some(tid) = edge.thread_id() {
+            return Some(tid.to_string());
+        }
+    }
+    // Step 3: Graph-level default thread
+    if let Some(tid) = graph.default_thread() {
+        return Some(tid.to_string());
+    }
+    // Step 4: Derived class from enclosing subgraph
+    if let Some(first_class) = node.classes.first() {
+        return Some(first_class.clone());
+    }
+    // Step 5: Fallback to previous node ID
+    previous_node_id.map(String::from)
+}
+
 // --- Run directory helpers (spec 5.6) ---
 
 /// Write manifest.json at the start of a pipeline run.
@@ -222,6 +259,7 @@ fn write_manifest(logs_root: &Path, graph: &Graph) {
     };
     let manifest = serde_json::json!({
         "pipeline_name": pipeline_name,
+        "goal": graph.goal(),
         "start_time": Utc::now().to_rfc3339(),
         "node_count": graph.nodes.len(),
         "edge_count": graph.edges.len(),
@@ -446,6 +484,7 @@ impl PipelineEngine {
     }
 
     /// Execute a node handler with retry policy.
+    /// Returns `(outcome, attempts_used)` where `attempts_used` is the 1-indexed count.
     async fn execute_with_retry(
         &self,
         node: &Node,
@@ -454,14 +493,31 @@ impl PipelineEngine {
         logs_root: &Path,
         policy: &RetryPolicy,
         stage_index: usize,
-    ) -> Result<Outcome> {
+    ) -> Result<(Outcome, u32)> {
         let handler = self.registry.resolve(node);
+
+        let node_timeout = node.timeout();
 
         for attempt in 1..=policy.max_attempts {
             // Gap #11: Panic safety -- catch panics from handler execution
             let result = {
                 let future = handler.execute(node, context, graph, logs_root);
-                match AssertUnwindSafe(future).catch_unwind().await {
+                let panic_safe = AssertUnwindSafe(future).catch_unwind();
+                // Gap #2: Timeout enforcement -- wrap with tokio::time::timeout
+                let timed_result = if let Some(duration) = node_timeout {
+                    match tokio::time::timeout(duration, panic_safe).await {
+                        Ok(inner) => inner,
+                        Err(_elapsed) => {
+                            Ok(Ok(Outcome::fail(format!(
+                                "handler timed out after {}ms",
+                                duration.as_millis()
+                            ))))
+                        }
+                    }
+                } else {
+                    panic_safe.await
+                };
+                match timed_result {
                     Ok(r) => r,
                     Err(panic_payload) => {
                         let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
@@ -497,7 +553,7 @@ impl PipelineEngine {
                         tokio::time::sleep(delay).await;
                         continue;
                     }
-                    return Ok(Outcome::fail(e.to_string()));
+                    return Ok((Outcome::fail(e.to_string()), attempt));
                 }
             };
 
@@ -506,7 +562,7 @@ impl PipelineEngine {
                 | StageStatus::PartialSuccess
                 | StageStatus::Fail
                 | StageStatus::Skipped => {
-                    return Ok(outcome);
+                    return Ok((outcome, attempt));
                 }
                 StageStatus::Retry => {
                     if attempt < policy.max_attempts {
@@ -521,18 +577,23 @@ impl PipelineEngine {
                         continue;
                     }
                     if node.allow_partial() {
-                        return Ok(Outcome {
-                            status: StageStatus::PartialSuccess,
-                            notes: Some("retries exhausted, partial accepted".to_string()),
-                            ..Outcome::success()
-                        });
+                        return Ok((
+                            Outcome {
+                                status: StageStatus::PartialSuccess,
+                                notes: Some(
+                                    "retries exhausted, partial accepted".to_string(),
+                                ),
+                                ..Outcome::success()
+                            },
+                            attempt,
+                        ));
                     }
-                    return Ok(Outcome::fail("max retries exceeded"));
+                    return Ok((Outcome::fail("max retries exceeded"), attempt));
                 }
             }
         }
 
-        Ok(Outcome::fail("max retries exceeded"))
+        Ok((Outcome::fail("max retries exceeded"), policy.max_attempts))
     }
 
     /// Run the pipeline. Returns the final outcome.
@@ -584,9 +645,13 @@ impl PipelineEngine {
         let context;
         let mut completed_nodes: Vec<String>;
         let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
+        let mut node_retries: HashMap<String, u32> = HashMap::new();
         let mut stage_index: usize;
         let mut current_node_id: String;
         let mut incoming_edge: Option<&Edge> = None;
+        let mut previous_node_id: Option<String> = None;
+        // Gap #6: Track whether fidelity should be degraded on the first resumed node
+        let mut degrade_fidelity_on_resume = false;
 
         if let Some(cp) = resume_checkpoint {
             // Restore context from checkpoint
@@ -598,13 +663,27 @@ impl PipelineEngine {
                 context.append_log(log_entry.clone());
             }
             completed_nodes = cp.completed_nodes.clone();
+            // Gap #5: Restore retry counters from checkpoint
+            node_retries = cp.node_retries.clone();
+            // P1: Restore node outcomes for goal gate checks
+            node_outcomes = cp.node_outcomes.clone();
             stage_index = completed_nodes.len();
-            // Resume from the node after the checkpoint's current_node
-            let edges = graph.outgoing_edges(&cp.current_node);
-            if let Some(edge) = edges.first() {
-                current_node_id = edge.to.clone();
+            // P1: Use stored next_node_id if available, otherwise fall back
+            if let Some(ref next_id) = cp.next_node_id {
+                current_node_id = next_id.clone();
             } else {
-                current_node_id = cp.current_node.clone();
+                let edges = graph.outgoing_edges(&cp.current_node);
+                if let Some(edge) = edges.first() {
+                    current_node_id = edge.to.clone();
+                } else {
+                    current_node_id = cp.current_node.clone();
+                }
+            }
+            // Gap #6: Check if the checkpointed node used full fidelity
+            if cp.context_values.get("internal.fidelity")
+                == Some(&serde_json::json!("full"))
+            {
+                degrade_fidelity_on_resume = true;
             }
         } else if let Some(start) = start_at {
             context = Context::new();
@@ -653,11 +732,32 @@ impl PipelineEngine {
             }
 
             // Resolve fidelity (spec 5.4) and store in context
-            let fidelity = resolve_fidelity(incoming_edge, node, graph);
+            let mut fidelity = resolve_fidelity(incoming_edge, node, graph);
+            // Gap #6: On the first node after resume, degrade full -> summary:high
+            if degrade_fidelity_on_resume && fidelity == "full" {
+                fidelity = "summary:high".to_string();
+            }
+            degrade_fidelity_on_resume = false;
             context.set("internal.fidelity", serde_json::json!(&fidelity));
 
-            // Thread context sharing: store thread association
-            if let Some(tid) = node.thread_id() {
+            // Preamble injection at execution time (spec 8.3): if fidelity is not "full",
+            // store a preamble in context for handlers to read
+            if fidelity != "full" {
+                context.set(
+                    "current.preamble",
+                    serde_json::json!(format!("[Context mode: {fidelity}]\n\n")),
+                );
+            } else {
+                context.set("current.preamble", serde_json::json!(""));
+            }
+
+            // Thread context sharing: resolve thread ID and store association
+            if let Some(tid) = resolve_thread_id(
+                incoming_edge,
+                node,
+                graph,
+                previous_node_id.as_deref(),
+            ) {
                 context.set(
                     format!("thread.{tid}.current_node"),
                     serde_json::json!(&node.id),
@@ -674,9 +774,25 @@ impl PipelineEngine {
             });
             let stage_start = Instant::now();
 
-            let outcome = self
+            let (mut outcome, attempts_used) = self
                 .execute_with_retry(node, &context, graph, &config.logs_root, &retry_policy, stage_index)
                 .await?;
+            // Gap #5: Track retry count per node
+            node_retries.insert(node.id.clone(), attempts_used);
+            context.set(
+                format!("internal.retry_count.{}", node.id),
+                serde_json::json!(attempts_used),
+            );
+
+            // Gap #1: Auto status -- when auto_status=true and outcome is non-success,
+            // override to success with auto-status note
+            if node.auto_status() && outcome.status != StageStatus::Success {
+                outcome = Outcome {
+                    status: StageStatus::Success,
+                    notes: Some("auto-status: handler completed without writing status".to_string()),
+                    ..outcome
+                };
+            }
 
             let stage_duration_ms = millis_u64(stage_start.elapsed());
 
@@ -705,6 +821,7 @@ impl PipelineEngine {
             // Step 3: Record completion
             completed_nodes.push(node.id.clone());
             node_outcomes.insert(node.id.clone(), outcome.clone());
+            previous_node_id = Some(node.id.clone());
             stage_index += 1;
 
             // Step 4: Apply context updates from outcome
@@ -714,11 +831,18 @@ impl PipelineEngine {
                 context.set("preferred_label", serde_json::json!(pref));
             }
 
-            // Step 5: Save checkpoint
+            // Step 5: Select next edge (done before checkpoint so we can store next_node_id)
+            let next_edge = select_edge(&node.id, &outcome, &context, graph);
+            let next_node_id_for_checkpoint = next_edge.map(|e| e.to.clone());
+
+            // Step 6: Save checkpoint with all state
             let checkpoint = Checkpoint::from_context(
                 &context,
                 &node.id,
                 completed_nodes.clone(),
+                node_retries.clone(),
+                node_outcomes.clone(),
+                next_node_id_for_checkpoint,
             );
             let checkpoint_path = config.logs_root.join("checkpoint.json");
             if let Err(e) = checkpoint.save(&checkpoint_path) {
@@ -729,8 +853,7 @@ impl PipelineEngine {
                 });
             }
 
-            // Step 6: Select next edge
-            let next_edge = select_edge(&node.id, &outcome, &context, graph);
+            // Step 7: Follow selected edge
             match next_edge {
                 None => {
                     // Gap #1: Failure routing -- when FAIL and no matching edge,
@@ -790,6 +913,46 @@ mod tests {
     use super::*;
     use crate::graph::AttrValue;
     use crate::handler::start::StartHandler;
+    use crate::handler::Handler as HandlerTrait;
+    use async_trait::async_trait;
+    use std::time::Duration;
+
+    // --- Test-only handlers ---
+
+    /// Handler that always returns Fail.
+    struct AlwaysFailHandler;
+
+    #[async_trait]
+    impl HandlerTrait for AlwaysFailHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+        ) -> std::result::Result<Outcome, AttractorError> {
+            Ok(Outcome::fail("always fails"))
+        }
+    }
+
+    /// Handler that sleeps for a configurable duration, then succeeds.
+    struct SlowHandler {
+        sleep_ms: u64,
+    }
+
+    #[async_trait]
+    impl HandlerTrait for SlowHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+        ) -> std::result::Result<Outcome, AttractorError> {
+            tokio::time::sleep(Duration::from_millis(self.sleep_ms)).await;
+            Ok(Outcome::success())
+        }
+    }
 
     // --- BackoffConfig tests ---
 
@@ -1527,6 +1690,7 @@ mod tests {
         let manifest: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&manifest_path).unwrap()).unwrap();
         assert_eq!(manifest["pipeline_name"], "test_pipeline");
+        assert_eq!(manifest["goal"], "Run tests");
         assert!(manifest["start_time"].is_string());
         assert!(manifest["node_count"].is_number());
         assert!(manifest["edge_count"].is_number());
@@ -1565,6 +1729,366 @@ mod tests {
         assert_eq!(
             cp.context_values.get("internal.fidelity"),
             Some(&serde_json::json!("compact"))
+        );
+    }
+
+    // --- resolve_thread_id tests ---
+
+    #[test]
+    fn thread_id_from_node_attribute() {
+        let mut node = Node::new("work");
+        node.attrs.insert(
+            "thread_id".to_string(),
+            AttrValue::String("main-thread".to_string()),
+        );
+        let graph = Graph::new("test");
+        assert_eq!(
+            resolve_thread_id(None, &node, &graph, Some("prev")),
+            Some("main-thread".to_string())
+        );
+    }
+
+    #[test]
+    fn thread_id_from_edge_attribute() {
+        let node = Node::new("work");
+        let mut edge = Edge::new("prev", "work");
+        edge.attrs.insert(
+            "thread_id".to_string(),
+            AttrValue::String("edge-thread".to_string()),
+        );
+        let graph = Graph::new("test");
+        assert_eq!(
+            resolve_thread_id(Some(&edge), &node, &graph, Some("prev")),
+            Some("edge-thread".to_string())
+        );
+    }
+
+    #[test]
+    fn thread_id_node_overrides_edge() {
+        let mut node = Node::new("work");
+        node.attrs.insert(
+            "thread_id".to_string(),
+            AttrValue::String("node-thread".to_string()),
+        );
+        let mut edge = Edge::new("prev", "work");
+        edge.attrs.insert(
+            "thread_id".to_string(),
+            AttrValue::String("edge-thread".to_string()),
+        );
+        let graph = Graph::new("test");
+        assert_eq!(
+            resolve_thread_id(Some(&edge), &node, &graph, Some("prev")),
+            Some("node-thread".to_string())
+        );
+    }
+
+    #[test]
+    fn thread_id_from_graph_default_thread() {
+        let node = Node::new("work");
+        let mut graph = Graph::new("test");
+        graph.attrs.insert(
+            "default_thread".to_string(),
+            AttrValue::String("shared-thread".to_string()),
+        );
+        assert_eq!(
+            resolve_thread_id(None, &node, &graph, Some("prev")),
+            Some("shared-thread".to_string())
+        );
+    }
+
+    #[test]
+    fn thread_id_edge_overrides_graph_default() {
+        let node = Node::new("work");
+        let mut edge = Edge::new("prev", "work");
+        edge.attrs.insert(
+            "thread_id".to_string(),
+            AttrValue::String("edge-thread".to_string()),
+        );
+        let mut graph = Graph::new("test");
+        graph.attrs.insert(
+            "default_thread".to_string(),
+            AttrValue::String("shared-thread".to_string()),
+        );
+        assert_eq!(
+            resolve_thread_id(Some(&edge), &node, &graph, Some("prev")),
+            Some("edge-thread".to_string())
+        );
+    }
+
+    #[test]
+    fn thread_id_graph_default_overrides_class() {
+        let mut node = Node::new("work");
+        node.classes = vec!["planning".to_string()];
+        let mut graph = Graph::new("test");
+        graph.attrs.insert(
+            "default_thread".to_string(),
+            AttrValue::String("shared-thread".to_string()),
+        );
+        assert_eq!(
+            resolve_thread_id(None, &node, &graph, Some("prev")),
+            Some("shared-thread".to_string())
+        );
+    }
+
+    #[test]
+    fn thread_id_from_node_class() {
+        let mut node = Node::new("work");
+        node.classes = vec!["planning".to_string(), "review".to_string()];
+        let graph = Graph::new("test");
+        assert_eq!(
+            resolve_thread_id(None, &node, &graph, Some("prev")),
+            Some("planning".to_string())
+        );
+    }
+
+    #[test]
+    fn thread_id_fallback_to_previous_node() {
+        let node = Node::new("work");
+        let graph = Graph::new("test");
+        assert_eq!(
+            resolve_thread_id(None, &node, &graph, Some("prev_node")),
+            Some("prev_node".to_string())
+        );
+    }
+
+    #[test]
+    fn thread_id_none_when_no_sources() {
+        let node = Node::new("start");
+        let graph = Graph::new("test");
+        assert_eq!(resolve_thread_id(None, &node, &graph, None), None);
+    }
+
+    // --- default_should_retry tests ---
+
+    #[test]
+    fn default_should_retry_retries_transient_errors() {
+        let should_retry = default_should_retry();
+        assert!(should_retry(&AttractorError::Handler("timeout".to_string())));
+        assert!(should_retry(&AttractorError::Engine("transient".to_string())));
+        assert!(should_retry(&AttractorError::Io("connection reset".to_string())));
+    }
+
+    #[test]
+    fn default_should_retry_rejects_terminal_errors() {
+        let should_retry = default_should_retry();
+        assert!(!should_retry(&AttractorError::Parse("bad syntax".to_string())));
+        assert!(!should_retry(&AttractorError::Validation("invalid".to_string())));
+        assert!(!should_retry(&AttractorError::Stylesheet("bad rule".to_string())));
+        assert!(!should_retry(&AttractorError::Checkpoint("corrupt".to_string())));
+    }
+
+    // --- Gap #15: Manifest goal field test ---
+
+    #[tokio::test]
+    async fn engine_manifest_includes_goal() {
+        let dir = tempfile::tempdir().unwrap();
+        let g = simple_graph();
+        let engine = PipelineEngine::new(make_registry(), EventEmitter::new());
+        let config = RunConfig { logs_root: dir.path().to_path_buf() };
+        engine.run(&g, &config).await.unwrap();
+
+        let manifest_path = dir.path().join("manifest.json");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        assert_eq!(manifest["goal"], "Run tests");
+    }
+
+    #[tokio::test]
+    async fn engine_manifest_goal_empty_when_unset() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Graph::new("no_goal");
+        let mut start = Node::new("start");
+        start.attrs.insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+        g.nodes.insert("start".to_string(), start);
+        let mut exit = Node::new("exit");
+        exit.attrs.insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+        g.nodes.insert("exit".to_string(), exit);
+        g.edges.push(Edge::new("start", "exit"));
+
+        let engine = PipelineEngine::new(make_registry(), EventEmitter::new());
+        let config = RunConfig { logs_root: dir.path().to_path_buf() };
+        engine.run(&g, &config).await.unwrap();
+
+        let manifest_path = dir.path().join("manifest.json");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        assert_eq!(manifest["goal"], "");
+    }
+
+    // --- Gap #1: Auto status tests ---
+
+    #[tokio::test]
+    async fn engine_auto_status_overrides_fail_to_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Graph::new("auto_status_test");
+
+        let mut start = Node::new("start");
+        start.attrs.insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+        g.nodes.insert("start".to_string(), start);
+
+        let mut work = Node::new("work");
+        work.attrs.insert("auto_status".to_string(), AttrValue::Boolean(true));
+        work.attrs.insert("type".to_string(), AttrValue::String("always_fail".to_string()));
+        work.attrs.insert("max_retries".to_string(), AttrValue::Integer(0));
+        g.nodes.insert("work".to_string(), work);
+
+        let mut exit = Node::new("exit");
+        exit.attrs.insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+        g.nodes.insert("exit".to_string(), exit);
+
+        g.edges.push(Edge::new("start", "work"));
+        g.edges.push(Edge::new("work", "exit"));
+
+        let mut registry = make_registry();
+        registry.register("always_fail", Box::new(AlwaysFailHandler));
+        let engine = PipelineEngine::new(registry, EventEmitter::new());
+        let config = RunConfig { logs_root: dir.path().to_path_buf() };
+        let outcome = engine.run(&g, &config).await.unwrap();
+
+        assert_eq!(outcome.status, StageStatus::Success);
+        assert_eq!(
+            outcome.notes.as_deref(),
+            Some("auto-status: handler completed without writing status")
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_auto_status_false_preserves_fail() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Graph::new("no_auto_status_test");
+
+        let mut start = Node::new("start");
+        start.attrs.insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+        g.nodes.insert("start".to_string(), start);
+
+        let mut work = Node::new("work");
+        work.attrs.insert("type".to_string(), AttrValue::String("always_fail".to_string()));
+        work.attrs.insert("max_retries".to_string(), AttrValue::Integer(0));
+        g.nodes.insert("work".to_string(), work);
+
+        let mut exit = Node::new("exit");
+        exit.attrs.insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+        g.nodes.insert("exit".to_string(), exit);
+
+        g.edges.push(Edge::new("start", "work"));
+        let mut fail_edge = Edge::new("work", "exit");
+        fail_edge.attrs.insert("condition".to_string(), AttrValue::String("outcome=fail".to_string()));
+        g.edges.push(fail_edge);
+
+        let mut registry = make_registry();
+        registry.register("always_fail", Box::new(AlwaysFailHandler));
+        let engine = PipelineEngine::new(registry, EventEmitter::new());
+        let config = RunConfig { logs_root: dir.path().to_path_buf() };
+        let result = engine.run(&g, &config).await;
+
+        assert!(result.is_ok());
+        let status_path = dir.path().join("work").join("status.json");
+        let status: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&status_path).unwrap()).unwrap();
+        assert_eq!(status["status"], "fail");
+    }
+
+    // --- Gap #2: Timeout enforcement tests ---
+
+    #[tokio::test]
+    async fn engine_timeout_causes_fail_outcome() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Graph::new("timeout_test");
+
+        let mut start = Node::new("start");
+        start.attrs.insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+        g.nodes.insert("start".to_string(), start);
+
+        let mut work = Node::new("work");
+        work.attrs.insert("timeout".to_string(), AttrValue::Duration(Duration::from_millis(50)));
+        work.attrs.insert("type".to_string(), AttrValue::String("slow".to_string()));
+        work.attrs.insert("max_retries".to_string(), AttrValue::Integer(0));
+        g.nodes.insert("work".to_string(), work);
+
+        let mut exit = Node::new("exit");
+        exit.attrs.insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+        g.nodes.insert("exit".to_string(), exit);
+
+        g.edges.push(Edge::new("start", "work"));
+        let mut fail_edge = Edge::new("work", "exit");
+        fail_edge.attrs.insert("condition".to_string(), AttrValue::String("outcome=fail".to_string()));
+        g.edges.push(fail_edge);
+
+        let mut registry = make_registry();
+        registry.register("slow", Box::new(SlowHandler { sleep_ms: 500 }));
+        let engine = PipelineEngine::new(registry, EventEmitter::new());
+        let config = RunConfig { logs_root: dir.path().to_path_buf() };
+        let result = engine.run(&g, &config).await;
+        assert!(result.is_ok());
+
+        let status_path = dir.path().join("work").join("status.json");
+        let status: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&status_path).unwrap()).unwrap();
+        assert_eq!(status["status"], "fail");
+    }
+
+    #[tokio::test]
+    async fn engine_no_timeout_completes_normally() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Graph::new("no_timeout_test");
+
+        let mut start = Node::new("start");
+        start.attrs.insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+        g.nodes.insert("start".to_string(), start);
+
+        let mut work = Node::new("work");
+        work.attrs.insert("type".to_string(), AttrValue::String("slow".to_string()));
+        work.attrs.insert("max_retries".to_string(), AttrValue::Integer(0));
+        g.nodes.insert("work".to_string(), work);
+
+        let mut exit = Node::new("exit");
+        exit.attrs.insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+        g.nodes.insert("exit".to_string(), exit);
+
+        g.edges.push(Edge::new("start", "work"));
+        g.edges.push(Edge::new("work", "exit"));
+
+        let mut registry = make_registry();
+        registry.register("slow", Box::new(SlowHandler { sleep_ms: 10 }));
+        let engine = PipelineEngine::new(registry, EventEmitter::new());
+        let config = RunConfig { logs_root: dir.path().to_path_buf() };
+        let outcome = engine.run(&g, &config).await.unwrap();
+        assert_eq!(outcome.status, StageStatus::Success);
+    }
+
+    #[tokio::test]
+    async fn engine_timeout_with_auto_status_returns_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Graph::new("timeout_auto_status_test");
+
+        let mut start = Node::new("start");
+        start.attrs.insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+        g.nodes.insert("start".to_string(), start);
+
+        let mut work = Node::new("work");
+        work.attrs.insert("timeout".to_string(), AttrValue::Duration(Duration::from_millis(50)));
+        work.attrs.insert("auto_status".to_string(), AttrValue::Boolean(true));
+        work.attrs.insert("type".to_string(), AttrValue::String("slow".to_string()));
+        work.attrs.insert("max_retries".to_string(), AttrValue::Integer(0));
+        g.nodes.insert("work".to_string(), work);
+
+        let mut exit = Node::new("exit");
+        exit.attrs.insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+        g.nodes.insert("exit".to_string(), exit);
+
+        g.edges.push(Edge::new("start", "work"));
+        g.edges.push(Edge::new("work", "exit"));
+
+        let mut registry = make_registry();
+        registry.register("slow", Box::new(SlowHandler { sleep_ms: 500 }));
+        let engine = PipelineEngine::new(registry, EventEmitter::new());
+        let config = RunConfig { logs_root: dir.path().to_path_buf() };
+        let outcome = engine.run(&g, &config).await.unwrap();
+
+        assert_eq!(outcome.status, StageStatus::Success);
+        assert_eq!(
+            outcome.notes.as_deref(),
+            Some("auto-status: handler completed without writing status")
         );
     }
 }

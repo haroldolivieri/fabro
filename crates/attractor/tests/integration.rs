@@ -986,15 +986,19 @@ fn checkpoint_save_and_resume_roundtrip() {
     ctx.append_log("started");
     ctx.append_log("step_1 completed");
 
-    let mut checkpoint = Checkpoint::from_context(
+    let mut retries = std::collections::HashMap::new();
+    retries.insert("step_1".to_string(), 1u32);
+    let checkpoint = Checkpoint::from_context(
         &ctx,
         "step_2",
         vec![
             "start".to_string(),
             "step_1".to_string(),
         ],
+        retries,
+        std::collections::HashMap::new(),
+        None,
     );
-    checkpoint.node_retries.insert("step_1".to_string(), 1);
 
     checkpoint.save(&path).expect("save should succeed");
 
@@ -1177,4 +1181,267 @@ async fn smoke_test_with_mock_codergen_backend() {
     let plan_prompt = std::fs::read_to_string(dir.path().join("plan").join("prompt.md"))
         .expect("plan prompt should exist");
     assert_eq!(plan_prompt, "Plan to achieve: Build and validate");
+}
+
+// ---------------------------------------------------------------------------
+// 12. Parallel fan-out / fan-in integration test (Gap #14)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn end_to_end_parallel_fan_out_fan_in() {
+    use attractor::handler::fan_in::FanInHandler;
+    use attractor::handler::parallel::ParallelHandler;
+    use std::sync::Arc;
+
+    let input = r#"digraph parallel_test {
+        start [shape=Mdiamond]
+        fan_out [shape=component]
+        branch_a [shape=box, prompt="Branch A work"]
+        branch_b [shape=box, prompt="Branch B work"]
+        fan_in_node [shape=tripleoctagon]
+        done [shape=Msquare]
+
+        start -> fan_out
+        fan_out -> branch_a
+        fan_out -> branch_b
+        branch_a -> fan_in_node
+        branch_b -> fan_in_node
+        fan_in_node -> done
+    }"#;
+
+    let graph = parse(input).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let dir = tempfile::tempdir().unwrap();
+
+    let mut registry = HandlerRegistry::new(
+        Box::new(CodergenHandler::new(Some(Box::new(MockCodergenBackend)))),
+    );
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "codergen",
+        Box::new(CodergenHandler::new(Some(Box::new(MockCodergenBackend)))),
+    );
+
+    let registry = Arc::new(registry);
+
+    let emitter = Arc::new(EventEmitter::new());
+    let parallel_handler = ParallelHandler::new(Arc::clone(&registry), Arc::clone(&emitter));
+    let fan_in_handler = FanInHandler::new(Some(Box::new(MockCodergenBackend)));
+
+    // Build a new registry with parallel and fan_in registered
+    let mut full_registry = HandlerRegistry::new(
+        Box::new(CodergenHandler::new(Some(Box::new(MockCodergenBackend)))),
+    );
+    full_registry.register("start", Box::new(StartHandler));
+    full_registry.register("exit", Box::new(ExitHandler));
+    full_registry.register(
+        "codergen",
+        Box::new(CodergenHandler::new(Some(Box::new(MockCodergenBackend)))),
+    );
+    full_registry.register("parallel", Box::new(parallel_handler));
+    full_registry.register("parallel.fan_in", Box::new(fan_in_handler));
+
+    let engine = PipelineEngine::new(full_registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+    };
+
+    let outcome = engine
+        .run(&graph, &config)
+        .await
+        .expect("parallel pipeline should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let checkpoint = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+
+    // The parallel node (fan_out) and fan_in_node should be in completed_nodes.
+    // Branch nodes run inside the parallel handler, so they are not recorded
+    // individually by the engine -- but fan_out and fan_in_node are top-level.
+    assert!(
+        checkpoint
+            .completed_nodes
+            .contains(&"fan_out".to_string()),
+        "fan_out should have been executed"
+    );
+    assert!(
+        checkpoint
+            .completed_nodes
+            .contains(&"fan_in_node".to_string()),
+        "fan_in_node should have been executed"
+    );
+
+    // Verify parallel.results was populated (both branches ran)
+    let parallel_results = checkpoint
+        .context_values
+        .get("parallel.results")
+        .expect("parallel.results should be in context");
+    let results_arr = parallel_results.as_array().expect("should be an array");
+    assert_eq!(results_arr.len(), 2, "should have 2 branch results");
+}
+
+// ---------------------------------------------------------------------------
+// 13. Resume from checkpoint (P1)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn resume_from_checkpoint_completes_pipeline() {
+    // Build a pipeline: start -> step_a -> step_b -> exit
+    // Create a checkpoint mid-pipeline (after step_a) and verify
+    // run_from_checkpoint completes from step_b onward.
+
+    let mut graph = Graph::new("ResumeTest");
+    graph.attrs.insert(
+        "goal".to_string(),
+        AttrValue::String("Test resume".to_string()),
+    );
+
+    let mut start = Node::new("start");
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let step_a = Node::new("step_a");
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let step_b = Node::new("step_b");
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    // Simulate a checkpoint saved after step_a completed.
+    // The checkpoint records step_a as current_node with next_node_id = step_b.
+    let ctx = Context::new();
+    ctx.set("graph.goal", serde_json::json!("Test resume"));
+    ctx.set("outcome", serde_json::json!("success"));
+
+    let mut outcomes = std::collections::HashMap::new();
+    outcomes.insert("start".to_string(), Outcome::success());
+    outcomes.insert("step_a".to_string(), Outcome::success());
+
+    let checkpoint = Checkpoint::from_context(
+        &ctx,
+        "step_a",
+        vec!["start".to_string(), "step_a".to_string()],
+        std::collections::HashMap::new(),
+        outcomes,
+        Some("step_b".to_string()),
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+    };
+
+    let outcome = engine
+        .run_from_checkpoint(&graph, &config, &checkpoint)
+        .await
+        .expect("resume should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // Verify checkpoint written after resume contains step_b
+    let final_cp = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    assert!(
+        final_cp.completed_nodes.contains(&"step_b".to_string()),
+        "step_b should have been executed after resume"
+    );
+    // step_a should also be present (carried over from the checkpoint)
+    assert!(
+        final_cp.completed_nodes.contains(&"step_a".to_string()),
+        "step_a should be preserved from checkpoint"
+    );
+    // start should also be present
+    assert!(
+        final_cp.completed_nodes.contains(&"start".to_string()),
+        "start should be preserved from checkpoint"
+    );
+}
+
+#[tokio::test]
+async fn resume_from_checkpoint_preserves_goal_gate_outcomes() {
+    // Build: start -> gated_work (goal_gate=true) -> step_b -> exit
+    // Checkpoint after gated_work (success), resume at step_b.
+    // At exit, goal gate should pass because outcomes are restored.
+
+    let mut graph = Graph::new("ResumeGoalGateTest");
+
+    let mut start = Node::new("start");
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let mut gated_work = Node::new("gated_work");
+    gated_work.attrs.insert(
+        "goal_gate".to_string(),
+        AttrValue::Boolean(true),
+    );
+    graph.nodes.insert("gated_work".to_string(), gated_work);
+
+    let step_b = Node::new("step_b");
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    graph.edges.push(Edge::new("start", "gated_work"));
+    graph.edges.push(Edge::new("gated_work", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    // Checkpoint: gated_work completed with success, next is step_b
+    let ctx = Context::new();
+    ctx.set("outcome", serde_json::json!("success"));
+
+    let mut outcomes = std::collections::HashMap::new();
+    outcomes.insert("start".to_string(), Outcome::success());
+    outcomes.insert("gated_work".to_string(), Outcome::success());
+
+    let checkpoint = Checkpoint::from_context(
+        &ctx,
+        "gated_work",
+        vec!["start".to_string(), "gated_work".to_string()],
+        std::collections::HashMap::new(),
+        outcomes,
+        Some("step_b".to_string()),
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+    };
+
+    // This should succeed because goal gate for gated_work is satisfied
+    // via restored outcomes
+    let outcome = engine
+        .run_from_checkpoint(&graph, &config, &checkpoint)
+        .await
+        .expect("resume with goal gate should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
 }

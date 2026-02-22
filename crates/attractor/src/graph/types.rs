@@ -371,6 +371,13 @@ impl Graph {
             .get("default_fidelity")
             .and_then(AttrValue::as_str)
     }
+
+    /// Graph-level `default_thread`.
+    pub fn default_thread(&self) -> Option<&str> {
+        self.attrs
+            .get("default_thread")
+            .and_then(AttrValue::as_str)
+    }
 }
 
 #[cfg(test)]

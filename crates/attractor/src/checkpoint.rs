@@ -7,6 +7,7 @@ use serde_json::Value;
 
 use crate::context::Context;
 use crate::error::{AttractorError, Result};
+use crate::outcome::Outcome;
 
 /// Serializable snapshot of execution state for crash recovery and resume.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,6 +18,12 @@ pub struct Checkpoint {
     pub node_retries: HashMap<String, u32>,
     pub context_values: HashMap<String, Value>,
     pub logs: Vec<String>,
+    /// Persisted node outcomes for goal gate checks after resume.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub node_outcomes: HashMap<String, Outcome>,
+    /// The node to resume execution at (the next node after the checkpoint's current_node).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_node_id: Option<String>,
 }
 
 impl Checkpoint {
@@ -25,14 +32,19 @@ impl Checkpoint {
         context: &Context,
         current_node: impl Into<String>,
         completed_nodes: Vec<String>,
+        node_retries: HashMap<String, u32>,
+        node_outcomes: HashMap<String, Outcome>,
+        next_node_id: Option<String>,
     ) -> Self {
         Self {
             timestamp: Utc::now(),
             current_node: current_node.into(),
             completed_nodes,
-            node_retries: HashMap::new(),
+            node_retries,
             context_values: context.snapshot(),
             logs: context.logs_snapshot(),
+            node_outcomes,
+            next_node_id,
         }
     }
 
@@ -75,6 +87,9 @@ mod tests {
             &ctx,
             "node_a",
             vec!["start".to_string(), "node_a".to_string()],
+            HashMap::new(),
+            HashMap::new(),
+            None,
         );
 
         assert_eq!(cp.current_node, "node_a");
@@ -88,6 +103,8 @@ mod tests {
         assert_eq!(cp.logs.len(), 1);
         assert_eq!(cp.logs[0], "started");
         assert!(cp.node_retries.is_empty());
+        assert!(cp.node_outcomes.is_empty());
+        assert!(cp.next_node_id.is_none());
     }
 
     #[test]
@@ -99,8 +116,18 @@ mod tests {
         ctx.set("goal", serde_json::json!("test"));
         ctx.append_log("log entry");
 
-        let mut cp = Checkpoint::from_context(&ctx, "work", vec!["start".to_string()]);
-        cp.node_retries.insert("work".to_string(), 2);
+        let mut retries = HashMap::new();
+        retries.insert("work".to_string(), 2u32);
+        let mut outcomes = HashMap::new();
+        outcomes.insert("start".to_string(), Outcome::success());
+        let cp = Checkpoint::from_context(
+            &ctx,
+            "work",
+            vec!["start".to_string()],
+            retries,
+            outcomes,
+            Some("next_step".to_string()),
+        );
 
         cp.save(&path).unwrap();
         let loaded = Checkpoint::load(&path).unwrap();
@@ -113,6 +140,8 @@ mod tests {
             Some(&serde_json::json!("test"))
         );
         assert_eq!(loaded.logs, vec!["log entry"]);
+        assert_eq!(loaded.node_outcomes.get("start").map(|o| &o.status), Some(&crate::outcome::StageStatus::Success));
+        assert_eq!(loaded.next_node_id.as_deref(), Some("next_step"));
     }
 
     #[test]
@@ -134,7 +163,7 @@ mod tests {
     #[test]
     fn serialization_roundtrip() {
         let ctx = Context::new();
-        let cp = Checkpoint::from_context(&ctx, "n1", vec![]);
+        let cp = Checkpoint::from_context(&ctx, "n1", vec![], HashMap::new(), HashMap::new(), None);
 
         let json = serde_json::to_string(&cp).unwrap();
         let deserialized: Checkpoint = serde_json::from_str(&json).unwrap();

@@ -4,8 +4,8 @@ use crate::graph::{AttrValue, Graph};
 
 use super::{Diagnostic, LintRule, Severity};
 
-/// Returns all 14 built-in lint rules.
-#[must_use] 
+/// Returns all 15 built-in lint rules.
+#[must_use]
 pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
     vec![
         Box::new(StartNodeRule),
@@ -22,6 +22,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         Box::new(GoalGateHasRetryRule),
         Box::new(PromptOnLlmNodesRule),
         Box::new(FreeformEdgeCountRule),
+        Box::new(DirectionValidRule),
     ]
 }
 
@@ -329,21 +330,17 @@ impl LintRule for StylesheetSyntaxRule {
         if stylesheet.is_empty() {
             return Vec::new();
         }
-        let open_count = stylesheet.chars().filter(|c| *c == '{').count();
-        let close_count = stylesheet.chars().filter(|c| *c == '}').count();
-        if open_count != close_count {
-            return vec![Diagnostic {
+        match crate::stylesheet::parse_stylesheet(stylesheet) {
+            Ok(_) => Vec::new(),
+            Err(e) => vec![Diagnostic {
                 rule: self.name().to_string(),
                 severity: Severity::Error,
-                message: format!(
-                    "Model stylesheet has unbalanced braces ({open_count} open, {close_count} close)"
-                ),
+                message: format!("Model stylesheet parse error: {e}"),
                 node_id: None,
                 edge: None,
-                fix: Some("Balance the curly braces in model_stylesheet".to_string()),
-            }];
+                fix: Some("Fix the model_stylesheet syntax".to_string()),
+            }],
         }
-        Vec::new()
     }
 }
 
@@ -659,6 +656,37 @@ impl LintRule for FreeformEdgeCountRule {
             }
         }
         diagnostics
+    }
+}
+
+// --- Rule 15: direction_valid (WARNING) ---
+
+struct DirectionValidRule;
+
+const VALID_DIRECTIONS: &[&str] = &["TB", "LR", "BT", "RL"];
+
+impl LintRule for DirectionValidRule {
+    fn name(&self) -> &'static str {
+        "direction_valid"
+    }
+
+    fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
+        let Some(rankdir) = graph.attrs.get("rankdir").and_then(AttrValue::as_str) else {
+            return Vec::new();
+        };
+        if VALID_DIRECTIONS.contains(&rankdir) {
+            return Vec::new();
+        }
+        vec![Diagnostic {
+            rule: self.name().to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "Graph has invalid rankdir '{rankdir}'"
+            ),
+            node_id: None,
+            edge: None,
+            fix: Some(format!("Use one of: {}", VALID_DIRECTIONS.join(", "))),
+        }]
     }
 }
 
@@ -1123,8 +1151,75 @@ mod tests {
     // built_in_rules tests
 
     #[test]
-    fn built_in_rules_returns_14_rules() {
+    fn built_in_rules_returns_15_rules() {
         let rules = built_in_rules();
-        assert_eq!(rules.len(), 14);
+        assert_eq!(rules.len(), 15);
+    }
+
+    // direction_valid rule tests
+
+    #[test]
+    fn direction_valid_rule_no_rankdir() {
+        let g = minimal_graph();
+        let rule = DirectionValidRule;
+        let d = rule.apply(&g);
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn direction_valid_rule_valid_directions() {
+        let rule = DirectionValidRule;
+        let mut g = minimal_graph();
+        g.attrs.insert(
+            "rankdir".to_string(),
+            AttrValue::String("LR".to_string()),
+        );
+        assert!(rule.apply(&g).is_empty());
+
+        g.attrs.insert(
+            "rankdir".to_string(),
+            AttrValue::String("TB".to_string()),
+        );
+        assert!(rule.apply(&g).is_empty());
+
+        g.attrs.insert(
+            "rankdir".to_string(),
+            AttrValue::String("BT".to_string()),
+        );
+        assert!(rule.apply(&g).is_empty());
+
+        g.attrs.insert(
+            "rankdir".to_string(),
+            AttrValue::String("RL".to_string()),
+        );
+        assert!(rule.apply(&g).is_empty());
+    }
+
+    #[test]
+    fn direction_valid_rule_invalid_direction() {
+        let mut g = minimal_graph();
+        g.attrs.insert(
+            "rankdir".to_string(),
+            AttrValue::String("XY".to_string()),
+        );
+        let rule = DirectionValidRule;
+        let d = rule.apply(&g);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].severity, Severity::Warning);
+    }
+
+    // stylesheet_syntax with full parse tests
+
+    #[test]
+    fn stylesheet_syntax_rule_malformed_selector() {
+        let mut g = minimal_graph();
+        g.attrs.insert(
+            "model_stylesheet".to_string(),
+            AttrValue::String("* { garbage garbage }".to_string()),
+        );
+        let rule = StylesheetSyntaxRule;
+        let d = rule.apply(&g);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].severity, Severity::Error);
     }
 }

@@ -478,7 +478,7 @@ Each node has a retry policy determined by:
 
 1. Node attribute `max_retries` (if set) -- number of additional attempts beyond the initial execution
 2. Graph attribute `default_max_retry` (fallback)
-3. Built-in default: 0 (no retries)
+3. Built-in default: 50
 
 The `max_retries` attribute specifies additional attempts. So `max_retries=3` means a total of 4 executions (1 initial + 3 retries). Internally this maps to `max_attempts = max_retries + 1`.
 

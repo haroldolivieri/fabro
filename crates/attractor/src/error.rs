@@ -24,6 +24,24 @@ pub enum AttractorError {
     Io(String),
 }
 
+impl AttractorError {
+    /// Whether this error category is retryable (transient) or terminal.
+    ///
+    /// Retryable: Handler (transient handler failures), Engine (could be transient),
+    ///            Io (network/disk issues are often transient).
+    /// Terminal:  Parse, Validation, Stylesheet (configuration errors),
+    ///            Checkpoint (storage integrity).
+    #[must_use]
+    pub const fn is_retryable(&self) -> bool {
+        match self {
+            Self::Handler(_) | Self::Engine(_) | Self::Io(_) => true,
+            Self::Parse(_) | Self::Validation(_) | Self::Stylesheet(_) | Self::Checkpoint(_) => {
+                false
+            }
+        }
+    }
+}
+
 impl From<std::io::Error> for AttractorError {
     fn from(err: std::io::Error) -> Self {
         Self::Io(err.to_string())
@@ -87,5 +105,20 @@ mod tests {
 
         let err: Result<i32> = Err(AttractorError::Parse("bad".to_string()));
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn is_retryable_terminal_errors() {
+        assert!(!AttractorError::Parse("bad".to_string()).is_retryable());
+        assert!(!AttractorError::Validation("bad".to_string()).is_retryable());
+        assert!(!AttractorError::Stylesheet("bad".to_string()).is_retryable());
+        assert!(!AttractorError::Checkpoint("bad".to_string()).is_retryable());
+    }
+
+    #[test]
+    fn is_retryable_transient_errors() {
+        assert!(AttractorError::Handler("timeout".to_string()).is_retryable());
+        assert!(AttractorError::Engine("transient".to_string()).is_retryable());
+        assert!(AttractorError::Io("connection reset".to_string()).is_retryable());
     }
 }

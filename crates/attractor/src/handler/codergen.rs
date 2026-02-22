@@ -98,7 +98,9 @@ impl Handler for CodergenHandler {
         // 3. Execute pre-hook (spec 9.7)
         if let Some(pre_hook) = resolve_hook(node, graph, "tool_hooks.pre") {
             if !run_hook(&pre_hook, &node.id) {
-                return Ok(Outcome::fail("pre-hook failed, skipping LLM call"));
+                let mut outcome = Outcome::skipped();
+                outcome.notes = Some("pre-hook returned non-zero, tool call skipped".to_string());
+                return Ok(outcome);
             }
         }
 
@@ -299,9 +301,9 @@ mod tests {
             .execute(&node, &context, &graph, tmp.path())
             .await
             .unwrap();
-        assert_eq!(outcome.status, crate::outcome::StageStatus::Fail);
+        assert_eq!(outcome.status, crate::outcome::StageStatus::Skipped);
         assert!(outcome
-            .failure_reason
+            .notes
             .as_deref()
             .unwrap()
             .contains("pre-hook"));

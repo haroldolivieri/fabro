@@ -29,7 +29,7 @@ impl Handler for FanInHandler {
         node: &Node,
         context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        logs_root: &Path,
     ) -> Result<Outcome, AttractorError> {
         let results = context.get("parallel.results");
         let Some(results) = results else {
@@ -39,10 +39,28 @@ impl Handler for FanInHandler {
         let prompt = node.prompt().filter(|p| !p.is_empty());
 
         let best = if let (Some(prompt_text), Some(backend)) = (prompt, &self.backend) {
-            llm_evaluate(backend.as_ref(), prompt_text, &results, context).await?
+            llm_evaluate(backend.as_ref(), prompt_text, &results, context, logs_root, &node.id).await?
         } else {
             heuristic_select(&results)
         };
+
+        // Check if all candidates failed — if so, return fail
+        let all_failed = if best.status == "fail" {
+            let empty_vec = vec![];
+            let arr = results.as_array().unwrap_or(&empty_vec);
+            arr.iter().all(|v| {
+                v.get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("fail")
+                    == "fail"
+            })
+        } else {
+            false
+        };
+
+        if all_failed {
+            return Ok(Outcome::fail("all candidates failed"));
+        }
 
         let mut outcome = Outcome::success();
         outcome.context_updates.insert(
@@ -62,6 +80,7 @@ impl Handler for FanInHandler {
 struct Candidate {
     id: String,
     status: String,
+    score: f64,
 }
 
 fn status_rank(status: &str) -> u32 {
@@ -81,6 +100,7 @@ fn heuristic_select(results: &serde_json::Value) -> Candidate {
         return Candidate {
             id: "unknown".to_string(),
             status: "fail".to_string(),
+            score: 0.0,
         };
     }
 
@@ -97,6 +117,10 @@ fn heuristic_select(results: &serde_json::Value) -> Candidate {
                 .and_then(|v| v.as_str())
                 .unwrap_or("fail")
                 .to_string(),
+            score: v
+                .get("score")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0),
         })
         .collect();
 
@@ -105,12 +129,18 @@ fn heuristic_select(results: &serde_json::Value) -> Candidate {
         if rank_cmp != std::cmp::Ordering::Equal {
             return rank_cmp;
         }
+        // Higher score is better, so reverse the comparison
+        let score_cmp = b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal);
+        if score_cmp != std::cmp::Ordering::Equal {
+            return score_cmp;
+        }
         a.id.cmp(&b.id)
     });
 
     candidates.into_iter().next().unwrap_or_else(|| Candidate {
         id: "unknown".to_string(),
         status: "fail".to_string(),
+        score: 0.0,
     })
 }
 
@@ -120,6 +150,8 @@ async fn llm_evaluate(
     prompt: &str,
     results: &serde_json::Value,
     context: &Context,
+    logs_root: &Path,
+    node_id: &str,
 ) -> Result<Candidate, AttractorError> {
     let results_text = serde_json::to_string_pretty(results)
         .unwrap_or_else(|_| results.to_string());
@@ -128,6 +160,11 @@ async fn llm_evaluate(
         "{prompt}\n\nParallel branch results:\n{results_text}\n\n\
          Respond with the ID of the best candidate."
     );
+
+    // Write prompt to logs
+    let stage_dir = logs_root.join(node_id);
+    tokio::fs::create_dir_all(&stage_dir).await?;
+    tokio::fs::write(stage_dir.join("prompt.md"), &full_prompt).await?;
 
     // Build a synthetic node for the backend call
     let eval_node = Node::new("fan_in_eval");
@@ -142,12 +179,19 @@ async fn llm_evaluate(
                 .map(String::from)
                 .or_else(|| outcome.notes.clone())
                 .unwrap_or_else(|| "unknown".to_string());
+            let response_text = serde_json::to_string_pretty(&outcome)
+                .unwrap_or_else(|_| "{}".to_string());
+            tokio::fs::write(stage_dir.join("response.md"), &response_text).await?;
             Ok(Candidate {
                 id: best_id,
                 status: outcome.status.to_string(),
+                score: 0.0,
             })
         }
         Ok(CodergenResult::Text(text)) => {
+            // Write response to logs
+            tokio::fs::write(stage_dir.join("response.md"), &text).await?;
+
             // The LLM responded with text; try to find a matching candidate ID
             let text = text.trim().to_string();
             let empty_vec = vec![];
@@ -162,9 +206,14 @@ async fn llm_evaluate(
                             .and_then(|v| v.as_str())
                             .unwrap_or("success")
                             .to_string();
+                        let score = v
+                            .get("score")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.0);
                         return Ok(Candidate {
                             id: id.to_string(),
                             status,
+                            score,
                         });
                     }
                 }
@@ -294,6 +343,7 @@ mod tests {
     #[tokio::test]
     async fn fan_in_with_backend_llm_eval() {
         use crate::handler::codergen::CodergenBackend;
+        use tempfile::TempDir;
 
         struct MockBackend;
 
@@ -325,6 +375,73 @@ mod tests {
             ]),
         );
         let graph = Graph::new("test");
+        let tmp = TempDir::new().unwrap();
+
+        let outcome = handler
+            .execute(&node, &context, &graph, tmp.path())
+            .await
+            .unwrap();
+        assert_eq!(outcome.status, StageStatus::Success);
+        // LLM chose branch_b
+        assert_eq!(
+            outcome.context_updates.get("parallel.fan_in.best_id"),
+            Some(&serde_json::json!("branch_b"))
+        );
+
+        // Verify prompt and response files were written
+        let prompt_path = tmp.path().join("fan_in").join("prompt.md");
+        assert!(prompt_path.exists());
+        let prompt_content = std::fs::read_to_string(&prompt_path).unwrap();
+        assert!(prompt_content.contains("Pick the best branch"));
+
+        let response_path = tmp.path().join("fan_in").join("response.md");
+        assert!(response_path.exists());
+        let response_content = std::fs::read_to_string(&response_path).unwrap();
+        assert!(response_content.contains("branch_b"));
+    }
+
+    #[tokio::test]
+    async fn fan_in_all_fail_returns_fail() {
+        let handler = FanInHandler::new(None);
+        let node = Node::new("fan_in");
+        let context = Context::new();
+        context.set(
+            "parallel.results",
+            serde_json::json!([
+                {"id": "branch_a", "status": "fail"},
+                {"id": "branch_b", "status": "fail"},
+                {"id": "branch_c", "status": "fail"},
+            ]),
+        );
+        let graph = Graph::new("test");
+        let logs_root = Path::new("/tmp/test");
+
+        let outcome = handler
+            .execute(&node, &context, &graph, logs_root)
+            .await
+            .unwrap();
+        assert_eq!(outcome.status, StageStatus::Fail);
+        assert!(outcome
+            .failure_reason
+            .as_deref()
+            .unwrap()
+            .contains("all candidates failed"));
+    }
+
+    #[tokio::test]
+    async fn fan_in_score_tiebreak() {
+        let handler = FanInHandler::new(None);
+        let node = Node::new("fan_in");
+        let context = Context::new();
+        context.set(
+            "parallel.results",
+            serde_json::json!([
+                {"id": "branch_a", "status": "success", "score": 0.5},
+                {"id": "branch_b", "status": "success", "score": 0.9},
+                {"id": "branch_c", "status": "success", "score": 0.7},
+            ]),
+        );
+        let graph = Graph::new("test");
         let logs_root = Path::new("/tmp/test");
 
         let outcome = handler
@@ -332,7 +449,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
-        // LLM chose branch_b
+        // branch_b has highest score
         assert_eq!(
             outcome.context_updates.get("parallel.fan_in.best_id"),
             Some(&serde_json::json!("branch_b"))

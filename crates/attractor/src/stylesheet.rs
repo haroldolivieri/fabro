@@ -6,11 +6,9 @@ use crate::graph::types::{AttrValue, Graph};
 pub enum Selector {
     /// `*` -- matches all nodes, specificity 0.
     Universal,
-    /// bare word like `box` -- matches nodes whose shape equals that word, specificity 1.
-    Shape(String),
-    /// `.classname` -- matches nodes with that class, specificity 2.
+    /// `.classname` -- matches nodes with that class, specificity 1.
     Class(String),
-    /// `#nodeid` -- matches a specific node, specificity 3.
+    /// `#nodeid` -- matches a specific node, specificity 2.
     Id(String),
 }
 
@@ -19,9 +17,8 @@ impl Selector {
     pub const fn specificity(&self) -> u8 {
         match self {
             Self::Universal => 0,
-            Self::Shape(_) => 1,
-            Self::Class(_) => 2,
-            Self::Id(_) => 3,
+            Self::Class(_) => 1,
+            Self::Id(_) => 2,
         }
     }
 }
@@ -115,19 +112,10 @@ fn parse_selector(remaining: &mut &str) -> Result<Selector, AttractorError> {
         *remaining = remaining[end..].trim();
         Ok(Selector::Class(class))
     } else {
-        // Bare word: shape selector
-        let end = remaining
-            .find(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
-            .unwrap_or(remaining.len());
-        if end == 0 {
-            return Err(AttractorError::Stylesheet(format!(
-                "expected selector ('*', '#id', '.class', or shape name), got: {:?}",
-                &remaining[..remaining.len().min(20)]
-            )));
-        }
-        let shape = remaining[..end].to_string();
-        *remaining = remaining[end..].trim();
-        Ok(Selector::Shape(shape))
+        Err(AttractorError::Stylesheet(format!(
+            "expected selector ('*', '#id', or '.class'), got: {:?}",
+            &remaining[..remaining.len().min(20)]
+        )))
     }
 }
 
@@ -201,7 +189,6 @@ pub fn apply_stylesheet(stylesheet: &Stylesheet, graph: &mut Graph) {
             let node = &graph.nodes[node_id.as_str()];
             let matches = match &rule.selector {
                 Selector::Universal => true,
-                Selector::Shape(shape) => node.shape() == shape.as_str(),
                 Selector::Class(cls) => node.classes.contains(cls),
                 Selector::Id(id) => node_id == id,
             };
@@ -386,9 +373,8 @@ mod tests {
     #[test]
     fn selector_specificity_values() {
         assert_eq!(Selector::Universal.specificity(), 0);
-        assert_eq!(Selector::Shape("box".into()).specificity(), 1);
-        assert_eq!(Selector::Class("x".into()).specificity(), 2);
-        assert_eq!(Selector::Id("x".into()).specificity(), 3);
+        assert_eq!(Selector::Class("x".into()).specificity(), 1);
+        assert_eq!(Selector::Id("x".into()).specificity(), 2);
     }
 
     #[test]
@@ -442,76 +428,36 @@ mod tests {
     }
 
     #[test]
-    fn parse_shape_selector() {
-        let ss = parse_stylesheet("box { llm_model: opus; }").unwrap();
-        assert_eq!(ss.rules.len(), 1);
-        assert_eq!(ss.rules[0].selector, Selector::Shape("box".into()));
+    fn parse_bare_word_selector_is_error() {
+        let result = parse_stylesheet("box { llm_model: opus; }");
+        assert!(result.is_err());
     }
 
     #[test]
-    fn apply_shape_selector_matches_by_shape() {
-        let ss = parse_stylesheet("box { llm_model: opus; }").unwrap();
-        let mut graph = Graph::new("test");
-
-        // Default shape is "box"
-        let node_a = Node::new("a");
-        graph.nodes.insert("a".into(), node_a);
-
-        let mut node_b = Node::new("b");
-        node_b
-            .attrs
-            .insert("shape".into(), AttrValue::String("diamond".into()));
-        graph.nodes.insert("b".into(), node_b);
-
-        apply_stylesheet(&ss, &mut graph);
-
-        assert_eq!(
-            graph.nodes["a"].attrs.get("llm_model"),
-            Some(&AttrValue::String("opus".into()))
-        );
-        // diamond shape should not match "box" selector
-        assert_eq!(graph.nodes["b"].attrs.get("llm_model"), None);
-    }
-
-    #[test]
-    fn shape_selector_specificity_between_universal_and_class() {
+    fn class_overrides_universal_specificity() {
         let ss = parse_stylesheet(
-            "* { llm_model: sonnet; } box { llm_model: opus; } .special { llm_model: gpt; }",
+            "* { llm_model: sonnet; } .special { llm_model: gpt; }",
         )
         .unwrap();
         let mut graph = Graph::new("test");
 
-        // Node with default shape "box" and class "special"
         let mut node_a = Node::new("a");
         node_a.classes.push("special".into());
         graph.nodes.insert("a".into(), node_a);
 
-        // Node with default shape "box" and no class
         let node_b = Node::new("b");
         graph.nodes.insert("b".into(), node_b);
 
-        // Node with shape "diamond" and no class
-        let mut node_c = Node::new("c");
-        node_c
-            .attrs
-            .insert("shape".into(), AttrValue::String("diamond".into()));
-        graph.nodes.insert("c".into(), node_c);
-
         apply_stylesheet(&ss, &mut graph);
 
-        // .special (specificity 2) overrides box (specificity 1)
+        // .special (specificity 1) overrides * (specificity 0)
         assert_eq!(
             graph.nodes["a"].attrs.get("llm_model"),
             Some(&AttrValue::String("gpt".into()))
         );
-        // box (specificity 1) overrides * (specificity 0)
+        // No class, gets universal
         assert_eq!(
             graph.nodes["b"].attrs.get("llm_model"),
-            Some(&AttrValue::String("opus".into()))
-        );
-        // diamond doesn't match "box", so gets universal
-        assert_eq!(
-            graph.nodes["c"].attrs.get("llm_model"),
             Some(&AttrValue::String("sonnet".into()))
         );
     }

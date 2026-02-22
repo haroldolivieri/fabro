@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 
@@ -14,6 +14,16 @@ use super::Handler;
 /// Trait for observing child pipeline state during the manager loop.
 #[async_trait]
 pub trait ChildObserver: Send + Sync {
+    /// Launch the child pipeline. Called before the observation loop when child_autostart is true.
+    async fn launch_child(
+        &self,
+        _dotfile: &str,
+        _workdir: &str,
+        _context: &Context,
+    ) -> Result<(), AttractorError> {
+        Ok(())
+    }
+
     /// Ingest child telemetry into the context.
     async fn observe(&self, context: &Context) -> Result<(), AttractorError>;
 
@@ -99,6 +109,39 @@ impl Handler for ManagerLoopHandler {
         let do_steer = actions_str.contains("steer");
         let do_wait = actions_str.contains("wait");
 
+        // Child autostart: launch child pipeline before the observation loop
+        let child_autostart = node
+            .attrs
+            .get("stack.child_autostart")
+            .and_then(|v| v.as_str())
+            .unwrap_or("true");
+        if child_autostart != "false" {
+            if let Some(ref observer) = self.observer {
+                let child_dotfile = node
+                    .attrs
+                    .get("stack.child_dotfile")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let child_workdir = node
+                    .attrs
+                    .get("stack.child_workdir")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                observer
+                    .launch_child(child_dotfile, child_workdir, context)
+                    .await?;
+            }
+        }
+
+        // Steer cooldown tracking
+        let steer_cooldown = node
+            .attrs
+            .get("manager.steer_cooldown")
+            .and_then(|v| v.as_str())
+            .map(parse_duration_str)
+            .unwrap_or(Duration::ZERO);
+        let mut last_steer_time: Option<Instant> = None;
+
         // Observation loop
         for cycle in 1..=max_cycles {
             // Observe
@@ -108,10 +151,17 @@ impl Handler for ManagerLoopHandler {
                 }
             }
 
-            // Steer
+            // Steer (with cooldown)
             if do_steer {
-                if let Some(ref observer) = self.observer {
-                    observer.steer(context, node).await?;
+                let cooldown_elapsed = match last_steer_time {
+                    Some(t) => t.elapsed() >= steer_cooldown,
+                    None => true,
+                };
+                if cooldown_elapsed {
+                    if let Some(ref observer) = self.observer {
+                        observer.steer(context, node).await?;
+                        last_steer_time = Some(Instant::now());
+                    }
                 }
             }
 

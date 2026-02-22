@@ -1,8 +1,6 @@
 use crate::error::AttractorError;
 use crate::graph::Graph;
-use crate::transform::{
-    PreambleTransform, StylesheetApplicationTransform, Transform, VariableExpansionTransform,
-};
+use crate::transform::{StylesheetApplicationTransform, Transform, VariableExpansionTransform};
 use crate::validation::{self, Diagnostic};
 
 /// Builder for configuring and executing a pipeline preparation.
@@ -33,10 +31,9 @@ impl PipelineBuilder {
     pub fn prepare(&self, dot_source: &str) -> Result<(Graph, Vec<Diagnostic>), AttractorError> {
         let mut graph = crate::parser::parse(dot_source)?;
 
-        // Built-in transforms
+        // Built-in transforms (PreambleTransform moved to engine execution time)
         VariableExpansionTransform.apply(&mut graph);
         StylesheetApplicationTransform.apply(&mut graph);
-        PreambleTransform.apply(&mut graph);
 
         // Custom transforms
         for transform in &self.transforms {

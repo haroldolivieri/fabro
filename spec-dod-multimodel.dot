@@ -36,7 +36,7 @@ digraph SpecDoDMultiModel {
 
 For EACH checkbox in sections 8.1 through 8.10, evaluate whether the current C implementation satisfies it. Be strict — a checkbox is only checked if the feature is fully implemented and would work correctly at runtime.
 
-Output a JSON object:
+Respond with ONLY a JSON object (no prose) -- don't write it out as a file:
 {
   \"spec\": \"unified-llm\",
   \"model\": \"opus\",
@@ -62,7 +62,7 @@ Be thorough. Check every single checkbox."
 
 For EACH checkbox in sections 8.1 through 8.10, evaluate whether the current C implementation satisfies it. Be strict — a checkbox is only checked if the feature is fully implemented and would work correctly at runtime.
 
-Output a JSON object:
+Respond with ONLY a JSON object (no prose) -- don't write it out as a file:
 {
   \"spec\": \"unified-llm\",
   \"model\": \"gpt-5.2\",
@@ -90,7 +90,7 @@ Be thorough. Check every single checkbox."
 
 For EACH checkbox in sections 9.1 through 9.13, evaluate whether the current C implementation satisfies it. Be strict.
 
-Output a JSON object:
+Respond with ONLY a JSON object (no prose) -- don't write it out as a file:
 {
   \"spec\": \"coding-agent-loop\",
   \"model\": \"opus\",
@@ -113,7 +113,7 @@ Be thorough. Check every single checkbox."
 
 For EACH checkbox in sections 9.1 through 9.13, evaluate whether the current C implementation satisfies it. Be strict.
 
-Output a JSON object:
+Respond with ONLY a JSON object (no prose) -- don't write it out as a file:
 {
   \"spec\": \"coding-agent-loop\",
   \"model\": \"gpt-5.2\",
@@ -138,7 +138,7 @@ Be thorough. Check every single checkbox."
 
 For EACH checkbox in sections 11.1 through 11.13, evaluate whether the current C implementation satisfies it. Be strict.
 
-Output a JSON object:
+Respond with ONLY a JSON object (no prose) -- don't write it out as a file:
 {
   \"spec\": \"attractor\",
   \"model\": \"opus\",
@@ -161,7 +161,7 @@ Be thorough. Check every single checkbox."
 
 For EACH checkbox in sections 11.1 through 11.13, evaluate whether the current C implementation satisfies it. Be strict.
 
-Output a JSON object:
+Respond with ONLY a JSON object (no prose) -- don't write it out as a file:
 {
   \"spec\": \"attractor\",
   \"model\": \"gpt-5.2\",
@@ -203,7 +203,7 @@ Compare them item by item. For every DoD checkbox where the two models DISAGREE 
 
 Also identify items that one model flagged but the other missed entirely.
 
-Output a JSON object:
+Respond with JSON (not by writing out a file):
 {
   \"agreements\": { \"both_pass\": N, \"both_fail\": N },
   \"disagreements\": [
@@ -242,7 +242,7 @@ Compare them item by item. For every DoD checkbox where the two models DISAGREE 
 
 Also identify items that one model flagged but the other missed entirely.
 
-Output a JSON object:
+Respond with JSON (not by writing out a file):
 {
   \"agreements\": { \"both_pass\": N, \"both_fail\": N },
   \"disagreements\": [
@@ -284,7 +284,7 @@ Produce a single definitive audit result. Resolution rules:
 3. If they DISAGREE, use the cross-critique verdicts. If the critiques also disagree, re-read the spec and code yourself and make the call. When in doubt, fail it.
 4. Include any items that were missed by one model but caught by the other.
 
-Output a JSON object:
+Respond with JSON (not by writing out a file):
 {
   \"spec_results\": {
     \"unified-llm\": { \"total\": N, \"passed\": M, \"failed\": K, \"failed_items\": [...] },
@@ -320,7 +320,7 @@ Group failures into:
 
 For each IMPLEMENTABLE item, identify the exact file(s) to modify and briefly describe the fix. Rank them by impact (most important first).
 
-Output a JSON object:
+Respond with JSON (not by writing out a file):
 {
   \"model\": \"opus\",
   \"total_failing\": N,
@@ -344,7 +344,7 @@ Group failures into:
 
 For each IMPLEMENTABLE item, identify the exact file(s) to modify and briefly describe the fix. Rank them by impact (most important first).
 
-Output a JSON object:
+Respond with JSON (not by writing out a file):
 {
   \"model\": \"gpt-5.2\",
   \"total_failing\": N,
@@ -367,7 +367,7 @@ Resolution rules:
 3. For ranking, average the ranks and re-sort. If one model identified files/fixes the other didn't, include all suggestions.
 4. Deduplicate items that both models identified.
 
-Output a JSON object:
+Respond with JSON (not by writing out a file):
 {
   \"total_failing\": N,
   \"implementable\": [ {\"spec\": \"...\", \"section\": \"...\", \"text\": \"...\", \"files\": [\"...\"], \"fix\": \"...\", \"opus_rank\": N, \"gpt_rank\": N} ],
@@ -410,7 +410,7 @@ Constraints:
 - Keep changes minimal and focused — one checkbox per fix
 - Maintain the existing code style
 
-After implementing, output:
+Respond with JSON (not by writing out a file):
 {
   \"model\": \"codex\",
   \"fixes_applied\": [ {\"spec\": \"...\", \"section\": \"...\", \"text\": \"...\", \"files_changed\": [\"...\"], \"description\": \"...\"} ],
@@ -437,7 +437,7 @@ PART B — Implement additional fixes:
 5. From the remaining IMPLEMENTABLE items (see response.triage_merge for the full list), pick up to 5 more and implement them
 6. Follow the same constraints as Codex (pure C11, no new deps, minimal changes)
 
-Output:
+Respond with JSON (not by writing out a file):
 {
   \"model\": \"opus\",
   \"codex_fixes_reviewed\": N,
@@ -462,7 +462,7 @@ Validate the full set of changes from this round:
 3. Check for regressions: did any fix break something else?
 4. Check for consistency: do all the changes work together?
 
-Output:
+Respond with JSON (not by writing out a file):
 {
   \"model\": \"codex\",
   \"total_changes_reviewed\": N,
@@ -526,7 +526,7 @@ And re-read the implementation files that were changed in this iteration.
 
 Check ONLY the items that were previously failing. Have they been fixed?
 
-Output:
+Respond with JSON (not by writing out a file):
 {
   \"model\": \"opus\",
   \"verified_fixed\": [ {\"spec\": \"...\", \"section\": \"...\", \"text\": \"...\"} ],
@@ -552,7 +552,7 @@ And re-read the implementation files that were changed in this iteration.
 
 Check ONLY the items that were previously failing. Have they been fixed?
 
-Output:
+Respond with JSON (not by writing out a file):
 {
   \"model\": \"gpt-5.2\",
   \"verified_fixed\": [ {\"spec\": \"...\", \"section\": \"...\", \"text\": \"...\"} ],
@@ -574,7 +574,7 @@ Rules:
 2. If EITHER model says an item is still failing, it counts as still failing
 3. Union all newly_broken items from both models
 
-Output:
+Respond with JSON (not by writing out a file):
 {
   \"verified_fixed\": [ {\"spec\": \"...\", \"section\": \"...\", \"text\": \"...\", \"agreed_by\": \"both|opus_only|gpt_only\"} ],
   \"still_failing\": [ {\"spec\": \"...\", \"section\": \"...\", \"text\": \"...\", \"flagged_by\": \"both|opus_only|gpt_only\", \"reason\": \"...\"} ],

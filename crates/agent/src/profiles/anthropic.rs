@@ -138,17 +138,29 @@ in the project. Keep changes minimal and focused on the task.";
     }
 
     fn capabilities(&self) -> ProfileCapabilities {
+        let context_window_size = if self.model().contains("opus-4-6") {
+            1_000_000
+        } else {
+            200_000
+        };
         ProfileCapabilities {
             supports_reasoning: true,
             supports_streaming: true,
             supports_parallel_tool_calls: true,
-            context_window_size: 200_000,
+            context_window_size,
         }
     }
 
     fn provider_options(&self) -> Option<serde_json::Value> {
         let model = self.model();
-        if model.contains("opus-4-6") || model.contains("sonnet-4-6") {
+        if model.contains("opus-4-6") {
+            Some(serde_json::json!({
+                "anthropic": {
+                    "thinking": {"type": "adaptive"},
+                    "beta_headers": ["context-1m-2025-08-07"]
+                }
+            }))
+        } else if model.contains("sonnet-4-6") {
             Some(serde_json::json!({
                 "anthropic": {
                     "thinking": {"type": "adaptive"}
@@ -183,6 +195,12 @@ mod tests {
         assert!(profile.supports_streaming());
         assert!(profile.supports_parallel_tool_calls());
         assert_eq!(profile.context_window_size(), 200_000);
+    }
+
+    #[test]
+    fn anthropic_opus_4_6_has_1m_context_window() {
+        let profile = AnthropicProfile::new("claude-opus-4-6");
+        assert_eq!(profile.context_window_size(), 1_000_000);
     }
 
     #[test]
@@ -284,6 +302,10 @@ mod tests {
             Some("adaptive"),
             "thinking type should be adaptive"
         );
+        let beta_headers = options["anthropic"]["beta_headers"]
+            .as_array()
+            .expect("beta_headers should be an array");
+        assert_eq!(beta_headers[0].as_str(), Some("context-1m-2025-08-07"));
     }
 
     #[test]

@@ -4,7 +4,7 @@ Comparison of the implementation in `crates/attractor/` against `docs/specs/attr
 
 ## Summary
 
-The core pipeline engine, DOT parsing, edge selection, condition evaluation, retry logic, checkpoint/resume, validation, and all 10 handler types are implemented. The HTTP server with SSE is implemented. Context fidelity preamble synthesis, thread ID plumbing to backends, engine cancellation, recording/replay, and preset retry policies are all implemented. The remaining gaps are **SVG graph rendering** and **no DOT-level mechanism for custom retry predicates**.
+The core pipeline engine, DOT parsing, edge selection, condition evaluation, retry logic, checkpoint/resume, validation, and all 10 handler types are implemented. The HTTP server with SSE is implemented. Context fidelity preamble synthesis, thread ID plumbing to backends, engine cancellation, recording/replay, and preset retry policies are all implemented. The `should_retry` predicate is customizable via the `Handler` trait. SVG graph rendering via `GET /pipelines/{id}/graph` is implemented. **No remaining gaps.**
 
 ---
 
@@ -19,6 +19,7 @@ The core pipeline engine, DOT parsing, edge selection, condition evaluation, ret
 | 3.4 | Goal gate enforcement with retry target fallback chain | Done |
 | 3.5-3.6 | Retry logic with backoff, jitter, preset policies, allow_partial | Done |
 | 3.6 | Preset retry policies selectable by name from DOT (`retry_policy` attr) | Done |
+| 3.6 | `should_retry` predicate customizable via `Handler` trait method | Done |
 | 3.7 | Failure routing (fail edge, retry_target, fallback, termination) | Done |
 | 3.8 | Single-threaded traversal with parallel handler isolation | Done |
 | 4.1-4.2 | Handler interface and registry (explicit type > shape > default) | Done |
@@ -64,17 +65,13 @@ The core pipeline engine, DOT parsing, edge selection, condition evaluation, ret
 
 ## Gaps
 
-### 1. GET /pipelines/{id}/graph (SVG Rendering) (Spec 9.5)
+### ~~1. GET /pipelines/{id}/graph (SVG Rendering) (Spec 9.5)~~ — RESOLVED
 
-**Status: Not implemented**
+The endpoint is implemented. The DOT source is stored in `ManagedPipeline` and piped through `dot -Tsvg` on request, returning `image/svg+xml`. Returns 502 if graphviz is unavailable, 404 if pipeline not found.
 
-The spec lists `GET /pipelines/{id}/graph` to return a rendered graph visualization (SVG). The HTTP server does not implement this endpoint. No graphviz dependency exists, and the original DOT source is not stored in `ManagedPipeline` after parsing.
+### ~~2. `should_retry` Predicate Customization (Spec 3.6)~~ — RESOLVED
 
-### 2. `should_retry` Predicate Customization (Spec 3.6)
-
-**Status: Default predicate only**
-
-The `RetryPolicy` struct has a `should_retry: ShouldRetryFn` field and the Rust API supports custom predicates. However, all preset policies (`none`, `standard`, `aggressive`, `linear`, `patient`) and `build_retry_policy()` use the same `default_should_retry()` predicate. There's no DOT-level mechanism for per-node retry predicate customization. The spec defines `should_retry` in the `RetryPolicy` struct but only describes a default predicate — it's unclear whether per-node customization is required.
+Handlers can now override `should_retry(&self, err: &AttractorError) -> bool` on the `Handler` trait. The default impl delegates to `err.is_retryable()`. The engine's `execute_with_retry` calls the handler method directly. The `ShouldRetryFn` type and `RetryPolicy.should_retry` field have been removed. There's no DOT-level mechanism for per-node retry predicate customization, which matches the spec (no DOT syntax defined for this).
 
 Note: the spec's default predicate description references HTTP status codes (429, 5xx, 401, 403, 400) but the implementation classifies retryability by `AttractorError` variant (`Handler`/`Engine`/`Io` = retryable). Reasonable for Rust but not a 1:1 mapping.
 

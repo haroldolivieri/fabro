@@ -41,6 +41,7 @@ pub struct ApiQuestion {
 
 /// Snapshot of a managed pipeline.
 struct ManagedPipeline {
+    dot_source: String,
     status: PipelineStatus,
     error: Option<String>,
     interviewer: Arc<WebInterviewer>,
@@ -104,6 +105,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/pipelines/{id}/checkpoint", get(get_checkpoint))
         .route("/pipelines/{id}/context", get(get_context))
         .route("/pipelines/{id}/cancel", post(cancel_pipeline))
+        .route("/pipelines/{id}/graph", get(get_graph))
         .with_state(state)
 }
 
@@ -160,6 +162,7 @@ async fn start_pipeline(
         pipelines.insert(
             pipeline_id.clone(),
             ManagedPipeline {
+                dot_source: req.dot_source.clone(),
                 status: PipelineStatus::Running,
                 error: None,
                 interviewer: Arc::clone(&interviewer),
@@ -355,6 +358,64 @@ async fn cancel_pipeline(
             (StatusCode::OK, Json(serde_json::json!({"cancelled": true}))).into_response()
         }
         None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn get_graph(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let dot_source = {
+        let pipelines = state.pipelines.lock().expect("pipelines lock poisoned");
+        match pipelines.get(&id) {
+            Some(pipeline) => pipeline.dot_source.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+
+    let mut child = match tokio::process::Command::new("dot")
+        .arg("-Tsvg")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({"error": "graphviz dot command not available"})),
+            )
+                .into_response();
+        }
+    };
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        let _ = stdin.write_all(dot_source.as_bytes()).await;
+        // stdin is dropped here, closing the pipe
+    }
+
+    match child.wait_with_output().await {
+        Ok(output) if output.status.success() => (
+            StatusCode::OK,
+            [("content-type", "image/svg+xml")],
+            output.stdout,
+        )
+            .into_response(),
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({"error": format!("dot failed: {stderr}")})),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": format!("dot process error: {e}")})),
+        )
+            .into_response(),
     }
 }
 
@@ -738,5 +799,73 @@ mod tests {
 
         let body = body_json(response.into_body()).await;
         assert_eq!(body["status"].as_str().unwrap(), "completed");
+    }
+
+    #[tokio::test]
+    async fn get_graph_returns_svg() {
+        let state = create_app_state(test_registry);
+        let app = build_router(Arc::clone(&state));
+
+        // Start a pipeline
+        let req = Request::builder()
+            .method("POST")
+            .uri("/pipelines")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_string(&serde_json::json!({"dot_source": MINIMAL_DOT})).unwrap(),
+            ))
+            .unwrap();
+
+        let response = app.clone().oneshot(req).await.unwrap();
+        let body = body_json(response.into_body()).await;
+        let pipeline_id = body["id"].as_str().unwrap().to_string();
+
+        // Request graph SVG
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/pipelines/{pipeline_id}/graph"))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+
+        // If graphviz is not installed, we get 502 — skip assertion
+        if response.status() == StatusCode::BAD_GATEWAY {
+            return;
+        }
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .expect("content-type header should be present")
+            .to_str()
+            .unwrap();
+        assert_eq!(content_type, "image/svg+xml");
+
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let svg = String::from_utf8_lossy(&bytes);
+        assert!(
+            svg.contains("<?xml") || svg.contains("<svg"),
+            "expected SVG content, got: {}",
+            &svg[..svg.len().min(200)]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_graph_not_found() {
+        let app = test_app();
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/pipelines/nonexistent/graph")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

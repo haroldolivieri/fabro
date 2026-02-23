@@ -53,11 +53,9 @@ The spec (lines 1196-1206) defines 5-step thread resolution for `full` fidelity.
 
 The spec (line 1165) says: "If the previous node used `full` fidelity, degrade to `summary:high` for the first resumed node." A grep for `fidelity.*degrad|summary.high.*resume` across all sources returns zero matches. The resume code at `engine.rs:591-608` performs no fidelity degradation.
 
-### 7. Retry Policy `should_retry` — too coarse
+### 7. ~~Retry Policy `should_retry` — too coarse~~ — RESOLVED
 
-**CONFIRMED**
-
-`default_should_retry()` at `engine.rs:100-103`: `Arc::new(|_| true)` — retries ALL errors. The spec (line 556) requires: retry on 429/5xx/network errors, no retry on 401/403/400/validation/config errors. `build_retry_policy` at lines 178-189 always uses the default. `AttractorError` has no `is_retryable()` method.
+`AttractorError::is_retryable()` classifies errors by variant (`Handler`/`Engine`/`Io` = retryable; `Parse`/`Validation`/`Stylesheet`/`Checkpoint`/`Cancelled` = terminal). The `Handler` trait now has a `should_retry(&self, err: &AttractorError) -> bool` method (default delegates to `is_retryable()`). The engine's `execute_with_retry` calls the handler method directly. Handlers can override to customize retry behavior.
 
 ### 8. Direction type not validated
 
@@ -107,11 +105,9 @@ The spec (line 1693): "non-zero means skip the tool call." `codergen.rs:98-103` 
 
 The spec (line 1260): "manifest.json -- Pipeline metadata (name, goal, start time)." `engine.rs:217-233` `write_manifest()` writes `pipeline_name`, `start_time`, `node_count`, `edge_count` — no `goal` field despite `graph.goal()` being available. Integration test at lines 1527-1532 confirms the four fields without `goal`.
 
-### 16. Error categories — no retryable/terminal classification
+### 16. ~~Error categories — no retryable/terminal classification~~ — RESOLVED
 
-**CONFIRMED**
-
-The spec (Appendix D, lines 2115-2123) defines Retryable, Terminal, and Pipeline error categories. `error.rs:1-33` has 7 variants (`Parse`, `Validation`, `Engine`, `Handler`, `Checkpoint`, `Stylesheet`, `Io`) with no retryability metadata, no `is_retryable()` method, no `ErrorCategory` enum.
+`AttractorError::is_retryable()` at `error.rs:38` classifies variants as retryable (`Handler`, `Engine`, `Io`) or terminal (`Parse`, `Validation`, `Stylesheet`, `Checkpoint`, `Cancelled`). The `Handler` trait's `should_retry` default impl delegates to this method. No `ErrorCategory` enum, but the classification is functionally equivalent.
 
 ### 17. Spec self-contradicts on `default_max_retry`
 
@@ -169,7 +165,7 @@ Minor sub-gap: the engine-level schema uses key `"status"` while the spec's Appe
 | 4 | Thread ID resolution 1/5 steps | CONFIRMED | Moderate |
 | 5 | Checkpoint retry counters not persisted | CONFIRMED | Moderate |
 | 6 | Checkpoint fidelity degradation missing | CONFIRMED | Moderate |
-| 7 | should_retry retries all errors | CONFIRMED | Moderate |
+| 7 | ~~should_retry retries all errors~~ | RESOLVED | ~~Moderate~~ |
 | 8 | Direction values not validated | CONFIRMED | Low |
 | 9 | Stylesheet lint brace-balance only | CONFIRMED | Low |
 | 10 | Undocumented Shape selector | CONFIRMED | Low |
@@ -178,7 +174,7 @@ Minor sub-gap: the engine-level schema uses key `"status"` while the spec's Appe
 | 13 | Pre-hook fail instead of skip | CONFIRMED | Low |
 | 14 | No parallel integration test | CONFIRMED | Low |
 | 15 | Manifest missing goal field | CONFIRMED | Low |
-| 16 | No error retryable/terminal classification | CONFIRMED | Moderate |
+| 16 | ~~No error retryable/terminal classification~~ | RESOLVED | ~~Moderate~~ |
 | 17 | Spec contradicts itself on default_max_retry | CONFIRMED | Low (spec bug) |
 | P1 | Checkpoint resume incomplete | PARTIAL | Moderate |
 | R1 | Missing variable handling | REFUTED | — |

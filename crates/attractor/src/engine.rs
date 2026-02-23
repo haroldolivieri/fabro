@@ -79,31 +79,11 @@ impl BackoffConfig {
     }
 }
 
-/// Predicate that determines whether an error is retryable.
-/// Returns `true` if the error should be retried, `false` to fail immediately.
-pub type ShouldRetryFn = std::sync::Arc<dyn Fn(&AttractorError) -> bool + Send + Sync>;
-
 /// Retry policy for node execution.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RetryPolicy {
     pub max_attempts: u32,
     pub backoff: BackoffConfig,
-    pub should_retry: ShouldRetryFn,
-}
-
-impl std::fmt::Debug for RetryPolicy {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RetryPolicy")
-            .field("max_attempts", &self.max_attempts)
-            .field("backoff", &self.backoff)
-            .field("should_retry", &"<fn>")
-            .finish()
-    }
-}
-
-/// Default should_retry predicate: retries transient errors only.
-fn default_should_retry() -> ShouldRetryFn {
-    std::sync::Arc::new(|err| err.is_retryable())
 }
 
 impl RetryPolicy {
@@ -113,7 +93,6 @@ impl RetryPolicy {
         Self {
             max_attempts: 1,
             backoff: BackoffConfig::default(),
-            should_retry: default_should_retry(),
         }
     }
 
@@ -128,7 +107,6 @@ impl RetryPolicy {
                 max_delay_ms: 60_000,
                 jitter: true,
             },
-            should_retry: default_should_retry(),
         }
     }
 
@@ -143,7 +121,6 @@ impl RetryPolicy {
                 max_delay_ms: 60_000,
                 jitter: true,
             },
-            should_retry: default_should_retry(),
         }
     }
 
@@ -158,7 +135,6 @@ impl RetryPolicy {
                 max_delay_ms: 60_000,
                 jitter: true,
             },
-            should_retry: default_should_retry(),
         }
     }
 
@@ -173,7 +149,6 @@ impl RetryPolicy {
                 max_delay_ms: 60_000,
                 jitter: true,
             },
-            should_retry: default_should_retry(),
         }
     }
 }
@@ -200,7 +175,6 @@ fn build_retry_policy(node: &Node, graph: &Graph) -> RetryPolicy {
     RetryPolicy {
         max_attempts,
         backoff: BackoffConfig::default(),
-        should_retry: default_should_retry(),
     }
 }
 
@@ -585,7 +559,7 @@ impl PipelineEngine {
                 Ok(o) => o,
                 Err(e) => {
                     // Gap #7: Check should_retry predicate before retrying
-                    if attempt < policy.max_attempts && (policy.should_retry)(&e) {
+                    if attempt < policy.max_attempts && handler.should_retry(&e) {
                         let delay = policy.backoff.delay_for_attempt(attempt);
                         self.emitter.emit(&PipelineEvent::StageFailed {
                             name: node.label().to_string(),
@@ -2024,25 +1998,6 @@ mod tests {
         let node = Node::new("start");
         let graph = Graph::new("test");
         assert_eq!(resolve_thread_id(None, &node, &graph, None), None);
-    }
-
-    // --- default_should_retry tests ---
-
-    #[test]
-    fn default_should_retry_retries_transient_errors() {
-        let should_retry = default_should_retry();
-        assert!(should_retry(&AttractorError::Handler("timeout".to_string())));
-        assert!(should_retry(&AttractorError::Engine("transient".to_string())));
-        assert!(should_retry(&AttractorError::Io("connection reset".to_string())));
-    }
-
-    #[test]
-    fn default_should_retry_rejects_terminal_errors() {
-        let should_retry = default_should_retry();
-        assert!(!should_retry(&AttractorError::Parse("bad syntax".to_string())));
-        assert!(!should_retry(&AttractorError::Validation("invalid".to_string())));
-        assert!(!should_retry(&AttractorError::Stylesheet("bad rule".to_string())));
-        assert!(!should_retry(&AttractorError::Checkpoint("corrupt".to_string())));
     }
 
     // --- Gap #15: Manifest goal field test ---

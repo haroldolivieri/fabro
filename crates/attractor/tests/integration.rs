@@ -2943,8 +2943,8 @@ mod server_lifecycle {
 
         // 2. Poll for question to appear (pipeline runs start -> work -> gate, then blocks)
         let mut question_id = String::new();
-        for _ in 0..50 {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        for _ in 0..500 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
             let req = Request::builder()
                 .method("GET")
                 .uri(format!("/pipelines/{pipeline_id}/questions"))
@@ -2978,8 +2978,8 @@ mod server_lifecycle {
 
         // 4. Poll until completed
         let mut final_status = String::new();
-        for _ in 0..50 {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        for _ in 0..500 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
             let req = Request::builder()
                 .method("GET")
                 .uri(format!("/pipelines/{pipeline_id}"))
@@ -3039,7 +3039,7 @@ mod server_lifecycle {
         let pipeline_id = body["id"].as_str().unwrap().to_string();
 
         // Wait briefly for pipeline to start running
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
 
         // Cancel it
         let req = Request::builder()
@@ -3143,7 +3143,7 @@ mod sse_events {
         let mut body = response.into_body();
         let mut sse_data = String::new();
         loop {
-            match tokio::time::timeout(Duration::from_secs(3), body.frame()).await {
+            match tokio::time::timeout(Duration::from_millis(500), body.frame()).await {
                 Ok(Some(Ok(frame))) => {
                     if let Some(data) = frame.data_ref() {
                         sse_data.push_str(&String::from_utf8_lossy(data));
@@ -3185,8 +3185,9 @@ mod sse_events {
             );
         }
 
-        // Wait for completion, then verify checkpoint
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        // Pipeline is complete (SSE stream ended), verify checkpoint
+        // Small yield to let the spawned task update state
+        tokio::time::sleep(Duration::from_millis(10)).await;
 
         let req = Request::builder()
             .method("GET")
@@ -3649,6 +3650,1425 @@ async fn graph_merge_e2e_through_engine() {
 }
 
 // ===========================================================================
+// Context fidelity integration tests (spec Section 5.4)
+// ===========================================================================
+
+/// Shared capture storage for fidelity tests.
+#[derive(Clone)]
+struct FidelityCaptures {
+    fidelities: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    thread_ids: Arc<std::sync::Mutex<Vec<(String, Option<String>)>>>,
+    preambles: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+}
+
+impl FidelityCaptures {
+    fn new() -> Self {
+        Self {
+            fidelities: Arc::new(std::sync::Mutex::new(Vec::new())),
+            thread_ids: Arc::new(std::sync::Mutex::new(Vec::new())),
+            preambles: Arc::new(std::sync::Mutex::new(Vec::new())),
+        }
+    }
+}
+
+/// A handler that captures the resolved fidelity and thread_id from the context.
+struct FidelityCapturingHandler {
+    captures: FidelityCaptures,
+}
+
+#[async_trait::async_trait]
+impl Handler for FidelityCapturingHandler {
+    async fn execute(
+        &self,
+        node: &Node,
+        context: &Context,
+        _graph: &Graph,
+        _logs_root: &Path,
+        _services: &attractor::handler::EngineServices,
+    ) -> Result<Outcome, AttractorError> {
+        let fidelity = context.get_string("internal.fidelity", "none");
+        self.captures
+            .fidelities
+            .lock()
+            .unwrap()
+            .push((node.id.clone(), fidelity));
+
+        let thread_id = context
+            .get("internal.thread_id")
+            .and_then(|v| v.as_str().map(String::from));
+        self.captures
+            .thread_ids
+            .lock()
+            .unwrap()
+            .push((node.id.clone(), thread_id));
+
+        let preamble = context.get_string("current.preamble", "");
+        self.captures
+            .preambles
+            .lock()
+            .unwrap()
+            .push((node.id.clone(), preamble));
+
+        Ok(Outcome::success())
+    }
+}
+
+#[tokio::test]
+async fn fidelity_default_is_compact() {
+    let mut graph = make_graph_with_start_exit("FidelityDefaultTest");
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities.len(), 1);
+    assert_eq!(fidelities[0].0, "work");
+    assert_eq!(fidelities[0].1, "compact");
+
+    let preambles = captures.preambles.lock().unwrap();
+    assert!(!preambles[0].1.is_empty(), "compact fidelity should produce a preamble");
+}
+
+#[tokio::test]
+async fn fidelity_graph_default_applied() {
+    let mut graph = make_graph_with_start_exit("FidelityGraphDefaultTest");
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("truncate".to_string()),
+    );
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].1, "truncate");
+}
+
+#[tokio::test]
+async fn fidelity_node_overrides_graph_default() {
+    let mut graph = make_graph_with_start_exit("FidelityNodeOverrideTest");
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("truncate".to_string()),
+    );
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    work.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("summary:medium".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].1, "summary:medium");
+}
+
+#[tokio::test]
+async fn fidelity_edge_overrides_node_and_graph() {
+    let mut graph = make_graph_with_start_exit("FidelityEdgeOverrideTest");
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("truncate".to_string()),
+    );
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    work.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("compact".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+
+    let mut edge_with_fidelity = Edge::new("start", "work");
+    edge_with_fidelity.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("summary:high".to_string()),
+    );
+    graph.edges.push(edge_with_fidelity);
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].1, "summary:high");
+}
+
+#[tokio::test]
+async fn fidelity_full_produces_empty_preamble() {
+    let mut graph = make_graph_with_start_exit("FidelityFullPreambleTest");
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    work.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].1, "full");
+
+    let preambles = captures.preambles.lock().unwrap();
+    assert_eq!(preambles[0].1, "", "full fidelity should produce empty preamble");
+}
+
+#[tokio::test]
+async fn fidelity_truncate_preamble_minimal() {
+    let mut graph = make_graph_with_start_exit("FidelityTruncateTest");
+    graph.attrs.insert(
+        "goal".to_string(),
+        AttrValue::String("Test truncate mode".to_string()),
+    );
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("truncate".to_string()),
+    );
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let preambles = captures.preambles.lock().unwrap();
+    let preamble = &preambles[0].1;
+    assert!(
+        preamble.contains("Goal: Test truncate mode"),
+        "truncate preamble should contain the goal"
+    );
+    assert!(
+        preamble.contains("Run ID:"),
+        "truncate preamble should contain run ID"
+    );
+    assert!(
+        !preamble.contains("Completed stages:"),
+        "truncate should not include stage details"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_summary_low_mode() {
+    let mut graph = make_graph_with_start_exit("SummaryLow");
+    graph.attrs.insert(
+        "goal".to_string(),
+        AttrValue::String("Test summary".to_string()),
+    );
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("summary:low".to_string()),
+    );
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].1, "summary:low");
+    assert_eq!(fidelities[1].1, "summary:low");
+
+    let preambles = captures.preambles.lock().unwrap();
+    assert!(
+        preambles[1].1.contains("Test summary"),
+        "summary:low preamble should contain goal"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_summary_medium_mode() {
+    let mut graph = make_graph_with_start_exit("SummaryMedium");
+    graph.attrs.insert(
+        "goal".to_string(),
+        AttrValue::String("Test summary".to_string()),
+    );
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("summary:medium".to_string()),
+    );
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].1, "summary:medium");
+    assert_eq!(fidelities[1].1, "summary:medium");
+
+    let preambles = captures.preambles.lock().unwrap();
+    assert!(
+        preambles[1].1.contains("Test summary"),
+        "summary:medium preamble should contain goal"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_summary_high_mode() {
+    let mut graph = make_graph_with_start_exit("SummaryHigh");
+    graph.attrs.insert(
+        "goal".to_string(),
+        AttrValue::String("Test summary".to_string()),
+    );
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("summary:high".to_string()),
+    );
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].1, "summary:high");
+    assert_eq!(fidelities[1].1, "summary:high");
+
+    let preambles = captures.preambles.lock().unwrap();
+    assert!(
+        preambles[1].1.contains("Test summary"),
+        "summary:high preamble should contain goal"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_full_sets_thread_id_in_context() {
+    let mut graph = make_graph_with_start_exit("FidelityThreadTest");
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    work.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    work.attrs.insert(
+        "thread_id".to_string(),
+        AttrValue::String("my-session".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let thread_ids = captures.thread_ids.lock().unwrap();
+    assert_eq!(thread_ids[0].0, "work");
+    assert_eq!(thread_ids[0].1, Some("my-session".to_string()));
+}
+
+#[tokio::test]
+async fn fidelity_full_nodes_share_thread_id() {
+    let mut graph = make_graph_with_start_exit("FidelitySharedThreadTest");
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_a.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    step_a.attrs.insert(
+        "thread_id".to_string(),
+        AttrValue::String("shared-session".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_b.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    step_b.attrs.insert(
+        "thread_id".to_string(),
+        AttrValue::String("shared-session".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let thread_ids = captures.thread_ids.lock().unwrap();
+    assert_eq!(thread_ids[0].0, "step_a");
+    assert_eq!(thread_ids[0].1, Some("shared-session".to_string()));
+    assert_eq!(thread_ids[1].0, "step_b");
+    assert_eq!(thread_ids[1].1, Some("shared-session".to_string()));
+}
+
+#[tokio::test]
+async fn fidelity_resume_degrades_full_to_summary_high() {
+    let mut graph = make_graph_with_start_exit("FidelityResumeTest");
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_b.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let ctx = Context::new();
+    ctx.set("outcome", serde_json::json!("success"));
+    ctx.set("internal.fidelity", serde_json::json!("full"));
+
+    let mut outcomes = std::collections::HashMap::new();
+    outcomes.insert("start".to_string(), Outcome::success());
+    outcomes.insert("step_a".to_string(), Outcome::success());
+
+    let checkpoint = Checkpoint::from_context(
+        &ctx,
+        "step_a",
+        vec!["start".to_string(), "step_a".to_string()],
+        std::collections::HashMap::new(),
+        outcomes,
+        Some("step_b".to_string()),
+    );
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine
+        .run_from_checkpoint(&graph, &config, &checkpoint)
+        .await
+        .expect("resume should succeed");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].0, "step_b");
+    assert_eq!(
+        fidelities[0].1, "summary:high",
+        "first node after resume from full fidelity should be degraded to summary:high"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_resume_degrade_only_affects_first_hop() {
+    let mut graph = make_graph_with_start_exit("FidelityResumeSingleHopTest");
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_b.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    let mut step_c = Node::new("step_c");
+    step_c.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_c.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    graph.nodes.insert("step_c".to_string(), step_c);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "step_c"));
+    graph.edges.push(Edge::new("step_c", "exit"));
+
+    let ctx = Context::new();
+    ctx.set("outcome", serde_json::json!("success"));
+    ctx.set("internal.fidelity", serde_json::json!("full"));
+
+    let mut outcomes = std::collections::HashMap::new();
+    outcomes.insert("start".to_string(), Outcome::success());
+    outcomes.insert("step_a".to_string(), Outcome::success());
+
+    let checkpoint = Checkpoint::from_context(
+        &ctx,
+        "step_a",
+        vec!["start".to_string(), "step_a".to_string()],
+        std::collections::HashMap::new(),
+        outcomes,
+        Some("step_b".to_string()),
+    );
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine
+        .run_from_checkpoint(&graph, &config, &checkpoint)
+        .await
+        .expect("resume should succeed");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].0, "step_b");
+    assert_eq!(fidelities[0].1, "summary:high");
+    assert_eq!(fidelities[1].0, "step_c");
+    assert_eq!(fidelities[1].1, "full");
+}
+
+#[tokio::test]
+async fn fidelity_resume_no_degrade_when_not_full() {
+    let mut graph = make_graph_with_start_exit("FidelityResumeNoDegrade");
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("compact".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_b.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let ctx = Context::new();
+    ctx.set("outcome", serde_json::json!("success"));
+    ctx.set("internal.fidelity", serde_json::json!("compact"));
+
+    let mut outcomes = std::collections::HashMap::new();
+    outcomes.insert("start".to_string(), Outcome::success());
+    outcomes.insert("step_a".to_string(), Outcome::success());
+
+    let checkpoint = Checkpoint::from_context(
+        &ctx,
+        "step_a",
+        vec!["start".to_string(), "step_a".to_string()],
+        std::collections::HashMap::new(),
+        outcomes,
+        Some("step_b".to_string()),
+    );
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine
+        .run_from_checkpoint(&graph, &config, &checkpoint)
+        .await
+        .expect("resume should succeed");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].0, "step_b");
+    assert_eq!(fidelities[0].1, "full");
+}
+
+#[tokio::test]
+async fn fidelity_stored_in_checkpoint_context() {
+    let mut graph = make_graph_with_start_exit("FidelityCheckpointTest");
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("summary:low".to_string()),
+    );
+    let work = Node::new("work");
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let cp = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    assert_eq!(
+        cp.context_values.get("internal.fidelity"),
+        Some(&serde_json::json!("summary:low")),
+        "checkpoint should record the resolved fidelity"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_precedence_multi_node_pipeline() {
+    let mut graph = make_graph_with_start_exit("FidelityPrecedenceTest");
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("truncate".to_string()),
+    );
+
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_b.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("summary:medium".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    let mut step_c = Node::new("step_c");
+    step_c.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_c.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("compact".to_string()),
+    );
+    graph.nodes.insert("step_c".to_string(), step_c);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+
+    let mut edge_b_c = Edge::new("step_b", "step_c");
+    edge_b_c.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("summary:high".to_string()),
+    );
+    graph.edges.push(edge_b_c);
+
+    graph.edges.push(Edge::new("step_c", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].0, "step_a");
+    assert_eq!(fidelities[0].1, "truncate");
+    assert_eq!(fidelities[1].0, "step_b");
+    assert_eq!(fidelities[1].1, "summary:medium");
+    assert_eq!(fidelities[2].0, "step_c");
+    assert_eq!(fidelities[2].1, "summary:high");
+}
+
+#[tokio::test]
+async fn fidelity_compact_preamble_includes_completed_stages_and_context() {
+    let mut graph = make_graph_with_start_exit("FidelityCompactContentTest");
+    graph.attrs.insert(
+        "goal".to_string(),
+        AttrValue::String("Build the widget".to_string()),
+    );
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("compact".to_string()),
+    );
+
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let preambles = captures.preambles.lock().unwrap();
+    // step_b's preamble should contain structured summary of completed work
+    let step_b_preamble = &preambles[1].1;
+    assert!(
+        step_b_preamble.contains("Build the widget"),
+        "compact preamble should contain the goal"
+    );
+    assert!(
+        step_b_preamble.contains("Completed stages:"),
+        "compact preamble should include completed stages section"
+    );
+    assert!(
+        step_b_preamble.contains("step_a"),
+        "compact preamble should mention completed node step_a"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_summary_detail_increases_with_level() {
+    // Run three separate pipelines with summary:low, summary:medium, and summary:high.
+    // Verify that higher detail levels produce longer preambles.
+    let mut preamble_lengths: Vec<(String, usize)> = Vec::new();
+
+    // -- summary:low --
+    let mut graph_low = make_graph_with_start_exit("SummaryLenLow");
+    graph_low.attrs.insert("goal".to_string(), AttrValue::String("Detail test".to_string()));
+    graph_low.attrs.insert("default_fidelity".to_string(), AttrValue::String("summary:low".to_string()));
+    let mut step_a_low = Node::new("step_a");
+    step_a_low.attrs.insert("type".to_string(), AttrValue::String("fidelity_capture".to_string()));
+    graph_low.nodes.insert("step_a".to_string(), step_a_low);
+    let mut step_b_low = Node::new("step_b");
+    step_b_low.attrs.insert("type".to_string(), AttrValue::String("fidelity_capture".to_string()));
+    graph_low.nodes.insert("step_b".to_string(), step_b_low);
+    graph_low.edges.push(Edge::new("start", "step_a"));
+    graph_low.edges.push(Edge::new("step_a", "step_b"));
+    graph_low.edges.push(Edge::new("step_b", "exit"));
+
+    let captures_low = FidelityCaptures::new();
+    let dir_low = tempfile::tempdir().unwrap();
+    let mut registry_low = HandlerRegistry::new(Box::new(StartHandler));
+    registry_low.register("start", Box::new(StartHandler));
+    registry_low.register("exit", Box::new(ExitHandler));
+    registry_low.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures_low.clone() }));
+    let engine_low = PipelineEngine::new(registry_low, EventEmitter::new());
+    let config_low = RunConfig { logs_root: dir_low.path().to_path_buf(), cancel_token: None };
+    engine_low.run(&graph_low, &config_low).await.expect("run low");
+    let preambles_low = captures_low.preambles.lock().unwrap();
+    preamble_lengths.push(("summary:low".to_string(), preambles_low[1].1.len()));
+
+    // -- summary:medium --
+    let mut graph_med = make_graph_with_start_exit("SummaryLenMed");
+    graph_med.attrs.insert("goal".to_string(), AttrValue::String("Detail test".to_string()));
+    graph_med.attrs.insert("default_fidelity".to_string(), AttrValue::String("summary:medium".to_string()));
+    let mut step_a_med = Node::new("step_a");
+    step_a_med.attrs.insert("type".to_string(), AttrValue::String("fidelity_capture".to_string()));
+    graph_med.nodes.insert("step_a".to_string(), step_a_med);
+    let mut step_b_med = Node::new("step_b");
+    step_b_med.attrs.insert("type".to_string(), AttrValue::String("fidelity_capture".to_string()));
+    graph_med.nodes.insert("step_b".to_string(), step_b_med);
+    graph_med.edges.push(Edge::new("start", "step_a"));
+    graph_med.edges.push(Edge::new("step_a", "step_b"));
+    graph_med.edges.push(Edge::new("step_b", "exit"));
+
+    let captures_med = FidelityCaptures::new();
+    let dir_med = tempfile::tempdir().unwrap();
+    let mut registry_med = HandlerRegistry::new(Box::new(StartHandler));
+    registry_med.register("start", Box::new(StartHandler));
+    registry_med.register("exit", Box::new(ExitHandler));
+    registry_med.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures_med.clone() }));
+    let engine_med = PipelineEngine::new(registry_med, EventEmitter::new());
+    let config_med = RunConfig { logs_root: dir_med.path().to_path_buf(), cancel_token: None };
+    engine_med.run(&graph_med, &config_med).await.expect("run med");
+    let preambles_med = captures_med.preambles.lock().unwrap();
+    preamble_lengths.push(("summary:medium".to_string(), preambles_med[1].1.len()));
+
+    // -- summary:high --
+    let mut graph_high = make_graph_with_start_exit("SummaryLenHigh");
+    graph_high.attrs.insert("goal".to_string(), AttrValue::String("Detail test".to_string()));
+    graph_high.attrs.insert("default_fidelity".to_string(), AttrValue::String("summary:high".to_string()));
+    let mut step_a_high = Node::new("step_a");
+    step_a_high.attrs.insert("type".to_string(), AttrValue::String("fidelity_capture".to_string()));
+    graph_high.nodes.insert("step_a".to_string(), step_a_high);
+    let mut step_b_high = Node::new("step_b");
+    step_b_high.attrs.insert("type".to_string(), AttrValue::String("fidelity_capture".to_string()));
+    graph_high.nodes.insert("step_b".to_string(), step_b_high);
+    graph_high.edges.push(Edge::new("start", "step_a"));
+    graph_high.edges.push(Edge::new("step_a", "step_b"));
+    graph_high.edges.push(Edge::new("step_b", "exit"));
+
+    let captures_high = FidelityCaptures::new();
+    let dir_high = tempfile::tempdir().unwrap();
+    let mut registry_high = HandlerRegistry::new(Box::new(StartHandler));
+    registry_high.register("start", Box::new(StartHandler));
+    registry_high.register("exit", Box::new(ExitHandler));
+    registry_high.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures_high.clone() }));
+    let engine_high = PipelineEngine::new(registry_high, EventEmitter::new());
+    let config_high = RunConfig { logs_root: dir_high.path().to_path_buf(), cancel_token: None };
+    engine_high.run(&graph_high, &config_high).await.expect("run high");
+    let preambles_high = captures_high.preambles.lock().unwrap();
+    preamble_lengths.push(("summary:high".to_string(), preambles_high[1].1.len()));
+
+    // Higher summary levels should produce more detailed (longer) preambles
+    assert!(
+        preamble_lengths[0].1 <= preamble_lengths[1].1,
+        "summary:low ({}) should be no longer than summary:medium ({})",
+        preamble_lengths[0].1,
+        preamble_lengths[1].1,
+    );
+    assert!(
+        preamble_lengths[1].1 <= preamble_lengths[2].1,
+        "summary:medium ({}) should be no longer than summary:high ({})",
+        preamble_lengths[1].1,
+        preamble_lengths[2].1,
+    );
+}
+
+#[tokio::test]
+async fn fidelity_thread_id_fallback_to_previous_node_in_pipeline() {
+    // When no thread_id is set on the node, edge, graph, or class,
+    // the thread ID should fall back to the previous node's ID.
+    let mut graph = make_graph_with_start_exit("ThreadFallbackTest");
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let thread_ids = captures.thread_ids.lock().unwrap();
+    // step_a should have previous node = start
+    assert_eq!(thread_ids[0].0, "step_a");
+    assert_eq!(thread_ids[0].1, Some("start".to_string()));
+    // step_b should have previous node = step_a
+    assert_eq!(thread_ids[1].0, "step_b");
+    assert_eq!(thread_ids[1].1, Some("step_a".to_string()));
+}
+
+#[tokio::test]
+async fn fidelity_thread_id_from_node_class_in_pipeline() {
+    // When a node has classes (from subgraph derivation), thread_id resolves
+    // from the first class name per spec step 4.
+    let mut graph = make_graph_with_start_exit("ThreadClassTest");
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    work.classes = vec!["planning".to_string(), "review".to_string()];
+    graph.nodes.insert("work".to_string(), work);
+
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let thread_ids = captures.thread_ids.lock().unwrap();
+    assert_eq!(thread_ids[0].0, "work");
+    assert_eq!(
+        thread_ids[0].1,
+        Some("planning".to_string()),
+        "thread_id should resolve from first class name"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_edge_thread_id_override_in_pipeline() {
+    // Edge thread_id should override the previous-node fallback.
+    let mut graph = make_graph_with_start_exit("EdgeThreadOverrideTest");
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+
+    let mut edge_to_work = Edge::new("start", "work");
+    edge_to_work.attrs.insert(
+        "thread_id".to_string(),
+        AttrValue::String("edge-session".to_string()),
+    );
+    graph.edges.push(edge_to_work);
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let thread_ids = captures.thread_ids.lock().unwrap();
+    assert_eq!(thread_ids[0].0, "work");
+    assert_eq!(
+        thread_ids[0].1,
+        Some("edge-session".to_string()),
+        "edge thread_id should override the previous-node fallback"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_full_without_explicit_thread_id_uses_previous_node() {
+    // When fidelity=full but no explicit thread_id is set, thread resolution
+    // should still fall back to the previous node ID.
+    let mut graph = make_graph_with_start_exit("FullNoExplicitThreadTest");
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    work.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("full".to_string()),
+    );
+    // No thread_id set explicitly
+    graph.nodes.insert("work".to_string(), work);
+
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].1, "full");
+
+    let thread_ids = captures.thread_ids.lock().unwrap();
+    assert_eq!(thread_ids[0].0, "work");
+    assert_eq!(
+        thread_ids[0].1,
+        Some("start".to_string()),
+        "full fidelity without explicit thread_id should fall back to previous node"
+    );
+
+    let preambles = captures.preambles.lock().unwrap();
+    assert_eq!(preambles[0].1, "", "full fidelity should produce empty preamble");
+}
+
+#[tokio::test]
+async fn fidelity_from_parsed_dot_pipeline() {
+    // Parse a DOT file with fidelity attributes and run the pipeline.
+    let input = r#"digraph FidelityDotTest {
+        graph [goal="Test DOT fidelity", default_fidelity="truncate"]
+
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+
+        step_a [type="fidelity_capture"]
+        step_b [type="fidelity_capture", fidelity="summary:medium"]
+        step_c [type="fidelity_capture"]
+
+        start -> step_a -> step_b
+        step_b -> step_c [fidelity="summary:high"]
+        step_c -> exit
+    }"#;
+
+    let graph = parse(input).expect("parsing should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    // step_a: no node fidelity, no edge fidelity -> graph default "truncate"
+    assert_eq!(fidelities[0].0, "step_a");
+    assert_eq!(fidelities[0].1, "truncate");
+    // step_b: node fidelity "summary:medium" overrides graph default
+    assert_eq!(fidelities[1].0, "step_b");
+    assert_eq!(fidelities[1].1, "summary:medium");
+    // step_c: node has no fidelity but incoming edge has "summary:high" -> edge wins
+    assert_eq!(fidelities[2].0, "step_c");
+    assert_eq!(fidelities[2].1, "summary:high");
+}
+
+#[tokio::test]
+async fn fidelity_checkpoint_roundtrip_preserves_fidelity() {
+    // Run a pipeline that sets a specific fidelity, save checkpoint,
+    // load it, and verify the fidelity value survives the roundtrip.
+    let mut graph = make_graph_with_start_exit("FidelityCheckpointRoundtripTest");
+    graph.attrs.insert(
+        "default_fidelity".to_string(),
+        AttrValue::String("summary:high".to_string()),
+    );
+    let work = Node::new("work");
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    // Load, save, load again to verify roundtrip
+    let checkpoint_path = dir.path().join("checkpoint.json");
+    let cp1 = Checkpoint::load(&checkpoint_path).expect("first load");
+    assert_eq!(
+        cp1.context_values.get("internal.fidelity"),
+        Some(&serde_json::json!("summary:high")),
+    );
+
+    let roundtrip_path = dir.path().join("checkpoint_roundtrip.json");
+    cp1.save(&roundtrip_path).expect("save");
+    let cp2 = Checkpoint::load(&roundtrip_path).expect("second load");
+    assert_eq!(
+        cp2.context_values.get("internal.fidelity"),
+        Some(&serde_json::json!("summary:high")),
+        "fidelity should survive checkpoint save/load roundtrip"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_node_thread_id_overrides_edge_thread_id_in_pipeline() {
+    // When both node and edge have thread_id, the node's takes precedence (spec step 1 > step 2).
+    let mut graph = make_graph_with_start_exit("NodeOverridesEdgeThreadTest");
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    work.attrs.insert(
+        "thread_id".to_string(),
+        AttrValue::String("node-thread".to_string()),
+    );
+    graph.nodes.insert("work".to_string(), work);
+
+    let mut edge_to_work = Edge::new("start", "work");
+    edge_to_work.attrs.insert(
+        "thread_id".to_string(),
+        AttrValue::String("edge-thread".to_string()),
+    );
+    graph.edges.push(edge_to_work);
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine.run(&graph, &config).await.expect("run");
+
+    let thread_ids = captures.thread_ids.lock().unwrap();
+    assert_eq!(thread_ids[0].0, "work");
+    assert_eq!(
+        thread_ids[0].1,
+        Some("node-thread".to_string()),
+        "node thread_id should take precedence over edge thread_id"
+    );
+}
+
+#[tokio::test]
+async fn fidelity_resume_preserves_context_values_across_checkpoint() {
+    // After resuming from a checkpoint, context values from the checkpoint
+    // should be available to the resumed nodes. This tests that fidelity-related
+    // context survives the resume path.
+    let mut graph = make_graph_with_start_exit("FidelityResumeContextTest");
+    let mut step_a = Node::new("step_a");
+    step_a.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("compact".to_string()),
+    );
+    graph.nodes.insert("step_a".to_string(), step_a);
+
+    let mut step_b = Node::new("step_b");
+    step_b.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fidelity_capture".to_string()),
+    );
+    step_b.attrs.insert(
+        "fidelity".to_string(),
+        AttrValue::String("summary:low".to_string()),
+    );
+    graph.nodes.insert("step_b".to_string(), step_b);
+
+    graph.edges.push(Edge::new("start", "step_a"));
+    graph.edges.push(Edge::new("step_a", "step_b"));
+    graph.edges.push(Edge::new("step_b", "exit"));
+
+    let ctx = Context::new();
+    ctx.set("outcome", serde_json::json!("success"));
+    ctx.set("internal.fidelity", serde_json::json!("compact"));
+    ctx.set("context.custom_key", serde_json::json!("custom_value"));
+
+    let mut outcomes = std::collections::HashMap::new();
+    outcomes.insert("start".to_string(), Outcome::success());
+    outcomes.insert("step_a".to_string(), Outcome::success());
+
+    let checkpoint = Checkpoint::from_context(
+        &ctx,
+        "step_a",
+        vec!["start".to_string(), "step_a".to_string()],
+        std::collections::HashMap::new(),
+        outcomes,
+        Some("step_b".to_string()),
+    );
+
+    let captures = FidelityCaptures::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("fidelity_capture", Box::new(FidelityCapturingHandler { captures: captures.clone() }));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+    engine
+        .run_from_checkpoint(&graph, &config, &checkpoint)
+        .await
+        .expect("resume should succeed");
+
+    let fidelities = captures.fidelities.lock().unwrap();
+    assert_eq!(fidelities[0].0, "step_b");
+    assert_eq!(
+        fidelities[0].1, "summary:low",
+        "resumed node should use its own fidelity (no degrade since checkpoint was compact, not full)"
+    );
+
+    // Verify the final checkpoint still has the fidelity
+    let final_cp = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    assert_eq!(
+        final_cp.context_values.get("internal.fidelity"),
+        Some(&serde_json::json!("summary:low")),
+    );
+}
+
+// ===========================================================================
 // 20. Real LLM pipeline tests (requires ANTHROPIC_API_KEY)
 // ===========================================================================
 
@@ -4085,4 +5505,980 @@ mod real_llm {
             "revise should NOT be traversed with auto-approve"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Wait.human freeform edge integration tests (Section 4.6)
+// ---------------------------------------------------------------------------
+
+/// Freeform-only human gate: free-text input routes through the freeform edge
+/// and stores the text in human.gate.text context variable.
+#[tokio::test]
+async fn human_gate_freeform_only_routes_text() {
+    // Graph: start -> gate -> freeform_target -> exit
+    // gate has only a freeform edge (no fixed choices)
+    let mut graph = Graph::new("FreeformOnlyTest");
+
+    let mut start = Node::new("start");
+    start
+        .attrs
+        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs
+        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let mut gate = Node::new("gate");
+    gate.attrs
+        .insert("shape".to_string(), AttrValue::String("hexagon".to_string()));
+    gate.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("wait.human".to_string()),
+    );
+    gate.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Enter feedback".to_string()),
+    );
+    graph.nodes.insert("gate".to_string(), gate);
+    graph
+        .nodes
+        .insert("freeform_target".to_string(), Node::new("freeform_target"));
+
+    graph.edges.push(Edge::new("start", "gate"));
+
+    let mut freeform_edge = Edge::new("gate", "freeform_target");
+    freeform_edge
+        .attrs
+        .insert("freeform".to_string(), AttrValue::Boolean(true));
+    graph.edges.push(freeform_edge);
+
+    graph.edges.push(Edge::new("freeform_target", "exit"));
+
+    let answers = VecDeque::from([Answer::text("my free text input")]);
+    let interviewer = Arc::new(QueueInterviewer::new(answers));
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("wait.human", Box::new(WaitHumanHandler::new(interviewer)));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let checkpoint = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    assert!(
+        checkpoint
+            .completed_nodes
+            .contains(&"freeform_target".to_string()),
+        "should have routed through freeform_target"
+    );
+    assert_eq!(
+        checkpoint.context_values.get("human.gate.text"),
+        Some(&serde_json::json!("my free text input")),
+        "human.gate.text should contain the freeform input"
+    );
+    assert_eq!(
+        checkpoint.context_values.get("human.gate.selected"),
+        Some(&serde_json::json!("freeform")),
+        "human.gate.selected should be 'freeform'"
+    );
+    assert_eq!(
+        checkpoint.context_values.get("human.gate.label"),
+        Some(&serde_json::json!("my free text input")),
+        "human.gate.label should contain the freeform text"
+    );
+}
+
+/// Human gate with both fixed choices and a freeform edge:
+/// when the answer matches a fixed choice, it routes to the fixed choice target.
+#[tokio::test]
+async fn human_gate_freeform_with_fixed_choice_match() {
+    // Graph: start -> gate -> {approve, reject, freeform_target} -> exit
+    // gate has fixed choices plus a freeform edge
+    // Answer selects "A" which matches "Approve" -> routes to approve
+    let mut graph = Graph::new("FreeformFixedMatchTest");
+
+    let mut start = Node::new("start");
+    start
+        .attrs
+        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs
+        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let mut gate = Node::new("gate");
+    gate.attrs
+        .insert("shape".to_string(), AttrValue::String("hexagon".to_string()));
+    gate.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("wait.human".to_string()),
+    );
+    gate.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Review Changes".to_string()),
+    );
+    graph.nodes.insert("gate".to_string(), gate);
+    graph
+        .nodes
+        .insert("approve".to_string(), Node::new("approve"));
+    graph
+        .nodes
+        .insert("reject".to_string(), Node::new("reject"));
+    graph
+        .nodes
+        .insert("freeform_target".to_string(), Node::new("freeform_target"));
+
+    graph.edges.push(Edge::new("start", "gate"));
+
+    let mut e_approve = Edge::new("gate", "approve");
+    e_approve.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("[A] Approve".to_string()),
+    );
+    graph.edges.push(e_approve);
+
+    let mut e_reject = Edge::new("gate", "reject");
+    e_reject.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("[R] Reject".to_string()),
+    );
+    graph.edges.push(e_reject);
+
+    let mut freeform_edge = Edge::new("gate", "freeform_target");
+    freeform_edge
+        .attrs
+        .insert("freeform".to_string(), AttrValue::Boolean(true));
+    graph.edges.push(freeform_edge);
+
+    graph.edges.push(Edge::new("approve", "exit"));
+    graph.edges.push(Edge::new("reject", "exit"));
+    graph.edges.push(Edge::new("freeform_target", "exit"));
+
+    // Answer selects "A" which matches the Approve choice
+    let answers = VecDeque::from([Answer {
+        value: AnswerValue::Selected("A".to_string()),
+        selected_option: None,
+        text: None,
+    }]);
+    let interviewer = Arc::new(QueueInterviewer::new(answers));
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("wait.human", Box::new(WaitHumanHandler::new(interviewer)));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let checkpoint = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    assert!(
+        checkpoint.completed_nodes.contains(&"approve".to_string()),
+        "fixed choice match should route to approve"
+    );
+    assert!(
+        !checkpoint
+            .completed_nodes
+            .contains(&"freeform_target".to_string()),
+        "should NOT route through freeform when fixed choice matches"
+    );
+}
+
+/// Human gate with both fixed choices and a freeform edge:
+/// when the answer does NOT match any fixed choice, it falls through to the freeform edge.
+#[tokio::test]
+async fn human_gate_freeform_fallback_on_unmatched_text() {
+    // Graph: start -> gate -> {approve, reject, freeform_target} -> exit
+    // gate has fixed choices plus a freeform edge
+    // Answer is free text that doesn't match any choice -> routes to freeform_target
+    let mut graph = Graph::new("FreeformFallbackTest");
+
+    let mut start = Node::new("start");
+    start
+        .attrs
+        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs
+        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let mut gate = Node::new("gate");
+    gate.attrs
+        .insert("shape".to_string(), AttrValue::String("hexagon".to_string()));
+    gate.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("wait.human".to_string()),
+    );
+    gate.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Review Changes".to_string()),
+    );
+    graph.nodes.insert("gate".to_string(), gate);
+    graph
+        .nodes
+        .insert("approve".to_string(), Node::new("approve"));
+    graph
+        .nodes
+        .insert("reject".to_string(), Node::new("reject"));
+    graph
+        .nodes
+        .insert("freeform_target".to_string(), Node::new("freeform_target"));
+
+    graph.edges.push(Edge::new("start", "gate"));
+
+    let mut e_approve = Edge::new("gate", "approve");
+    e_approve.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("[A] Approve".to_string()),
+    );
+    graph.edges.push(e_approve);
+
+    let mut e_reject = Edge::new("gate", "reject");
+    e_reject.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("[R] Reject".to_string()),
+    );
+    graph.edges.push(e_reject);
+
+    let mut freeform_edge = Edge::new("gate", "freeform_target");
+    freeform_edge
+        .attrs
+        .insert("freeform".to_string(), AttrValue::Boolean(true));
+    graph.edges.push(freeform_edge);
+
+    graph.edges.push(Edge::new("approve", "exit"));
+    graph.edges.push(Edge::new("reject", "exit"));
+    graph.edges.push(Edge::new("freeform_target", "exit"));
+
+    // Free-text answer that doesn't match any fixed choice
+    let answers = VecDeque::from([Answer::text("I need more context before deciding")]);
+    let interviewer = Arc::new(QueueInterviewer::new(answers));
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("wait.human", Box::new(WaitHumanHandler::new(interviewer)));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let checkpoint = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    assert!(
+        checkpoint
+            .completed_nodes
+            .contains(&"freeform_target".to_string()),
+        "unmatched text should fall through to freeform_target"
+    );
+    assert!(
+        !checkpoint.completed_nodes.contains(&"approve".to_string()),
+        "should NOT route to approve"
+    );
+    assert!(
+        !checkpoint.completed_nodes.contains(&"reject".to_string()),
+        "should NOT route to reject"
+    );
+    assert_eq!(
+        checkpoint.context_values.get("human.gate.text"),
+        Some(&serde_json::json!("I need more context before deciding")),
+        "human.gate.text should contain the freeform input"
+    );
+    assert_eq!(
+        checkpoint.context_values.get("human.gate.selected"),
+        Some(&serde_json::json!("freeform")),
+        "human.gate.selected should be 'freeform' for freeform fallback"
+    );
+    assert_eq!(
+        checkpoint.context_values.get("human.gate.label"),
+        Some(&serde_json::json!("I need more context before deciding")),
+        "human.gate.label should contain the freeform text"
+    );
+}
+
+/// Verifies that the Question presented to the interviewer has allow_freeform=true
+/// when a freeform edge is present on the human gate.
+#[tokio::test]
+async fn human_gate_freeform_sets_allow_freeform_on_question() {
+    // Graph: start -> gate -> {approve, freeform_target} -> exit
+    // gate has a fixed choice plus a freeform edge
+    // We use RecordingInterviewer to capture the question and verify allow_freeform
+    let mut graph = Graph::new("AllowFreeformTest");
+
+    let mut start = Node::new("start");
+    start
+        .attrs
+        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs
+        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let mut gate = Node::new("gate");
+    gate.attrs
+        .insert("shape".to_string(), AttrValue::String("hexagon".to_string()));
+    gate.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("wait.human".to_string()),
+    );
+    gate.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Pick or type".to_string()),
+    );
+    graph.nodes.insert("gate".to_string(), gate);
+    graph
+        .nodes
+        .insert("approve".to_string(), Node::new("approve"));
+    graph
+        .nodes
+        .insert("freeform_target".to_string(), Node::new("freeform_target"));
+
+    graph.edges.push(Edge::new("start", "gate"));
+
+    let mut e_approve = Edge::new("gate", "approve");
+    e_approve.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("[A] Approve".to_string()),
+    );
+    graph.edges.push(e_approve);
+
+    let mut freeform_edge = Edge::new("gate", "freeform_target");
+    freeform_edge
+        .attrs
+        .insert("freeform".to_string(), AttrValue::Boolean(true));
+    graph.edges.push(freeform_edge);
+
+    graph.edges.push(Edge::new("approve", "exit"));
+    graph.edges.push(Edge::new("freeform_target", "exit"));
+
+    let answers = VecDeque::from([Answer {
+        value: AnswerValue::Selected("A".to_string()),
+        selected_option: None,
+        text: None,
+    }]);
+    let inner = QueueInterviewer::new(answers);
+    let recorder = Arc::new(RecordingInterviewer::new(Box::new(inner)));
+    let interviewer: Arc<dyn Interviewer> = recorder.clone();
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("wait.human", Box::new(WaitHumanHandler::new(interviewer)));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let recordings = recorder.recordings();
+    assert_eq!(recordings.len(), 1, "should have recorded exactly one question");
+    assert!(
+        recordings[0].0.allow_freeform,
+        "Question should have allow_freeform=true when a freeform edge is present"
+    );
+}
+
+/// Verifies that the Question presented to the interviewer has allow_freeform=false
+/// when no freeform edge is present on the human gate (fixed choices only).
+#[tokio::test]
+async fn human_gate_without_freeform_sets_allow_freeform_false() {
+    // Graph: start -> gate -> {approve, reject} -> exit
+    // gate has only fixed choices, no freeform edge
+    let mut graph = Graph::new("NoFreeformTest");
+
+    let mut start = Node::new("start");
+    start
+        .attrs
+        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs
+        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let mut gate = Node::new("gate");
+    gate.attrs
+        .insert("shape".to_string(), AttrValue::String("hexagon".to_string()));
+    gate.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("wait.human".to_string()),
+    );
+    gate.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Pick one".to_string()),
+    );
+    graph.nodes.insert("gate".to_string(), gate);
+    graph
+        .nodes
+        .insert("approve".to_string(), Node::new("approve"));
+    graph
+        .nodes
+        .insert("reject".to_string(), Node::new("reject"));
+
+    graph.edges.push(Edge::new("start", "gate"));
+
+    let mut e_approve = Edge::new("gate", "approve");
+    e_approve.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("[A] Approve".to_string()),
+    );
+    graph.edges.push(e_approve);
+
+    let mut e_reject = Edge::new("gate", "reject");
+    e_reject.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("[R] Reject".to_string()),
+    );
+    graph.edges.push(e_reject);
+
+    graph.edges.push(Edge::new("approve", "exit"));
+    graph.edges.push(Edge::new("reject", "exit"));
+
+    let answers = VecDeque::from([Answer {
+        value: AnswerValue::Selected("A".to_string()),
+        selected_option: None,
+        text: None,
+    }]);
+    let inner = QueueInterviewer::new(answers);
+    let recorder = Arc::new(RecordingInterviewer::new(Box::new(inner)));
+    let interviewer: Arc<dyn Interviewer> = recorder.clone();
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("wait.human", Box::new(WaitHumanHandler::new(interviewer)));
+
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let recordings = recorder.recordings();
+    assert_eq!(recordings.len(), 1, "should have recorded exactly one question");
+    assert!(
+        !recordings[0].0.allow_freeform,
+        "Question should have allow_freeform=false when no freeform edge is present"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Subgraph features (Section 2.10)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn subgraph_node_defaults_scoped_to_subgraph() {
+    let input = r#"digraph SubgraphDefaults {
+        graph [goal="Test subgraph defaults"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+
+        subgraph cluster_loop {
+            label = "Loop A"
+            node [thread_id="loop-a", timeout="900s"]
+
+            plan      [label="Plan next step"]
+            implement [label="Implement", timeout="1800s"]
+        }
+
+        outside [label="Outside node"]
+
+        start -> plan -> implement -> outside -> exit
+    }"#;
+
+    let graph = parse(input).expect("parsing should succeed");
+
+    // Plan inherits both thread_id and timeout from subgraph defaults
+    let plan = &graph.nodes["plan"];
+    assert_eq!(plan.thread_id(), Some("loop-a"));
+    assert_eq!(
+        plan.timeout(),
+        Some(std::time::Duration::from_secs(900))
+    );
+
+    // Implement inherits thread_id but overrides timeout
+    let implement = &graph.nodes["implement"];
+    assert_eq!(implement.thread_id(), Some("loop-a"));
+    assert_eq!(
+        implement.timeout(),
+        Some(std::time::Duration::from_secs(1800))
+    );
+
+    // Outside node should NOT have subgraph defaults
+    let outside = &graph.nodes["outside"];
+    assert_eq!(outside.thread_id(), None);
+    assert_eq!(outside.timeout(), None);
+}
+
+#[test]
+fn subgraph_class_derived_from_label() {
+    let input = r#"digraph SubgraphClass {
+        graph [goal="Test class derivation"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+
+        subgraph cluster_loop {
+            label = "Loop A"
+            plan      [label="Plan"]
+            implement [label="Implement"]
+        }
+
+        start -> plan -> implement -> exit
+    }"#;
+
+    let graph = parse(input).expect("parsing should succeed");
+
+    // Nodes inside subgraph receive derived class "loop-a"
+    assert!(graph.nodes["plan"].classes.contains(&"loop-a".to_string()));
+    assert!(graph.nodes["implement"].classes.contains(&"loop-a".to_string()));
+
+    // Nodes outside subgraph do not get the class
+    assert!(!graph.nodes["start"].classes.contains(&"loop-a".to_string()));
+    assert!(!graph.nodes["exit"].classes.contains(&"loop-a".to_string()));
+}
+
+#[test]
+fn subgraph_class_derivation_strips_special_chars() {
+    let input = r#"digraph SubgraphClassStrip {
+        graph [goal="Test class derivation with special chars"]
+
+        subgraph cluster_review {
+            label = "Code Review!!!"
+            reviewer [label="Reviewer"]
+        }
+    }"#;
+
+    let graph = parse(input).expect("parsing should succeed");
+    // "Code Review!!!" -> lowercase "code review!!!" -> spaces to hyphens "code-review!!!"
+    // -> strip non-alphanumeric except hyphens -> "code-review"
+    assert!(graph.nodes["reviewer"].classes.contains(&"code-review".to_string()));
+}
+
+#[test]
+fn subgraph_scoping_does_not_leak_to_outer_scope() {
+    let input = r#"digraph SubgraphScoping {
+        graph [goal="Test scoping"]
+        node [timeout="300s"]
+
+        subgraph cluster_inner {
+            label = "Inner"
+            node [timeout="900s"]
+            inner_node [label="Inner"]
+        }
+
+        outer_node [label="Outer"]
+    }"#;
+
+    let graph = parse(input).expect("parsing should succeed");
+
+    // Inner node gets the subgraph-scoped timeout of 900s
+    let inner = &graph.nodes["inner_node"];
+    assert_eq!(
+        inner.timeout(),
+        Some(std::time::Duration::from_secs(900))
+    );
+
+    // Outer node gets the graph-level default of 300s, not the subgraph's 900s
+    let outer = &graph.nodes["outer_node"];
+    assert_eq!(
+        outer.timeout(),
+        Some(std::time::Duration::from_secs(300))
+    );
+}
+
+#[test]
+fn subgraph_global_defaults_plus_subgraph_defaults() {
+    let input = r#"digraph SubgraphMerge {
+        graph [goal="Test merged defaults"]
+        node [shape=box, timeout="300s"]
+
+        subgraph cluster_loop {
+            label = "Loop"
+            node [thread_id="loop-thread"]
+            step [label="Step"]
+        }
+
+        plain [label="Plain"]
+    }"#;
+
+    let graph = parse(input).expect("parsing should succeed");
+
+    // Step should have both the global shape=box + timeout=300s and subgraph thread_id
+    let step = &graph.nodes["step"];
+    assert_eq!(step.shape(), "box");
+    assert_eq!(step.thread_id(), Some("loop-thread"));
+    assert_eq!(
+        step.timeout(),
+        Some(std::time::Duration::from_secs(300))
+    );
+
+    // Plain should have the global defaults but no thread_id
+    let plain = &graph.nodes["plain"];
+    assert_eq!(plain.shape(), "box");
+    assert_eq!(plain.thread_id(), None);
+    assert_eq!(
+        plain.timeout(),
+        Some(std::time::Duration::from_secs(300))
+    );
+}
+
+#[test]
+fn subgraph_edges_inherit_class() {
+    let input = r#"digraph SubgraphEdgeClass {
+        graph [goal="Test edge nodes get class"]
+
+        subgraph cluster_loop {
+            label = "My Loop"
+            a [label="A"]
+            b [label="B"]
+            a -> b
+        }
+    }"#;
+
+    let graph = parse(input).expect("parsing should succeed");
+
+    // Both nodes referenced in edges within the subgraph get the derived class
+    assert!(graph.nodes["a"].classes.contains(&"my-loop".to_string()));
+    assert!(graph.nodes["b"].classes.contains(&"my-loop".to_string()));
+}
+
+#[test]
+fn subgraph_without_label_no_class_derived() {
+    let input = r#"digraph SubgraphNoLabel {
+        graph [goal="Test subgraph without label"]
+
+        subgraph cluster_unnamed {
+            node [timeout="600s"]
+            worker [label="Worker"]
+        }
+    }"#;
+
+    let graph = parse(input).expect("parsing should succeed");
+
+    // No label means no class should be derived
+    let worker = &graph.nodes["worker"];
+    assert!(worker.classes.is_empty());
+    // But the default should still apply
+    assert_eq!(
+        worker.timeout(),
+        Some(std::time::Duration::from_secs(600))
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Tool Call Hooks (Section 9.7)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn tool_hooks_pre_success_allows_pipeline_to_proceed() {
+    let input = r#"digraph HookTest {
+        graph [goal="Test pre-hook success"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        work  [shape=box, label="Work", prompt="Do work", tool_hooks.pre="exit 0"]
+        start -> work -> exit
+    }"#;
+
+    let graph = parse(input).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(make_linear_registry(), EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // The work node should have executed normally
+    let stage_dir = dir.path().join("work");
+    assert!(
+        stage_dir.join("prompt.md").exists(),
+        "prompt.md should exist when pre-hook succeeds"
+    );
+    assert!(
+        stage_dir.join("response.md").exists(),
+        "response.md should exist when pre-hook succeeds"
+    );
+}
+
+#[tokio::test]
+async fn tool_hooks_pre_failure_skips_tool_call() {
+    let input = r#"digraph HookTest {
+        graph [goal="Test pre-hook failure"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        work  [shape=box, label="Work", prompt="Do work", tool_hooks.pre="exit 1"]
+        start -> work -> exit
+    }"#;
+
+    let graph = parse(input).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(make_linear_registry(), EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    engine.run(&graph, &config).await.expect("run should complete");
+
+    // The pipeline should still complete (skipped is not a fatal status),
+    // but the work node's handler returns Skipped when pre-hook fails.
+    let checkpoint = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    assert!(
+        checkpoint.completed_nodes.contains(&"work".to_string()),
+        "work should appear in completed_nodes even when skipped"
+    );
+
+    // response.md should NOT exist because the LLM call was skipped
+    let stage_dir = dir.path().join("work");
+    assert!(
+        !stage_dir.join("response.md").exists(),
+        "response.md should not exist when pre-hook skips tool call"
+    );
+}
+
+#[tokio::test]
+async fn tool_hooks_post_success_does_not_affect_outcome() {
+    let input = r#"digraph HookTest {
+        graph [goal="Test post-hook success"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        work  [shape=box, label="Work", prompt="Do work", tool_hooks.post="exit 0"]
+        start -> work -> exit
+    }"#;
+
+    let graph = parse(input).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(make_linear_registry(), EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let stage_dir = dir.path().join("work");
+    assert!(
+        stage_dir.join("response.md").exists(),
+        "response.md should exist when post-hook succeeds"
+    );
+}
+
+#[tokio::test]
+async fn tool_hooks_post_failure_does_not_block_pipeline() {
+    let input = r#"digraph HookTest {
+        graph [goal="Test post-hook failure"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        work  [shape=box, label="Work", prompt="Do work", tool_hooks.post="exit 1"]
+        start -> work -> exit
+    }"#;
+
+    let graph = parse(input).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(make_linear_registry(), EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    // Post-hook failure should not block the pipeline (spec 9.7)
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let stage_dir = dir.path().join("work");
+    assert!(
+        stage_dir.join("response.md").exists(),
+        "response.md should exist even when post-hook fails"
+    );
+}
+
+#[tokio::test]
+async fn tool_hooks_graph_level_applies_to_all_nodes() {
+    let input = r#"digraph HookTest {
+        graph [goal="Test graph-level hooks", tool_hooks.pre="exit 0"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        step1 [shape=box, label="Step1", prompt="First step"]
+        step2 [shape=box, label="Step2", prompt="Second step"]
+        start -> step1 -> step2 -> exit
+    }"#;
+
+    let graph = parse(input).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(make_linear_registry(), EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // Both steps should have executed since graph-level pre-hook exits 0
+    assert!(
+        dir.path().join("step1").join("response.md").exists(),
+        "step1 should execute with graph-level pre-hook success"
+    );
+    assert!(
+        dir.path().join("step2").join("response.md").exists(),
+        "step2 should execute with graph-level pre-hook success"
+    );
+}
+
+#[tokio::test]
+async fn tool_hooks_node_level_overrides_graph_level() {
+    let input = r#"digraph HookTest {
+        graph [goal="Test node override", tool_hooks.pre="exit 0"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        step1 [shape=box, label="Step1", prompt="First step", tool_hooks.pre="exit 1"]
+        step2 [shape=box, label="Step2", prompt="Second step"]
+        start -> step1 -> step2 -> exit
+    }"#;
+
+    let graph = parse(input).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(make_linear_registry(), EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let _outcome = engine.run(&graph, &config).await.expect("run should complete");
+
+    // step1 has node-level pre-hook "exit 1" which overrides graph-level "exit 0"
+    // So step1's tool call should be skipped (no response.md)
+    assert!(
+        !dir.path().join("step1").join("response.md").exists(),
+        "step1 should be skipped because node-level pre-hook overrides graph-level"
+    );
+
+    // step2 inherits graph-level "exit 0", so it should execute normally
+    assert!(
+        dir.path().join("step2").join("response.md").exists(),
+        "step2 should execute with inherited graph-level pre-hook"
+    );
+}
+
+#[tokio::test]
+async fn tool_hooks_pre_receives_node_id_env_var() {
+    // Use a pre-hook that writes the ATTRACTOR_NODE_ID env var to a file
+    let dir = tempfile::tempdir().unwrap();
+    let marker_path = dir.path().join("node_id.txt");
+    let hook_cmd = format!(
+        "echo $ATTRACTOR_NODE_ID > {}",
+        marker_path.display()
+    );
+
+    let input = format!(
+        r#"digraph HookTest {{
+        graph [goal="Test env vars"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        my_step [shape=box, label="MyStep", prompt="Do work", tool_hooks.pre="{}"]
+        start -> my_step -> exit
+    }}"#,
+        hook_cmd
+    );
+
+    let graph = parse(&input).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let engine = PipelineEngine::new(make_linear_registry(), EventEmitter::new());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    engine.run(&graph, &config).await.expect("run should succeed");
+
+    let written = std::fs::read_to_string(&marker_path)
+        .expect("marker file should exist");
+    assert_eq!(
+        written.trim(),
+        "my_step",
+        "ATTRACTOR_NODE_ID should contain the node id"
+    );
+}
+
+#[test]
+fn parse_tool_hooks_from_dot_syntax() {
+    let input = r#"digraph HookTest {
+        graph [goal="Test parsing", tool_hooks.pre="echo pre", tool_hooks.post="echo post"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        work  [shape=box, label="Work", prompt="Do it", tool_hooks.pre="node pre"]
+        start -> work -> exit
+    }"#;
+
+    let graph = parse(input).expect("parse should succeed");
+
+    // Graph-level hooks
+    assert_eq!(
+        graph.attrs.get("tool_hooks.pre").and_then(|v| v.as_str()),
+        Some("echo pre")
+    );
+    assert_eq!(
+        graph.attrs.get("tool_hooks.post").and_then(|v| v.as_str()),
+        Some("echo post")
+    );
+
+    // Node-level hook overrides
+    let work = &graph.nodes["work"];
+    assert_eq!(
+        work.attrs.get("tool_hooks.pre").and_then(|v| v.as_str()),
+        Some("node pre")
+    );
 }

@@ -54,7 +54,7 @@ struct ManagedPipeline {
     status: PipelineStatus,
     error: Option<String>,
     interviewer: Arc<WebInterviewer>,
-    event_tx: broadcast::Sender<PipelineEvent>,
+    event_tx: Option<broadcast::Sender<PipelineEvent>>,
     context: Option<Context>,
     checkpoint: Option<Checkpoint>,
     cancel_tx: Option<tokio::sync::oneshot::Sender<()>>,
@@ -189,7 +189,7 @@ async fn start_pipeline(
                 status: PipelineStatus::Running,
                 error: None,
                 interviewer: Arc::clone(&interviewer),
-                event_tx: event_tx.clone(),
+                event_tx: Some(event_tx.clone()),
                 context: Some(context.clone()),
                 checkpoint: None,
                 cancel_tx: Some(cancel_tx),
@@ -212,6 +212,7 @@ async fn start_pipeline(
                 let mut pipelines = state_clone.pipelines.lock().expect("pipelines lock poisoned");
                 if let Some(pipeline) = pipelines.get_mut(&id_clone) {
                     pipeline.status = PipelineStatus::Cancelled;
+                    pipeline.event_tx = None;
                 }
                 return;
             }
@@ -235,6 +236,7 @@ async fn start_pipeline(
                 }
             }
             pipeline.checkpoint = checkpoint;
+            pipeline.event_tx = None;
         }
     });
 
@@ -346,7 +348,10 @@ async fn get_events(
     let rx = {
         let pipelines = state.pipelines.lock().expect("pipelines lock poisoned");
         match pipelines.get(&id) {
-            Some(pipeline) => pipeline.event_tx.subscribe(),
+            Some(pipeline) => match &pipeline.event_tx {
+                Some(tx) => tx.subscribe(),
+                None => return StatusCode::GONE.into_response(),
+            },
             None => return StatusCode::NOT_FOUND.into_response(),
         }
     };
@@ -566,8 +571,8 @@ mod tests {
         let body = body_json(response.into_body()).await;
         let pipeline_id = body["id"].as_str().unwrap().to_string();
 
-        // Give pipeline a moment to run
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // Give pipeline a moment to start
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         // Check status
         let req = Request::builder()
@@ -840,21 +845,24 @@ mod tests {
         let body = body_json(response.into_body()).await;
         let pipeline_id = body["id"].as_str().unwrap().to_string();
 
-        // Wait for pipeline to complete
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-        // Check status
-        let req = Request::builder()
-            .method("GET")
-            .uri(format!("/pipelines/{pipeline_id}"))
-            .body(Body::empty())
-            .unwrap();
-
-        let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_json(response.into_body()).await;
-        assert_eq!(body["status"].as_str().unwrap(), "completed");
+        // Poll until pipeline completes
+        let mut status = String::new();
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            let req = Request::builder()
+                .method("GET")
+                .uri(format!("/pipelines/{pipeline_id}"))
+                .body(Body::empty())
+                .unwrap();
+            let response = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = body_json(response.into_body()).await;
+            status = body["status"].as_str().unwrap().to_string();
+            if status == "completed" || status == "failed" {
+                break;
+            }
+        }
+        assert_eq!(status, "completed");
     }
 
     #[tokio::test]

@@ -367,7 +367,9 @@ mod tests {
     fn prompt_reads_from_stdin() {
         // This test verifies stdin is read, but will fail at the API call stage
         // since no API key is set. The error should NOT be "no prompt provided".
+        // env_clear() prevents .env loading from triggering real API calls.
         let result = ullm()
+            .env_clear()
             .args(["prompt", "--no-stream", "-m", "test-model"])
             .write_stdin("hello from stdin")
             .assert()
@@ -381,7 +383,9 @@ mod tests {
     #[test]
     fn prompt_concatenates_stdin_and_arg() {
         // Same as above — verifies it doesn't error on "no prompt"
+        // env_clear() prevents .env loading from triggering real API calls.
         let result = ullm()
+            .env_clear()
             .args(["prompt", "--no-stream", "-m", "test-model", "summarize this"])
             .write_stdin("some input text")
             .assert()

@@ -265,6 +265,12 @@ fn translate_input(messages: &[Message]) -> (Option<String>, Vec<serde_json::Val
                                 "arguments": args,
                             }));
                         }
+                        // Round-trip opaque items (e.g. reasoning) back to the API
+                        ContentPart::Other { kind, data }
+                            if kind == "openai_reasoning" =>
+                        {
+                            input.push(data.clone());
+                        }
                         _ => {}
                     }
                 }
@@ -424,6 +430,12 @@ fn parse_output(output: &[serde_json::Value]) -> (Vec<ContentPart>, bool) {
                     }
                 }
             }
+            Some("reasoning") => {
+                parts.push(ContentPart::Other {
+                    kind: "openai_reasoning".to_string(),
+                    data: item.clone(),
+                });
+            }
             Some("function_call") => {
                 has_tool_calls = true;
                 let item_id = item
@@ -474,6 +486,8 @@ struct SseStreamState {
     response_model: String,
     accumulated_text: String,
     tool_calls: Vec<ToolCall>,
+    /// Raw reasoning output items to preserve for round-tripping.
+    reasoning_items: Vec<serde_json::Value>,
     usage: Usage,
     finish_reason: FinishReason,
     emitted_start: bool,
@@ -732,6 +746,10 @@ fn handle_output_item_done(
         .and_then(serde_json::Value::as_str);
 
     match item_type {
+        Some("reasoning") => {
+            let item = json.get("item").unwrap_or(json);
+            state.reasoning_items.push(item.clone());
+        }
         Some("message") => {
             if state.emitted_text_start {
                 events.push(StreamEvent::TextEnd { text_id: None });
@@ -832,6 +850,13 @@ fn handle_response_completed(
     state.raw_response = Some(response_data.clone());
 
     let mut content_parts = Vec::new();
+    // Reasoning items must precede function calls for Responses API round-trip
+    for item in &state.reasoning_items {
+        content_parts.push(ContentPart::Other {
+            kind: "openai_reasoning".to_string(),
+            data: item.clone(),
+        });
+    }
     if !state.accumulated_text.is_empty() {
         content_parts.push(ContentPart::text(&state.accumulated_text));
     }
@@ -982,6 +1007,7 @@ impl ProviderAdapter for Adapter {
             response_model: String::new(),
             accumulated_text: String::new(),
             tool_calls: Vec::new(),
+            reasoning_items: Vec::new(),
             usage: Usage::default(),
             finish_reason: FinishReason::Stop,
             emitted_start: false,
@@ -1272,6 +1298,71 @@ mod tests {
         // Without provider_metadata, both fields use tc.id
         assert_eq!(fc["id"], "call_xyz789");
         assert_eq!(fc["call_id"], "call_xyz789");
+    }
+
+    #[test]
+    fn parse_output_preserves_reasoning_items() {
+        let output = vec![
+            serde_json::json!({
+                "type": "reasoning",
+                "id": "rs_abc123",
+                "summary": [{"type": "summary_text", "text": "Thinking..."}]
+            }),
+            serde_json::json!({
+                "type": "function_call",
+                "id": "fc_def456",
+                "call_id": "call_789",
+                "name": "search",
+                "arguments": "{}"
+            }),
+        ];
+        let (parts, has_tool_calls) = parse_output(&output);
+        assert!(has_tool_calls);
+        assert_eq!(parts.len(), 2);
+        // First part is the reasoning item
+        match &parts[0] {
+            ContentPart::Other { kind, data } => {
+                assert_eq!(kind, "openai_reasoning");
+                assert_eq!(data["type"], "reasoning");
+                assert_eq!(data["id"], "rs_abc123");
+            }
+            other => panic!("expected Other, got {other:?}"),
+        }
+        // Second part is the function call
+        assert!(matches!(&parts[1], ContentPart::ToolCall(_)));
+    }
+
+    #[test]
+    fn reasoning_items_round_trip_through_translate_input() {
+        let reasoning = serde_json::json!({
+            "type": "reasoning",
+            "id": "rs_abc123",
+            "summary": [{"type": "summary_text", "text": "Thinking..."}]
+        });
+        let mut tc = ToolCall::new("call_789", "search", serde_json::json!({}));
+        tc.provider_metadata = Some(serde_json::json!({"id": "fc_def456"}));
+
+        let msg = Message {
+            role: Role::Assistant,
+            content: vec![
+                ContentPart::Other {
+                    kind: "openai_reasoning".to_string(),
+                    data: reasoning.clone(),
+                },
+                ContentPart::ToolCall(tc),
+            ],
+            name: None,
+            tool_call_id: None,
+        };
+        let (_, input) = translate_input(&[msg]);
+        assert_eq!(input.len(), 2);
+        // Reasoning item is emitted first
+        assert_eq!(input[0]["type"], "reasoning");
+        assert_eq!(input[0]["id"], "rs_abc123");
+        // Function call follows
+        assert_eq!(input[1]["type"], "function_call");
+        assert_eq!(input[1]["id"], "fc_def456");
+        assert_eq!(input[1]["call_id"], "call_789");
     }
 
     #[test]

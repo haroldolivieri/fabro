@@ -1407,4 +1407,176 @@ mod tests {
             "System prompt should contain user instructions"
         );
     }
+
+    #[tokio::test]
+    async fn tool_approval_denies_tool() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let responses = vec![
+            tool_call_response("echo", "call_1", serde_json::json!({"text": "hello"})),
+            text_response("OK after denial"),
+        ];
+
+        let config = SessionConfig {
+            tool_approval: Some(Arc::new(|_name, _args| {
+                Err("denied by policy".to_string())
+            })),
+            ..Default::default()
+        };
+
+        let mut session = make_session_with_tools_and_config(responses, registry, config).await;
+        session.process_input("Use echo").await.unwrap();
+
+        assert_eq!(session.state(), SessionState::Idle);
+        let turns = session.history().turns();
+        // User + Assistant(tool_call) + ToolResults + Assistant(text) = 4
+        assert_eq!(turns.len(), 4);
+
+        if let Turn::ToolResults { results, .. } = &turns[2] {
+            assert!(results[0].is_error);
+            let content_str = results[0].content.to_string();
+            assert!(
+                content_str.contains("denied by policy"),
+                "Expected denial message in content, got: {content_str}"
+            );
+        } else {
+            panic!("Expected ToolResults turn at index 2");
+        }
+
+        assert!(
+            matches!(&turns[3], Turn::Assistant { content, .. } if content == "OK after denial")
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_approval_allows_tool() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let responses = vec![
+            tool_call_response("echo", "call_1", serde_json::json!({"text": "hello"})),
+            text_response("Done"),
+        ];
+
+        let config = SessionConfig {
+            tool_approval: Some(Arc::new(|_name, _args| Ok(()))),
+            ..Default::default()
+        };
+
+        let mut session = make_session_with_tools_and_config(responses, registry, config).await;
+        session.process_input("Use echo").await.unwrap();
+
+        let turns = session.history().turns();
+        if let Turn::ToolResults { results, .. } = &turns[2] {
+            assert!(!results[0].is_error);
+            let content_str = results[0].content.to_string();
+            assert!(
+                content_str.contains("echo: hello"),
+                "Expected echo output in content, got: {content_str}"
+            );
+        } else {
+            panic!("Expected ToolResults turn at index 2");
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_approval_receives_correct_args() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let captured: Arc<Mutex<Option<(String, serde_json::Value)>>> =
+            Arc::new(Mutex::new(None));
+        let captured_clone = captured.clone();
+
+        let responses = vec![
+            tool_call_response("echo", "call_1", serde_json::json!({"text": "world"})),
+            text_response("Done"),
+        ];
+
+        let config = SessionConfig {
+            tool_approval: Some(Arc::new(move |name, args| {
+                *captured_clone.lock().unwrap() = Some((name.to_string(), args.clone()));
+                Ok(())
+            })),
+            ..Default::default()
+        };
+
+        let mut session = make_session_with_tools_and_config(responses, registry, config).await;
+        session.process_input("Use echo").await.unwrap();
+
+        let captured_value = captured.lock().unwrap();
+        let (name, args) = captured_value.as_ref().expect("approval fn should have been called");
+        assert_eq!(name, "echo");
+        assert_eq!(args, &serde_json::json!({"text": "world"}));
+    }
+
+    #[tokio::test]
+    async fn tool_approval_none_skips_check() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let responses = vec![
+            tool_call_response("echo", "call_1", serde_json::json!({"text": "hello"})),
+            text_response("Done"),
+        ];
+
+        let config = SessionConfig {
+            tool_approval: None,
+            ..Default::default()
+        };
+
+        let mut session = make_session_with_tools_and_config(responses, registry, config).await;
+        session.process_input("Use echo").await.unwrap();
+
+        let turns = session.history().turns();
+        if let Turn::ToolResults { results, .. } = &turns[2] {
+            assert!(!results[0].is_error);
+            let content_str = results[0].content.to_string();
+            assert!(
+                content_str.contains("echo: hello"),
+                "Expected echo output in content, got: {content_str}"
+            );
+        } else {
+            panic!("Expected ToolResults turn at index 2");
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_approval_denial_emits_error_event() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let responses = vec![
+            tool_call_response("echo", "call_1", serde_json::json!({"text": "hello"})),
+            text_response("Done"),
+        ];
+
+        let config = SessionConfig {
+            tool_approval: Some(Arc::new(|_name, _args| {
+                Err("not allowed".to_string())
+            })),
+            ..Default::default()
+        };
+
+        let mut session = make_session_with_tools_and_config(responses, registry, config).await;
+        let mut rx = session.subscribe();
+
+        session.process_input("Use echo").await.unwrap();
+
+        let mut tool_end_events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if event.kind == EventKind::ToolCallEnd {
+                tool_end_events.push(event);
+            }
+        }
+
+        assert_eq!(tool_end_events.len(), 1);
+        match &tool_end_events[0].data {
+            EventData::ToolCallEnd { is_error, .. } => {
+                assert!(is_error, "ToolCallEnd event should have is_error: true");
+            }
+            _ => panic!("Expected ToolCallEnd event data"),
+        }
+    }
 }

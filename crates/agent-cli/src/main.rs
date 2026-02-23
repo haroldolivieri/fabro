@@ -50,7 +50,7 @@ fn default_model(provider: &str) -> &'static str {
         "openai" => "gpt-5.2",
         "gemini" => "gemini-3-pro-preview",
         // anthropic and unknown providers
-        _ => "claude-sonnet-4-5-20250514",
+        _ => "claude-sonnet-4-5",
     }
 }
 
@@ -202,6 +202,7 @@ impl llm::middleware::Middleware for DebugMiddleware {
 }
 
 async fn run() -> anyhow::Result<()> {
+    let _ = dotenvy::dotenv();
     let cli = Cli::parse();
 
     // Validate provider API key
@@ -286,5 +287,136 @@ async fn main() -> ExitCode {
             eprintln!("[error] {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // tool_category tests
+
+    #[test]
+    fn tool_category_read_tools() {
+        assert_eq!(tool_category("read_file"), "read");
+        assert_eq!(tool_category("read_many_files"), "read");
+        assert_eq!(tool_category("grep"), "read");
+        assert_eq!(tool_category("glob"), "read");
+        assert_eq!(tool_category("list_dir"), "read");
+    }
+
+    #[test]
+    fn tool_category_write_tools() {
+        assert_eq!(tool_category("write_file"), "write");
+        assert_eq!(tool_category("edit_file"), "write");
+        assert_eq!(tool_category("apply_patch"), "write");
+    }
+
+    #[test]
+    fn tool_category_shell() {
+        assert_eq!(tool_category("shell"), "shell");
+    }
+
+    #[test]
+    fn tool_category_unknown_defaults_to_shell() {
+        assert_eq!(tool_category("some_random_tool"), "shell");
+    }
+
+    // is_auto_approved tests
+
+    #[test]
+    fn is_auto_approved_read_only() {
+        assert!(is_auto_approved(PermissionLevel::ReadOnly, "read"));
+        assert!(!is_auto_approved(PermissionLevel::ReadOnly, "write"));
+        assert!(!is_auto_approved(PermissionLevel::ReadOnly, "shell"));
+    }
+
+    #[test]
+    fn is_auto_approved_read_write() {
+        assert!(is_auto_approved(PermissionLevel::ReadWrite, "read"));
+        assert!(is_auto_approved(PermissionLevel::ReadWrite, "write"));
+        assert!(!is_auto_approved(PermissionLevel::ReadWrite, "shell"));
+    }
+
+    #[test]
+    fn is_auto_approved_full() {
+        assert!(is_auto_approved(PermissionLevel::Full, "read"));
+        assert!(is_auto_approved(PermissionLevel::Full, "write"));
+        assert!(is_auto_approved(PermissionLevel::Full, "shell"));
+    }
+
+    // default_model tests
+
+    #[test]
+    fn default_model_anthropic() {
+        assert_eq!(default_model("anthropic"), "claude-sonnet-4-5");
+    }
+
+    #[test]
+    fn default_model_openai() {
+        assert_eq!(default_model("openai"), "gpt-5.2");
+    }
+
+    #[test]
+    fn default_model_gemini() {
+        assert_eq!(default_model("gemini"), "gemini-3-pro-preview");
+    }
+
+    // validate_api_key tests
+
+    #[test]
+    fn validate_api_key_unknown_provider() {
+        assert!(!validate_api_key("unknown"));
+    }
+
+    // build_tool_approval non-interactive tests
+
+    #[test]
+    fn build_tool_approval_read_only_allows_read() {
+        let approval_fn = build_tool_approval(PermissionLevel::ReadOnly, false);
+        assert!(approval_fn("read_file", &json!({})).is_ok());
+    }
+
+    #[test]
+    fn build_tool_approval_read_only_denies_write() {
+        let approval_fn = build_tool_approval(PermissionLevel::ReadOnly, false);
+        let result = approval_fn("write_file", &json!({}));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("denied"));
+    }
+
+    #[test]
+    fn build_tool_approval_read_write_denies_shell() {
+        let approval_fn = build_tool_approval(PermissionLevel::ReadWrite, false);
+        let result = approval_fn("shell", &json!({}));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("denied"));
+    }
+
+    #[test]
+    fn build_tool_approval_full_allows_shell() {
+        let approval_fn = build_tool_approval(PermissionLevel::Full, false);
+        assert!(approval_fn("shell", &json!({})).is_ok());
+    }
+
+    // build_profile tests
+
+    #[test]
+    fn build_profile_anthropic() {
+        let profile = build_profile("anthropic", "model");
+        assert_eq!(profile.id(), "anthropic");
+    }
+
+    #[test]
+    fn build_profile_openai() {
+        let profile = build_profile("openai", "model");
+        assert_eq!(profile.id(), "openai");
+    }
+
+    #[test]
+    fn build_profile_gemini() {
+        let profile = build_profile("gemini", "model");
+        assert_eq!(profile.id(), "gemini");
     }
 }

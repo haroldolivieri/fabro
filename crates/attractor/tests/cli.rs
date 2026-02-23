@@ -61,6 +61,21 @@ fn validate_invalid() {
         .failure();
 }
 
+// -- serve -------------------------------------------------------------------
+
+#[test]
+fn serve_help() {
+    attractor()
+        .args(["serve", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--port"))
+        .stdout(predicate::str::contains("--host"))
+        .stdout(predicate::str::contains("--dry-run"))
+        .stdout(predicate::str::contains("--model"))
+        .stdout(predicate::str::contains("--provider"));
+}
+
 // -- run --dry-run -----------------------------------------------------------
 
 #[test]

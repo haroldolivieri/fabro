@@ -3230,6 +3230,99 @@ mod sse_events {
 }
 
 // ===========================================================================
+// 18b. Serve command: dry-run registry factory builds a working router
+// ===========================================================================
+
+#[cfg(feature = "server")]
+mod serve_dry_run {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use attractor::handler::default_registry;
+    use attractor::interviewer::Interviewer;
+    use attractor::server::{build_router, create_app_state};
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    const MINIMAL_DOT: &str = r#"digraph Test {
+        graph [goal="Test"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        start -> exit
+    }"#;
+
+    /// Build the router exactly as `serve_command` does in dry-run mode.
+    fn dry_run_app() -> axum::Router {
+        let factory = |interviewer: Arc<dyn Interviewer>| {
+            default_registry(interviewer, || None)
+        };
+        let state = create_app_state(factory);
+        build_router(state)
+    }
+
+    async fn body_json(body: Body) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn dry_run_serve_starts_and_runs_pipeline() {
+        let app = dry_run_app();
+
+        // POST /pipelines to start a pipeline
+        let req = Request::builder()
+            .method("POST")
+            .uri("/pipelines")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_string(&serde_json::json!({"dot_source": MINIMAL_DOT})).unwrap(),
+            ))
+            .unwrap();
+
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = body_json(response.into_body()).await;
+        let pipeline_id = body["id"].as_str().unwrap().to_string();
+        assert!(!pipeline_id.is_empty());
+
+        // Wait for pipeline to complete
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // GET /pipelines/{id} to verify completion
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/pipelines/{pipeline_id}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_json(response.into_body()).await;
+        assert_eq!(body["status"].as_str().unwrap(), "completed");
+    }
+
+    #[tokio::test]
+    async fn dry_run_serve_rejects_invalid_dot() {
+        let app = dry_run_app();
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/pipelines")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_string(&serde_json::json!({"dot_source": "not valid dot"})).unwrap(),
+            ))
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+}
+
+// ===========================================================================
 // 19a. Sub-pipeline E2E (TS Scenario 9)
 // ===========================================================================
 

@@ -1,0 +1,91 @@
+use std::sync::Arc;
+
+use terminal::Styles;
+use tokio::net::TcpListener;
+
+use crate::cli::backend::AgentBackend;
+use crate::handler::default_registry;
+use crate::interviewer::Interviewer;
+use crate::server::{build_router, create_app_state};
+
+use super::ServeArgs;
+
+/// Start the HTTP API server.
+///
+/// # Errors
+///
+/// Returns an error if the server fails to bind or encounters a fatal error.
+pub async fn serve_command(args: ServeArgs, styles: &'static Styles) -> anyhow::Result<()> {
+    // Resolve dry-run mode (same pattern as run.rs)
+    let dry_run_mode = if args.dry_run {
+        true
+    } else {
+        match llm::client::Client::from_env().await {
+            Ok(c) if c.provider_names().is_empty() => {
+                eprintln!(
+                    "{yellow}Warning:{reset} No LLM providers configured. Running in dry-run mode.",
+                    yellow = styles.yellow, reset = styles.reset,
+                );
+                true
+            }
+            Ok(_) => false,
+            Err(e) => {
+                eprintln!(
+                    "{yellow}Warning:{reset} Failed to initialize LLM client: {e}. Running in dry-run mode.",
+                    yellow = styles.yellow, reset = styles.reset,
+                );
+                true
+            }
+        }
+    };
+
+    // Resolve model/provider defaults
+    let provider = args.provider;
+    let model = args.model.unwrap_or_else(|| match provider.as_deref() {
+        Some("openai") => "gpt-5.2".to_string(),
+        Some("gemini") => "gemini-3-pro-preview".to_string(),
+        _ => "claude-sonnet-4-5".to_string(),
+    });
+
+    // Build registry factory
+    let factory = move |interviewer: Arc<dyn Interviewer>| {
+        let model = model.clone();
+        let provider = provider.clone();
+        default_registry(interviewer, move || {
+            if dry_run_mode {
+                None
+            } else {
+                Some(Box::new(AgentBackend::new(
+                    model.clone(),
+                    provider.clone(),
+                    0,
+                    styles,
+                )))
+            }
+        })
+    };
+
+    let state = create_app_state(factory);
+    let router = build_router(state);
+
+    let addr = format!("{}:{}", args.host, args.port);
+    let listener = TcpListener::bind(&addr).await?;
+
+    eprintln!(
+        "{bold}Attractor server listening on {green}{addr}{reset}",
+        bold = styles.bold,
+        green = styles.green,
+        reset = styles.reset,
+    );
+    if dry_run_mode {
+        eprintln!(
+            "{dim}(dry-run mode){reset}",
+            dim = styles.dim,
+            reset = styles.reset,
+        );
+    }
+
+    axum::serve(listener, router).await?;
+
+    Ok(())
+}

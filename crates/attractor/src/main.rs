@@ -13,6 +13,10 @@ async fn main() {
         attractor::cli::Command::Validate(args) => {
             attractor::cli::validate::validate_command(&args, styles)
         }
+        #[cfg(feature = "server")]
+        attractor::cli::Command::Serve(args) => {
+            attractor::cli::serve::serve_command(args, styles).await
+        }
     };
 
     if let Err(e) = result {

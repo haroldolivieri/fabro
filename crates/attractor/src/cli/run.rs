@@ -131,6 +131,8 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
             Some(Box::new(AgentBackend::new(
                 model.clone(),
                 provider.clone(),
+                args.verbose,
+                styles,
             )))
         }
     });

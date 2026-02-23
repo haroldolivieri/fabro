@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use llm::client::Client;
 use llm::error::SdkError;
 use llm::provider::{ProviderAdapter, StreamEventStream};
-use llm::types::{FinishReason, Message, Request, Response, Usage};
+use llm::types::{ContentPart, FinishReason, Message, Request, Response, StreamEvent, Usage};
 
 // --- MockExecutionEnvironment ---
 
@@ -394,10 +394,43 @@ impl ProviderAdapter for MockLlmProvider {
     }
 
     async fn stream(&self, _request: &Request) -> Result<StreamEventStream, SdkError> {
-        Err(SdkError::Configuration {
-            message: "streaming not supported in mock".into(),
-        })
+        let idx = self.call_index.fetch_add(1, Ordering::SeqCst);
+        let response = if idx < self.responses.len() {
+            self.responses[idx].clone()
+        } else {
+            self.responses[self.responses.len() - 1].clone()
+        };
+        Ok(response_to_stream(response))
     }
+}
+
+/// Convert a canned `Response` into a `StreamEventStream` for mock streaming.
+fn response_to_stream(response: Response) -> StreamEventStream {
+    let mut events: Vec<Result<StreamEvent, SdkError>> = Vec::new();
+
+    // Emit text deltas for text content
+    let text = response.text();
+    if !text.is_empty() {
+        events.push(Ok(StreamEvent::text_delta(text, None)));
+    }
+
+    // Emit tool call events
+    for part in &response.message.content {
+        if let ContentPart::ToolCall(tc) = part {
+            events.push(Ok(StreamEvent::ToolCallEnd {
+                tool_call: tc.clone(),
+            }));
+        }
+    }
+
+    // Emit finish
+    events.push(Ok(StreamEvent::finish(
+        response.finish_reason.clone(),
+        response.usage.clone(),
+        response,
+    )));
+
+    Box::pin(futures::stream::iter(events))
 }
 
 // --- Helper functions ---
@@ -552,9 +585,7 @@ impl ProviderAdapter for MockErrorProvider {
     }
 
     async fn stream(&self, _request: &Request) -> Result<StreamEventStream, SdkError> {
-        Err(SdkError::Configuration {
-            message: "streaming not supported in mock".into(),
-        })
+        Err(self.error.clone())
     }
 }
 
@@ -587,10 +618,39 @@ impl ProviderAdapter for CapturingLlmProvider {
         Ok(text_response("captured"))
     }
 
+    async fn stream(&self, request: &Request) -> Result<StreamEventStream, SdkError> {
+        *self
+            .captured_request
+            .lock()
+            .expect("captured_request lock poisoned") = Some(request.clone());
+        Ok(response_to_stream(text_response("captured")))
+    }
+}
+
+// --- MockMidStreamErrorProvider ---
+
+/// A mock provider that yields some text deltas then an error mid-stream.
+pub(crate) struct MockMidStreamErrorProvider {
+    pub partial_text: String,
+    pub error: SdkError,
+}
+
+#[async_trait]
+impl ProviderAdapter for MockMidStreamErrorProvider {
+    fn name(&self) -> &str {
+        "mock"
+    }
+
+    async fn complete(&self, _request: &Request) -> Result<Response, SdkError> {
+        Err(self.error.clone())
+    }
+
     async fn stream(&self, _request: &Request) -> Result<StreamEventStream, SdkError> {
-        Err(SdkError::Configuration {
-            message: "streaming not supported in mock".into(),
-        })
+        let events: Vec<Result<StreamEvent, SdkError>> = vec![
+            Ok(StreamEvent::text_delta(self.partial_text.clone(), None)),
+            Err(self.error.clone()),
+        ];
+        Ok(Box::pin(futures::stream::iter(events)))
     }
 }
 

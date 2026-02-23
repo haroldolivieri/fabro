@@ -14,9 +14,11 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
+use futures::StreamExt;
 use llm::client::Client;
 use llm::error::{ProviderErrorKind, SdkError};
-use llm::types::{Message, Request, ToolChoice, ToolResult};
+use llm::generate::StreamAccumulator;
+use llm::types::{Message, Request, StreamEvent, ToolChoice, ToolResult};
 
 pub struct Session {
     id: String,
@@ -267,9 +269,9 @@ impl Session {
                 EventData::Empty,
             );
 
-            // Call LLM
-            let response = match self.llm_client.complete(&request).await {
-                Ok(resp) => resp,
+            // Call LLM (streaming)
+            let mut event_stream = match self.llm_client.stream(&request).await {
+                Ok(stream) => stream,
                 Err(err) => {
                     self.event_emitter.emit(
                         EventKind::Error,
@@ -284,6 +286,49 @@ impl Session {
                     return Err(AgentError::Llm(err));
                 }
             };
+
+            let mut accumulator = StreamAccumulator::new();
+
+            while let Some(event_result) = event_stream.next().await {
+                match event_result {
+                    Ok(event) => {
+                        if let StreamEvent::TextDelta { ref delta, .. } = event {
+                            self.event_emitter.emit(
+                                EventKind::AssistantTextDelta,
+                                self.id.clone(),
+                                EventData::TextDelta {
+                                    delta: delta.clone(),
+                                },
+                            );
+                        }
+                        accumulator.process(&event);
+                    }
+                    Err(err) => {
+                        self.event_emitter.emit(
+                            EventKind::Error,
+                            self.id.clone(),
+                            EventData::Error {
+                                error: err.to_string(),
+                            },
+                        );
+                        return Err(AgentError::Llm(err));
+                    }
+                }
+
+                // Check abort flag between chunks
+                if self.abort_flag.load(Ordering::SeqCst) {
+                    self.state = SessionState::Closed;
+                    self.event_emitter
+                        .emit(EventKind::SessionEnd, self.id.clone(), EventData::Empty);
+                    return Err(AgentError::Aborted);
+                }
+            }
+
+            let response = accumulator.response().cloned().ok_or_else(|| {
+                AgentError::Llm(SdkError::Stream {
+                    message: "Stream ended without a Finish event".into(),
+                })
+            })?;
 
             // Record assistant turn
             let text = response.text();
@@ -1581,5 +1626,42 @@ mod tests {
             }
             _ => panic!("Expected ToolCallEnd event data"),
         }
+    }
+
+    #[tokio::test]
+    async fn stream_emits_text_delta_events() {
+        let mut session = make_session(vec![text_response("Hello there!")]).await;
+        let mut rx = session.subscribe();
+
+        session.process_input("Hi").await.unwrap();
+
+        let mut deltas = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if event.kind == EventKind::AssistantTextDelta {
+                if let EventData::TextDelta { delta } = &event.data {
+                    deltas.push(delta.clone());
+                }
+            }
+        }
+
+        assert_eq!(deltas.len(), 1);
+        assert_eq!(deltas[0], "Hello there!");
+    }
+
+    #[tokio::test]
+    async fn stream_mid_stream_error() {
+        let provider = Arc::new(MockMidStreamErrorProvider {
+            partial_text: "partial".into(),
+            error: SdkError::Stream {
+                message: "connection reset".into(),
+            },
+        });
+        let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
+        let profile = Arc::new(TestProfile::new());
+        let env = Arc::new(MockExecutionEnvironment::default());
+        let mut session = Session::new(client, profile, env, SessionConfig::default());
+
+        let result = session.process_input("Hello").await;
+        assert!(matches!(result, Err(AgentError::Llm(SdkError::Stream { .. }))));
     }
 }

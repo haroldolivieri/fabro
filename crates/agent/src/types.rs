@@ -78,6 +78,9 @@ pub enum EventData {
     Error {
         error: String,
     },
+    TextDelta {
+        delta: String,
+    },
     ContextWarning {
         estimated_tokens: usize,
         context_window_size: usize,

@@ -15,6 +15,7 @@ use crate::context::Context;
 use crate::error::{AttractorError, Result};
 use crate::event::{EventEmitter, PipelineEvent};
 use crate::graph::{Edge, Graph, Node};
+use crate::handler::parallel::ParallelHandler;
 use crate::handler::HandlerRegistry;
 use crate::interviewer::Interviewer;
 use crate::outcome::{Outcome, StageStatus};
@@ -451,17 +452,23 @@ pub struct RunConfig {
 
 /// The pipeline execution engine.
 pub struct PipelineEngine {
-    pub registry: HandlerRegistry,
-    pub emitter: EventEmitter,
+    registry: Arc<HandlerRegistry>,
+    emitter: Arc<EventEmitter>,
+    parallel_handler: ParallelHandler,
     pub interviewer: Option<Arc<dyn Interviewer>>,
 }
 
 impl PipelineEngine {
     #[must_use]
     pub fn new(registry: HandlerRegistry, emitter: EventEmitter) -> Self {
+        let registry = Arc::new(registry);
+        let emitter = Arc::new(emitter);
+        let parallel_handler =
+            ParallelHandler::new(Arc::clone(&registry), Arc::clone(&emitter));
         Self {
             registry,
             emitter,
+            parallel_handler,
             interviewer: None,
         }
     }
@@ -473,11 +480,25 @@ impl PipelineEngine {
         emitter: EventEmitter,
         interviewer: Arc<dyn Interviewer>,
     ) -> Self {
+        let registry = Arc::new(registry);
+        let emitter = Arc::new(emitter);
+        let parallel_handler =
+            ParallelHandler::new(Arc::clone(&registry), Arc::clone(&emitter));
         Self {
             registry,
             emitter,
+            parallel_handler,
             interviewer: Some(interviewer),
         }
+    }
+
+    /// Resolve the handler for a node, returning the parallel handler for
+    /// parallel nodes and delegating to the registry for everything else.
+    fn resolve_handler(&self, node: &Node) -> &dyn crate::handler::Handler {
+        if node.handler_type() == Some("parallel") {
+            return &self.parallel_handler;
+        }
+        self.registry.resolve(node)
     }
 
     /// Call inform on the interviewer, if one is configured.
@@ -517,7 +538,7 @@ impl PipelineEngine {
         policy: &RetryPolicy,
         stage_index: usize,
     ) -> Result<(Outcome, u32)> {
-        let handler = self.registry.resolve(node);
+        let handler = self.resolve_handler(node);
 
         let node_timeout = node.timeout();
 

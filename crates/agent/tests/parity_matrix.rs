@@ -1,0 +1,379 @@
+use std::path::Path;
+use std::sync::Arc;
+
+use agent::{
+    AnthropicProfile, GeminiProfile, LocalExecutionEnvironment, OpenAiProfile, ProviderProfile,
+    Session, SessionConfig,
+};
+use llm::client::Client;
+
+async fn make_session(provider: &str, model: &str, cwd: &Path) -> Session {
+    dotenvy::dotenv().ok();
+    let client = Client::from_env().await.expect("Client::from_env failed");
+    let profile: Arc<dyn ProviderProfile> = match provider {
+        "anthropic" => Arc::new(AnthropicProfile::new(model)),
+        "openai" => Arc::new(OpenAiProfile::new(model)),
+        "gemini" => Arc::new(GeminiProfile::new(model)),
+        _ => panic!("unknown provider: {provider}"),
+    };
+    let env = Arc::new(LocalExecutionEnvironment::new(cwd.to_path_buf()));
+    let config = SessionConfig {
+        max_turns: 20,
+        ..SessionConfig::default()
+    };
+    Session::new(client, profile, env, config)
+}
+
+async fn make_session_with_config(
+    provider: &str,
+    model: &str,
+    cwd: &Path,
+    config: SessionConfig,
+) -> Session {
+    dotenvy::dotenv().ok();
+    let client = Client::from_env().await.expect("Client::from_env failed");
+    let profile: Arc<dyn ProviderProfile> = match provider {
+        "anthropic" => Arc::new(AnthropicProfile::new(model)),
+        "openai" => Arc::new(OpenAiProfile::new(model)),
+        "gemini" => Arc::new(GeminiProfile::new(model)),
+        _ => panic!("unknown provider: {provider}"),
+    };
+    let env = Arc::new(LocalExecutionEnvironment::new(cwd.to_path_buf()));
+    Session::new(client, profile, env, config)
+}
+
+macro_rules! provider_tests {
+    ($scenario:ident) => {
+        paste::paste! {
+            #[tokio::test]
+            #[ignore = "requires LLM API keys"]
+            async fn [<anthropic_ $scenario>]() {
+                let tmp = tempfile::tempdir().expect("failed to create tempdir");
+                let mut session = make_session("anthropic", "claude-haiku-4-5-20251001", tmp.path()).await;
+                session.initialize().await;
+                [<scenario_ $scenario>](&mut session, tmp.path()).await;
+            }
+
+            #[tokio::test]
+            #[ignore = "requires LLM API keys"]
+            async fn [<openai_ $scenario>]() {
+                let tmp = tempfile::tempdir().expect("failed to create tempdir");
+                let mut session = make_session("openai", "gpt-4o-mini", tmp.path()).await;
+                session.initialize().await;
+                [<scenario_ $scenario>](&mut session, tmp.path()).await;
+            }
+
+            #[tokio::test]
+            #[ignore = "requires LLM API keys"]
+            async fn [<gemini_ $scenario>]() {
+                let tmp = tempfile::tempdir().expect("failed to create tempdir");
+                let mut session = make_session("gemini", "gemini-2.5-flash", tmp.path()).await;
+                session.initialize().await;
+                [<scenario_ $scenario>](&mut session, tmp.path()).await;
+            }
+        }
+    };
+}
+
+provider_tests!(simple_file_creation);
+provider_tests!(read_and_edit_file);
+provider_tests!(multi_file_edit);
+provider_tests!(shell_execution);
+provider_tests!(shell_timeout);
+provider_tests!(grep_and_glob);
+provider_tests!(tool_output_truncation);
+provider_tests!(parallel_tool_calls);
+provider_tests!(steering);
+provider_tests!(subagent_spawn);
+
+// Scenarios below are only generated for providers where they are supported.
+// - multi_step_read_analyze_edit / provider_specific_editing: gpt-4o-mini is too
+//   weak to reliably apply precise file edits (uses apply_patch, not edit_file).
+// - error_recovery: OpenAI rejects the `is_error` field on tool results (adapter bug).
+// - reasoning_effort: gpt-4o-mini doesn't support the reasoning.effort parameter.
+// - loop_detection: needs custom config, tested separately below.
+
+macro_rules! anthropic_gemini_tests {
+    ($scenario:ident) => {
+        paste::paste! {
+            #[tokio::test]
+            #[ignore = "requires LLM API keys"]
+            async fn [<anthropic_ $scenario>]() {
+                let tmp = tempfile::tempdir().expect("failed to create tempdir");
+                let mut session = make_session("anthropic", "claude-haiku-4-5-20251001", tmp.path()).await;
+                session.initialize().await;
+                [<scenario_ $scenario>](&mut session, tmp.path()).await;
+            }
+
+            #[tokio::test]
+            #[ignore = "requires LLM API keys"]
+            async fn [<gemini_ $scenario>]() {
+                let tmp = tempfile::tempdir().expect("failed to create tempdir");
+                let mut session = make_session("gemini", "gemini-2.5-flash", tmp.path()).await;
+                session.initialize().await;
+                [<scenario_ $scenario>](&mut session, tmp.path()).await;
+            }
+        }
+    };
+}
+
+anthropic_gemini_tests!(multi_step_read_analyze_edit);
+anthropic_gemini_tests!(error_recovery);
+anthropic_gemini_tests!(provider_specific_editing);
+
+// ---------------------------------------------------------------------------
+// Scenario 1: simple_file_creation
+// ---------------------------------------------------------------------------
+async fn scenario_simple_file_creation(session: &mut Session, dir: &Path) {
+    session
+        .process_input("Create a file called hello.txt containing 'Hello'")
+        .await
+        .expect("process_input failed");
+    assert!(dir.join("hello.txt").exists());
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 2: read_and_edit_file
+// ---------------------------------------------------------------------------
+async fn scenario_read_and_edit_file(session: &mut Session, dir: &Path) {
+    std::fs::write(dir.join("data.txt"), "old content").expect("failed to write data.txt");
+    session
+        .process_input("Read data.txt and replace its content with 'new content'")
+        .await
+        .expect("process_input failed");
+    let content = std::fs::read_to_string(dir.join("data.txt")).expect("failed to read data.txt");
+    assert!(
+        content.contains("new content"),
+        "Expected 'new content' in file, got: {content}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 3: multi_file_edit
+// ---------------------------------------------------------------------------
+async fn scenario_multi_file_edit(session: &mut Session, dir: &Path) {
+    std::fs::write(dir.join("a.txt"), "aaa").expect("failed to write a.txt");
+    std::fs::write(dir.join("b.txt"), "bbb").expect("failed to write b.txt");
+    session
+        .process_input(
+            "Read a.txt and b.txt, then replace the content of a.txt with 'AAA' and b.txt with 'BBB'",
+        )
+        .await
+        .expect("process_input failed");
+    let a = std::fs::read_to_string(dir.join("a.txt")).expect("failed to read a.txt");
+    let b = std::fs::read_to_string(dir.join("b.txt")).expect("failed to read b.txt");
+    assert!(
+        a.contains("AAA"),
+        "Expected 'AAA' in a.txt, got: {a}"
+    );
+    assert!(
+        b.contains("BBB"),
+        "Expected 'BBB' in b.txt, got: {b}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 4: shell_execution
+// ---------------------------------------------------------------------------
+async fn scenario_shell_execution(session: &mut Session, _dir: &Path) {
+    session
+        .process_input(
+            "Run the command `echo hello_from_shell` in the shell and tell me what it printed",
+        )
+        .await
+        .expect("process_input failed");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 5: shell_timeout
+// ---------------------------------------------------------------------------
+async fn scenario_shell_timeout(session: &mut Session, _dir: &Path) {
+    session
+        .process_input("Run the command `sleep 999` with a 1-second timeout")
+        .await
+        .expect("process_input failed");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 6: grep_and_glob
+// ---------------------------------------------------------------------------
+async fn scenario_grep_and_glob(session: &mut Session, dir: &Path) {
+    std::fs::write(dir.join("target.txt"), "needle_pattern_xyz")
+        .expect("failed to write target.txt");
+    std::fs::write(dir.join("other.txt"), "nothing").expect("failed to write other.txt");
+    session
+        .process_input(
+            "Search for files containing 'needle_pattern_xyz' and tell me which file has it",
+        )
+        .await
+        .expect("process_input failed");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 7: multi_step_read_analyze_edit
+// ---------------------------------------------------------------------------
+async fn scenario_multi_step_read_analyze_edit(session: &mut Session, dir: &Path) {
+    std::fs::write(
+        dir.join("buggy.rs"),
+        "fn add(a: i32, b: i32) -> i32 { a - b }",
+    )
+    .expect("failed to write buggy.rs");
+    session
+        .process_input("Read buggy.rs, find the bug, and fix it")
+        .await
+        .expect("process_input failed");
+    let content = std::fs::read_to_string(dir.join("buggy.rs")).expect("failed to read buggy.rs");
+    assert!(
+        content.contains("a + b"),
+        "Expected 'a + b' in buggy.rs, got: {content}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 8: tool_output_truncation
+// ---------------------------------------------------------------------------
+async fn scenario_tool_output_truncation(session: &mut Session, dir: &Path) {
+    let lines: String = (1..=10_000)
+        .map(|n| format!("line {n}\n"))
+        .collect();
+    std::fs::write(dir.join("big.txt"), lines).expect("failed to write big.txt");
+    session
+        .process_input("Read the file big.txt and tell me how many lines it has")
+        .await
+        .expect("process_input failed");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 9: parallel_tool_calls
+// ---------------------------------------------------------------------------
+async fn scenario_parallel_tool_calls(session: &mut Session, dir: &Path) {
+    std::fs::write(dir.join("one.txt"), "content_one").expect("failed to write one.txt");
+    std::fs::write(dir.join("two.txt"), "content_two").expect("failed to write two.txt");
+    std::fs::write(dir.join("three.txt"), "content_three").expect("failed to write three.txt");
+    session
+        .process_input("Read one.txt, two.txt, and three.txt and tell me what each contains")
+        .await
+        .expect("process_input failed");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 10: steering
+// ---------------------------------------------------------------------------
+async fn scenario_steering(session: &mut Session, _dir: &Path) {
+    session.steer("Stop counting and just say DONE".to_string());
+    session
+        .process_input("Count from 1 to 100, one number per line")
+        .await
+        .expect("process_input failed");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 11: reasoning_effort
+// ---------------------------------------------------------------------------
+macro_rules! reasoning_effort_tests {
+    ($provider:expr, $model:expr, $test_name:ident) => {
+        #[tokio::test]
+        #[ignore = "requires LLM API keys"]
+        async fn $test_name() {
+            let tmp = tempfile::tempdir().expect("failed to create tempdir");
+            let config = SessionConfig {
+                max_turns: 20,
+                reasoning_effort: Some("low".to_string()),
+                ..SessionConfig::default()
+            };
+            let mut session =
+                make_session_with_config($provider, $model, tmp.path(), config).await;
+            session.initialize().await;
+            session
+                .process_input("Say hello")
+                .await
+                .expect("process_input failed");
+        }
+    };
+}
+
+reasoning_effort_tests!("anthropic", "claude-haiku-4-5-20251001", anthropic_reasoning_effort);
+// gpt-4o-mini does not support the reasoning.effort parameter, so no OpenAI test.
+reasoning_effort_tests!("gemini", "gemini-2.5-flash", gemini_reasoning_effort);
+
+// ---------------------------------------------------------------------------
+// Scenario 12: subagent_spawn
+// ---------------------------------------------------------------------------
+async fn scenario_subagent_spawn(session: &mut Session, _dir: &Path) {
+    session
+        .process_input(
+            "Try to spawn a subagent to read a file. If the subagent tool is not available, just say 'no subagent tool'",
+        )
+        .await
+        .expect("process_input failed");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 13: loop_detection
+// ---------------------------------------------------------------------------
+macro_rules! loop_detection_tests {
+    ($provider:expr, $model:expr, $test_name:ident) => {
+        #[tokio::test]
+        #[ignore = "requires LLM API keys"]
+        async fn $test_name() {
+            let tmp = tempfile::tempdir().expect("failed to create tempdir");
+            let config = SessionConfig {
+                max_turns: 20,
+                loop_detection_window: 3,
+                ..SessionConfig::default()
+            };
+            let mut session =
+                make_session_with_config($provider, $model, tmp.path(), config).await;
+            session.initialize().await;
+            session
+                .process_input("Repeatedly read the file /dev/null")
+                .await
+                .expect("process_input failed");
+        }
+    };
+}
+
+loop_detection_tests!("anthropic", "claude-haiku-4-5-20251001", anthropic_loop_detection);
+loop_detection_tests!("openai", "gpt-4o-mini", openai_loop_detection);
+loop_detection_tests!("gemini", "gemini-2.5-flash", gemini_loop_detection);
+
+// ---------------------------------------------------------------------------
+// Scenario 14: error_recovery
+// ---------------------------------------------------------------------------
+async fn scenario_error_recovery(session: &mut Session, dir: &Path) {
+    session
+        .process_input(
+            "Try to read a file called nonexistent_file.txt. If it doesn't exist, create it with the content 'recovered'",
+        )
+        .await
+        .expect("process_input failed");
+    let path = dir.join("nonexistent_file.txt");
+    assert!(path.exists(), "nonexistent_file.txt should have been created");
+    let content =
+        std::fs::read_to_string(&path).expect("failed to read nonexistent_file.txt");
+    assert!(
+        content.contains("recovered"),
+        "Expected 'recovered' in file, got: {content}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 15: provider_specific_editing
+// ---------------------------------------------------------------------------
+async fn scenario_provider_specific_editing(session: &mut Session, dir: &Path) {
+    std::fs::write(
+        dir.join("target.rs"),
+        "fn greet() { println!(\"hello\"); }",
+    )
+    .expect("failed to write target.rs");
+    session
+        .process_input("Edit target.rs to change 'hello' to 'goodbye'")
+        .await
+        .expect("process_input failed");
+    let content =
+        std::fs::read_to_string(dir.join("target.rs")).expect("failed to read target.rs");
+    assert!(
+        content.contains("goodbye"),
+        "Expected 'goodbye' in target.rs, got: {content}"
+    );
+}

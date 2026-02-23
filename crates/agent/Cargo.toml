@@ -45,6 +45,9 @@ libc = "0.2"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"
+dotenvy = { workspace = true }
+paste = "1"
 
 [lints]
 workspace = true

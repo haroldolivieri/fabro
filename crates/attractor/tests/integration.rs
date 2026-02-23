@@ -24,7 +24,10 @@ use attractor::outcome::{Outcome, StageStatus};
 use attractor::parser::parse;
 use attractor::stylesheet::{apply_stylesheet, parse_stylesheet};
 use attractor::transform::{StylesheetApplicationTransform, Transform, VariableExpansionTransform};
+use attractor::cli::backend::AgentBackend;
+use attractor::handler::default_registry;
 use attractor::validation::{validate, validate_or_raise, Severity};
+use terminal::Styles;
 
 // ---------------------------------------------------------------------------
 // 1. Parse and validate all 3 spec examples (Section 2.13)
@@ -6456,5 +6459,95 @@ fn parse_tool_hooks_from_dot_syntax() {
     assert_eq!(
         work.attrs.get("tool_hooks.pre").and_then(|v| v.as_str()),
         Some("node pre")
+    );
+}
+
+// ---------------------------------------------------------------------------
+// E2E test with real LLM
+// ---------------------------------------------------------------------------
+
+static TEST_STYLES: Styles = Styles::new(false);
+
+#[tokio::test]
+#[ignore = "requires ANTHROPIC_API_KEY"]
+async fn attractor_e2e_with_real_llm() {
+    dotenvy::dotenv().ok();
+
+    let dir = tempfile::tempdir().unwrap();
+    let dir_path = dir.path().to_str().unwrap().to_string();
+
+    let dot = format!(
+        r#"digraph E2E {{
+            graph [goal="Create a test file"]
+            start [shape=Mdiamond]
+            exit  [shape=Msquare]
+            work  [
+                shape=box,
+                label="Work",
+                prompt="Create a file called hello.txt in {dir_path} containing exactly 'Hello from LLM'. Do not output anything else.",
+                goal_gate=true
+            ]
+            start -> work -> exit
+        }}"#
+    );
+
+    let graph = parse(&dot).expect("parse should succeed");
+    validate_or_raise(&graph, &[]).expect("validation should pass");
+
+    let interviewer: Arc<dyn Interviewer> = Arc::new(AutoApproveInterviewer);
+    let model = "claude-haiku-4-5-20251001".to_string();
+
+    let registry = default_registry(interviewer, move || {
+        Some(Box::new(AgentBackend::new(
+            model.clone(),
+            None,
+            0,
+            &TEST_STYLES,
+            false,
+        )) as Box<dyn attractor::handler::codergen::CodergenBackend>)
+    });
+
+    let logs_dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(registry, EventEmitter::new());
+    let config = RunConfig {
+        logs_root: logs_dir.path().to_path_buf(),
+        cancel_token: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+
+    // 1. Pipeline completed successfully
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // 2. Artifacts exist
+    let work_dir = logs_dir.path().join("work");
+    assert!(work_dir.join("prompt.md").exists(), "prompt.md should exist");
+    assert!(
+        work_dir.join("response.md").exists(),
+        "response.md should exist"
+    );
+    assert!(
+        work_dir.join("status.json").exists(),
+        "status.json should exist"
+    );
+
+    // 3. Goal gate: check checkpoint node outcomes
+    let checkpoint = Checkpoint::load(&logs_dir.path().join("checkpoint.json"))
+        .expect("checkpoint should load");
+    let work_outcome = checkpoint
+        .node_outcomes
+        .get("work")
+        .expect("work outcome should exist");
+    assert!(
+        work_outcome.status == StageStatus::Success
+            || work_outcome.status == StageStatus::PartialSuccess,
+        "work goal gate should be Success or PartialSuccess, got {:?}",
+        work_outcome.status
+    );
+
+    // 4. Checkpoint: completed_nodes contains "work"
+    assert!(
+        checkpoint.completed_nodes.contains(&"work".to_string()),
+        "completed_nodes should contain 'work'"
     );
 }

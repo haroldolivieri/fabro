@@ -174,7 +174,7 @@ async fn llm_evaluate(
     let eval_node = Node::new("fan_in_eval");
 
     // Fan-in evaluation runs outside a thread context, so pass None
-    match backend.run(&eval_node, &full_prompt, context, None, emitter).await {
+    match backend.run(&eval_node, &full_prompt, context, None, emitter, &stage_dir).await {
         Ok(CodergenResult::Full(outcome)) => {
             // If the backend returned a full Outcome, extract best_id from context_updates
             let best_id = outcome
@@ -371,6 +371,7 @@ mod tests {
                 _context: &Context,
                 _thread_id: Option<&str>,
                 _emitter: &Arc<EventEmitter>,
+                _stage_dir: &std::path::Path,
             ) -> Result<CodergenResult, AttractorError> {
                 // Return text that contains the ID "branch_b"
                 Ok(CodergenResult::Text { text: "The best candidate is branch_b".to_string(), usage: None, files_touched: Vec::new() })

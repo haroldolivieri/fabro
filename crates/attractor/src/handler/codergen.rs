@@ -32,6 +32,7 @@ pub trait CodergenBackend: Send + Sync {
         context: &Context,
         thread_id: Option<&str>,
         emitter: &Arc<EventEmitter>,
+        stage_dir: &Path,
     ) -> Result<CodergenResult, AttractorError>;
 
     /// Run a single LLM call with no tools (one_shot mode).
@@ -39,6 +40,7 @@ pub trait CodergenBackend: Send + Sync {
         &self,
         _node: &Node,
         _prompt: &str,
+        _stage_dir: &Path,
     ) -> Result<CodergenResult, AttractorError> {
         Err(AttractorError::Validation(
             "one_shot mode not supported by this backend".into(),
@@ -222,9 +224,9 @@ impl Handler for CodergenHandler {
         let (response_text, stage_usage, backend_files_touched) = if let Some(backend) = &self.backend {
             let result = match mode {
                 CodergenMode::AgentLoop => {
-                    backend.run(node, &prompt, context, thread_id.as_deref(), &services.emitter).await
+                    backend.run(node, &prompt, context, thread_id.as_deref(), &services.emitter, &stage_dir).await
                 }
-                CodergenMode::OneShot => backend.one_shot(node, &prompt).await,
+                CodergenMode::OneShot => backend.one_shot(node, &prompt, &stage_dir).await,
             };
             match result {
                 Ok(CodergenResult::Full(outcome)) => {
@@ -546,6 +548,7 @@ mod tests {
                 _context: &Context,
                 thread_id: Option<&str>,
                 _emitter: &Arc<EventEmitter>,
+                _stage_dir: &Path,
             ) -> Result<CodergenResult, AttractorError> {
                 *self.captured_thread_id.lock().unwrap() =
                     Some(thread_id.map(String::from));
@@ -592,6 +595,7 @@ mod tests {
                 _context: &Context,
                 thread_id: Option<&str>,
                 _emitter: &Arc<EventEmitter>,
+                _stage_dir: &Path,
             ) -> Result<CodergenResult, AttractorError> {
                 *self.captured_thread_id.lock().unwrap() =
                     Some(thread_id.map(String::from));
@@ -633,6 +637,7 @@ mod tests {
                 _context: &Context,
                 _thread_id: Option<&str>,
                 _emitter: &Arc<EventEmitter>,
+                _stage_dir: &Path,
             ) -> Result<CodergenResult, AttractorError> {
                 Err(AttractorError::Handler("Request timed out".to_string()))
             }
@@ -745,6 +750,7 @@ Some text in between.
                 _context: &Context,
                 _thread_id: Option<&str>,
                 _emitter: &Arc<EventEmitter>,
+                _stage_dir: &Path,
             ) -> Result<CodergenResult, AttractorError> {
                 panic!("run() should not be called in one_shot mode");
             }
@@ -753,6 +759,7 @@ Some text in between.
                 &self,
                 _node: &Node,
                 _prompt: &str,
+                _stage_dir: &Path,
             ) -> Result<CodergenResult, AttractorError> {
                 Ok(CodergenResult::Text {
                     text: "one-shot response".to_string(),
@@ -846,6 +853,7 @@ Some text in between.
                 _context: &Context,
                 _thread_id: Option<&str>,
                 _emitter: &Arc<EventEmitter>,
+                _stage_dir: &Path,
             ) -> Result<CodergenResult, AttractorError> {
                 Err(AttractorError::Validation("bad config".to_string()))
             }

@@ -551,6 +551,9 @@ impl PipelineEngine {
                         } else {
                             "handler panicked".to_string()
                         };
+                        let panic_dir = logs_root.join(&node.id);
+                        let _ = std::fs::create_dir_all(&panic_dir);
+                        let _ = std::fs::write(panic_dir.join("panic.txt"), &msg);
                         Err(AttractorError::Handler(msg))
                     }
                 }
@@ -2569,6 +2572,69 @@ mod tests {
         assert!(
             err.contains("exceeded max visit limit of 2"),
             "expected limit of 2, got: {err}"
+        );
+    }
+
+    // --- panic.txt tests ---
+
+    /// Handler that always panics.
+    struct PanickingHandler;
+
+    #[async_trait]
+    impl HandlerTrait for PanickingHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+            _services: &crate::handler::EngineServices,
+        ) -> std::result::Result<Outcome, AttractorError> {
+            panic!("test panic message");
+        }
+    }
+
+    #[tokio::test]
+    async fn panic_handler_writes_panic_txt() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Graph::new("test");
+        let mut start = Node::new("start");
+        start.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Mdiamond".to_string()),
+        );
+        g.nodes.insert("start".to_string(), start);
+        let mut panic_node = Node::new("boom");
+        panic_node.attrs.insert(
+            "type".to_string(),
+            AttrValue::String("panicker".to_string()),
+        );
+        panic_node.attrs.insert(
+            "max_retries".to_string(),
+            AttrValue::Integer(0),
+        );
+        g.nodes.insert("boom".to_string(), panic_node);
+        g.edges.push(Edge::new("start", "boom"));
+
+        let mut registry = make_registry();
+        registry.register("panicker", Box::new(PanickingHandler));
+        let engine = PipelineEngine::new(registry, EventEmitter::new());
+        let config = RunConfig {
+            logs_root: dir.path().to_path_buf(),
+            cancel_token: None,
+            dry_run: false,
+        };
+
+        // The engine returns Err because the Fail outcome has no outgoing fail edge,
+        // but panic.txt should already be written by the panic handler.
+        let _result = engine.run(&g, &config).await;
+
+        let panic_path = dir.path().join("boom").join("panic.txt");
+        assert!(panic_path.exists(), "panic.txt should be written");
+        let content = std::fs::read_to_string(&panic_path).unwrap();
+        assert!(
+            content.contains("test panic message"),
+            "panic.txt should contain the panic message, got: {content}"
         );
     }
 }

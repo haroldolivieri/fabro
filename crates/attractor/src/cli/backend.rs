@@ -61,6 +61,7 @@ impl CodergenBackend for AgentBackend {
         &self,
         node: &Node,
         prompt: &str,
+        stage_dir: &std::path::Path,
     ) -> Result<CodergenResult, AttractorError> {
         let client = Client::from_env()
             .await
@@ -88,10 +89,28 @@ impl CodergenBackend for AgentBackend {
             provider_options: None,
         };
 
+        let _ = tokio::fs::create_dir_all(stage_dir).await;
+        if let Ok(json) = serde_json::to_string_pretty(&request) {
+            let _ = tokio::fs::write(stage_dir.join("api_request.json"), json).await;
+        }
+
         let response = client
             .complete(&request)
             .await
             .map_err(|e| AttractorError::Handler(format!("one_shot LLM call failed: {e}")))?;
+
+        if let Ok(json) = serde_json::to_string_pretty(&response) {
+            let _ = tokio::fs::write(stage_dir.join("api_response.json"), json).await;
+        }
+
+        let provider_used = serde_json::json!({
+            "mode": "one_shot",
+            "provider": request.provider.as_deref().unwrap_or("anthropic"),
+            "model": &request.model,
+        });
+        if let Ok(json) = serde_json::to_string_pretty(&provider_used) {
+            let _ = tokio::fs::write(stage_dir.join("provider_used.json"), json).await;
+        }
 
         let mut stage_usage = StageUsage {
             model: model.to_string(),
@@ -118,6 +137,7 @@ impl CodergenBackend for AgentBackend {
         _context: &Context,
         _thread_id: Option<&str>,
         emitter: &Arc<crate::event::EventEmitter>,
+        stage_dir: &std::path::Path,
     ) -> Result<CodergenResult, AttractorError> {
         let client = Client::from_env()
             .await
@@ -332,6 +352,15 @@ impl CodergenBackend for AgentBackend {
             v.sort();
             v
         };
+
+        let provider_used = serde_json::json!({
+            "mode": "agent_loop",
+            "provider": self.provider.as_deref().unwrap_or("anthropic"),
+            "model": &self.model,
+        });
+        if let Ok(json) = serde_json::to_string_pretty(&provider_used) {
+            let _ = std::fs::write(stage_dir.join("provider_used.json"), json);
+        }
 
         Ok(CodergenResult::Text { text: response, usage: Some(stage_usage), files_touched })
     }

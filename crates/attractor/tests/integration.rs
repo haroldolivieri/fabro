@@ -1057,6 +1057,7 @@ impl CodergenBackend for MockCodergenBackend {
         _context: &Context,
         _thread_id: Option<&str>,
         _emitter: &Arc<EventEmitter>,
+        _stage_dir: &std::path::Path,
     ) -> Result<CodergenResult, AttractorError> {
         Ok(CodergenResult::Text {
             text: format!(
@@ -5082,6 +5083,7 @@ mod real_llm {
             _context: &Context,
             _thread_id: Option<&str>,
             _emitter: &Arc<EventEmitter>,
+            _stage_dir: &std::path::Path,
         ) -> Result<CodergenResult, AttractorError> {
             let request = Request {
                 model: self.model.clone(),

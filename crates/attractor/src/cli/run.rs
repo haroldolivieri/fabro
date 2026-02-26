@@ -72,6 +72,8 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
         ))
     });
     tokio::fs::create_dir_all(&logs_dir).await?;
+    tokio::fs::write(logs_dir.join("graph.dot"), &source).await?;
+    tokio::fs::write(logs_dir.join("run.pid"), std::process::id().to_string()).await?;
 
     if args.verbose >= 1 {
         eprintln!(
@@ -259,15 +261,33 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
     };
 
     let run_start = Instant::now();
-    let outcome = if let Some(ref checkpoint_path) = args.resume {
+    let engine_result = if let Some(ref checkpoint_path) = args.resume {
         let checkpoint = Checkpoint::load(checkpoint_path)?;
         engine
             .run_from_checkpoint(&graph, &config, &checkpoint)
-            .await?
+            .await
     } else {
-        engine.run(&graph, &config).await?
+        engine.run(&graph, &config).await
     };
     let run_duration_ms = run_start.elapsed().as_millis() as u64;
+
+    {
+        let (status, failure_reason) = match &engine_result {
+            Ok(o) => (o.status.to_string(), o.failure_reason.clone()),
+            Err(e) => ("fail".to_string(), Some(e.to_string())),
+        };
+        let final_json = serde_json::json!({
+            "timestamp": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "status": status,
+            "duration_ms": run_duration_ms,
+            "failure_reason": failure_reason,
+        });
+        if let Ok(json) = serde_json::to_string_pretty(&final_json) {
+            let _ = tokio::fs::write(logs_dir.join("final.json"), json).await;
+        }
+    }
+
+    let outcome = engine_result?;
 
     // 8. Print result
     eprintln!(

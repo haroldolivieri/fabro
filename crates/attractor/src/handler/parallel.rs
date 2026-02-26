@@ -271,6 +271,12 @@ impl Handler for ParallelHandler {
         context.set("parallel.results", serde_json::json!(results_json));
         context.set("parallel.branch_count", serde_json::json!(total));
 
+        let node_dir = logs_root.join(&node.id);
+        let _ = tokio::fs::create_dir_all(&node_dir).await;
+        if let Ok(json) = serde_json::to_string_pretty(&results_json) {
+            let _ = tokio::fs::write(node_dir.join("parallel_results.json"), json).await;
+        }
+
         services.emitter.emit(&PipelineEvent::ParallelCompleted {
             duration_ms: millis_u64(parallel_start.elapsed()),
             success_count,
@@ -392,9 +398,9 @@ mod tests {
         graph.edges.push(Edge::new("par", "branch_a"));
         graph.edges.push(Edge::new("par", "branch_b"));
 
-        let logs_root = Path::new("/tmp/test");
+        let tmp = tempfile::tempdir().unwrap();
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, logs_root, &services)
+            .execute(&node, &context, &graph, tmp.path(), &services)
             .await
             .unwrap();
 
@@ -404,6 +410,14 @@ mod tests {
         // Check context was set
         let results = context.get("parallel.results");
         assert!(results.is_some());
+
+        // Check parallel_results.json was written
+        let results_path = tmp.path().join("par").join("parallel_results.json");
+        assert!(results_path.exists(), "parallel_results.json should be written");
+        let content = std::fs::read_to_string(&results_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(parsed.is_array(), "parallel_results.json should be a JSON array");
+        assert_eq!(parsed.as_array().unwrap().len(), 2);
     }
 
     #[tokio::test]

@@ -54,6 +54,15 @@ fn validate_styled() {
 }
 
 #[test]
+fn validate_legacy_tool() {
+    attractor()
+        .args(["validate", "../../test/legacy_tool.dot"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Validation: OK"));
+}
+
+#[test]
 fn validate_invalid() {
     attractor()
         .args(["validate", "../../test/invalid.dot"])
@@ -114,6 +123,14 @@ fn dry_run_parallel() {
 fn dry_run_styled() {
     attractor()
         .args(["run", "--dry-run", "--auto-approve", "../../test/styled.dot"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn dry_run_legacy_tool() {
+    attractor()
+        .args(["run", "--dry-run", "--auto-approve", "../../test/legacy_tool.dot"])
         .assert()
         .success();
 }

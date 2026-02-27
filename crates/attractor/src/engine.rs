@@ -10,7 +10,7 @@ use chrono::Utc;
 use futures::FutureExt;
 use rand::Rng;
 
-use crate::artifact::{offload_large_values, ArtifactStore};
+use crate::artifact::{offload_large_values, sync_artifacts_to_env, ArtifactStore};
 use crate::checkpoint::Checkpoint;
 use crate::condition::evaluate_condition;
 use crate::context::Context;
@@ -933,6 +933,14 @@ impl PipelineEngine {
             // Offload large context values to artifact store before recording
             if let Err(e) = offload_large_values(&mut outcome.context_updates, &artifact_store) {
                 context.append_log(format!("artifact offload failed: {e}"));
+            }
+
+            // Sync artifact files to the execution environment (no-op for local envs)
+            if let Err(e) = sync_artifacts_to_env(
+                &mut outcome.context_updates,
+                &*self.services.execution_env,
+            ).await {
+                context.append_log(format!("artifact sync failed: {e}"));
             }
 
             // Step 3: Record completion

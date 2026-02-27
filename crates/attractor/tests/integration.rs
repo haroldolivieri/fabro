@@ -6899,7 +6899,7 @@ async fn large_context_values_are_offloaded_to_artifact_store() {
         .expect("context should have response.big_output");
     let pointer_str = pointer_value.as_str().expect("pointer should be a string");
     assert!(
-        pointer_str.starts_with("artifact://"),
+        pointer_str.starts_with("file://"),
         "value should be an artifact pointer, got: {pointer_str}"
     );
 
@@ -6933,4 +6933,153 @@ async fn large_context_values_are_offloaded_to_artifact_store() {
             "artifact_count should be > 0, got {artifact_count}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Artifact sync to remote execution environments
+// ---------------------------------------------------------------------------
+
+/// A mock execution environment where `file_exists` always returns false,
+/// simulating a remote container that doesn't have local artifact files.
+struct RemoteMockEnv {
+    working_dir: String,
+    written: std::sync::Mutex<Vec<(String, String)>>,
+}
+
+impl RemoteMockEnv {
+    fn new(working_dir: &str) -> Self {
+        Self {
+            working_dir: working_dir.to_string(),
+            written: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl agent::ExecutionEnvironment for RemoteMockEnv {
+    async fn read_file(&self, _path: &str, _offset: Option<usize>, _limit: Option<usize>) -> std::result::Result<String, String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn write_file(&self, path: &str, content: &str) -> std::result::Result<(), String> {
+        self.written
+            .lock()
+            .unwrap()
+            .push((path.to_string(), content.to_string()));
+        Ok(())
+    }
+
+    async fn delete_file(&self, _path: &str) -> std::result::Result<(), String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn file_exists(&self, _path: &str) -> std::result::Result<bool, String> {
+        Ok(false)
+    }
+
+    async fn list_directory(&self, _path: &str, _depth: Option<usize>) -> std::result::Result<Vec<agent::DirEntry>, String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn exec_command(
+        &self,
+        _command: &str,
+        _timeout_ms: u64,
+        _working_dir: Option<&str>,
+        _env_vars: Option<&std::collections::HashMap<String, String>>,
+        _cancel_token: Option<tokio_util::sync::CancellationToken>,
+    ) -> std::result::Result<agent::ExecResult, String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn grep(&self, _pattern: &str, _path: &str, _options: &agent::GrepOptions) -> std::result::Result<Vec<String>, String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn glob(&self, _pattern: &str, _path: Option<&str>) -> std::result::Result<Vec<String>, String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn initialize(&self) -> std::result::Result<(), String> {
+        Ok(())
+    }
+
+    async fn cleanup(&self) -> std::result::Result<(), String> {
+        Ok(())
+    }
+
+    fn working_directory(&self) -> &str {
+        &self.working_dir
+    }
+
+    fn platform(&self) -> &str {
+        "linux"
+    }
+
+    fn os_version(&self) -> String {
+        "Linux 5.15".to_string()
+    }
+}
+
+#[tokio::test]
+async fn artifact_pointers_rewritten_for_remote_execution_env() {
+    // Pipeline: start -> big_output -> exit
+    // big_output uses LargeOutputHandler which returns a >100KB context_update.
+    // RemoteMockEnv simulates a container where local files don't exist.
+    let mut graph = make_graph_with_start_exit("ArtifactSync");
+    graph.attrs.insert(
+        "goal".to_string(),
+        AttrValue::String("Test artifact sync to remote env".to_string()),
+    );
+
+    let mut big_output = Node::new("big_output");
+    big_output.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Big Output".to_string()),
+    );
+    graph.nodes.insert("big_output".to_string(), big_output);
+
+    graph.edges.push(Edge::new("start", "big_output"));
+    graph.edges.push(Edge::new("big_output", "exit"));
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut registry = HandlerRegistry::new(Box::new(LargeOutputHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+
+    let remote_env = Arc::new(RemoteMockEnv::new("/sandbox"));
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), remote_env.clone());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+    };
+
+    let outcome = engine
+        .run(&graph, &config)
+        .await
+        .expect("pipeline should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // The checkpoint context should contain a pointer rewritten for the remote env
+    let checkpoint = Checkpoint::load(&dir.path().join("checkpoint.json"))
+        .expect("checkpoint should load");
+    let pointer_value = checkpoint
+        .context_values
+        .get("response.big_output")
+        .expect("context should have response.big_output");
+    let pointer_str = pointer_value.as_str().expect("pointer should be a string");
+    assert!(
+        pointer_str.starts_with("file:///sandbox/.attractor/artifacts/"),
+        "pointer should reference remote path, got: {pointer_str}"
+    );
+
+    // The RemoteMockEnv should have received exactly one write with >100KB content
+    let written = remote_env.written.lock().unwrap();
+    assert_eq!(written.len(), 1, "should have written 1 artifact");
+    assert!(
+        written[0].1.len() > 100 * 1024,
+        "written content should be >100KB, got {} bytes",
+        written[0].1.len()
+    );
 }

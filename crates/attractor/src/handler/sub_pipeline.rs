@@ -60,7 +60,7 @@ impl Handler for SubPipelineHandler {
         let before_snapshot = context.snapshot();
 
         // 5. Walk the sub-graph
-        let sub_logs_root = logs_root.join(&node.id);
+        let sub_logs_root = crate::engine::node_dir(logs_root, &node.id);
         let mut current_node_id = start_node.clone();
         let mut last_outcome = Outcome::success();
 

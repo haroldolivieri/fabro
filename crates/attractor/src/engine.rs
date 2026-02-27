@@ -259,9 +259,14 @@ fn write_manifest(logs_root: &Path, graph: &Graph) {
     }
 }
 
-/// Write status.json for a completed node into {`logs_root}/{node_id}/status.json`.
+/// Return the directory for a node's logs: `{logs_root}/nodes/{node_id}`.
+pub fn node_dir(logs_root: &Path, node_id: &str) -> PathBuf {
+    logs_root.join("nodes").join(node_id)
+}
+
+/// Write status.json for a completed node into {`logs_root}/nodes/{node_id}/status.json`.
 fn write_node_status(logs_root: &Path, node_id: &str, outcome: &Outcome) {
-    let node_dir = logs_root.join(node_id);
+    let node_dir = node_dir(logs_root, node_id);
     let _ = std::fs::create_dir_all(&node_dir);
     let status = serde_json::json!({
         "status": outcome.status.to_string(),
@@ -560,7 +565,7 @@ impl PipelineEngine {
                         } else {
                             "handler panicked".to_string()
                         };
-                        let panic_dir = logs_root.join(&node.id);
+                        let panic_dir = node_dir(&logs_root, &node.id);
                         let _ = std::fs::create_dir_all(&panic_dir);
                         let _ = std::fs::write(panic_dir.join("panic.txt"), &msg);
                         Err(AttractorError::Handler(msg))
@@ -1949,7 +1954,7 @@ mod tests {
         engine.run(&g, &config).await.unwrap();
 
         // start node should have status.json
-        let status_path = dir.path().join("start").join("status.json");
+        let status_path = dir.path().join("nodes").join("start").join("status.json");
         assert!(status_path.exists());
         let status: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&status_path).unwrap()).unwrap();
@@ -2207,7 +2212,7 @@ mod tests {
         let result = engine.run(&g, &config).await;
 
         assert!(result.is_ok());
-        let status_path = dir.path().join("work").join("status.json");
+        let status_path = dir.path().join("nodes").join("work").join("status.json");
         let status: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&status_path).unwrap()).unwrap();
         assert_eq!(status["status"], "fail");
@@ -2246,7 +2251,7 @@ mod tests {
         let result = engine.run(&g, &config).await;
         assert!(result.is_ok());
 
-        let status_path = dir.path().join("work").join("status.json");
+        let status_path = dir.path().join("nodes").join("work").join("status.json");
         let status: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&status_path).unwrap()).unwrap();
         assert_eq!(status["status"], "fail");
@@ -2652,7 +2657,7 @@ mod tests {
         // but panic.txt should already be written by the panic handler.
         let _result = engine.run(&g, &config).await;
 
-        let panic_path = dir.path().join("boom").join("panic.txt");
+        let panic_path = dir.path().join("nodes").join("boom").join("panic.txt");
         assert!(panic_path.exists(), "panic.txt should be written");
         let content = std::fs::read_to_string(&panic_path).unwrap();
         assert!(

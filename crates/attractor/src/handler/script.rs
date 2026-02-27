@@ -49,7 +49,7 @@ impl Handler for ScriptHandler {
             )));
         }
 
-        let stage_dir = logs_root.join(&node.id);
+        let stage_dir = crate::engine::node_dir(logs_root, &node.id);
         tokio::fs::create_dir_all(&stage_dir).await?;
 
         let invocation = serde_json::json!({
@@ -295,6 +295,7 @@ mod tests {
 
         let invocation_path = logs_root
             .path()
+            .join("nodes")
             .join("script_node")
             .join("script_invocation.json");
         let content = std::fs::read_to_string(&invocation_path).unwrap();
@@ -327,6 +328,7 @@ mod tests {
 
         let invocation_path = logs_root
             .path()
+            .join("nodes")
             .join("script_node")
             .join("script_invocation.json");
         let content = std::fs::read_to_string(&invocation_path).unwrap();
@@ -353,7 +355,7 @@ mod tests {
             .await
             .unwrap();
 
-        let stage_dir = logs_root.path().join("script_node");
+        let stage_dir = logs_root.path().join("nodes").join("script_node");
         let stdout = std::fs::read_to_string(stage_dir.join("stdout.log")).unwrap();
         assert_eq!(stdout.trim(), "hello");
         let stderr = std::fs::read_to_string(stage_dir.join("stderr.log")).unwrap();
@@ -377,7 +379,7 @@ mod tests {
             .await
             .unwrap();
 
-        let stage_dir = logs_root.path().join("script_node");
+        let stage_dir = logs_root.path().join("nodes").join("script_node");
         let stderr = std::fs::read_to_string(stage_dir.join("stderr.log")).unwrap();
         assert_eq!(stderr.trim(), "oops");
     }
@@ -399,7 +401,7 @@ mod tests {
             .await
             .unwrap();
 
-        let timing_path = logs_root.path().join("script_node").join("script_timing.json");
+        let timing_path = logs_root.path().join("nodes").join("script_node").join("script_timing.json");
         let content = std::fs::read_to_string(&timing_path).unwrap();
         let json: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert!(json["duration_ms"].is_u64());
@@ -424,7 +426,7 @@ mod tests {
             .await
             .unwrap();
 
-        let timing_path = logs_root.path().join("script_node").join("script_timing.json");
+        let timing_path = logs_root.path().join("nodes").join("script_node").join("script_timing.json");
         let content = std::fs::read_to_string(&timing_path).unwrap();
         let json: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert_eq!(json["exit_code"], 1);
@@ -452,7 +454,7 @@ mod tests {
             .await
             .unwrap();
 
-        let timing_path = logs_root.path().join("script_node").join("script_timing.json");
+        let timing_path = logs_root.path().join("nodes").join("script_node").join("script_timing.json");
         let content = std::fs::read_to_string(&timing_path).unwrap();
         let json: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert!(json["duration_ms"].is_u64());

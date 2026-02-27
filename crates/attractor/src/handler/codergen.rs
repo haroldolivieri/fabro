@@ -212,7 +212,7 @@ impl Handler for CodergenHandler {
         };
 
         // 2. Write prompt to logs
-        let stage_dir = logs_root.join(&node.id);
+        let stage_dir = crate::engine::node_dir(logs_root, &node.id);
         tokio::fs::create_dir_all(&stage_dir).await?;
         tokio::fs::write(stage_dir.join("prompt.md"), &prompt).await?;
 
@@ -337,17 +337,17 @@ mod tests {
         assert_eq!(outcome.notes.as_deref(), Some("Stage completed: plan"));
 
         // Check files were written
-        let prompt_path = tmp.path().join("plan").join("prompt.md");
+        let prompt_path = tmp.path().join("nodes").join("plan").join("prompt.md");
         assert!(prompt_path.exists());
         let prompt_content = std::fs::read_to_string(&prompt_path).unwrap();
         assert_eq!(prompt_content, "Plan the implementation");
 
-        let response_path = tmp.path().join("plan").join("response.md");
+        let response_path = tmp.path().join("nodes").join("plan").join("response.md");
         assert!(response_path.exists());
         let response_content = std::fs::read_to_string(&response_path).unwrap();
         assert!(response_content.contains("[Simulated]"));
 
-        let status_path = tmp.path().join("plan").join("status.json");
+        let status_path = tmp.path().join("nodes").join("plan").join("status.json");
         assert!(status_path.exists());
     }
 
@@ -373,7 +373,7 @@ mod tests {
             .unwrap();
 
         let prompt_content =
-            std::fs::read_to_string(tmp.path().join("plan").join("prompt.md")).unwrap();
+            std::fs::read_to_string(tmp.path().join("nodes").join("plan").join("prompt.md")).unwrap();
         assert_eq!(prompt_content, "Achieve: Build a feature");
     }
 
@@ -395,7 +395,7 @@ mod tests {
             .unwrap();
 
         let prompt_content =
-            std::fs::read_to_string(tmp.path().join("work").join("prompt.md")).unwrap();
+            std::fs::read_to_string(tmp.path().join("nodes").join("work").join("prompt.md")).unwrap();
         assert_eq!(prompt_content, "Do work");
     }
 
@@ -806,11 +806,11 @@ Some text in between.
         assert_eq!(outcome.status, crate::outcome::StageStatus::Success);
 
         let prompt_content =
-            std::fs::read_to_string(tmp.path().join("classify").join("prompt.md")).unwrap();
+            std::fs::read_to_string(tmp.path().join("nodes").join("classify").join("prompt.md")).unwrap();
         assert_eq!(prompt_content, "Classify this");
 
         let response_content =
-            std::fs::read_to_string(tmp.path().join("classify").join("response.md")).unwrap();
+            std::fs::read_to_string(tmp.path().join("nodes").join("classify").join("response.md")).unwrap();
         assert_eq!(response_content, "one-shot response");
     }
 
@@ -833,7 +833,7 @@ Some text in between.
         assert_eq!(outcome.status, crate::outcome::StageStatus::Success);
 
         let response_content =
-            std::fs::read_to_string(tmp.path().join("classify").join("response.md")).unwrap();
+            std::fs::read_to_string(tmp.path().join("nodes").join("classify").join("response.md")).unwrap();
         assert!(response_content.contains("[Simulated]"));
     }
 
@@ -1108,7 +1108,7 @@ Some text in between.
             .unwrap();
 
         let prompt_content =
-            std::fs::read_to_string(tmp.path().join("report").join("prompt.md")).unwrap();
+            std::fs::read_to_string(tmp.path().join("nodes").join("report").join("prompt.md")).unwrap();
         assert!(
             prompt_content.contains("## Script Output\nAll tests passed"),
             "prompt.md should contain preamble"

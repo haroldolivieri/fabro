@@ -201,7 +201,7 @@ async fn end_to_end_linear_pipeline() {
         .contains(&"codergen_step".to_string()));
 
     // Codergen handler writes prompt.md, response.md, status.json
-    let stage_dir = dir.path().join("codergen_step");
+    let stage_dir = dir.path().join("nodes").join("codergen_step");
     assert!(stage_dir.join("prompt.md").exists(), "prompt.md should exist");
     assert!(
         stage_dir.join("response.md").exists(),
@@ -1328,7 +1328,7 @@ async fn smoke_test_with_mock_codergen_backend() {
     );
 
     // Verify response.md was written by the mock backend
-    let plan_response = std::fs::read_to_string(dir.path().join("plan").join("response.md"))
+    let plan_response = std::fs::read_to_string(dir.path().join("nodes").join("plan").join("response.md"))
         .expect("plan response should exist");
     assert!(
         plan_response.contains("Response for plan"),
@@ -1336,7 +1336,7 @@ async fn smoke_test_with_mock_codergen_backend() {
     );
 
     // Verify prompt.md had $goal expanded by the CodergenHandler
-    let plan_prompt = std::fs::read_to_string(dir.path().join("plan").join("prompt.md"))
+    let plan_prompt = std::fs::read_to_string(dir.path().join("nodes").join("plan").join("prompt.md"))
         .expect("plan prompt should exist");
     assert!(
         plan_prompt.ends_with("Plan to achieve: Build and validate"),
@@ -1829,7 +1829,7 @@ async fn codergen_without_backend_simulated() {
     engine.run(&graph, &config).await.expect("run");
 
     let response =
-        std::fs::read_to_string(dir.path().join("code").join("response.md")).unwrap();
+        std::fs::read_to_string(dir.path().join("nodes").join("code").join("response.md")).unwrap();
     assert!(response.contains("[Simulated]"));
 
     let cp = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
@@ -2910,8 +2910,8 @@ async fn integration_smoke_plan_implement_review_done() {
     assert!(cp.completed_nodes.contains(&"review".to_string()));
 
     // Verify prompt.md and response.md exist
-    assert!(dir.path().join("plan").join("prompt.md").exists());
-    assert!(dir.path().join("plan").join("response.md").exists());
+    assert!(dir.path().join("nodes").join("plan").join("prompt.md").exists());
+    assert!(dir.path().join("nodes").join("plan").join("response.md").exists());
 
     // Verify events
     let collected = events.lock().unwrap();
@@ -5284,7 +5284,7 @@ mod real_llm {
 
         // Verify actual LLM responses were written
         let plan_response =
-            std::fs::read_to_string(dir.path().join("plan").join("response.md")).unwrap();
+            std::fs::read_to_string(dir.path().join("nodes").join("plan").join("response.md")).unwrap();
         assert!(
             !plan_response.is_empty(),
             "LLM should have generated a response"
@@ -5610,7 +5610,7 @@ mod real_llm {
 
         assert_eq!(outcome.status, StageStatus::Success);
 
-        let response_path = dir.path().join("classify").join("response.md");
+        let response_path = dir.path().join("nodes").join("classify").join("response.md");
         let response = std::fs::read_to_string(&response_path).unwrap();
         assert!(!response.is_empty(), "response.md should be non-empty");
     }
@@ -6339,7 +6339,7 @@ async fn tool_hooks_pre_success_allows_pipeline_to_proceed() {
     assert_eq!(outcome.status, StageStatus::Success);
 
     // The work node should have executed normally
-    let stage_dir = dir.path().join("work");
+    let stage_dir = dir.path().join("nodes").join("work");
     assert!(
         stage_dir.join("prompt.md").exists(),
         "prompt.md should exist when pre-hook succeeds"
@@ -6381,7 +6381,7 @@ async fn tool_hooks_pre_failure_skips_tool_call() {
     );
 
     // response.md should NOT exist because the LLM call was skipped
-    let stage_dir = dir.path().join("work");
+    let stage_dir = dir.path().join("nodes").join("work");
     assert!(
         !stage_dir.join("response.md").exists(),
         "response.md should not exist when pre-hook skips tool call"
@@ -6411,7 +6411,7 @@ async fn tool_hooks_post_success_does_not_affect_outcome() {
     let outcome = engine.run(&graph, &config).await.expect("run should succeed");
     assert_eq!(outcome.status, StageStatus::Success);
 
-    let stage_dir = dir.path().join("work");
+    let stage_dir = dir.path().join("nodes").join("work");
     assert!(
         stage_dir.join("response.md").exists(),
         "response.md should exist when post-hook succeeds"
@@ -6442,7 +6442,7 @@ async fn tool_hooks_post_failure_does_not_block_pipeline() {
     // Post-hook failure should not block the pipeline (spec 9.7)
     assert_eq!(outcome.status, StageStatus::Success);
 
-    let stage_dir = dir.path().join("work");
+    let stage_dir = dir.path().join("nodes").join("work");
     assert!(
         stage_dir.join("response.md").exists(),
         "response.md should exist even when post-hook fails"
@@ -6475,11 +6475,11 @@ async fn tool_hooks_graph_level_applies_to_all_nodes() {
 
     // Both steps should have executed since graph-level pre-hook exits 0
     assert!(
-        dir.path().join("step1").join("response.md").exists(),
+        dir.path().join("nodes").join("step1").join("response.md").exists(),
         "step1 should execute with graph-level pre-hook success"
     );
     assert!(
-        dir.path().join("step2").join("response.md").exists(),
+        dir.path().join("nodes").join("step2").join("response.md").exists(),
         "step2 should execute with graph-level pre-hook success"
     );
 }
@@ -6510,13 +6510,13 @@ async fn tool_hooks_node_level_overrides_graph_level() {
     // step1 has node-level pre-hook "exit 1" which overrides graph-level "exit 0"
     // So step1's tool call should be skipped (no response.md)
     assert!(
-        !dir.path().join("step1").join("response.md").exists(),
+        !dir.path().join("nodes").join("step1").join("response.md").exists(),
         "step1 should be skipped because node-level pre-hook overrides graph-level"
     );
 
     // step2 inherits graph-level "exit 0", so it should execute normally
     assert!(
-        dir.path().join("step2").join("response.md").exists(),
+        dir.path().join("nodes").join("step2").join("response.md").exists(),
         "step2 should execute with inherited graph-level pre-hook"
     );
 }
@@ -6648,7 +6648,7 @@ async fn attractor_e2e_with_real_llm() {
     assert_eq!(outcome.status, StageStatus::Success);
 
     // 2. Artifacts exist
-    let work_dir = logs_dir.path().join("work");
+    let work_dir = logs_dir.path().join("nodes").join("work");
     assert!(work_dir.join("prompt.md").exists(), "prompt.md should exist");
     assert!(
         work_dir.join("response.md").exists(),
@@ -6747,7 +6747,7 @@ async fn run_fidelity_prompt_pipeline(fidelity: &str) -> String {
 
     engine.run(&graph, &config).await.expect("pipeline should succeed");
 
-    std::fs::read_to_string(dir.path().join("report").join("prompt.md"))
+    std::fs::read_to_string(dir.path().join("nodes").join("report").join("prompt.md"))
         .expect("report/prompt.md should exist")
 }
 

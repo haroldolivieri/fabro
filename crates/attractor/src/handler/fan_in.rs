@@ -169,7 +169,7 @@ async fn llm_evaluate(
     );
 
     // Write prompt to logs
-    let stage_dir = logs_root.join(node_id);
+    let stage_dir = crate::engine::node_dir(logs_root, node_id);
     tokio::fs::create_dir_all(&stage_dir).await?;
     tokio::fs::write(stage_dir.join("prompt.md"), &full_prompt).await?;
 
@@ -414,12 +414,12 @@ mod tests {
         );
 
         // Verify prompt and response files were written
-        let prompt_path = tmp.path().join("fan_in").join("prompt.md");
+        let prompt_path = tmp.path().join("nodes").join("fan_in").join("prompt.md");
         assert!(prompt_path.exists());
         let prompt_content = std::fs::read_to_string(&prompt_path).unwrap();
         assert!(prompt_content.contains("Pick the best branch"));
 
-        let response_path = tmp.path().join("fan_in").join("response.md");
+        let response_path = tmp.path().join("nodes").join("fan_in").join("response.md");
         assert!(response_path.exists());
         let response_content = std::fs::read_to_string(&response_path).unwrap();
         assert!(response_content.contains("branch_b"));

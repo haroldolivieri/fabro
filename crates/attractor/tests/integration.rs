@@ -6784,10 +6784,11 @@ async fn fidelity_prompt_summary_low() {
 async fn fidelity_prompt_summary_medium() {
     let prompt = run_fidelity_prompt_pipeline("summary:medium").await;
 
-    // summary:medium includes goal, stages, and context values
+    // summary:medium includes goal, stages, and compact handler details
     assert!(prompt.contains("Validate the build"), "summary:medium: should contain goal");
     assert!(prompt.contains("run_tests"), "summary:medium: should mention run_tests");
-    assert!(prompt.contains("## Context"), "summary:medium: should include context section");
+    assert!(prompt.contains("Script:"), "summary:medium: should show script sub-item for run_tests");
+    assert!(prompt.contains("Stdout:"), "summary:medium: should show stdout sub-item for run_tests");
 
     // Original prompt at the end
     assert!(

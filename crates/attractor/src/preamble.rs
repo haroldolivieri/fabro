@@ -405,17 +405,11 @@ fn build_summary_preamble(
 
             append_filtered_context_table(&mut parts, context, &all_rendered_keys);
         }
-        _ => {
-            // Low and Medium share the same structure as before
+        SummaryDetail::Medium => {
             let stage_count = completed_nodes.len();
             parts.push(format!("Completed {stage_count} stage(s) so far."));
 
-            let recent_count = match detail {
-                SummaryDetail::Low => 2,
-                SummaryDetail::Medium => 5,
-                SummaryDetail::High => unreachable!(),
-            };
-
+            let recent_count = 5;
             let stages_to_show: Vec<&String> = if stage_count > recent_count {
                 let skipped = stage_count - recent_count;
                 parts.push(format!("\n({skipped} earlier stage(s) omitted)"));
@@ -438,31 +432,83 @@ fn build_summary_preamble(
                         }
                         parts.push(line);
 
-                        // For medium detail, include context updates from the outcome
-                        if matches!(detail, SummaryDetail::Medium)
-                            && !outcome.context_updates.is_empty()
-                        {
-                            let mut update_keys: Vec<&String> =
-                                outcome.context_updates.keys().collect();
-                            update_keys.sort();
-                            for key in update_keys {
-                                if let Some(val) = outcome.context_updates.get(key) {
-                                    parts.push(format!(
-                                        "  - set {key} = {}",
-                                        format_value(val)
-                                    ));
-                                }
-                            }
-                        }
+                        let node = graph.nodes.get(*node_id);
+                        let details =
+                            render_compact_stage_details(node_id, node, outcome);
+                        parts.extend(details);
+
+                        all_rendered_keys
+                            .extend(stage_rendered_keys(node_id, outcome));
                     } else {
                         parts.push(format!("- {node_id}: completed"));
                     }
                 }
             }
 
-            // Include context values for medium only (low excludes them)
-            if matches!(detail, SummaryDetail::Medium) {
-                append_filtered_context(&mut parts, context, &all_rendered_keys);
+            append_filtered_context(&mut parts, context, &all_rendered_keys);
+        }
+        SummaryDetail::Low => {
+            let stage_count = completed_nodes.len();
+            parts.push(format!("Completed {stage_count} stage(s) so far."));
+
+            let recent_count = 2;
+            let stages_to_show: Vec<&String> = if stage_count > recent_count {
+                let skipped = stage_count - recent_count;
+                parts.push(format!("\n({skipped} earlier stage(s) omitted)"));
+                completed_nodes.iter().skip(skipped).collect()
+            } else {
+                completed_nodes.iter().collect()
+            };
+
+            if !stages_to_show.is_empty() {
+                parts.push(String::from("\nRecent stages:"));
+                for node_id in &stages_to_show {
+                    if let Some(outcome) = node_outcomes.get(*node_id) {
+                        let status = outcome.status.to_string();
+                        let mut line = format!("- {node_id}: {status}");
+                        if let Some(notes) = outcome.notes.as_deref() {
+                            line.push_str(&format!(" ({notes})"));
+                        }
+                        if let Some(reason) = outcome.failure_reason.as_deref() {
+                            line.push_str(&format!(" [reason: {reason}]"));
+                        }
+                        parts.push(line);
+
+                        let node = graph.nodes.get(*node_id);
+                        let handler =
+                            node.and_then(|n| n.handler_type());
+                        if let Some(h) = handler {
+                            parts.push(format!("  - Handler: {h}"));
+                        }
+                        match handler {
+                            Some("script") => {
+                                if let Some(n) = node {
+                                    if let Some(cmd) = n
+                                        .attrs
+                                        .get("script")
+                                        .or_else(|| n.attrs.get("tool_command"))
+                                        .and_then(|v| v.as_str())
+                                    {
+                                        parts.push(format!(
+                                            "  - Script: `{cmd}`"
+                                        ));
+                                    }
+                                }
+                            }
+                            Some("codergen") => {
+                                if let Some(usage) = &outcome.usage {
+                                    parts.push(format!(
+                                        "  - Model: {}",
+                                        usage.model
+                                    ));
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        parts.push(format!("- {node_id}: completed"));
+                    }
+                }
             }
         }
     }
@@ -917,7 +963,14 @@ mod tests {
 
     #[test]
     fn build_preamble_summary_low_shows_only_recent_stages() {
-        let graph = Graph::new("test");
+        let mut graph = Graph::new("test");
+        let mut step3 = Node::new("step3");
+        step3.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("parallelogram".to_string()),
+        );
+        graph.nodes.insert("step3".to_string(), step3);
+
         let context = Context::new();
         let completed_nodes = vec![
             "step1".to_string(),
@@ -945,6 +998,101 @@ mod tests {
         assert!(preamble.contains("step3"), "should show recent stage");
         assert!(preamble.contains("step4"), "should show most recent stage");
         assert!(preamble.contains("omitted"), "should indicate omitted stages");
+        // Handler type should appear for nodes with known handlers
+        assert!(
+            preamble.contains("Handler: script"),
+            "should show handler type for step3"
+        );
+    }
+
+    #[test]
+    fn summary_low_script_stage_shows_handler_and_command() {
+        let mut graph = Graph::new("test");
+        let mut run_tests = Node::new("run_tests");
+        run_tests.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("parallelogram".to_string()),
+        );
+        run_tests.attrs.insert(
+            "script".to_string(),
+            AttrValue::String("cargo test".to_string()),
+        );
+        graph.nodes.insert("run_tests".to_string(), run_tests);
+
+        let context = Context::new();
+        let completed_nodes = vec!["run_tests".to_string()];
+        let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
+        let mut outcome = Outcome::fail("exit code 1");
+        outcome.context_updates.insert(
+            "script.output".to_string(),
+            serde_json::json!("test failed"),
+        );
+        node_outcomes.insert("run_tests".to_string(), outcome);
+
+        let preamble = build_preamble(
+            "summary:low",
+            &context,
+            &graph,
+            &completed_nodes,
+            &node_outcomes,
+        );
+
+        assert!(
+            preamble.contains("Handler: script"),
+            "should show handler type"
+        );
+        assert!(
+            preamble.contains("Script: `cargo test`"),
+            "should show script command"
+        );
+        // Low mode should NOT include stdout/stderr
+        assert!(
+            !preamble.contains("Stdout:"),
+            "should not show stdout in low mode"
+        );
+    }
+
+    #[test]
+    fn summary_low_codergen_stage_shows_handler_and_model() {
+        let mut graph = Graph::new("test");
+        let mut report = Node::new("report");
+        report.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("box".to_string()),
+        );
+        graph.nodes.insert("report".to_string(), report);
+
+        let context = Context::new();
+        let completed_nodes = vec!["report".to_string()];
+        let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
+        let mut outcome = Outcome::success();
+        outcome.usage = Some(StageUsage {
+            model: "claude-sonnet-4-20250514".to_string(),
+            input_tokens: 1000,
+            output_tokens: 200,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            reasoning_tokens: None,
+            cost: None,
+        });
+        node_outcomes.insert("report".to_string(), outcome);
+
+        let preamble = build_preamble(
+            "summary:low",
+            &context,
+            &graph,
+            &completed_nodes,
+            &node_outcomes,
+        );
+
+        assert!(
+            preamble.contains("Handler: codergen"),
+            "should show handler type"
+        );
+        assert!(
+            preamble.contains("Model: claude-sonnet-4-20250514"),
+            "should show model name"
+        );
     }
 
     #[test]
@@ -1033,16 +1181,31 @@ mod tests {
     }
 
     #[test]
-    fn build_preamble_summary_medium_includes_context_updates() {
-        let graph = Graph::new("test");
+    fn build_preamble_summary_medium_uses_compact_handler_details() {
+        let mut graph = Graph::new("test");
+        let mut run_tests = Node::new("run_tests");
+        run_tests.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("parallelogram".to_string()),
+        );
+        run_tests.attrs.insert(
+            "script".to_string(),
+            AttrValue::String("make test".to_string()),
+        );
+        graph.nodes.insert("run_tests".to_string(), run_tests);
+
         let context = Context::new();
-        let completed_nodes = vec!["work".to_string()];
+        let completed_nodes = vec!["run_tests".to_string()];
         let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
         let mut outcome = Outcome::success();
+        outcome.context_updates.insert(
+            "script.output".to_string(),
+            serde_json::json!("All tests passed\n"),
+        );
         outcome
             .context_updates
-            .insert("result.score".to_string(), serde_json::json!(95));
-        node_outcomes.insert("work".to_string(), outcome);
+            .insert("script.stderr".to_string(), serde_json::json!(""));
+        node_outcomes.insert("run_tests".to_string(), outcome);
 
         let preamble = build_preamble(
             "summary:medium",
@@ -1053,8 +1216,60 @@ mod tests {
         );
 
         assert!(
-            preamble.contains("result.score"),
-            "should include context updates from outcomes"
+            preamble.contains("Script: `make test`"),
+            "should show script command via compact renderer"
+        );
+        assert!(
+            preamble.contains("All tests passed"),
+            "should show stdout via compact renderer"
+        );
+        assert!(
+            !preamble.contains("set script.output"),
+            "should not dump raw context updates"
+        );
+    }
+
+    #[test]
+    fn summary_medium_codergen_stage_shows_compact_details() {
+        let mut graph = Graph::new("test");
+        let mut report = Node::new("report");
+        report.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("box".to_string()),
+        );
+        graph.nodes.insert("report".to_string(), report);
+
+        let context = Context::new();
+        let completed_nodes = vec!["report".to_string()];
+        let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
+        let mut outcome = Outcome::success();
+        outcome.usage = Some(StageUsage {
+            model: "claude-sonnet-4-20250514".to_string(),
+            input_tokens: 1500,
+            output_tokens: 300,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            reasoning_tokens: None,
+            cost: None,
+        });
+        outcome.files_touched = vec!["src/lib.rs".to_string()];
+        node_outcomes.insert("report".to_string(), outcome);
+
+        let preamble = build_preamble(
+            "summary:medium",
+            &context,
+            &graph,
+            &completed_nodes,
+            &node_outcomes,
+        );
+
+        assert!(
+            preamble.contains("claude-sonnet-4-20250514"),
+            "should show model name"
+        );
+        assert!(
+            preamble.contains("src/lib.rs"),
+            "should show files touched"
         );
     }
 

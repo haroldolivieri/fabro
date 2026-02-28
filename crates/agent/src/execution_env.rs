@@ -4,6 +4,85 @@ use std::fmt::Write;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
+/// Generates an `#[async_trait] impl ExecutionEnvironment` block for a decorator type
+/// that wraps an `Arc<dyn ExecutionEnvironment>`. The caller provides custom method
+/// implementations; all remaining trait methods delegate to the inner field.
+///
+/// # Usage
+///
+/// ```ignore
+/// delegate_execution_env! {
+///     MyDecorator => inner {
+///         // Only provide methods with custom logic — the rest delegate automatically.
+///         async fn read_file(&self, path: &str, offset: Option<usize>, limit: Option<usize>) -> Result<String, String> {
+///             // custom logic...
+///         }
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! delegate_execution_env {
+    (
+        $type:ty => $field:ident {
+            $($custom:item)*
+        }
+    ) => {
+        #[async_trait::async_trait]
+        impl $crate::execution_env::ExecutionEnvironment for $type {
+            $($custom)*
+
+            async fn file_exists(&self, path: &str) -> Result<bool, String> {
+                self.$field.file_exists(path).await
+            }
+
+            async fn list_directory(
+                &self,
+                path: &str,
+                depth: Option<usize>,
+            ) -> Result<Vec<$crate::execution_env::DirEntry>, String> {
+                self.$field.list_directory(path, depth).await
+            }
+
+            async fn exec_command(
+                &self,
+                command: &str,
+                timeout_ms: u64,
+                working_dir: Option<&str>,
+                env_vars: Option<&std::collections::HashMap<String, String>>,
+                cancel_token: Option<tokio_util::sync::CancellationToken>,
+            ) -> Result<$crate::execution_env::ExecResult, String> {
+                self.$field
+                    .exec_command(command, timeout_ms, working_dir, env_vars, cancel_token)
+                    .await
+            }
+
+            async fn glob(&self, pattern: &str, path: Option<&str>) -> Result<Vec<String>, String> {
+                self.$field.glob(pattern, path).await
+            }
+
+            async fn initialize(&self) -> Result<(), String> {
+                self.$field.initialize().await
+            }
+
+            async fn cleanup(&self) -> Result<(), String> {
+                self.$field.cleanup().await
+            }
+
+            fn working_directory(&self) -> &str {
+                self.$field.working_directory()
+            }
+
+            fn platform(&self) -> &str {
+                self.$field.platform()
+            }
+
+            fn os_version(&self) -> String {
+                self.$field.os_version()
+            }
+        }
+    };
+}
+
 /// Events emitted during execution environment lifecycle operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecutionEnvEvent {

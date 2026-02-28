@@ -1,9 +1,7 @@
 use crate::execution_env::*;
-use async_trait::async_trait;
 use std::collections::HashSet;
 use std::path::{Component, PathBuf};
 use std::sync::{Arc, Mutex};
-use tokio_util::sync::CancellationToken;
 
 /// Decorator that prevents writing to files the agent hasn't read first.
 ///
@@ -73,93 +71,45 @@ impl ReadBeforeWriteEnvironment {
     }
 }
 
-#[async_trait]
-impl ExecutionEnvironment for ReadBeforeWriteEnvironment {
-    async fn read_file(
-        &self,
-        path: &str,
-        offset: Option<usize>,
-        limit: Option<usize>,
-    ) -> Result<String, String> {
-        let result = self.inner.read_file(path, offset, limit).await?;
-        self.mark_read(path);
-        Ok(result)
-    }
+crate::delegate_execution_env! {
+    ReadBeforeWriteEnvironment => inner {
+        async fn read_file(
+            &self,
+            path: &str,
+            offset: Option<usize>,
+            limit: Option<usize>,
+        ) -> Result<String, String> {
+            let result = self.inner.read_file(path, offset, limit).await?;
+            self.mark_read(path);
+            Ok(result)
+        }
 
-    async fn write_file(&self, path: &str, content: &str) -> Result<(), String> {
-        self.guard_write(path).await?;
-        self.inner.write_file(path, content).await
-    }
+        async fn write_file(&self, path: &str, content: &str) -> Result<(), String> {
+            self.guard_write(path).await?;
+            self.inner.write_file(path, content).await
+        }
 
-    async fn delete_file(&self, path: &str) -> Result<(), String> {
-        self.guard_write(path).await?;
-        self.inner.delete_file(path).await
-    }
+        async fn delete_file(&self, path: &str) -> Result<(), String> {
+            self.guard_write(path).await?;
+            self.inner.delete_file(path).await
+        }
 
-    async fn file_exists(&self, path: &str) -> Result<bool, String> {
-        self.inner.file_exists(path).await
-    }
-
-    async fn list_directory(
-        &self,
-        path: &str,
-        depth: Option<usize>,
-    ) -> Result<Vec<DirEntry>, String> {
-        self.inner.list_directory(path, depth).await
-    }
-
-    async fn exec_command(
-        &self,
-        command: &str,
-        timeout_ms: u64,
-        working_dir: Option<&str>,
-        env_vars: Option<&std::collections::HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
-    ) -> Result<ExecResult, String> {
-        self.inner
-            .exec_command(command, timeout_ms, working_dir, env_vars, cancel_token)
-            .await
-    }
-
-    async fn grep(
-        &self,
-        pattern: &str,
-        path: &str,
-        options: &GrepOptions,
-    ) -> Result<Vec<String>, String> {
-        let results = self.inner.grep(pattern, path, options).await?;
-        for line in &results {
-            if let Some(file_path) = line.split(':').next() {
-                if !file_path.is_empty() {
-                    self.mark_read(file_path);
+        async fn grep(
+            &self,
+            pattern: &str,
+            path: &str,
+            options: &GrepOptions,
+        ) -> Result<Vec<String>, String> {
+            let results = self.inner.grep(pattern, path, options).await?;
+            for line in &results {
+                if let Some(file_path) = line.split(':').next() {
+                    if !file_path.is_empty() {
+                        self.mark_read(file_path);
+                    }
                 }
             }
+            Ok(results)
         }
-        Ok(results)
-    }
-
-    async fn glob(&self, pattern: &str, path: Option<&str>) -> Result<Vec<String>, String> {
-        self.inner.glob(pattern, path).await
-    }
-
-    async fn initialize(&self) -> Result<(), String> {
-        self.inner.initialize().await
-    }
-
-    async fn cleanup(&self) -> Result<(), String> {
-        self.inner.cleanup().await
-    }
-
-    fn working_directory(&self) -> &str {
-        self.inner.working_directory()
-    }
-
-    fn platform(&self) -> &str {
-        self.inner.platform()
-    }
-
-    fn os_version(&self) -> String {
-        self.inner.os_version()
     }
 }
 

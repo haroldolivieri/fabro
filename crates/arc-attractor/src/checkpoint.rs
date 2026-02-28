@@ -24,6 +24,9 @@ pub struct Checkpoint {
     /// The node to resume execution at (the next node after the checkpoint's `current_node`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_node_id: Option<String>,
+    /// SHA of the git commit created at this checkpoint (when running in a worktree).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_commit_sha: Option<String>,
 }
 
 impl Checkpoint {
@@ -45,6 +48,7 @@ impl Checkpoint {
             logs: context.logs_snapshot(),
             node_outcomes,
             next_node_id,
+            git_commit_sha: None,
         }
     }
 

@@ -93,7 +93,27 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
         bail!("Validation failed");
     }
 
-    // 2. Create logs directory
+    // 2. Pre-flight: check git cleanliness before creating any files
+    //    (must happen before logs dir is created, which may be inside the repo)
+    let execution_env_kind_preview = {
+        let toml_exec = task_cfg
+            .as_ref()
+            .and_then(|c| c.execution.as_ref())
+            .and_then(|e| e.environment.as_deref())
+            .map(|s| s.parse::<ExecutionEnvKind>())
+            .transpose()
+            .ok()
+            .flatten();
+        args.execution_env.or(toml_exec).unwrap_or_default()
+    };
+    let original_cwd = std::env::current_dir()?;
+    let git_clean = if execution_env_kind_preview == ExecutionEnvKind::Local {
+        crate::git::ensure_clean(&original_cwd).is_ok()
+    } else {
+        false
+    };
+
+    // 3. Create logs directory
     let logs_dir = args.logs_dir.unwrap_or_else(|| {
         let base = dirs::home_dir()
             .expect("could not determine home directory")
@@ -232,6 +252,22 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
         .transpose()
         .map_err(|e| anyhow::anyhow!("Invalid execution environment in TOML: {e}"))?;
     let execution_env_kind = args.execution_env.or(toml_execution_env).unwrap_or_default();
+
+    // Set up git worktree for local execution (must happen before cwd is captured)
+    let (worktree_run_id, worktree_work_dir, worktree_path) = if git_clean {
+        match setup_worktree(&original_cwd, &logs_dir) {
+            Ok((rid, wd, wt)) => (Some(rid), Some(wd), Some(wt)),
+            Err(e) => {
+                eprintln!(
+                    "{yellow}Warning:{reset} Git worktree setup failed ({e}), running without worktree.",
+                    yellow = styles.yellow, reset = styles.reset,
+                );
+                (None, None, None)
+            }
+        }
+    } else {
+        (None, None, None)
+    };
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let daytona_config = task_cfg
@@ -437,6 +473,8 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
         logs_root: logs_dir.clone(),
         cancel_token: None,
         dry_run: dry_run_mode,
+        run_id: worktree_run_id,
+        work_dir: worktree_work_dir,
     };
 
     let run_start = Instant::now();
@@ -449,6 +487,12 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
         engine.run(&graph, &config).await
     };
     let run_duration_ms = run_start.elapsed().as_millis() as u64;
+
+    // Restore cwd and clean up worktree (best-effort)
+    let _ = std::env::set_current_dir(&original_cwd);
+    if let Some(ref wt) = worktree_path {
+        let _ = crate::git::remove_worktree(&original_cwd, wt);
+    }
 
     {
         let (status, failure_reason) = match &engine_result {
@@ -530,6 +574,27 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
             std::process::exit(1);
         }
     }
+}
+
+/// Set up a git worktree for an isolated pipeline run.
+/// Caller must have already verified the repo is clean via `git::ensure_clean`.
+/// Returns (run_id, work_dir, worktree_path) on success.
+fn setup_worktree(
+    original_cwd: &std::path::Path,
+    logs_dir: &std::path::Path,
+) -> anyhow::Result<(String, PathBuf, PathBuf)> {
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let branch_name = format!("arc/run/{run_id}");
+    crate::git::create_branch(original_cwd, &branch_name)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let worktree_path = logs_dir.join("worktree");
+    crate::git::add_worktree(original_cwd, &worktree_path, &branch_name)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    std::env::set_current_dir(&worktree_path)?;
+
+    Ok((run_id, worktree_path.clone(), worktree_path))
 }
 
 #[cfg(test)]

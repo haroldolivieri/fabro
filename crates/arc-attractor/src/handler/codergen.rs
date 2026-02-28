@@ -176,13 +176,15 @@ fn resolve_hook(node: &Node, graph: &Graph, key: &str) -> Option<String> {
 }
 
 /// Execute a tool hook shell command. Returns true if the command succeeded (exit 0).
-fn run_hook(command: &str, node_id: &str) -> bool {
-    match std::process::Command::new("sh")
-        .arg("-c")
+fn run_hook(command: &str, node_id: &str, work_dir: Option<&Path>) -> bool {
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c")
         .arg(command)
-        .env("ATTRACTOR_NODE_ID", node_id)
-        .output()
-    {
+        .env("ATTRACTOR_NODE_ID", node_id);
+    if let Some(wd) = work_dir {
+        cmd.current_dir(wd);
+    }
+    match cmd.output() {
         Ok(output) => output.status.success(),
         Err(_) => false,
     }
@@ -217,9 +219,14 @@ impl Handler for CodergenHandler {
         tokio::fs::create_dir_all(&stage_dir).await?;
         tokio::fs::write(stage_dir.join("prompt.md"), &prompt).await?;
 
+        // Resolve work_dir from context for hooks
+        let work_dir_str = context.get("internal.work_dir")
+            .and_then(|v| v.as_str().map(String::from));
+        let work_dir = work_dir_str.as_deref().map(Path::new);
+
         // 3. Execute pre-hook (spec 9.7)
         if let Some(pre_hook) = resolve_hook(node, graph, "tool_hooks.pre") {
-            if !run_hook(&pre_hook, &node.id) {
+            if !run_hook(&pre_hook, &node.id, work_dir) {
                 let mut outcome = Outcome::skipped();
                 outcome.notes = Some("pre-hook returned non-zero, tool call skipped".to_string());
                 return Ok(outcome);
@@ -259,7 +266,7 @@ impl Handler for CodergenHandler {
 
         // 5. Execute post-hook (spec 9.7)
         if let Some(post_hook) = resolve_hook(node, graph, "tool_hooks.post") {
-            if !run_hook(&post_hook, &node.id) {
+            if !run_hook(&post_hook, &node.id, work_dir) {
                 context.append_log(format!(
                     "post-hook failed for node {}, continuing",
                     node.id

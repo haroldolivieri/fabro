@@ -467,6 +467,10 @@ pub struct RunConfig {
     pub logs_root: PathBuf,
     pub cancel_token: Option<Arc<AtomicBool>>,
     pub dry_run: bool,
+    /// Pre-assigned run ID. Generated if `None`.
+    pub run_id: Option<String>,
+    /// Git worktree path for checkpoint commits.
+    pub work_dir: Option<PathBuf>,
 }
 
 /// The pipeline execution engine.
@@ -695,12 +699,12 @@ impl PipelineEngine {
         mut node_visits: HashMap<String, usize>,
     ) -> Result<Outcome> {
         let run_start = Instant::now();
-        let run_id = uuid::Uuid::new_v4().to_string();
+        let run_id = config.run_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let artifact_store = ArtifactStore::new(Some(config.logs_root.clone()));
 
         self.services.emitter.emit(&PipelineEvent::PipelineStarted {
             name: graph.name.clone(),
-            id: run_id,
+            id: run_id.clone(),
         });
         self.inform(&format!("Pipeline started: {}", graph.name), "pipeline");
 
@@ -782,6 +786,12 @@ impl PipelineEngine {
                 .find_start_node()
                 .ok_or_else(|| AttractorError::Engine("no start node found".to_string()))?;
             current_node_id = start_node.id.clone();
+        }
+
+        // Store run_id and work_dir in context for handlers
+        context.set("internal.run_id", serde_json::json!(run_id));
+        if let Some(ref wd) = config.work_dir {
+            context.set("internal.work_dir", serde_json::json!(wd.to_string_lossy().as_ref()));
         }
 
         loop {
@@ -990,7 +1000,7 @@ impl PipelineEngine {
             let next_node_id_for_checkpoint = next_edge.map(|e| e.to.clone());
 
             // Step 6: Save checkpoint with all state
-            let checkpoint = Checkpoint::from_context(
+            let mut checkpoint = Checkpoint::from_context(
                 &context,
                 &node.id,
                 completed_nodes.clone(),
@@ -1005,6 +1015,32 @@ impl PipelineEngine {
                 self.services.emitter.emit(&PipelineEvent::CheckpointSaved {
                     node_id: node.id.clone(),
                 });
+            }
+
+            // Step 6b: Git checkpoint commit (when running in a worktree)
+            if let Some(ref work_dir) = config.work_dir {
+                let wd = work_dir.clone();
+                let rid = run_id.clone();
+                let nid = node.id.clone();
+                let status_str = outcome.status.to_string();
+                match tokio::task::spawn_blocking(move || {
+                    crate::git::checkpoint_commit(&wd, &rid, &nid, &status_str)
+                })
+                .await
+                {
+                    Ok(Ok(sha)) => {
+                        checkpoint.git_commit_sha = Some(sha);
+                        if let Err(e) = checkpoint.save(&checkpoint_path) {
+                            context.append_log(format!("checkpoint re-save with SHA failed: {e}"));
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        context.append_log(format!("git checkpoint commit failed: {e}"));
+                    }
+                    Err(e) => {
+                        context.append_log(format!("git checkpoint commit task panicked: {e}"));
+                    }
+                }
             }
 
             // Step 7: Follow selected edge
@@ -1736,6 +1772,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -1750,6 +1788,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
         let checkpoint_path = dir.path().join("checkpoint.json");
@@ -1773,6 +1813,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -1791,6 +1833,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -1805,6 +1849,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -1832,6 +1878,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -1885,6 +1933,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -1956,6 +2006,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -1979,6 +2031,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -1999,6 +2053,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -2143,7 +2199,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let g = simple_graph();
         let engine = PipelineEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
         engine.run(&g, &config).await.unwrap();
 
         let manifest_path = dir.path().join("manifest.json");
@@ -2165,7 +2221,7 @@ mod tests {
         g.edges.push(Edge::new("start", "exit"));
 
         let engine = PipelineEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
         engine.run(&g, &config).await.unwrap();
 
         let manifest_path = dir.path().join("manifest.json");
@@ -2201,7 +2257,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
         let outcome = engine.run(&g, &config).await.unwrap();
 
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2237,7 +2293,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
         let result = engine.run(&g, &config).await;
 
         assert!(result.is_ok());
@@ -2276,7 +2332,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 500 }));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
         let result = engine.run(&g, &config).await;
         assert!(result.is_ok());
 
@@ -2310,7 +2366,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 10 }));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
     }
@@ -2341,7 +2397,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 500 }));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
         let outcome = engine.run(&g, &config).await.unwrap();
 
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2395,6 +2451,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
         // Give spawned inform tasks time to complete
@@ -2422,6 +2480,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         engine.run(&g, &config).await.unwrap();
         // Give spawned inform tasks time to complete
@@ -2447,6 +2507,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2464,6 +2526,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: Some(cancel_token),
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2480,6 +2544,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: Some(cancel_token),
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2508,6 +2574,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: Some(cancel_token),
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
 
         // Set cancel after a short delay (while the slow handler is running)
@@ -2580,6 +2648,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2599,6 +2669,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: true,
+        run_id: None,
+        work_dir: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2622,6 +2694,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: true,
+        run_id: None,
+        work_dir: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2706,6 +2780,8 @@ mod tests {
             logs_root: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
+        run_id: None,
+        work_dir: None,
         };
 
         // The engine returns Err because the Fail outcome has no outgoing fail edge,

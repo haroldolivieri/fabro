@@ -7,6 +7,7 @@ pub mod context;
 pub mod engine;
 pub mod error;
 pub mod event;
+pub mod git;
 pub mod graph;
 pub mod handler;
 pub mod interviewer;

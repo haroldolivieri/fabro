@@ -12,6 +12,7 @@ import {
   ChartBarIcon,
   Cog6ToothIcon,
   PlayIcon,
+  RectangleStackIcon,
   RocketLaunchIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -26,7 +27,8 @@ const user = {
 
 const navigation = [
   { name: "Start", href: "/start", icon: RocketLaunchIcon },
-  { name: "Workflow Runs", href: "/runs", icon: PlayIcon },
+  { name: "Workflows", href: "/workflows", icon: RectangleStackIcon },
+  { name: "Runs", href: "/runs", icon: PlayIcon },
   { name: "Insights", href: "/insights", icon: ChartBarIcon },
   { name: "Settings", href: "/settings", icon: Cog6ToothIcon },
 ];

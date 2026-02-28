@@ -1,7 +1,7 @@
 import type { Route } from "./+types/pipelines";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Workflow Runs — Arc" }];
+  return [{ title: "Runs — Arc" }];
 }
 
 

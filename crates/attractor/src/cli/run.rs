@@ -19,6 +19,7 @@ use crate::pipeline::PipelineBuilder;
 use crate::validation::Severity;
 
 use super::backend::AgentBackend;
+use super::cli_backend::{BackendRouter, CliBackend};
 use super::task_config;
 use super::{compute_stage_cost, format_cost, format_duration_human, format_event_detail, format_event_summary, format_tokens_human, print_diagnostics, read_dot_file, ExecutionEnvKind, RunArgs};
 
@@ -403,12 +404,17 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
         if dry_run_mode {
             None
         } else {
-            Some(Box::new(AgentBackend::new(
+            let api = AgentBackend::new(
                 model.clone(),
                 provider.clone(),
                 args.verbose,
                 styles,
-            )))
+            );
+            let cli = CliBackend::new(
+                model.clone(),
+                provider.clone().unwrap_or_else(|| "anthropic".to_string()),
+            );
+            Some(Box::new(BackendRouter::new(Box::new(api), cli)))
         }
     });
     let engine = PipelineEngine::with_interviewer(registry, Arc::clone(&emitter), interviewer, Arc::clone(&execution_env));

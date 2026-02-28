@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod cli_backend;
 pub mod run;
 #[cfg(feature = "server")]
 pub mod serve;

@@ -179,7 +179,7 @@ fn parse_declarations(remaining: &mut &str) -> Result<Vec<Declaration>, Attracto
 }
 
 /// Recognized stylesheet properties.
-const STYLESHEET_PROPERTIES: &[&str] = &["llm_model", "llm_provider", "reasoning_effort"];
+const STYLESHEET_PROPERTIES: &[&str] = &["llm_model", "llm_provider", "reasoning_effort", "backend"];
 
 /// Apply a stylesheet to a graph. Rules are applied by specificity order;
 /// higher specificity wins. Explicit node attributes are never overridden.
@@ -528,6 +528,35 @@ mod tests {
         assert_eq!(
             graph.nodes["b"].attrs.get("llm_model"),
             Some(&AttrValue::String("sonnet".into()))
+        );
+    }
+
+    #[test]
+    fn apply_backend_property_via_stylesheet() {
+        let ss = parse_stylesheet("* { backend: cli; }").unwrap();
+        let mut graph = Graph::new("test");
+        graph.nodes.insert("a".into(), Node::new("a"));
+        apply_stylesheet(&ss, &mut graph);
+
+        assert_eq!(
+            graph.nodes["a"].attrs.get("backend"),
+            Some(&AttrValue::String("cli".into()))
+        );
+    }
+
+    #[test]
+    fn backend_property_not_overridden_by_stylesheet() {
+        let ss = parse_stylesheet("* { backend: cli; }").unwrap();
+        let mut graph = Graph::new("test");
+        let mut node = Node::new("a");
+        node.attrs
+            .insert("backend".into(), AttrValue::String("api".into()));
+        graph.nodes.insert("a".into(), node);
+        apply_stylesheet(&ss, &mut graph);
+
+        assert_eq!(
+            graph.nodes["a"].attrs.get("backend"),
+            Some(&AttrValue::String("api".into()))
         );
     }
 }

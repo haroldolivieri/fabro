@@ -225,6 +225,11 @@ impl Node {
         self.str_attr("retry_policy")
     }
 
+    #[must_use]
+    pub fn backend(&self) -> Option<&str> {
+        self.str_attr("backend")
+    }
+
     /// Returns the codergen mode for this node. Defaults to `AgentLoop` when absent.
     pub fn codergen_mode(&self) -> Result<CodergenMode, AttractorError> {
         match self.str_attr("codergen_mode") {

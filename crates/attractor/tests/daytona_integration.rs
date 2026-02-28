@@ -307,3 +307,116 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
 
     env.cleanup().await.unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// CLI Backend on Daytona — real CLI tools via exec_command
+// ---------------------------------------------------------------------------
+
+use attractor::cli::cli_backend::CliBackend;
+use attractor::handler::codergen::{CodergenBackend, CodergenResult};
+
+/// Helper: run a real CLI backend test on Daytona.
+///
+/// Installs the CLI tool in the sandbox, then runs the CliBackend against it.
+async fn run_daytona_cli_test(
+    provider: &str,
+    model: &str,
+    install_command: &str,
+) {
+    let env = create_env().await;
+    env.initialize().await.unwrap();
+    let env: Arc<dyn ExecutionEnvironment> = Arc::new(env);
+
+    // Install the CLI tool inside the Daytona sandbox
+    let install_result = env
+        .exec_command(install_command, 120_000, None, None, None)
+        .await
+        .expect("install command should not error");
+    assert_eq!(
+        install_result.exit_code, 0,
+        "install command failed (exit {}): {}",
+        install_result.exit_code, install_result.stdout
+    );
+
+    let backend = CliBackend::new(model.to_string(), provider.to_string());
+    let node = Node::new("daytona_cli_test");
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = backend
+        .run(
+            &node,
+            "What is 2+2? Reply with just the number.",
+            &context,
+            None,
+            &emitter,
+            dir.path(),
+            &env,
+        )
+        .await;
+
+    match result {
+        Ok(CodergenResult::Text { text, usage, .. }) => {
+            assert!(
+                text.contains('4'),
+                "{provider}/{model} on Daytona: expected '4', got: {text}"
+            );
+            if let Some(u) = usage {
+                assert!(
+                    u.input_tokens > 0,
+                    "{provider}/{model}: input_tokens should be > 0"
+                );
+            }
+        }
+        Ok(CodergenResult::Full(_)) => panic!("expected Text result"),
+        Err(e) => panic!("{provider}/{model} on Daytona failed: {e}"),
+    }
+
+    // Verify log files
+    let provider_path = dir.path().join("provider_used.json");
+    assert!(
+        provider_path.exists(),
+        "{provider}/{model}: provider_used.json should exist"
+    );
+    let provider_json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&provider_path).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(provider_json["mode"], "cli");
+
+    env.cleanup().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore] // requires DAYTONA_API_KEY + Claude CLI auth
+async fn daytona_cli_claude() {
+    run_daytona_cli_test(
+        "anthropic",
+        "haiku",
+        "curl -fsSL https://claude.ai/install.sh | sh",
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore] // requires DAYTONA_API_KEY + OpenAI/Codex auth
+async fn daytona_cli_codex() {
+    run_daytona_cli_test(
+        "openai",
+        "o4-mini",
+        "npm install -g @openai/codex",
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore] // requires DAYTONA_API_KEY + Gemini auth
+async fn daytona_cli_gemini() {
+    run_daytona_cli_test(
+        "gemini",
+        "gemini-2.5-flash",
+        "npm install -g @google/gemini-cli",
+    )
+    .await;
+}

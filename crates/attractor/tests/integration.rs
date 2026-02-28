@@ -7186,3 +7186,738 @@ async fn node_dir_uses_visit_count_on_revisit() {
     assert_eq!(first_json["status"], "fail");
     assert_eq!(second_json["status"], "success");
 }
+
+// ---------------------------------------------------------------------------
+// CLI Backend end-to-end tests
+// ---------------------------------------------------------------------------
+
+use attractor::cli::cli_backend::{BackendRouter, CliBackend};
+
+/// A mock execution environment for CLI backend e2e tests.
+/// Records all exec_command and write_file calls, and returns configurable
+/// responses based on command content.
+struct CliTestEnv {
+    /// All commands passed to exec_command, in order.
+    commands: std::sync::Mutex<Vec<String>>,
+    /// All (path, content) pairs from write_file.
+    written_files: std::sync::Mutex<Vec<(String, String)>>,
+    /// The stdout to return when the CLI command (not git) is executed.
+    cli_stdout: String,
+    /// Files returned by "git diff --name-only" AFTER the CLI runs.
+    /// First call returns empty (before), second returns these (after).
+    git_diff_call_count: std::sync::atomic::AtomicU32,
+    git_diff_after: String,
+}
+
+impl CliTestEnv {
+    fn new(cli_stdout: &str) -> Self {
+        Self {
+            commands: std::sync::Mutex::new(Vec::new()),
+            written_files: std::sync::Mutex::new(Vec::new()),
+            cli_stdout: cli_stdout.to_string(),
+            git_diff_call_count: std::sync::atomic::AtomicU32::new(0),
+            git_diff_after: String::new(),
+        }
+    }
+
+    fn with_git_diff_after(mut self, files: &str) -> Self {
+        self.git_diff_after = files.to_string();
+        self
+    }
+
+    fn recorded_commands(&self) -> Vec<String> {
+        self.commands.lock().unwrap().clone()
+    }
+
+    fn recorded_written_files(&self) -> Vec<(String, String)> {
+        self.written_files.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl agent::ExecutionEnvironment for CliTestEnv {
+    async fn read_file(&self, _path: &str, _offset: Option<usize>, _limit: Option<usize>) -> Result<String, String> {
+        Ok(String::new())
+    }
+
+    async fn write_file(&self, path: &str, content: &str) -> Result<(), String> {
+        self.written_files.lock().unwrap().push((path.to_string(), content.to_string()));
+        Ok(())
+    }
+
+    async fn delete_file(&self, _path: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn file_exists(&self, _path: &str) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    async fn list_directory(&self, _path: &str, _depth: Option<usize>) -> Result<Vec<agent::DirEntry>, String> {
+        Ok(vec![])
+    }
+
+    async fn exec_command(
+        &self,
+        command: &str,
+        _timeout_ms: u64,
+        _working_dir: Option<&str>,
+        _env_vars: Option<&std::collections::HashMap<String, String>>,
+        _cancel_token: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<agent::ExecResult, String> {
+        self.commands.lock().unwrap().push(command.to_string());
+
+        // git diff calls: first pair returns empty (before), second pair returns configured files
+        if command.starts_with("git diff") || command.starts_with("git ls-files") {
+            let call_num = self.git_diff_call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            // Calls 0,1 = before snapshot (empty), calls 2,3 = after snapshot
+            let stdout = if call_num >= 2 && command.starts_with("git diff") {
+                self.git_diff_after.clone()
+            } else {
+                String::new()
+            };
+            return Ok(agent::ExecResult {
+                stdout,
+                stderr: String::new(),
+                exit_code: 0,
+                timed_out: false,
+                duration_ms: 5,
+            });
+        }
+
+        // CLI command: return configured stdout
+        Ok(agent::ExecResult {
+            stdout: self.cli_stdout.clone(),
+            stderr: String::new(),
+            exit_code: 0,
+            timed_out: false,
+            duration_ms: 100,
+        })
+    }
+
+    async fn grep(&self, _pattern: &str, _path: &str, _options: &agent::GrepOptions) -> Result<Vec<String>, String> {
+        Ok(vec![])
+    }
+
+    async fn glob(&self, _pattern: &str, _path: Option<&str>) -> Result<Vec<String>, String> {
+        Ok(vec![])
+    }
+
+    async fn initialize(&self) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn cleanup(&self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn working_directory(&self) -> &str {
+        "/tmp/test"
+    }
+
+    fn platform(&self) -> &str {
+        "darwin"
+    }
+
+    fn os_version(&self) -> String {
+        "Darwin 24.0.0".into()
+    }
+}
+
+// -- Cycle 8: CliBackend::run() e2e via mock ExecutionEnvironment --
+
+#[tokio::test]
+async fn cli_backend_run_writes_prompt_and_calls_exec() {
+    let claude_output = r#"{"type":"result","result":"I fixed the bug.","usage":{"input_tokens":500,"output_tokens":200}}"#;
+    let test_env = Arc::new(CliTestEnv::new(claude_output));
+    let env: Arc<dyn agent::ExecutionEnvironment> = test_env.clone();
+    let backend = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+
+    let node = Node::new("fix_code");
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = backend
+        .run(&node, "Fix the authentication bug", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("CLI backend should succeed");
+
+    // Verify prompt was written
+    let written = test_env.recorded_written_files();
+    assert_eq!(written.len(), 1, "should write exactly one file (the prompt)");
+    assert_eq!(written[0].0, "/tmp/attractor_cli_prompt.txt");
+    assert_eq!(written[0].1, "Fix the authentication bug");
+
+    // Verify the CLI command was called
+    let commands = test_env.recorded_commands();
+    let cli_cmd = commands.iter().find(|c| c.contains("claude")).expect("should call claude CLI");
+    assert!(cli_cmd.contains("-p"), "should use pipe mode");
+    assert!(cli_cmd.contains("claude-opus-4-6"), "should use correct model");
+    assert!(cli_cmd.contains("/tmp/attractor_cli_prompt.txt"), "should reference prompt file");
+
+    // Verify parsed response
+    match result {
+        CodergenResult::Text { text, usage, files_touched } => {
+            assert_eq!(text, "I fixed the bug.");
+            let usage = usage.expect("should have usage");
+            assert_eq!(usage.input_tokens, 500);
+            assert_eq!(usage.output_tokens, 200);
+            assert!(files_touched.is_empty(), "no files changed before/after");
+        }
+        CodergenResult::Full(_) => panic!("expected Text result, got Full"),
+    }
+}
+
+#[tokio::test]
+async fn cli_backend_run_detects_changed_files() {
+    let claude_output = r#"{"type":"result","result":"Created new file.","usage":{"input_tokens":100,"output_tokens":50}}"#;
+    let env: Arc<dyn agent::ExecutionEnvironment> = Arc::new(
+        CliTestEnv::new(claude_output)
+            .with_git_diff_after("src/main.rs\nsrc/lib.rs\n"),
+    );
+    let backend = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+
+    let node = Node::new("implement");
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = backend
+        .run(&node, "Add a new feature", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("CLI backend should succeed");
+
+    match result {
+        CodergenResult::Text { files_touched, .. } => {
+            assert_eq!(files_touched, vec!["src/lib.rs", "src/main.rs"]);
+        }
+        CodergenResult::Full(_) => panic!("expected Text result"),
+    }
+}
+
+#[tokio::test]
+async fn cli_backend_run_with_codex_provider() {
+    let codex_output = "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"Implemented the feature.\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":300,\"output_tokens\":150}}";
+    let test_env = Arc::new(CliTestEnv::new(codex_output));
+    let env: Arc<dyn agent::ExecutionEnvironment> = test_env.clone();
+    let backend = CliBackend::new("gpt-5.3-codex-spark".into(), "openai".into());
+
+    let node = Node::new("implement");
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = backend
+        .run(&node, "Build the API", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("CLI backend should succeed");
+
+    // Verify codex command was called
+    let commands = test_env.recorded_commands();
+    let cli_cmd = commands.iter().find(|c| c.contains("codex")).expect("should call codex CLI");
+    assert!(cli_cmd.contains("exec --json"), "should use exec mode");
+    assert!(cli_cmd.contains("gpt-5.3-codex-spark"), "should use correct model");
+
+    match result {
+        CodergenResult::Text { text, usage, .. } => {
+            assert_eq!(text, "Implemented the feature.");
+            let usage = usage.expect("should have usage");
+            assert_eq!(usage.input_tokens, 300);
+            assert_eq!(usage.output_tokens, 150);
+        }
+        CodergenResult::Full(_) => panic!("expected Text result"),
+    }
+}
+
+#[tokio::test]
+async fn cli_backend_run_fails_on_nonzero_exit() {
+    let env = Arc::new(CliTestEnv::new(""));
+
+    // Override exec_command to return non-zero for the CLI call
+    struct FailingCliEnv;
+    #[async_trait::async_trait]
+    impl agent::ExecutionEnvironment for FailingCliEnv {
+        async fn read_file(&self, _: &str, _: Option<usize>, _: Option<usize>) -> Result<String, String> { Ok(String::new()) }
+        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> { Ok(()) }
+        async fn delete_file(&self, _: &str) -> Result<(), String> { Ok(()) }
+        async fn file_exists(&self, _: &str) -> Result<bool, String> { Ok(false) }
+        async fn list_directory(&self, _: &str, _: Option<usize>) -> Result<Vec<agent::DirEntry>, String> { Ok(vec![]) }
+        async fn exec_command(&self, command: &str, _: u64, _: Option<&str>, _: Option<&std::collections::HashMap<String, String>>, _: Option<tokio_util::sync::CancellationToken>) -> Result<agent::ExecResult, String> {
+            if command.starts_with("git") {
+                return Ok(agent::ExecResult { stdout: String::new(), stderr: String::new(), exit_code: 0, timed_out: false, duration_ms: 0 });
+            }
+            Ok(agent::ExecResult { stdout: String::new(), stderr: "command not found: claude".into(), exit_code: 127, timed_out: false, duration_ms: 0 })
+        }
+        async fn grep(&self, _: &str, _: &str, _: &agent::GrepOptions) -> Result<Vec<String>, String> { Ok(vec![]) }
+        async fn glob(&self, _: &str, _: Option<&str>) -> Result<Vec<String>, String> { Ok(vec![]) }
+        async fn initialize(&self) -> Result<(), String> { Ok(()) }
+        async fn cleanup(&self) -> Result<(), String> { Ok(()) }
+        fn working_directory(&self) -> &str { "/tmp" }
+        fn platform(&self) -> &str { "darwin" }
+        fn os_version(&self) -> String { "Darwin 24.0.0".into() }
+    }
+
+    let failing_env: Arc<dyn agent::ExecutionEnvironment> = Arc::new(FailingCliEnv);
+    let backend = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+    let node = Node::new("step");
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let _ = env; // unused, just for the above struct
+
+    let result = backend
+        .run(&node, "do something", &context, None, &emitter, dir.path(), &failing_env)
+        .await;
+
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("should fail on non-zero exit"),
+    };
+
+    assert!(err.to_string().contains("exited with code 127"), "error: {err}");
+    assert!(err.to_string().contains("command not found"), "error: {err}");
+}
+
+#[tokio::test]
+async fn cli_backend_run_fails_on_unparseable_output() {
+    let env: Arc<dyn agent::ExecutionEnvironment> = Arc::new(CliTestEnv::new("this is not json at all"));
+    let backend = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+
+    let node = Node::new("step");
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = backend
+        .run(&node, "do something", &context, None, &emitter, dir.path(), &env)
+        .await;
+
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("should fail on unparseable output"),
+    };
+
+    assert!(err.to_string().contains("Failed to parse CLI output"), "error: {err}");
+}
+
+#[tokio::test]
+async fn cli_backend_run_uses_node_model_override() {
+    let claude_output = r#"{"type":"result","result":"ok","usage":{"input_tokens":10,"output_tokens":5}}"#;
+    let test_env = Arc::new(CliTestEnv::new(claude_output));
+    let env: Arc<dyn agent::ExecutionEnvironment> = test_env.clone();
+    let backend = CliBackend::new("default-model".into(), "anthropic".into());
+
+    let mut node = Node::new("step");
+    node.attrs.insert("llm_model".to_string(), AttrValue::String("claude-sonnet-4-5".to_string()));
+
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    backend
+        .run(&node, "test", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("should succeed");
+
+    let commands = test_env.recorded_commands();
+    let cli_cmd = commands.iter().find(|c| c.contains("claude")).unwrap();
+    assert!(cli_cmd.contains("claude-sonnet-4-5"), "should use node's model override, not default: {cli_cmd}");
+    assert!(!cli_cmd.contains("default-model"), "should NOT use default model: {cli_cmd}");
+}
+
+#[tokio::test]
+async fn cli_backend_run_uses_node_provider_override() {
+    let codex_output = "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"ok\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}";
+    let test_env = Arc::new(CliTestEnv::new(codex_output));
+    let env: Arc<dyn agent::ExecutionEnvironment> = test_env.clone();
+    let backend = CliBackend::new("default-model".into(), "anthropic".into());
+
+    let mut node = Node::new("step");
+    node.attrs.insert("llm_provider".to_string(), AttrValue::String("openai".to_string()));
+    node.attrs.insert("llm_model".to_string(), AttrValue::String("gpt-5.3-codex-spark".to_string()));
+
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    backend
+        .run(&node, "test", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("should succeed");
+
+    let commands = test_env.recorded_commands();
+    let cli_cmd = commands.iter().find(|c| c.contains("codex")).expect("should call codex based on provider override");
+    assert!(cli_cmd.contains("gpt-5.3-codex-spark"));
+}
+
+#[tokio::test]
+async fn cli_backend_run_writes_provider_used_json() {
+    let claude_output = r#"{"type":"result","result":"done","usage":{"input_tokens":10,"output_tokens":5}}"#;
+    let env: Arc<dyn agent::ExecutionEnvironment> = Arc::new(CliTestEnv::new(claude_output));
+    let backend = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+
+    let node = Node::new("step");
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    backend
+        .run(&node, "test", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("should succeed");
+
+    let provider_path = dir.path().join("provider_used.json");
+    assert!(provider_path.exists(), "should write provider_used.json");
+    let provider_json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&provider_path).unwrap()
+    ).unwrap();
+    assert_eq!(provider_json["mode"], "cli");
+    assert_eq!(provider_json["provider"], "anthropic");
+    assert_eq!(provider_json["model"], "claude-opus-4-6");
+    assert!(provider_json["command"].as_str().unwrap().contains("claude"));
+}
+
+// -- BackendRouter e2e: delegates to correct backend --
+
+#[tokio::test]
+async fn backend_router_delegates_to_cli_for_cli_node() {
+    let claude_output = r#"{"type":"result","result":"CLI response","usage":{"input_tokens":10,"output_tokens":5}}"#;
+    let env: Arc<dyn agent::ExecutionEnvironment> = Arc::new(CliTestEnv::new(claude_output));
+
+    let api_backend = Box::new(MockCodergenBackend); // would return "Response for ..."
+    let cli = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+    let router = BackendRouter::new(api_backend, cli);
+
+    let mut node = Node::new("cli_step");
+    node.attrs.insert("backend".to_string(), AttrValue::String("cli".to_string()));
+    node.attrs.insert("prompt".to_string(), AttrValue::String("Fix the bug".to_string()));
+
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = router
+        .run(&node, "Fix the bug", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("router should succeed");
+
+    match result {
+        CodergenResult::Text { text, .. } => {
+            assert_eq!(text, "CLI response", "should use CLI backend response, not mock API");
+        }
+        CodergenResult::Full(_) => panic!("expected Text result"),
+    }
+}
+
+#[tokio::test]
+async fn backend_router_delegates_to_api_for_normal_node() {
+    let env = local_env();
+
+    let api_backend = Box::new(MockCodergenBackend);
+    let cli = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+    let router = BackendRouter::new(api_backend, cli);
+
+    let mut node = Node::new("api_step");
+    node.attrs.insert("prompt".to_string(), AttrValue::String("Plan the work".to_string()));
+
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = router
+        .run(&node, "Plan the work", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("router should succeed");
+
+    match result {
+        CodergenResult::Text { text, .. } => {
+            assert!(text.starts_with("Response for api_step"), "should use API mock response: {text}");
+        }
+        CodergenResult::Full(_) => panic!("expected Text result"),
+    }
+}
+
+#[tokio::test]
+async fn backend_router_delegates_to_cli_for_cli_only_model() {
+    let codex_output = "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"Codex did it\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}";
+    let env: Arc<dyn agent::ExecutionEnvironment> = Arc::new(CliTestEnv::new(codex_output));
+
+    let api_backend = Box::new(MockCodergenBackend);
+    let cli = CliBackend::new("gpt-5.3-codex-spark".into(), "openai".into());
+    let router = BackendRouter::new(api_backend, cli);
+
+    let mut node = Node::new("codex_step");
+    node.attrs.insert("llm_model".to_string(), AttrValue::String("gpt-5.3-codex-spark".to_string()));
+    node.attrs.insert("llm_provider".to_string(), AttrValue::String("openai".to_string()));
+
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = router
+        .run(&node, "Build it", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect("router should succeed");
+
+    match result {
+        CodergenResult::Text { text, .. } => {
+            assert_eq!(text, "Codex did it", "should route to CLI backend for CLI-only model");
+        }
+        CodergenResult::Full(_) => panic!("expected Text result"),
+    }
+}
+
+// -- Full pipeline e2e with BackendRouter --
+
+#[tokio::test]
+async fn full_pipeline_with_cli_backend_node() {
+    // Pipeline: start -> api_work -> cli_work -> exit
+    // api_work uses MockCodergenBackend (API), cli_work has backend="cli"
+    let claude_output = r#"{"type":"result","result":"CLI completed the task.","usage":{"input_tokens":100,"output_tokens":50}}"#;
+    let env: Arc<dyn agent::ExecutionEnvironment> = Arc::new(CliTestEnv::new(claude_output));
+
+    let mut graph = Graph::new("CliPipelineTest");
+
+    let mut start = Node::new("start");
+    start.attrs.insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs.insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let mut api_work = Node::new("api_work");
+    api_work.attrs.insert("shape".to_string(), AttrValue::String("box".to_string()));
+    api_work.attrs.insert("prompt".to_string(), AttrValue::String("Plan the work".to_string()));
+    graph.nodes.insert("api_work".to_string(), api_work);
+
+    let mut cli_work = Node::new("cli_work");
+    cli_work.attrs.insert("shape".to_string(), AttrValue::String("box".to_string()));
+    cli_work.attrs.insert("prompt".to_string(), AttrValue::String("Implement via CLI".to_string()));
+    cli_work.attrs.insert("backend".to_string(), AttrValue::String("cli".to_string()));
+    graph.nodes.insert("cli_work".to_string(), cli_work);
+
+    graph.edges.push(Edge::new("start", "api_work"));
+    graph.edges.push(Edge::new("api_work", "cli_work"));
+    graph.edges.push(Edge::new("cli_work", "exit"));
+
+    // Build engine with BackendRouter
+    let api = MockCodergenBackend;
+    let cli = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+    let router = BackendRouter::new(Box::new(api), cli);
+    let codergen_handler = CodergenHandler::new(Some(Box::new(router)));
+
+    let mut registry = HandlerRegistry::new(Box::new(codergen_handler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("codergen", Box::new(CodergenHandler::new(Some(Box::new({
+        // Second BackendRouter for the "codergen" handler
+        let api2 = MockCodergenBackend;
+        let cli2 = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+        BackendRouter::new(Box::new(api2), cli2)
+    })))));
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), env);
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("pipeline should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // Verify api_work used mock (its response.md should contain "Response for")
+    let api_response = std::fs::read_to_string(
+        dir.path().join("nodes").join("api_work").join("response.md")
+    ).unwrap();
+    assert!(api_response.starts_with("Response for api_work"), "API node should use mock: {api_response}");
+
+    // Verify cli_work used CLI backend (its response.md should contain CLI response)
+    let cli_response = std::fs::read_to_string(
+        dir.path().join("nodes").join("cli_work").join("response.md")
+    ).unwrap();
+    assert_eq!(cli_response, "CLI completed the task.", "CLI node should use CLI backend: {cli_response}");
+
+    // Verify cli_work wrote provider_used.json with mode=cli
+    let provider_json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("nodes").join("cli_work").join("provider_used.json")).unwrap()
+    ).unwrap();
+    assert_eq!(provider_json["mode"], "cli");
+}
+
+// -- Stylesheet applies backend property to nodes in a full pipeline --
+
+#[tokio::test]
+async fn stylesheet_backend_property_routes_to_cli() {
+    let claude_output = r#"{"type":"result","result":"Styled CLI response.","usage":{"input_tokens":10,"output_tokens":5}}"#;
+    let env: Arc<dyn agent::ExecutionEnvironment> = Arc::new(CliTestEnv::new(claude_output));
+
+    let mut graph = Graph::new("StylesheetTest");
+    graph.attrs.insert(
+        "model_stylesheet".to_string(),
+        AttrValue::String(".cli-node { backend: cli; }".to_string()),
+    );
+
+    let mut start = Node::new("start");
+    start.attrs.insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    graph.nodes.insert("start".to_string(), start);
+
+    let mut exit = Node::new("exit");
+    exit.attrs.insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    graph.nodes.insert("exit".to_string(), exit);
+
+    let mut work = Node::new("work");
+    work.attrs.insert("shape".to_string(), AttrValue::String("box".to_string()));
+    work.attrs.insert("prompt".to_string(), AttrValue::String("Do work".to_string()));
+    work.classes.push("cli-node".to_string());
+    graph.nodes.insert("work".to_string(), work);
+
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    // Apply stylesheet
+    let ss = parse_stylesheet(graph.model_stylesheet()).unwrap();
+    apply_stylesheet(&ss, &mut graph);
+
+    // Verify the stylesheet applied the backend property
+    assert_eq!(
+        graph.nodes["work"].backend(),
+        Some("cli"),
+        "stylesheet should set backend=cli on .cli-node"
+    );
+
+    // Run the pipeline
+    let api = MockCodergenBackend;
+    let cli = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+    let router = BackendRouter::new(Box::new(api), cli);
+
+    let mut registry = HandlerRegistry::new(Box::new(CodergenHandler::new(Some(Box::new(router)))));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    let api2 = MockCodergenBackend;
+    let cli2 = CliBackend::new("claude-opus-4-6".into(), "anthropic".into());
+    let router2 = BackendRouter::new(Box::new(api2), cli2);
+    registry.register("codergen", Box::new(CodergenHandler::new(Some(Box::new(router2)))));
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), env);
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("pipeline should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    let response = std::fs::read_to_string(
+        dir.path().join("nodes").join("work").join("response.md")
+    ).unwrap();
+    assert_eq!(response, "Styled CLI response.", "stylesheet-driven node should use CLI backend");
+}
+
+// ---------------------------------------------------------------------------
+// Real CLI backend e2e tests (require actual CLI tools installed)
+// ---------------------------------------------------------------------------
+
+use attractor::cli::cli_backend::parse_cli_response;
+
+/// Run a real CLI tool via LocalExecutionEnvironment and verify the full flow.
+async fn run_real_cli_test(provider: &str, model: &str) {
+    let env = local_env();
+    let backend = CliBackend::new(model.to_string(), provider.to_string());
+
+    let mut node = Node::new("real_cli_test");
+    node.attrs.insert("prompt".to_string(), AttrValue::String("What is 2+2? Reply with just the number.".to_string()));
+
+    let context = Context::new();
+    let emitter = Arc::new(EventEmitter::new());
+    let dir = tempfile::tempdir().unwrap();
+
+    let result = backend
+        .run(&node, "What is 2+2? Reply with just the number.", &context, None, &emitter, dir.path(), &env)
+        .await
+        .expect(&format!("CLI backend ({provider}/{model}) should succeed"));
+
+    match result {
+        CodergenResult::Text { text, usage, .. } => {
+            assert!(
+                text.contains('4'),
+                "{provider}/{model}: expected response to contain '4', got: {text}"
+            );
+            let usage = usage.expect(&format!("{provider}/{model}: should have usage"));
+            assert!(usage.input_tokens > 0, "{provider}/{model}: input_tokens should be > 0, got {}", usage.input_tokens);
+        }
+        CodergenResult::Full(_) => panic!("expected Text result from {provider}/{model}"),
+    }
+
+    // Verify log files were written
+    let provider_path = dir.path().join("provider_used.json");
+    assert!(provider_path.exists(), "{provider}/{model}: provider_used.json should exist");
+    let provider_json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&provider_path).unwrap()
+    ).unwrap();
+    assert_eq!(provider_json["mode"], "cli");
+    assert_eq!(provider_json["provider"], provider);
+}
+
+#[tokio::test]
+#[ignore] // requires `claude` CLI installed
+async fn real_cli_claude() {
+    run_real_cli_test("anthropic", "haiku").await;
+}
+
+#[tokio::test]
+#[ignore] // requires `codex` CLI installed and OpenAI auth
+async fn real_cli_codex() {
+    run_real_cli_test("openai", "").await;
+}
+
+#[tokio::test]
+#[ignore] // requires `gemini` CLI installed and Google auth
+async fn real_cli_gemini() {
+    run_real_cli_test("gemini", "gemini-2.5-flash").await;
+}
+
+/// Verify parse_cli_response works against real Claude CLI output captured from stream-json.
+#[test]
+fn parse_real_claude_stream_json() {
+    // Real output captured from: claude -p --output-format stream-json --model haiku "What is 2+2?"
+    let output = r#"{"type":"system","subtype":"init","cwd":"/tmp","session_id":"abc"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"4"}]}}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":2000,"num_turns":1,"result":"4","usage":{"input_tokens":9,"output_tokens":5}}"#;
+    let response = parse_cli_response("anthropic", output).unwrap();
+    assert_eq!(response.text, "4");
+    assert_eq!(response.input_tokens, 9);
+    assert_eq!(response.output_tokens, 5);
+}
+
+/// Verify parse_cli_response works against real Codex CLI output.
+#[test]
+fn parse_real_codex_ndjson() {
+    // Real output captured from: echo "What is 2+2?" | codex exec --json
+    let output = r#"{"type":"thread.started","thread_id":"019ca1ec-1e86-79b2-b2b2-b1d963f1aea2"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Confirming simple numeric reply**"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"4"}}
+{"type":"turn.completed","usage":{"input_tokens":7999,"cached_input_tokens":7040,"output_tokens":33}}"#;
+    let response = parse_cli_response("openai", output).unwrap();
+    assert_eq!(response.text, "4");
+    assert_eq!(response.input_tokens, 7999);
+    assert_eq!(response.output_tokens, 33);
+}
+
+/// Verify parse_cli_response works against real Gemini CLI output.
+#[test]
+fn parse_real_gemini_json() {
+    // Real output captured from: gemini "What is 2+2?" -m gemini-2.5-flash --sandbox -o json
+    let output = r#"{"session_id":"abc","response":"4","stats":{"models":{"gemini-2.5-flash":{"api":{"totalRequests":1,"totalErrors":0,"totalLatencyMs":618},"tokens":{"input":123,"prompt":8911,"candidates":1,"total":8912,"cached":8788,"thoughts":0,"tool":0}}},"tools":{"totalCalls":0},"files":{"totalLinesAdded":0,"totalLinesRemoved":0}}}"#;
+    let response = parse_cli_response("gemini", output).unwrap();
+    assert_eq!(response.text, "4");
+    assert_eq!(response.input_tokens, 123);
+    assert_eq!(response.output_tokens, 1);
+}

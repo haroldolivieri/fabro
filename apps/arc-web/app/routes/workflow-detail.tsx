@@ -275,12 +275,23 @@ export default function WorkflowDetail() {
 
   return (
     <div>
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-semibold text-white">{workflow.title}</h2>
-          <span className="font-mono text-xs text-navy-600">{workflow.filename}</span>
+      <div className="mb-6 flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-white">{workflow.title}</h2>
+            <span className="font-mono text-xs text-navy-600">{workflow.filename}</span>
+          </div>
+          <p className="mt-2 max-w-prose text-sm leading-relaxed text-ice-300">{workflow.description}</p>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-ice-300">{workflow.description}</p>
+        <button
+          type="button"
+          title="Run workflow"
+          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-mint/20 text-mint transition-colors hover:border-mint/50 hover:bg-mint/10 hover:text-white"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" className="size-4" aria-hidden="true">
+            <path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clipRule="evenodd" />
+          </svg>
+        </button>
       </div>
 
       <div className="border-b border-white/[0.06]">

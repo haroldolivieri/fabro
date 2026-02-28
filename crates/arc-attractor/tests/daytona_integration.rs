@@ -272,6 +272,8 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
         dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
     };
 
     let outcome = engine.run(&graph, &config).await.expect("pipeline should succeed");

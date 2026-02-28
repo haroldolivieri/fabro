@@ -144,6 +144,17 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
     // 3. Build event emitter
     let mut emitter = EventEmitter::new();
 
+    // Track the last git commit SHA from GitCheckpoint events
+    let last_git_sha: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    {
+        let sha_clone = Arc::clone(&last_git_sha);
+        emitter.on_event(move |event| {
+            if let crate::event::PipelineEvent::GitCheckpoint { git_commit_sha, .. } = event {
+                *sha_clone.lock().unwrap() = Some(git_commit_sha.clone());
+            }
+        });
+    }
+
     // Cost accumulator — shared across all verbosity levels
     let accumulator = Arc::new(Mutex::new(CostAccumulator::default()));
     let acc_clone = Arc::clone(&accumulator);
@@ -254,19 +265,19 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
     let execution_env_kind = args.execution_env.or(toml_execution_env).unwrap_or_default();
 
     // Set up git worktree for local execution (must happen before cwd is captured)
-    let (worktree_run_id, worktree_work_dir, worktree_path) = if git_clean {
+    let (worktree_run_id, worktree_work_dir, worktree_path, worktree_branch, worktree_base_sha) = if git_clean {
         match setup_worktree(&original_cwd, &logs_dir) {
-            Ok((rid, wd, wt)) => (Some(rid), Some(wd), Some(wt)),
+            Ok((rid, wd, wt, branch, base)) => (Some(rid), Some(wd), Some(wt), Some(branch), Some(base)),
             Err(e) => {
                 eprintln!(
                     "{yellow}Warning:{reset} Git worktree setup failed ({e}), running without worktree.",
                     yellow = styles.yellow, reset = styles.reset,
                 );
-                (None, None, None)
+                (None, None, None, None, None)
             }
         }
     } else {
-        (None, None, None)
+        (None, None, None, None, None)
     };
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -475,6 +486,8 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
         dry_run: dry_run_mode,
         run_id: worktree_run_id,
         work_dir: worktree_work_dir,
+        base_sha: worktree_base_sha,
+        run_branch: worktree_branch,
     };
 
     let run_start = Instant::now();
@@ -499,12 +512,15 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
             Ok(o) => (o.status.to_string(), o.failure_reason.clone()),
             Err(e) => ("fail".to_string(), Some(e.to_string())),
         };
-        let final_json = serde_json::json!({
+        let mut final_json = serde_json::json!({
             "timestamp": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             "status": status,
             "duration_ms": run_duration_ms,
             "failure_reason": failure_reason,
         });
+        if let Some(sha) = last_git_sha.lock().unwrap().clone() {
+            final_json["final_git_commit_sha"] = serde_json::Value::String(sha);
+        }
         if let Ok(json) = serde_json::to_string_pretty(&final_json) {
             let _ = tokio::fs::write(logs_dir.join("final.json"), json).await;
         }
@@ -578,11 +594,13 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
 
 /// Set up a git worktree for an isolated pipeline run.
 /// Caller must have already verified the repo is clean via `git::ensure_clean`.
-/// Returns (run_id, work_dir, worktree_path) on success.
+/// Returns (run_id, work_dir, worktree_path, branch_name, base_sha) on success.
 fn setup_worktree(
     original_cwd: &std::path::Path,
     logs_dir: &std::path::Path,
-) -> anyhow::Result<(String, PathBuf, PathBuf)> {
+) -> anyhow::Result<(String, PathBuf, PathBuf, String, String)> {
+    let base_sha = crate::git::head_sha(original_cwd)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let run_id = uuid::Uuid::new_v4().to_string();
     let branch_name = format!("arc/run/{run_id}");
     crate::git::create_branch(original_cwd, &branch_name)
@@ -594,7 +612,7 @@ fn setup_worktree(
 
     std::env::set_current_dir(&worktree_path)?;
 
-    Ok((run_id, worktree_path.clone(), worktree_path))
+    Ok((run_id, worktree_path.clone(), worktree_path, branch_name, base_sha))
 }
 
 #[cfg(test)]

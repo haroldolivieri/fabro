@@ -240,19 +240,22 @@ pub fn resolve_thread_id(
 // --- Run directory helpers (spec 5.6) ---
 
 /// Write manifest.json at the start of a pipeline run.
-fn write_manifest(logs_root: &Path, graph: &Graph) {
+fn write_manifest(logs_root: &Path, graph: &Graph, run_branch: Option<&str>) {
     let pipeline_name = if graph.name.is_empty() {
         "unnamed"
     } else {
         &graph.name
     };
-    let manifest = serde_json::json!({
+    let mut manifest = serde_json::json!({
         "pipeline_name": pipeline_name,
         "goal": graph.goal(),
         "start_time": Utc::now().to_rfc3339(),
         "node_count": graph.nodes.len(),
         "edge_count": graph.edges.len(),
     });
+    if let Some(branch) = run_branch {
+        manifest["run_branch"] = serde_json::Value::String(branch.to_string());
+    }
     if let Ok(json) = serde_json::to_string_pretty(&manifest) {
         let _ = std::fs::create_dir_all(logs_root);
         let _ = std::fs::write(logs_root.join("manifest.json"), json);
@@ -471,6 +474,10 @@ pub struct RunConfig {
     pub run_id: Option<String>,
     /// Git worktree path for checkpoint commits.
     pub work_dir: Option<PathBuf>,
+    /// SHA of the commit the worktree branched from.
+    pub base_sha: Option<String>,
+    /// Git branch name for the run (e.g. `arc/run/{run_id}`).
+    pub run_branch: Option<String>,
 }
 
 /// The pipeline execution engine.
@@ -705,11 +712,14 @@ impl PipelineEngine {
         self.services.emitter.emit(&PipelineEvent::PipelineStarted {
             name: graph.name.clone(),
             id: run_id.clone(),
+            base_sha: config.base_sha.clone(),
+            run_branch: config.run_branch.clone(),
+            worktree_dir: config.work_dir.as_ref().map(|p| p.display().to_string()),
         });
         self.inform(&format!("Pipeline started: {}", graph.name), "pipeline");
 
         // Write manifest.json (spec 5.6)
-        write_manifest(&config.logs_root, graph);
+        write_manifest(&config.logs_root, graph, config.run_branch.as_deref());
 
         // Compute effective max-node-visits limit:
         // graph attr > 0 → use it; else dry_run → 10; else 0 (disabled)
@@ -733,6 +743,7 @@ impl PipelineEngine {
         let mut previous_node_id: Option<String> = None;
         // Gap #6: Track whether fidelity should be degraded on the first resumed node
         let mut degrade_fidelity_on_resume = false;
+        let mut last_git_sha: Option<String> = None;
 
         if let Some(cp) = resume_checkpoint {
             // Restore context from checkpoint
@@ -833,6 +844,7 @@ impl PipelineEngine {
                         self.services.emitter.emit(&PipelineEvent::PipelineFailed {
                             error: error_msg.clone(),
                             duration_ms,
+                            git_commit_sha: last_git_sha.clone(),
                         });
                         return Ok(Outcome::fail(error_msg));
                     }
@@ -1029,10 +1041,39 @@ impl PipelineEngine {
                 .await
                 {
                     Ok(Ok(sha)) => {
-                        checkpoint.git_commit_sha = Some(sha);
+                        checkpoint.git_commit_sha = Some(sha.clone());
                         if let Err(e) = checkpoint.save(&checkpoint_path) {
                             context.append_log(format!("checkpoint re-save with SHA failed: {e}"));
                         }
+                        self.services.emitter.emit(&PipelineEvent::GitCheckpoint {
+                            run_id: run_id.clone(),
+                            node_id: node.id.clone(),
+                            status: outcome.status.to_string(),
+                            git_commit_sha: sha.clone(),
+                        });
+
+                        // Save diff.patch for this stage
+                        let prev = last_git_sha.as_deref()
+                            .or(config.base_sha.as_deref())
+                            .unwrap_or(&sha);
+                        let diff_base = prev.to_string();
+                        let diff_wd = work_dir.clone();
+                        let diff_dest = node_dir(&config.logs_root, &node.id, visit).join("diff.patch");
+                        match tokio::task::spawn_blocking(move || {
+                            crate::git::diff_against(&diff_wd, &diff_base)
+                        }).await {
+                            Ok(Ok(patch)) => {
+                                let _ = std::fs::write(&diff_dest, patch);
+                            }
+                            Ok(Err(e)) => {
+                                context.append_log(format!("git diff failed: {e}"));
+                            }
+                            Err(e) => {
+                                context.append_log(format!("git diff task panicked: {e}"));
+                            }
+                        }
+
+                        last_git_sha = Some(sha);
                     }
                     Ok(Err(e)) => {
                         context.append_log(format!("git checkpoint commit failed: {e}"));
@@ -1061,6 +1102,7 @@ impl PipelineEngine {
                         self.services.emitter.emit(&PipelineEvent::PipelineFailed {
                             error: error_msg.clone(),
                             duration_ms,
+                            git_commit_sha: last_git_sha.clone(),
                         });
                         return Err(AttractorError::Engine(error_msg));
                     }
@@ -1100,6 +1142,7 @@ impl PipelineEngine {
             duration_ms,
             artifact_count: artifact_store.list().len(),
             total_cost,
+            final_git_commit_sha: last_git_sha.clone(),
         });
 
         // Return last outcome, or success if no outcomes recorded
@@ -1774,6 +1817,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -1790,6 +1835,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
         let checkpoint_path = dir.path().join("checkpoint.json");
@@ -1815,6 +1862,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -1835,6 +1884,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -1851,6 +1902,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -1880,6 +1933,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -1935,6 +1990,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -2008,6 +2065,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -2033,6 +2092,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -2055,6 +2116,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -2199,7 +2262,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let g = simple_graph();
         let engine = PipelineEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None, base_sha: None, run_branch: None };
         engine.run(&g, &config).await.unwrap();
 
         let manifest_path = dir.path().join("manifest.json");
@@ -2221,7 +2284,7 @@ mod tests {
         g.edges.push(Edge::new("start", "exit"));
 
         let engine = PipelineEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None, base_sha: None, run_branch: None };
         engine.run(&g, &config).await.unwrap();
 
         let manifest_path = dir.path().join("manifest.json");
@@ -2257,7 +2320,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None, base_sha: None, run_branch: None };
         let outcome = engine.run(&g, &config).await.unwrap();
 
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2293,7 +2356,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None, base_sha: None, run_branch: None };
         let result = engine.run(&g, &config).await;
 
         assert!(result.is_ok());
@@ -2332,7 +2395,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 500 }));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None, base_sha: None, run_branch: None };
         let result = engine.run(&g, &config).await;
         assert!(result.is_ok());
 
@@ -2366,7 +2429,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 10 }));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None, base_sha: None, run_branch: None };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
     }
@@ -2397,7 +2460,7 @@ mod tests {
         let mut registry = make_registry();
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 500 }));
         let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
-        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None };
+        let config = RunConfig { logs_root: dir.path().to_path_buf(), cancel_token: None, dry_run: false, run_id: None, work_dir: None, base_sha: None, run_branch: None };
         let outcome = engine.run(&g, &config).await.unwrap();
 
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2453,6 +2516,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
         // Give spawned inform tasks time to complete
@@ -2482,6 +2547,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         engine.run(&g, &config).await.unwrap();
         // Give spawned inform tasks time to complete
@@ -2509,6 +2576,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2528,6 +2597,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2546,6 +2617,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2576,6 +2649,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
 
         // Set cancel after a short delay (while the slow handler is running)
@@ -2650,6 +2725,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2671,6 +2748,8 @@ mod tests {
             dry_run: true,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2696,6 +2775,8 @@ mod tests {
             dry_run: true,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2782,6 +2863,8 @@ mod tests {
             dry_run: false,
         run_id: None,
         work_dir: None,
+        base_sha: None,
+        run_branch: None,
         };
 
         // The engine returns Err because the Fail outcome has no outgoing fail edge,

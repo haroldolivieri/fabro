@@ -9,16 +9,26 @@ pub enum PipelineEvent {
     PipelineStarted {
         name: String,
         id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_sha: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run_branch: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        worktree_dir: Option<String>,
     },
     PipelineCompleted {
         duration_ms: u64,
         artifact_count: usize,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         total_cost: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        final_git_commit_sha: Option<String>,
     },
     PipelineFailed {
         error: String,
         duration_ms: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        git_commit_sha: Option<String>,
     },
     StageStarted {
         name: String,
@@ -94,6 +104,12 @@ pub enum PipelineEvent {
     },
     CheckpointSaved {
         node_id: String,
+    },
+    GitCheckpoint {
+        run_id: String,
+        node_id: String,
+        status: String,
+        git_commit_sha: String,
     },
     EdgeSelected {
         from_node: String,
@@ -225,6 +241,9 @@ mod tests {
         emitter.emit(&PipelineEvent::PipelineStarted {
             name: "test".to_string(),
             id: "1".to_string(),
+            base_sha: None,
+            run_branch: None,
+            worktree_dir: None,
         });
         let events = received.lock().unwrap();
         assert_eq!(events.len(), 1);

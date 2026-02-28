@@ -135,6 +135,23 @@ pub fn checkpoint_commit(
     head_sha(work_dir)
 }
 
+/// Compute the diff between a base commit and HEAD.
+/// Returns the patch text (may be empty if no changes).
+pub fn diff_against(work_dir: &Path, base: &str) -> Result<String> {
+    let output = Command::new("git")
+        .args(["diff", base, "HEAD"])
+        .current_dir(work_dir)
+        .output()
+        .map_err(|e| git_error(format!("git diff failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(git_error(format!("git diff failed: {stderr}")));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,5 +284,38 @@ mod tests {
         assert_eq!(sha.len(), 40);
 
         remove_worktree(dir.path(), &wt_path).unwrap();
+    }
+
+    #[test]
+    fn diff_against_shows_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        let base = head_sha(dir.path()).unwrap();
+
+        // Create a file and commit it
+        fs::write(dir.path().join("new.txt"), "hello").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["-c", "user.name=test", "-c", "user.email=test@test", "commit", "-m", "add file"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+
+        let patch = diff_against(dir.path(), &base).unwrap();
+        assert!(patch.contains("new.txt"));
+        assert!(patch.contains("hello"));
+    }
+
+    #[test]
+    fn diff_against_empty_when_no_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        let base = head_sha(dir.path()).unwrap();
+        let patch = diff_against(dir.path(), &base).unwrap();
+        assert!(patch.is_empty());
     }
 }

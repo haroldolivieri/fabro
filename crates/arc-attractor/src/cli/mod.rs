@@ -206,13 +206,14 @@ pub fn format_duration_human(ms: u64) -> String {
 #[must_use]
 pub fn format_event_summary(event: &PipelineEvent, styles: &Styles) -> String {
     let body = match event {
-        PipelineEvent::PipelineStarted { name, id } => {
+        PipelineEvent::PipelineStarted { name, id, .. } => {
             format!("[PIPELINE_STARTED] name={name} id={id}")
         }
         PipelineEvent::PipelineCompleted {
             duration_ms,
             artifact_count,
             total_cost,
+            ..
         } => {
             let mut s = format!("[PIPELINE_COMPLETED] duration={duration_ms}ms artifacts={artifact_count}");
             if let Some(cost) = total_cost {
@@ -220,7 +221,7 @@ pub fn format_event_summary(event: &PipelineEvent, styles: &Styles) -> String {
             }
             s
         }
-        PipelineEvent::PipelineFailed { error, duration_ms } => {
+        PipelineEvent::PipelineFailed { error, duration_ms, .. } => {
             format!("[PIPELINE_FAILED] error=\"{error}\" duration={duration_ms}ms")
         }
         PipelineEvent::StageStarted { name, index, handler_type, attempt, max_attempts } => {
@@ -347,6 +348,9 @@ pub fn format_event_summary(event: &PipelineEvent, styles: &Styles) -> String {
         }
         PipelineEvent::CheckpointSaved { node_id } => {
             format!("[CHECKPOINT_SAVED] node={node_id}")
+        }
+        PipelineEvent::GitCheckpoint { node_id, git_commit_sha, status, .. } => {
+            format!("[GIT_CHECKPOINT] node={node_id} sha={git_commit_sha} status={status}")
         }
         PipelineEvent::EdgeSelected { from_node, to_node, label, condition } => {
             let mut s = format!("[EDGE_SELECTED] from={from_node} to={to_node}");
@@ -488,7 +492,7 @@ pub fn format_event_detail(event: &PipelineEvent, styles: &Styles) -> String {
     let r = styles.reset;
 
     match event {
-        PipelineEvent::PipelineStarted { name, id } => {
+        PipelineEvent::PipelineStarted { name, id, .. } => {
             format!(
                 "{d}── PIPELINE_STARTED ─────────────────────────{r}\n  {d}name:{r} {name}\n  {d}id:{r}   {id}\n"
             )
@@ -497,6 +501,7 @@ pub fn format_event_detail(event: &PipelineEvent, styles: &Styles) -> String {
             duration_ms,
             artifact_count,
             total_cost,
+            ..
         } => {
             let mut s = format!("{d}── PIPELINE_COMPLETED ───────────────────────{r}\n  {d}duration_ms:{r}    {duration_ms}\n  {d}artifact_count:{r} {artifact_count}\n");
             if let Some(cost) = total_cost {
@@ -504,7 +509,7 @@ pub fn format_event_detail(event: &PipelineEvent, styles: &Styles) -> String {
             }
             s
         }
-        PipelineEvent::PipelineFailed { error, duration_ms } => {
+        PipelineEvent::PipelineFailed { error, duration_ms, .. } => {
             format!("{d}── PIPELINE_FAILED ──────────────────────────{r}\n  {d}error:{r}       {error}\n  {d}duration_ms:{r} {duration_ms}\n")
         }
         PipelineEvent::StageStarted { name, index, handler_type, attempt, max_attempts } => {
@@ -642,6 +647,11 @@ pub fn format_event_detail(event: &PipelineEvent, styles: &Styles) -> String {
         PipelineEvent::CheckpointSaved { node_id } => {
             format!(
                 "{d}── CHECKPOINT_SAVED ─────────────────────────{r}\n  {d}node_id:{r} {node_id}\n"
+            )
+        }
+        PipelineEvent::GitCheckpoint { run_id, node_id, status, git_commit_sha } => {
+            format!(
+                "{d}── GIT_CHECKPOINT ───────────────────────────{r}\n  {d}run_id:{r}  {run_id}\n  {d}node_id:{r} {node_id}\n  {d}status:{r}  {status}\n  {d}sha:{r}     {git_commit_sha}\n"
             )
         }
         PipelineEvent::EdgeSelected { from_node, to_node, label, condition } => {

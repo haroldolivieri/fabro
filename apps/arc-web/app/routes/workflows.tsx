@@ -20,14 +20,14 @@ export const handle = {
     <div className="relative inline-flex rounded-md">
       <button
         type="button"
-        className="inline-flex items-center gap-2 rounded-l-md bg-teal-700 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-500"
+        className="inline-flex items-center gap-1.5 rounded-l-md border border-r-0 border-mint/20 px-3 py-1.5 text-sm font-medium text-mint transition-colors hover:border-mint/50 hover:bg-mint/10 hover:text-white"
       >
-        <PlusIcon className="size-4" aria-hidden="true" />
+        <PlusIcon className="size-3.5" aria-hidden="true" />
         Create Workflow
       </button>
       <Menu as="div" className="relative -ml-px flex">
-        <MenuButton className="inline-flex items-center rounded-r-md border-l border-teal-500/30 bg-teal-700 px-2 text-white transition-colors hover:bg-teal-500">
-          <ChevronDownIcon className="size-4" aria-hidden="true" />
+        <MenuButton className="inline-flex items-center rounded-r-md border border-mint/20 px-1.5 text-mint transition-colors hover:border-mint/50 hover:bg-mint/10 hover:text-white">
+          <ChevronDownIcon className="size-3.5" aria-hidden="true" />
         </MenuButton>
         <MenuItems
           transition

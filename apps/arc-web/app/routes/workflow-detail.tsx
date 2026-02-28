@@ -286,11 +286,12 @@ export default function WorkflowDetail() {
         <button
           type="button"
           title="Run workflow"
-          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-mint/20 text-mint transition-colors hover:border-mint/50 hover:bg-mint/10 hover:text-white"
+          className="flex shrink-0 items-center gap-1.5 rounded-md border border-mint/20 px-3 py-1.5 text-sm font-medium text-mint transition-colors hover:border-mint/50 hover:bg-mint/10 hover:text-white"
         >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="size-4" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden="true">
             <path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clipRule="evenodd" />
           </svg>
+          Run
         </button>
       </div>
 

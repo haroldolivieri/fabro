@@ -9,11 +9,9 @@ import {
 } from "@headlessui/react";
 import {
   Bars3Icon,
-  ChartBarIcon,
   Cog6ToothIcon,
   PlayIcon,
   RectangleStackIcon,
-  RocketLaunchIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { Link, Outlet, useLocation, useMatches } from "react-router";
@@ -26,10 +24,8 @@ const user = {
 };
 
 const navigation = [
-  { name: "Start", href: "/start", icon: RocketLaunchIcon },
   { name: "Workflows", href: "/workflows", icon: RectangleStackIcon },
   { name: "Runs", href: "/runs", icon: PlayIcon },
-  { name: "Insights", href: "/insights", icon: ChartBarIcon },
   { name: "Settings", href: "/settings", icon: Cog6ToothIcon },
 ];
 
@@ -47,7 +43,7 @@ export default function AppShell() {
   const lastMatch = matches[matches.length - 1];
   const handle = lastMatch?.handle as { headerExtra?: React.ReactNode; wide?: boolean } | undefined;
   const headerExtra = handle?.headerExtra;
-  const maxWidth = handle?.wide ? "max-w-7xl" : "max-w-5xl";
+  const maxWidth = handle?.wide ? "" : "max-w-5xl";
 
   return (
     <div className="min-h-full">

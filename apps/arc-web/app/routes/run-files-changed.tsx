@@ -205,16 +205,20 @@ export default function RunFilesChanged() {
   return (
     <div className="flex flex-col gap-4">
       {files.map(({ oldFile, newFile }) => (
-        <MultiFileDiff
+        <div
           key={newFile.name}
-          oldFile={oldFile}
-          newFile={newFile}
-          options={{
-            diffStyle: "split",
-            theme: "pierre-dark",
-            lineDiffType: "word",
-          }}
-        />
+          className="rounded-md overflow-hidden border border-white/[0.06]"
+        >
+          <MultiFileDiff
+            oldFile={oldFile}
+            newFile={newFile}
+            options={{
+              diffStyle: "split",
+              theme: "pierre-dark",
+              lineDiffType: "word",
+            }}
+          />
+        </div>
       ))}
     </div>
   );

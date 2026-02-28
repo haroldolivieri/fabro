@@ -20,7 +20,7 @@ function CollapsibleFile({
   const loc = lines.filter((l) => l.trim().length > 0).length;
 
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-navy-800/50 overflow-hidden">
+    <div className="rounded-md border border-white/[0.06] bg-navy-800/50 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

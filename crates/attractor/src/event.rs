@@ -483,6 +483,7 @@ mod tests {
                 original_turn_count: 20,
                 preserved_turn_count: 6,
                 summary_token_estimate: 500,
+                tracked_file_count: 3,
             },
         };
         let json = serde_json::to_string(&completed).unwrap();

@@ -2,6 +2,7 @@ use crate::config::{SessionConfig, ToolApprovalFn};
 use crate::error::AgentError;
 use crate::event::EventEmitter;
 use crate::execution_env::ExecutionEnvironment;
+use crate::file_tracker::FileTracker;
 use crate::history::History;
 use crate::loop_detection::detect_loop;
 use crate::profiles::EnvContext;
@@ -37,6 +38,7 @@ pub struct Session {
     env_context: EnvContext,
     skills: Vec<Skill>,
     system_prompt: String,
+    file_tracker: FileTracker,
 }
 
 impl Session {
@@ -63,6 +65,7 @@ impl Session {
             env_context: EnvContext::default(),
             skills: Vec::new(),
             system_prompt: String::new(),
+            file_tracker: FileTracker::default(),
         }
     }
 
@@ -230,9 +233,14 @@ impl Session {
         self.config.max_turns = max_turns;
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn history(&self) -> &History {
         &self.history
+    }
+
+    #[must_use]
+    pub const fn file_tracker(&self) -> &FileTracker {
+        &self.file_tracker
     }
 
     pub async fn process_input(&mut self, input: &str) -> Result<(), AgentError> {
@@ -478,6 +486,9 @@ impl Session {
             // Execute tool calls (parallel or sequential based on provider)
             let results = self.execute_tool_calls(&tool_calls).await;
 
+            // Track file operations from tool calls
+            self.file_tracker.record_from_tool_calls(&tool_calls, &results);
+
             // Check cancellation after tool execution
             if self.cancel_token.is_cancelled() {
                 self.history.push(Turn::ToolResults {
@@ -535,21 +546,31 @@ impl Session {
         let turns_to_summarize = &self.history.turns()[..original_turn_count - preserve_count];
         let rendered = render_turns_for_summary(turns_to_summarize);
 
-        // Build summarization request
+        // Build structured summarization prompt
+        let file_ops_section = if self.file_tracker.is_empty() {
+            String::new()
+        } else {
+            format!("\n## File Operations\nCOPY THIS SECTION VERBATIM into your summary.\n\n{}", self.file_tracker.render())
+        };
+
+        let system_prompt = format!(
+            "You are summarizing a coding assistant conversation to provide continuity. A new context \
+window will continue this work with only your summary and the most recent messages.\n\n\
+Write a summary using EXACTLY these sections:\n\n\
+## Goal\nWhat the user asked for and any constraints or preferences stated.\n\n\
+## Progress\nWhat was accomplished, with file paths and key decisions.\n\n\
+## Key Decisions\nImportant choices made and their rationale.\n\n\
+## Failed Approaches\nWhat was tried and didn't work, and why.\n\n\
+## Open Issues\nBugs, edge cases, or TODOs that remain.\n\n\
+## Next Steps\nWhat should happen next to make progress.\n\n\
+Be specific — include file paths, function names, and error messages. Omit pleasantries \
+and conversational filler.{file_ops_section}"
+        );
+
         let summary_request = Request {
             model: self.provider_profile.model().to_string(),
             messages: vec![
-                Message::system("You are summarizing a coding assistant conversation to provide continuity. A new context \
-window will continue this work with only your summary and the most recent messages. Write \
-a summary covering:\n\n\
-1. Task & Goal: What the user asked for and any constraints or preferences stated.\n\
-2. Completed Work: What was accomplished, with file paths and key decisions.\n\
-3. Current State: What is in progress or partially done right now.\n\
-4. Failed Approaches: What was tried and didn't work, and why.\n\
-5. Open Issues: Bugs, edge cases, or TODOs that remain.\n\
-6. Next Steps: What should happen next to make progress.\n\n\
-Be specific — include file paths, function names, and error messages. Omit pleasantries \
-and conversational filler.".to_string()),
+                Message::system(system_prompt),
                 Message::user(format!("Here is the conversation to summarize:\n\n{rendered}")),
             ],
             provider: Some(self.provider_profile.id().to_string()),
@@ -580,6 +601,7 @@ and conversational filler.".to_string()),
                 original_turn_count,
                 preserved_turn_count: preserve_count,
                 summary_token_estimate,
+                tracked_file_count: self.file_tracker.file_count(),
             },
         );
 
@@ -2127,5 +2149,125 @@ mod tests {
             }
         }
         assert!(found_error, "Should emit Error event for failed compaction");
+    }
+
+    #[tokio::test]
+    async fn compaction_includes_structured_prompt_and_file_tracking() {
+        use crate::tool_registry::RegisteredTool;
+        use llm::types::ToolDefinition;
+
+        // Provider that captures complete() requests (compaction) while returning
+        // canned responses for stream() calls.
+        struct CompactionCapturingProvider {
+            stream_responses: Vec<Response>,
+            stream_index: AtomicUsize,
+            captured_complete: Mutex<Option<Request>>,
+        }
+
+        #[async_trait::async_trait]
+        impl ProviderAdapter for CompactionCapturingProvider {
+            fn name(&self) -> &'static str { "mock" }
+
+            async fn complete(&self, request: &Request) -> Result<Response, SdkError> {
+                *self.captured_complete.lock().unwrap() = Some(request.clone());
+                Ok(text_response("## Goal\nSummary goes here."))
+            }
+
+            async fn stream(&self, _request: &Request) -> Result<StreamEventStream, SdkError> {
+                let idx = self.stream_index.fetch_add(1, Ordering::SeqCst);
+                let response = if idx < self.stream_responses.len() {
+                    self.stream_responses[idx].clone()
+                } else {
+                    self.stream_responses[self.stream_responses.len() - 1].clone()
+                };
+                Ok(crate::test_support::response_to_stream(response))
+            }
+        }
+
+        // read_file tool that always succeeds
+        let read_tool = RegisteredTool {
+            definition: ToolDefinition {
+                name: "read_file".into(),
+                description: "Read a file".into(),
+                parameters: serde_json::json!({"type": "object", "properties": {"file_path": {"type": "string"}}}),
+            },
+            executor: Arc::new(|_args, _env, _cancel| {
+                Box::pin(async move { Ok("file contents".to_string()) })
+            }),
+        };
+
+        let mut registry = ToolRegistry::new();
+        registry.register(read_tool);
+
+        // Stream responses:
+        // [0] = tool call to read_file (first process_input)
+        // [1] = text "OK" (completes first turn after tool results)
+        // [2] = text "OK" (second process_input — triggers compaction)
+        // [3] = fallback
+        let stream_responses = vec![
+            tool_call_response("read_file", "tc1", serde_json::json!({"file_path": "/src/main.rs"})),
+            text_response("OK"),
+            text_response("Done after compaction"),
+            text_response("fallback"),
+        ];
+
+        let provider = Arc::new(CompactionCapturingProvider {
+            stream_responses,
+            stream_index: AtomicUsize::new(0),
+            captured_complete: Mutex::new(None),
+        });
+
+        let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
+        // Tiny context window to force compaction
+        let profile = Arc::new(TestProfile::parallel_with_context_window(registry, 100));
+        let env = Arc::new(MockExecutionEnvironment::default());
+        let config = SessionConfig {
+            enable_context_compaction: true,
+            compaction_preserve_turns: 1,
+            ..Default::default()
+        };
+
+        let mut session = Session::new(client, profile, env, config);
+        let mut rx = session.subscribe();
+
+        // First call: tool call executes, files get tracked, no compaction yet
+        // (compaction may trigger but file tracker is populated by tool execution)
+        session.process_input("Read the file").await.unwrap();
+        assert_eq!(session.file_tracker().file_count(), 1, "read_file should be tracked");
+
+        // Second call with large input: context is well over threshold, compaction triggers
+        let large_input = "x".repeat(400);
+        session.process_input(&large_input).await.unwrap();
+
+        // Verify the compaction request has the structured prompt
+        let captured = provider.captured_complete.lock().unwrap();
+        let request = captured.as_ref().expect("compaction request should have been captured");
+        let system_text = request.messages[0].text();
+        assert!(
+            system_text.contains("## Goal"),
+            "Compaction system prompt should contain structured '## Goal' section"
+        );
+        assert!(
+            system_text.contains("## File Operations"),
+            "Compaction system prompt should contain '## File Operations' section when files were tracked"
+        );
+        assert!(
+            system_text.contains("/src/main.rs"),
+            "File operations section should include the tracked file path"
+        );
+        assert!(
+            system_text.contains("COPY THIS SECTION VERBATIM"),
+            "File operations section should instruct verbatim copying"
+        );
+
+        // Verify CompactionCompleted event has tracked_file_count
+        let mut found_tracked_count = false;
+        while let Ok(event) = rx.try_recv() {
+            if let AgentEvent::CompactionCompleted { tracked_file_count, .. } = &event.event {
+                assert_eq!(*tracked_file_count, 1, "Should track 1 file (read_file)");
+                found_tracked_count = true;
+            }
+        }
+        assert!(found_tracked_count, "CompactionCompleted event should be emitted");
     }
 }

@@ -124,6 +124,7 @@ pub enum AgentEvent {
         original_turn_count: usize,
         preserved_turn_count: usize,
         summary_token_estimate: usize,
+        tracked_file_count: usize,
     },
     LlmRetry {
         provider: String,
@@ -194,6 +195,7 @@ mod tests {
             original_turn_count: 20,
             preserved_turn_count: 6,
             summary_token_estimate: 500,
+            tracked_file_count: 3,
         };
         assert!(matches!(completed, AgentEvent::CompactionCompleted { original_turn_count: 20, .. }));
     }

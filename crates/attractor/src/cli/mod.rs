@@ -395,8 +395,8 @@ pub fn format_event_summary(event: &PipelineEvent, styles: &Styles) -> String {
             AgentEvent::CompactionStarted { estimated_tokens, context_window_size } => {
                 format!("[COMPACTION_STARTED] stage={stage} estimated_tokens={estimated_tokens} context_window={context_window_size}")
             }
-            AgentEvent::CompactionCompleted { original_turn_count, preserved_turn_count, summary_token_estimate } => {
-                format!("[COMPACTION_COMPLETED] stage={stage} original_turns={original_turn_count} preserved_turns={preserved_turn_count} summary_tokens={summary_token_estimate}")
+            AgentEvent::CompactionCompleted { original_turn_count, preserved_turn_count, summary_token_estimate, tracked_file_count } => {
+                format!("[COMPACTION_COMPLETED] stage={stage} original_turns={original_turn_count} preserved_turns={preserved_turn_count} summary_tokens={summary_token_estimate} tracked_files={tracked_file_count}")
             }
             AgentEvent::LlmRetry { provider, model, attempt, delay_secs, error } => {
                 let delay_ms = (*delay_secs * 1000.0) as u64;
@@ -706,8 +706,8 @@ pub fn format_event_detail(event: &PipelineEvent, styles: &Styles) -> String {
             AgentEvent::CompactionStarted { estimated_tokens, context_window_size } => {
                 format!("{d}── COMPACTION_STARTED ───────────────────────{r}\n  {d}stage:{r}               {stage}\n  {d}estimated_tokens:{r}    {estimated_tokens}\n  {d}context_window_size:{r} {context_window_size}\n")
             }
-            AgentEvent::CompactionCompleted { original_turn_count, preserved_turn_count, summary_token_estimate } => {
-                format!("{d}── COMPACTION_COMPLETED ─────────────────────{r}\n  {d}stage:{r}                  {stage}\n  {d}original_turn_count:{r}    {original_turn_count}\n  {d}preserved_turn_count:{r}   {preserved_turn_count}\n  {d}summary_token_estimate:{r} {summary_token_estimate}\n")
+            AgentEvent::CompactionCompleted { original_turn_count, preserved_turn_count, summary_token_estimate, tracked_file_count } => {
+                format!("{d}── COMPACTION_COMPLETED ─────────────────────{r}\n  {d}stage:{r}                  {stage}\n  {d}original_turn_count:{r}    {original_turn_count}\n  {d}preserved_turn_count:{r}   {preserved_turn_count}\n  {d}summary_token_estimate:{r} {summary_token_estimate}\n  {d}tracked_file_count:{r}     {tracked_file_count}\n")
             }
             AgentEvent::LlmRetry { provider, model, attempt, delay_secs, error } => {
                 let delay_ms = (*delay_secs * 1000.0) as u64;

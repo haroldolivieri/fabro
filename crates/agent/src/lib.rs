@@ -6,6 +6,7 @@ pub mod config;
 pub mod error;
 pub mod event;
 pub mod execution_env;
+pub mod file_tracker;
 pub mod history;
 pub mod local_env;
 pub mod loop_detection;

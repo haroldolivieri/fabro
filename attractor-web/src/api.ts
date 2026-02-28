@@ -95,7 +95,7 @@ export type PipelineEvent =
   | { LoopDetected: { stage: string } }
   | { TurnLimitReached: { stage: string; max_turns: number } }
   | { CompactionStarted: { stage: string; estimated_tokens: number; context_window_size: number } }
-  | { CompactionCompleted: { stage: string; original_turn_count: number; preserved_turn_count: number; summary_token_estimate: number } };
+  | { CompactionCompleted: { stage: string; original_turn_count: number; preserved_turn_count: number; summary_token_estimate: number; tracked_file_count: number } };
 
 export type ContextSnapshot = Record<string, unknown>;
 

@@ -437,7 +437,7 @@ impl ProviderAdapter for MockLlmProvider {
 }
 
 /// Convert a canned `Response` into a `StreamEventStream` for mock streaming.
-fn response_to_stream(response: Response) -> StreamEventStream {
+pub fn response_to_stream(response: Response) -> StreamEventStream {
     let mut events: Vec<Result<StreamEvent, SdkError>> = Vec::new();
 
     // Emit text deltas for text content

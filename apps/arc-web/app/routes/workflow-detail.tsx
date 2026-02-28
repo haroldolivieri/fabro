@@ -1,26 +1,253 @@
 import { Link, Outlet, useLocation, useParams } from "react-router";
 import type { Route } from "./+types/workflow-detail";
 
-export const workflowData: Record<string, { title: string; description: string; filename: string }> = {
+interface WorkflowEntry {
+  title: string;
+  description: string;
+  filename: string;
+  config: string;
+  graph: string;
+}
+
+export const workflowData: Record<string, WorkflowEntry> = {
   fix_build: {
     title: "Fix Build",
     filename: "fix_build.dot",
     description: "Automatically diagnoses and fixes CI build failures by analyzing error logs, identifying root causes, and applying targeted code changes.",
+    config: `version = 1
+task = "Diagnose and fix CI build failures"
+graph = "fix_build.dot"
+
+[llm]
+model = "claude-sonnet"
+
+[vars]
+repo_url = "https://github.com/org/service"
+branch = "main"
+
+[execution]
+environment = "daytona"
+
+[execution.daytona.sandbox]
+auto_stop_interval = 60
+
+[execution.daytona.sandbox.labels]
+project = "fix-build"
+
+[execution.daytona.snapshot]
+name = "fix-build-dev"
+cpu = 4
+memory = 8
+disk = 10
+`,
+    graph: `digraph fix_build {
+    graph [
+        goal="Diagnose and fix CI build failures",
+        label="Fix Build"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    diagnose [label="Diagnose Failure", prompt="@prompts/fix_build/diagnose.md", reasoning_effort="high"]
+    fix      [label="Apply Fix",        prompt="@prompts/fix_build/fix.md"]
+    validate [label="Run Build",        prompt="@prompts/fix_build/validate.md", goal_gate=true]
+    gate     [shape=diamond,            label="Build passing?"]
+
+    start -> diagnose -> fix -> validate -> gate
+    gate -> exit     [label="Yes", condition="outcome=success"]
+    gate -> diagnose [label="No",  condition="outcome!=success", max_visits=3]
+}
+`,
   },
   implement: {
     title: "Implement Feature",
     filename: "implement.dot",
     description: "Generates production-ready code from a technical blueprint, including tests, documentation, and a pull request ready for review.",
+    config: `version = 1
+task = "Implement feature from technical blueprint"
+graph = "implement.dot"
+
+[llm]
+model = "claude-sonnet"
+
+[vars]
+spec_path = "specs/feature.md"
+test_framework = "vitest"
+
+[setup]
+commands = ["bun install", "bun run typecheck"]
+timeout_ms = 120000
+
+[execution]
+environment = "daytona"
+
+[execution.daytona.sandbox]
+auto_stop_interval = 120
+
+[execution.daytona.sandbox.labels]
+project = "implement"
+team = "engineering"
+
+[execution.daytona.snapshot]
+name = "implement-dev"
+cpu = 4
+memory = 8
+disk = 20
+`,
+    graph: `digraph implement {
+    graph [
+        goal="",
+        label="Implement"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    strategy [shape=hexagon, label="Choose decomposition strategy:"]
+
+    subgraph cluster_impl {
+        label="Implementation Loop"
+        node [fidelity="full", thread_id="impl"]
+
+        plan      [label="Plan Implementation", prompt="@prompts/implement/plan.md", reasoning_effort="high"]
+        implement [label="Implement",            prompt="@prompts/implement/implement.md"]
+        review    [label="Review",               prompt="@prompts/implement/review.md"]
+        validate  [label="Validate",             prompt="@prompts/implement/validate.md", goal_gate=true]
+        fix       [label="Fix Failures",         prompt="@prompts/implement/fix.md", max_visits=3]
+    }
+
+    start -> strategy
+    strategy -> plan [label="[L] Layer-by-layer"]
+    strategy -> plan [label="[F] Feature slice"]
+    strategy -> plan [label="[P] Embarrassingly parallel"]
+    strategy -> plan [label="[S] Sequential / linear"]
+    plan -> implement -> review -> validate
+    validate -> exit [condition="outcome=success"]
+    validate -> fix  [condition="outcome!=success", label="Fix"]
+    fix -> validate
+}
+`,
   },
   sync_drift: {
     title: "Sync Drift",
     filename: "sync_drift.dot",
     description: "Detects configuration and code drift between environments, then generates reconciliation patches to bring everything back in sync.",
+    config: `version = 1
+task = "Detect and reconcile configuration drift across environments"
+graph = "sync_drift.dot"
+
+[llm]
+model = "claude-sonnet"
+
+[vars]
+source_env = "production"
+target_env = "staging"
+drift_threshold = "warn"
+
+[execution]
+environment = "daytona"
+
+[execution.daytona.sandbox]
+auto_stop_interval = 120
+
+[execution.daytona.sandbox.labels]
+project = "sync-drift"
+team = "platform"
+
+[execution.daytona.snapshot]
+name = "sync-drift-dev"
+cpu = 2
+memory = 4
+disk = 10
+dockerfile = """
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+        git curl ca-certificates jq diffutils \\
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd -m -s /bin/bash daytona
+USER daytona
+WORKDIR /home/daytona
+"""
+`,
+    graph: `digraph sync {
+    graph [
+        goal="Detect and resolve drift between product docs, architecture docs, and code",
+        label="Sync"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    detect  [label="Detect Drift",     prompt="@prompts/sync/detect.md", reasoning_effort="high"]
+    propose [label="Propose Changes",  prompt="@prompts/sync/propose.md"]
+    review  [shape=hexagon,            label="Review Changes"]
+    apply   [label="Apply Changes",    prompt="@prompts/sync/apply.md"]
+
+    start -> detect
+    detect -> exit    [condition="context.drift_found=false", label="No drift"]
+    detect -> propose [condition="context.drift_found=true", label="Drift found"]
+    propose -> review
+    review -> apply    [label="[A] Accept"]
+    review -> propose  [label="[R] Revise"]
+    apply -> exit
+}
+`,
   },
   expand: {
     title: "Expand Product",
     filename: "expand.dot",
     description: "Evolves the product by analyzing usage patterns and specifications to propose and implement incremental improvements.",
+    config: `version = 1
+task = "Propose and implement incremental product improvements"
+graph = "expand.dot"
+
+[llm]
+model = "claude-sonnet"
+
+[vars]
+analytics_window = "30d"
+min_confidence = "0.8"
+
+[execution]
+environment = "daytona"
+
+[execution.daytona.sandbox]
+auto_stop_interval = 180
+
+[execution.daytona.sandbox.labels]
+project = "expand"
+team = "product"
+
+[execution.daytona.snapshot]
+name = "expand-dev"
+cpu = 2
+memory = 4
+disk = 10
+`,
+    graph: `digraph expand {
+    graph [
+        goal="",
+        label="Expand"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    propose [label="Propose Changes",  prompt="@prompts/expand/propose.md", reasoning_effort="high"]
+    approve [shape=hexagon,            label="Approve Changes"]
+    execute [label="Execute Changes",  prompt="@prompts/expand/execute.md"]
+
+    start -> propose -> approve
+    approve -> execute [label="[A] Accept"]
+    approve -> propose [label="[R] Revise"]
+    execute -> exit
+}
+`,
   },
 };
 

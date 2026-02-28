@@ -1,8 +1,7 @@
-import { useState } from "react";
-import { useParams } from "react-router";
+import { Link, Outlet, useLocation, useParams } from "react-router";
 import type { Route } from "./+types/workflow-detail";
 
-const workflowData: Record<string, { title: string; description: string; filename: string }> = {
+export const workflowData: Record<string, { title: string; description: string; filename: string }> = {
   fix_build: {
     title: "Fix Build",
     filename: "fix_build.dot",
@@ -25,8 +24,11 @@ const workflowData: Record<string, { title: string; description: string; filenam
   },
 };
 
-const tabs = ["Definition", "Diagram", "Runs"] as const;
-type Tab = (typeof tabs)[number];
+const tabs = [
+  { name: "Definition", path: "" },
+  { name: "Diagram", path: "/diagram" },
+  { name: "Runs", path: "/runs" },
+];
 
 export function meta({ params }: Route.MetaArgs) {
   const workflow = workflowData[params.name ?? ""];
@@ -36,8 +38,9 @@ export function meta({ params }: Route.MetaArgs) {
 
 export default function WorkflowDetail() {
   const { name } = useParams();
+  const { pathname } = useLocation();
   const workflow = workflowData[name ?? ""];
-  const [activeTab, setActiveTab] = useState<Tab>("Definition");
+  const basePath = `/workflows/${name}`;
 
   if (workflow == null) {
     return <p className="text-sm text-ice-300">Workflow not found.</p>;
@@ -55,33 +58,28 @@ export default function WorkflowDetail() {
 
       <div className="border-b border-white/[0.06]">
         <nav className="-mb-px flex gap-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
-                activeTab === tab
-                  ? "border-teal-500 text-white"
-                  : "border-transparent text-navy-600 hover:border-white/10 hover:text-ice-300"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+          {tabs.map((tab) => {
+            const tabPath = `${basePath}${tab.path}`;
+            const isActive = pathname === tabPath;
+            return (
+              <Link
+                key={tab.name}
+                to={tabPath}
+                className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "border-teal-500 text-white"
+                    : "border-transparent text-navy-600 hover:border-white/10 hover:text-ice-300"
+                }`}
+              >
+                {tab.name}
+              </Link>
+            );
+          })}
         </nav>
       </div>
 
       <div className="mt-6">
-        {activeTab === "Definition" && (
-          <p className="text-sm text-navy-600">Workflow definition will appear here.</p>
-        )}
-        {activeTab === "Diagram" && (
-          <p className="text-sm text-navy-600">Workflow diagram will appear here.</p>
-        )}
-        {activeTab === "Runs" && (
-          <p className="text-sm text-navy-600">Recent runs will appear here.</p>
-        )}
+        <Outlet />
       </div>
     </div>
   );

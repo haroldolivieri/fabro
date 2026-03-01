@@ -3,6 +3,7 @@ pub mod cli_backend;
 pub mod run;
 #[cfg(feature = "server")]
 pub mod serve;
+pub mod server_config;
 pub mod task_config;
 pub mod validate;
 

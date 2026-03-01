@@ -419,6 +419,16 @@ impl Graph {
         self.attrs.get("default_thread").and_then(AttrValue::as_str)
     }
 
+    /// Graph-level `loop_restart_signature_limit` (default 3).
+    /// When the same failure signature repeats this many times, the pipeline aborts.
+    pub fn loop_restart_signature_limit(&self) -> usize {
+        self.attrs
+            .get("loop_restart_signature_limit")
+            .and_then(AttrValue::as_i64)
+            .filter(|&v| v >= 1)
+            .map_or(3, |v| v as usize)
+    }
+
     /// Graph-level `max_node_visits` (default 0 = disabled).
     pub fn max_node_visits(&self) -> u64 {
         self.attrs
@@ -745,5 +755,37 @@ mod tests {
             AttrValue::String("invalid".to_string()),
         );
         assert!(node.codergen_mode().is_err());
+    }
+
+    #[test]
+    fn graph_loop_restart_signature_limit_default() {
+        let g = Graph::new("empty");
+        assert_eq!(g.loop_restart_signature_limit(), 3);
+    }
+
+    #[test]
+    fn graph_loop_restart_signature_limit_set() {
+        let mut g = Graph::new("test");
+        g.attrs.insert(
+            "loop_restart_signature_limit".to_string(),
+            AttrValue::Integer(5),
+        );
+        assert_eq!(g.loop_restart_signature_limit(), 5);
+    }
+
+    #[test]
+    fn graph_loop_restart_signature_limit_invalid_falls_back() {
+        let mut g = Graph::new("test");
+        g.attrs.insert(
+            "loop_restart_signature_limit".to_string(),
+            AttrValue::Integer(0),
+        );
+        assert_eq!(g.loop_restart_signature_limit(), 3);
+
+        g.attrs.insert(
+            "loop_restart_signature_limit".to_string(),
+            AttrValue::Integer(-1),
+        );
+        assert_eq!(g.loop_restart_signature_limit(), 3);
     }
 }

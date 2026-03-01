@@ -1095,6 +1095,8 @@ fn checkpoint_save_and_resume_roundtrip() {
         retries,
         std::collections::HashMap::new(),
         None,
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
     );
 
     checkpoint.save(&path).expect("save should succeed");
@@ -1560,6 +1562,8 @@ async fn resume_from_checkpoint_completes_pipeline() {
         std::collections::HashMap::new(),
         outcomes,
         Some("step_b".to_string()),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
     );
 
     let dir = tempfile::tempdir().unwrap();
@@ -1653,6 +1657,8 @@ async fn resume_from_checkpoint_preserves_goal_gate_outcomes() {
         std::collections::HashMap::new(),
         outcomes,
         Some("step_b".to_string()),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
     );
 
     let dir = tempfile::tempdir().unwrap();
@@ -2520,6 +2526,8 @@ async fn scenario_crash_recovery() {
         std::collections::HashMap::new(),
         outcomes,
         Some("b".to_string()),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
     );
 
     let dir = tempfile::tempdir().unwrap();
@@ -4260,6 +4268,8 @@ async fn fidelity_resume_degrades_full_to_summary_high() {
         std::collections::HashMap::new(),
         outcomes,
         Some("step_b".to_string()),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
     );
 
     let captures = FidelityCaptures::new();
@@ -4350,6 +4360,8 @@ async fn fidelity_resume_degrade_only_affects_first_hop() {
         std::collections::HashMap::new(),
         outcomes,
         Some("step_b".to_string()),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
     );
 
     let captures = FidelityCaptures::new();
@@ -4427,6 +4439,8 @@ async fn fidelity_resume_no_degrade_when_not_full() {
         std::collections::HashMap::new(),
         outcomes,
         Some("step_b".to_string()),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
     );
 
     let captures = FidelityCaptures::new();
@@ -5223,6 +5237,8 @@ async fn fidelity_resume_preserves_context_values_across_checkpoint() {
         std::collections::HashMap::new(),
         outcomes,
         Some("step_b".to_string()),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
     );
 
     let captures = FidelityCaptures::new();
@@ -9173,15 +9189,17 @@ async fn parallel_git_branching_host_e2e() {
     );
 
     let mut start = Node::new("start");
-    start
-        .attrs
-        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
     graph.nodes.insert("start".to_string(), start);
 
     let mut fan_out = Node::new("fan_out");
-    fan_out
-        .attrs
-        .insert("shape".to_string(), AttrValue::String("component".to_string()));
+    fan_out.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("component".to_string()),
+    );
     graph.nodes.insert("fan_out".to_string(), fan_out);
 
     let branch_a = Node::new("branch_a");
@@ -9198,8 +9216,10 @@ async fn parallel_git_branching_host_e2e() {
     graph.nodes.insert("fan_in".to_string(), fan_in);
 
     let mut exit = Node::new("exit");
-    exit.attrs
-        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
     graph.nodes.insert("exit".to_string(), exit);
 
     graph.edges.push(Edge::new("start", "fan_out"));
@@ -9214,8 +9234,9 @@ async fn parallel_git_branching_host_e2e() {
     let mut emitter = EventEmitter::new();
     let events = collect_events(&mut emitter);
 
-    let env: Arc<dyn arc_agent::ExecutionEnvironment> =
-        Arc::new(arc_agent::LocalExecutionEnvironment::new(worktree_path.clone()));
+    let env: Arc<dyn arc_agent::ExecutionEnvironment> = Arc::new(
+        arc_agent::LocalExecutionEnvironment::new(worktree_path.clone()),
+    );
 
     let mut registry = HandlerRegistry::new(Box::new(FileWriterHandler));
     registry.register("start", Box::new(StartHandler));
@@ -9252,8 +9273,8 @@ async fn parallel_git_branching_host_e2e() {
     );
 
     // 6. Verify parallel.results has head_sha for each branch
-    let checkpoint = Checkpoint::load(&logs_dir.path().join("checkpoint.json"))
-        .expect("checkpoint should load");
+    let checkpoint =
+        Checkpoint::load(&logs_dir.path().join("checkpoint.json")).expect("checkpoint should load");
     let parallel_results = checkpoint
         .context_values
         .get("parallel.results")
@@ -9297,7 +9318,10 @@ async fn parallel_git_branching_host_e2e() {
         .expect("fan_in should have set best_head_sha");
 
     // Heuristic select with both success: lexical tiebreak picks "branch_a"
-    assert_eq!(best_id, "branch_a", "heuristic should pick branch_a (lexical)");
+    assert_eq!(
+        best_id, "branch_a",
+        "heuristic should pick branch_a (lexical)"
+    );
 
     // 8. Verify winner's file is in the main worktree, loser's is NOT
     let winner_file = worktree_path.join(format!("{best_id}.txt"));
@@ -9399,6 +9423,989 @@ async fn parallel_git_branching_host_e2e() {
         .arg(&worktree_path)
         .current_dir(repo.path())
         .output();
+}
+
+// ---------------------------------------------------------------------------
+// Failure Signatures & Circuit Breaker E2E Tests
+// ---------------------------------------------------------------------------
+
+/// Handler that always fails with a fixed deterministic reason.
+struct DeterministicFailHandler {
+    reason: String,
+}
+
+impl DeterministicFailHandler {
+    fn new(reason: &str) -> Self {
+        Self {
+            reason: reason.to_string(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Handler for DeterministicFailHandler {
+    async fn execute(
+        &self,
+        _node: &Node,
+        _context: &Context,
+        _graph: &Graph,
+        _logs_root: &Path,
+        _services: &arc_workflows::handler::EngineServices,
+    ) -> Result<Outcome, ArcError> {
+        Ok(Outcome::fail(&self.reason))
+    }
+}
+
+/// Handler that always fails with a transient_infra classification hint.
+struct TransientInfraFailHandler;
+
+#[async_trait::async_trait]
+impl Handler for TransientInfraFailHandler {
+    async fn execute(
+        &self,
+        _node: &Node,
+        _context: &Context,
+        _graph: &Graph,
+        _logs_root: &Path,
+        _services: &arc_workflows::handler::EngineServices,
+    ) -> Result<Outcome, ArcError> {
+        let mut outcome = Outcome::fail("connection refused");
+        outcome.context_updates.insert(
+            "failure_class".to_string(),
+            serde_json::json!("transient_infra"),
+        );
+        Ok(outcome)
+    }
+}
+
+/// Handler that provides an explicit `failure_signature` hint in context_updates.
+struct SignatureHintHandler;
+
+#[async_trait::async_trait]
+impl Handler for SignatureHintHandler {
+    async fn execute(
+        &self,
+        _node: &Node,
+        _context: &Context,
+        _graph: &Graph,
+        _logs_root: &Path,
+        _services: &arc_workflows::handler::EngineServices,
+    ) -> Result<Outcome, ArcError> {
+        let mut outcome = Outcome::fail("error at line 42 in commit abc123def0");
+        outcome.context_updates.insert(
+            "failure_signature".to_string(),
+            serde_json::json!("custom-grouping-key"),
+        );
+        Ok(outcome)
+    }
+}
+
+/// Handler that fails with varying reasons each call (truly different after normalization).
+struct VaryingReasonFailHandler {
+    counter: std::sync::atomic::AtomicU32,
+}
+
+static E2E_VARYING_REASONS: &[&str] = &[
+    "syntax error in module alpha",
+    "type mismatch in module beta",
+    "missing field in module gamma",
+    "undefined reference in module delta",
+    "assertion failed in module epsilon",
+    "panic in module zeta",
+    "out of bounds in module eta",
+    "null pointer in module theta",
+    "stack overflow in module iota",
+    "deadlock in module kappa",
+];
+
+#[async_trait::async_trait]
+impl Handler for VaryingReasonFailHandler {
+    async fn execute(
+        &self,
+        _node: &Node,
+        _context: &Context,
+        _graph: &Graph,
+        _logs_root: &Path,
+        _services: &arc_workflows::handler::EngineServices,
+    ) -> Result<Outcome, ArcError> {
+        let n = self
+            .counter
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst) as usize;
+        Ok(Outcome::fail(
+            E2E_VARYING_REASONS[n % E2E_VARYING_REASONS.len()],
+        ))
+    }
+}
+
+/// Handler that succeeds on the Nth call (0-indexed). Fails deterministically before that.
+struct SucceedOnNthHandler {
+    succeed_on: u32,
+    counter: std::sync::atomic::AtomicU32,
+}
+
+#[async_trait::async_trait]
+impl Handler for SucceedOnNthHandler {
+    async fn execute(
+        &self,
+        _node: &Node,
+        _context: &Context,
+        _graph: &Graph,
+        _logs_root: &Path,
+        _services: &arc_workflows::handler::EngineServices,
+    ) -> Result<Outcome, ArcError> {
+        let n = self
+            .counter
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if n >= self.succeed_on {
+            Ok(Outcome::success())
+        } else {
+            Ok(Outcome::fail("not yet ready"))
+        }
+    }
+}
+
+/// Build a pipeline: start -> work -> (fail loop back to work, success to exit)
+/// This creates a self-loop where work keeps retrying via edge routing.
+fn circuit_breaker_self_loop_graph(signature_limit: Option<i64>) -> Graph {
+    let mut graph = make_graph_with_start_exit("CircuitBreakerSelfLoop");
+    graph
+        .attrs
+        .insert("default_max_retry".to_string(), AttrValue::Integer(0));
+    // High visit limit so the circuit breaker fires first
+    graph
+        .attrs
+        .insert("max_node_visits".to_string(), AttrValue::Integer(100));
+    if let Some(limit) = signature_limit {
+        graph.attrs.insert(
+            "loop_restart_signature_limit".to_string(),
+            AttrValue::Integer(limit),
+        );
+    }
+
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("test_handler".to_string()),
+    );
+    work.attrs
+        .insert("max_retries".to_string(), AttrValue::Integer(0));
+    graph.nodes.insert("work".to_string(), work);
+
+    graph.edges.push(Edge::new("start", "work"));
+    let mut fail_edge = Edge::new("work", "work");
+    fail_edge.attrs.insert(
+        "condition".to_string(),
+        AttrValue::String("outcome=fail".to_string()),
+    );
+    graph.edges.push(fail_edge);
+    let mut ok_edge = Edge::new("work", "exit");
+    ok_edge.attrs.insert(
+        "condition".to_string(),
+        AttrValue::String("outcome=success".to_string()),
+    );
+    graph.edges.push(ok_edge);
+    graph
+}
+
+/// Build a pipeline: start -> work -> (fail: loop_restart to start, success: exit)
+/// This uses loop_restart edges for full pipeline restarts.
+fn circuit_breaker_restart_graph(signature_limit: Option<i64>) -> Graph {
+    let mut graph = make_graph_with_start_exit("CircuitBreakerRestart");
+    graph
+        .attrs
+        .insert("default_max_retry".to_string(), AttrValue::Integer(0));
+    graph
+        .attrs
+        .insert("max_node_visits".to_string(), AttrValue::Integer(100));
+    if let Some(limit) = signature_limit {
+        graph.attrs.insert(
+            "loop_restart_signature_limit".to_string(),
+            AttrValue::Integer(limit),
+        );
+    }
+
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("test_handler".to_string()),
+    );
+    work.attrs
+        .insert("max_retries".to_string(), AttrValue::Integer(0));
+    graph.nodes.insert("work".to_string(), work);
+
+    graph.edges.push(Edge::new("start", "work"));
+    let mut restart_edge = Edge::new("work", "start");
+    restart_edge.attrs.insert(
+        "condition".to_string(),
+        AttrValue::String("outcome=fail".to_string()),
+    );
+    restart_edge
+        .attrs
+        .insert("loop_restart".to_string(), AttrValue::Boolean(true));
+    graph.edges.push(restart_edge);
+    let mut ok_edge = Edge::new("work", "exit");
+    ok_edge.attrs.insert(
+        "condition".to_string(),
+        AttrValue::String("outcome=success".to_string()),
+    );
+    graph.edges.push(ok_edge);
+    graph
+}
+
+// --- E2E Test: normalize_failure_reason produces stable signatures ---
+
+#[test]
+fn e2e_normalize_failure_reason_strips_variable_data() {
+    use arc_workflows::error::normalize_failure_reason;
+
+    // Two error messages that differ only in line numbers and hex hashes
+    // should normalize to the same string.
+    let reason_a = "Error at line 42 in commit abc123def0: assertion failed";
+    let reason_b = "Error at line 999 in commit deadbeef01: assertion failed";
+    assert_eq!(
+        normalize_failure_reason(reason_a),
+        normalize_failure_reason(reason_b),
+        "errors differing only in line numbers and hashes should normalize identically"
+    );
+
+    // Different semantic errors should NOT normalize to the same string.
+    let reason_c = "syntax error in module alpha";
+    let reason_d = "type mismatch in module beta";
+    assert_ne!(
+        normalize_failure_reason(reason_c),
+        normalize_failure_reason(reason_d),
+        "semantically different errors should produce different normalized forms"
+    );
+}
+
+// --- E2E Test: FailureSignature composite key format ---
+
+#[test]
+fn e2e_failure_signature_composite_key() {
+    use arc_workflows::error::{FailureClass, FailureSignature};
+
+    let sig = FailureSignature::new(
+        "verify",
+        FailureClass::Deterministic,
+        None,
+        Some("assertion failed at line 42"),
+    );
+    let sig_str = sig.to_string();
+
+    // Verify format: node_id|failure_class|normalized_reason
+    assert!(sig_str.starts_with("verify|deterministic|"));
+    // Line number should be normalized away
+    assert!(
+        sig_str.contains("<n>"),
+        "line numbers should be normalized: {sig_str}"
+    );
+    assert!(
+        !sig_str.contains("42"),
+        "raw digits should be replaced: {sig_str}"
+    );
+}
+
+// --- E2E Test: signature_hint takes priority over failure_reason ---
+
+#[test]
+fn e2e_failure_signature_hint_priority() {
+    use arc_workflows::error::{FailureClass, FailureSignature};
+
+    let sig = FailureSignature::new(
+        "build",
+        FailureClass::Deterministic,
+        Some("custom-key-abc"),
+        Some("raw error with line 123 and hash deadbeef"),
+    );
+
+    // The hint should be used, not the raw reason
+    assert_eq!(sig.to_string(), "build|deterministic|custom-key-abc");
+}
+
+// --- E2E Test: is_signature_tracked only for deterministic + structural ---
+
+#[test]
+fn e2e_only_deterministic_and_structural_tracked() {
+    use arc_workflows::error::FailureClass;
+
+    // These should be tracked
+    assert!(FailureClass::Deterministic.is_signature_tracked());
+    assert!(FailureClass::Structural.is_signature_tracked());
+
+    // These should NOT be tracked (transient failures retry naturally)
+    assert!(!FailureClass::TransientInfra.is_signature_tracked());
+    assert!(!FailureClass::BudgetExhausted.is_signature_tracked());
+    assert!(!FailureClass::Canceled.is_signature_tracked());
+    assert!(!FailureClass::CompilationLoop.is_signature_tracked());
+}
+
+// --- E2E Test: loop_restart_signature_limit graph attribute ---
+
+#[test]
+fn e2e_loop_restart_signature_limit_from_graph_attr() {
+    let graph = circuit_breaker_self_loop_graph(Some(5));
+    assert_eq!(graph.loop_restart_signature_limit(), 5);
+
+    let graph_default = circuit_breaker_self_loop_graph(None);
+    assert_eq!(graph_default.loop_restart_signature_limit(), 3);
+}
+
+// --- E2E Test: deterministic failure in self-loop triggers circuit breaker ---
+
+#[tokio::test]
+async fn e2e_circuit_breaker_deterministic_self_loop() {
+    let dir = tempfile::tempdir().unwrap();
+    let graph = circuit_breaker_self_loop_graph(Some(3));
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "test_handler",
+        Box::new(DeterministicFailHandler::new(
+            "assertion failed in foo_test",
+        )),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-circuit-breaker".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let result = engine.run(&graph, &config).await;
+    assert!(result.is_err(), "pipeline should abort, not loop forever");
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("deterministic failure cycle detected"),
+        "error should mention cycle detection, got: {err}"
+    );
+    assert!(
+        err.contains("repeated 3 times"),
+        "error should mention the count, got: {err}"
+    );
+    assert!(
+        err.contains("work|deterministic|"),
+        "error should include the signature, got: {err}"
+    );
+}
+
+// --- E2E Test: custom signature limit (5) ---
+
+#[tokio::test]
+async fn e2e_circuit_breaker_custom_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let graph = circuit_breaker_self_loop_graph(Some(5));
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "test_handler",
+        Box::new(DeterministicFailHandler::new("same error every time")),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-custom-limit".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let result = engine.run(&graph, &config).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("repeated 5 times"),
+        "should fire at limit=5, got: {err}"
+    );
+}
+
+// --- E2E Test: transient_infra failures do NOT trigger circuit breaker ---
+
+#[tokio::test]
+async fn e2e_circuit_breaker_ignores_transient_failures() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut graph = circuit_breaker_self_loop_graph(Some(3));
+    // Lower visit limit so the test terminates quickly via visit limit
+    graph
+        .attrs
+        .insert("max_node_visits".to_string(), AttrValue::Integer(6));
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("test_handler", Box::new(TransientInfraFailHandler));
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-transient-no-breaker".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let result = engine.run(&graph, &config).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    // Should hit visit limit, NOT circuit breaker
+    assert!(
+        err.contains("exceeded max visit limit"),
+        "transient failures should not trigger circuit breaker, got: {err}"
+    );
+}
+
+// --- E2E Test: different failure reasons produce different signatures ---
+
+#[tokio::test]
+async fn e2e_circuit_breaker_different_reasons_separate_counters() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut graph = circuit_breaker_self_loop_graph(Some(3));
+    // With 10 unique reasons and limit=3, we can do up to 30 iterations before
+    // any single reason hits 3. But max_node_visits=8 will fire first.
+    graph
+        .attrs
+        .insert("max_node_visits".to_string(), AttrValue::Integer(8));
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "test_handler",
+        Box::new(VaryingReasonFailHandler {
+            counter: std::sync::atomic::AtomicU32::new(0),
+        }),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-varying-reasons".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let result = engine.run(&graph, &config).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    // Should hit visit limit because each failure has a unique signature
+    assert!(
+        err.contains("exceeded max visit limit"),
+        "varying reasons should not trigger circuit breaker, got: {err}"
+    );
+}
+
+// --- E2E Test: loop_restart edge triggers circuit breaker ---
+
+#[tokio::test]
+async fn e2e_circuit_breaker_loop_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let graph = circuit_breaker_restart_graph(Some(3));
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "test_handler",
+        Box::new(DeterministicFailHandler::new("verify step failed")),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-restart-breaker".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let result = engine.run(&graph, &config).await;
+    assert!(
+        result.is_err(),
+        "pipeline should abort, not restart forever"
+    );
+    let err = result.unwrap_err().to_string();
+    // Either the loop or restart circuit breaker fires
+    assert!(
+        err.contains("failure cycle detected") || err.contains("circuit breaker"),
+        "a circuit breaker should fire on repeated restart, got: {err}"
+    );
+}
+
+// --- E2E Test: failure_signature stored in context (checkpoint verification) ---
+
+#[tokio::test]
+async fn e2e_failure_signature_persisted_in_context() {
+    let dir = tempfile::tempdir().unwrap();
+    // Pipeline: start -> work (fails once) -> exit
+    // Work fails but the edge routes to exit unconditionally.
+    let mut graph = make_graph_with_start_exit("SignatureContextTest");
+    graph
+        .attrs
+        .insert("default_max_retry".to_string(), AttrValue::Integer(0));
+
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("test_handler".to_string()),
+    );
+    work.attrs
+        .insert("max_retries".to_string(), AttrValue::Integer(0));
+    graph.nodes.insert("work".to_string(), work);
+
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "test_handler",
+        Box::new(DeterministicFailHandler::new("test assertion failed")),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-sig-context".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.unwrap();
+    // Pipeline reaches exit (terminal), last completed node is "work" (Fail).
+    // The engine doesn't execute exit handlers, just breaks on terminal nodes.
+    assert_eq!(outcome.status, StageStatus::Fail);
+
+    // Verify checkpoint has failure_signature in context
+    let cp = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    let sig_value = cp
+        .context_values
+        .get("failure_signature")
+        .expect("failure_signature should be in context");
+    let sig_str = sig_value.as_str().unwrap();
+    assert!(
+        sig_str.contains("work|deterministic|"),
+        "signature should contain node_id|class|, got: {sig_str}"
+    );
+    assert!(
+        sig_str.contains("test assertion failed"),
+        "signature should contain normalized reason, got: {sig_str}"
+    );
+}
+
+// --- E2E Test: failure_signature hint from handler overrides raw reason ---
+
+#[tokio::test]
+async fn e2e_failure_signature_hint_overrides_reason_in_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut graph = make_graph_with_start_exit("SignatureHintTest");
+    graph
+        .attrs
+        .insert("default_max_retry".to_string(), AttrValue::Integer(0));
+
+    let mut work = Node::new("work");
+    work.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("hint_handler".to_string()),
+    );
+    work.attrs
+        .insert("max_retries".to_string(), AttrValue::Integer(0));
+    graph.nodes.insert("work".to_string(), work);
+
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("hint_handler", Box::new(SignatureHintHandler));
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-sig-hint".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let _outcome = engine.run(&graph, &config).await.unwrap();
+
+    let cp = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    let sig_str = cp
+        .context_values
+        .get("failure_signature")
+        .and_then(|v| v.as_str())
+        .expect("failure_signature should be set");
+    // The hint "custom-grouping-key" should be used, not the raw reason
+    assert!(
+        sig_str.contains("custom-grouping-key"),
+        "hint should override raw reason, got: {sig_str}"
+    );
+    // Raw reason contained line numbers and hex — verify they are NOT in the signature
+    assert!(
+        !sig_str.contains("42"),
+        "raw reason details should not leak through, got: {sig_str}"
+    );
+}
+
+// --- E2E Test: signature maps persisted in checkpoint and survive save/load ---
+
+#[tokio::test]
+async fn e2e_signature_maps_persist_in_checkpoint() {
+    let dir = tempfile::tempdir().unwrap();
+    // Pipeline where work fails twice then we check the checkpoint
+    let graph = circuit_breaker_self_loop_graph(Some(5));
+
+    // Use a handler that succeeds on the 3rd call (0-indexed), so we get
+    // exactly 3 failures at the work node before succeeding on the 4th visit.
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "test_handler",
+        Box::new(SucceedOnNthHandler {
+            succeed_on: 3,
+            counter: std::sync::atomic::AtomicU32::new(0),
+        }),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-sig-persist".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.unwrap();
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // Load checkpoint and verify signature maps
+    let cp = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    // The pipeline had 3 deterministic failures at "work" before succeeding.
+    // loop_failure_signatures should have recorded them.
+    assert!(
+        !cp.loop_failure_signatures.is_empty(),
+        "loop_failure_signatures should have entries after deterministic failures"
+    );
+    // Verify the signature key format
+    let (sig, count) = cp.loop_failure_signatures.iter().next().unwrap();
+    assert!(
+        sig.to_string().starts_with("work|deterministic|"),
+        "signature key should have correct format, got: {sig}"
+    );
+    assert_eq!(
+        *count, 3,
+        "should have recorded exactly 3 failures before success"
+    );
+}
+
+// --- E2E Test: checkpoint backward compat (old checkpoints without signature fields) ---
+
+#[test]
+fn e2e_checkpoint_backward_compat_no_signatures() {
+    // Simulate loading a checkpoint saved before signature fields existed
+    let json = serde_json::json!({
+        "timestamp": "2025-06-01T00:00:00Z",
+        "current_node": "work",
+        "completed_nodes": ["start", "work"],
+        "node_retries": {},
+        "context_values": {"goal": "test"},
+        "logs": ["some log entry"],
+        "node_outcomes": {}
+    });
+
+    let cp: Checkpoint = serde_json::from_value(json).expect("should deserialize old checkpoint");
+    assert!(cp.loop_failure_signatures.is_empty());
+    assert!(cp.restart_failure_signatures.is_empty());
+    assert_eq!(cp.current_node, "work");
+}
+
+// --- E2E Test: checkpoint with signatures round-trips through save/load ---
+
+#[test]
+fn e2e_checkpoint_signatures_roundtrip() {
+    use arc_workflows::error::{FailureClass, FailureSignature};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cp.json");
+
+    let ctx = Context::new();
+    ctx.set("goal", serde_json::json!("test roundtrip"));
+
+    let mut loop_sigs = std::collections::HashMap::new();
+    let sig1 = FailureSignature::new(
+        "verify",
+        FailureClass::Deterministic,
+        None,
+        Some("assertion failed"),
+    );
+    loop_sigs.insert(sig1.clone(), 2usize);
+
+    let mut restart_sigs = std::collections::HashMap::new();
+    let sig2 = FailureSignature::new(
+        "build",
+        FailureClass::Structural,
+        None,
+        Some("scope violation"),
+    );
+    restart_sigs.insert(sig2.clone(), 1usize);
+
+    let cp = Checkpoint::from_context(
+        &ctx,
+        "verify",
+        vec!["start".to_string(), "verify".to_string()],
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
+        None,
+        loop_sigs,
+        restart_sigs,
+    );
+    cp.save(&path).unwrap();
+
+    let loaded = Checkpoint::load(&path).unwrap();
+    assert_eq!(loaded.loop_failure_signatures.len(), 1);
+    assert_eq!(loaded.restart_failure_signatures.len(), 1);
+    assert_eq!(loaded.loop_failure_signatures.get(&sig1), Some(&2));
+    assert_eq!(loaded.restart_failure_signatures.get(&sig2), Some(&1));
+}
+
+// --- E2E Test: pipeline events are emitted before circuit breaker aborts ---
+
+#[tokio::test]
+async fn e2e_circuit_breaker_emits_events_before_abort() {
+    let dir = tempfile::tempdir().unwrap();
+    let graph = circuit_breaker_self_loop_graph(Some(3));
+
+    let mut emitter = EventEmitter::new();
+    let events = collect_events(&mut emitter);
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "test_handler",
+        Box::new(DeterministicFailHandler::new("assertion failed")),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(emitter), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-events".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let result = engine.run(&graph, &config).await;
+    assert!(result.is_err());
+
+    let events = events.lock().unwrap();
+    // Should have at least PipelineStarted and some StageFailed/StageCompleted events
+    let has_pipeline_started = events
+        .iter()
+        .any(|e| matches!(e, PipelineEvent::PipelineStarted { .. }));
+    assert!(
+        has_pipeline_started,
+        "PipelineStarted event should be emitted"
+    );
+
+    // Verify we got stage events for the failing work node.
+    // The circuit breaker fires when count reaches the limit (3) *before*
+    // the stage event for that iteration is emitted, so we see limit-1 events.
+    let stage_failed_count = events
+        .iter()
+        .filter(|e| matches!(e, PipelineEvent::StageFailed { name, .. } if name == "work"))
+        .count();
+    let stage_completed_count = events
+        .iter()
+        .filter(|e| matches!(e, PipelineEvent::StageCompleted { name, .. } if name == "work"))
+        .count();
+    let total_work_events = stage_completed_count + stage_failed_count;
+    // With limit=3, the breaker fires on the 3rd failure before its event is emitted.
+    // So we get 2 events (for failures 1 and 2).
+    assert!(
+        total_work_events >= 2,
+        "should have at least 2 stage events before circuit breaker fires, got: {total_work_events}"
+    );
+}
+
+// --- E2E Test: success resets to success path, but signatures are preserved ---
+
+#[tokio::test]
+async fn e2e_circuit_breaker_does_not_fire_below_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let graph = circuit_breaker_self_loop_graph(Some(5));
+
+    // Handler that fails 4 times (below limit of 5) then succeeds
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "test_handler",
+        Box::new(SucceedOnNthHandler {
+            succeed_on: 4,
+            counter: std::sync::atomic::AtomicU32::new(0),
+        }),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-below-limit".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let outcome = engine.run(&graph, &config).await.unwrap();
+    assert_eq!(
+        outcome.status,
+        StageStatus::Success,
+        "pipeline should succeed when failures stay below limit"
+    );
+
+    // Verify signatures were tracked but didn't trigger abort
+    let cp = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    let total_failures: usize = cp.loop_failure_signatures.values().sum();
+    assert_eq!(
+        total_failures, 4,
+        "should have tracked 4 failures in signatures"
+    );
+}
+
+// --- E2E Test: multi-stage pipeline with impl/verify cycle detection ---
+
+#[tokio::test]
+async fn e2e_circuit_breaker_multi_stage_impl_verify_cycle() {
+    // Pipeline: start -> impl (succeeds) -> verify (fails) -> impl -> verify -> ...
+    // The verify node always fails with the same deterministic reason.
+    // Circuit breaker should detect the verify failure cycling.
+    let dir = tempfile::tempdir().unwrap();
+    let mut graph = make_graph_with_start_exit("ImplVerifyCycle");
+    graph
+        .attrs
+        .insert("default_max_retry".to_string(), AttrValue::Integer(0));
+    graph
+        .attrs
+        .insert("max_node_visits".to_string(), AttrValue::Integer(100));
+    graph.attrs.insert(
+        "loop_restart_signature_limit".to_string(),
+        AttrValue::Integer(3),
+    );
+
+    let mut impl_node = Node::new("impl");
+    impl_node.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("success_handler".to_string()),
+    );
+    graph.nodes.insert("impl".to_string(), impl_node);
+
+    let mut verify_node = Node::new("verify");
+    verify_node.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("fail_handler".to_string()),
+    );
+    verify_node
+        .attrs
+        .insert("max_retries".to_string(), AttrValue::Integer(0));
+    graph.nodes.insert("verify".to_string(), verify_node);
+
+    graph.edges.push(Edge::new("start", "impl"));
+    graph.edges.push(Edge::new("impl", "verify"));
+    // verify fail -> back to impl
+    let mut fail_edge = Edge::new("verify", "impl");
+    fail_edge.attrs.insert(
+        "condition".to_string(),
+        AttrValue::String("outcome=fail".to_string()),
+    );
+    graph.edges.push(fail_edge);
+    // verify success -> exit (never taken)
+    let mut ok_edge = Edge::new("verify", "exit");
+    ok_edge.attrs.insert(
+        "condition".to_string(),
+        AttrValue::String("outcome=success".to_string()),
+    );
+    graph.edges.push(ok_edge);
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("success_handler", Box::new(StartHandler)); // StartHandler returns success
+    registry.register(
+        "fail_handler",
+        Box::new(DeterministicFailHandler::new(
+            "test assertion: expected 42, got 0",
+        )),
+    );
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "e2e-impl-verify-cycle".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+    };
+
+    let result = engine.run(&graph, &config).await;
+    assert!(
+        result.is_err(),
+        "should detect impl/verify cycle, not loop forever"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("deterministic failure cycle detected"),
+        "should identify deterministic failure cycle, got: {err}"
+    );
+    assert!(
+        err.contains("verify|deterministic|"),
+        "signature should name the verify node, got: {err}"
+    );
 }
 
 // Daytona parallel git branching test is in daytona_integration.rs

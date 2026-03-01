@@ -268,6 +268,7 @@ dependencies = [
  "nom",
  "predicates",
  "rand 0.8.5",
+ "regex",
  "scopeguard",
  "serde",
  "serde_json",

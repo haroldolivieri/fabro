@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::context::Context;
-use crate::error::{ArcError, Result};
+use crate::error::{ArcError, FailureSignature, Result};
 use crate::outcome::Outcome;
 
 /// Serializable snapshot of execution state for crash recovery and resume.
@@ -27,10 +27,17 @@ pub struct Checkpoint {
     /// SHA of the git commit created at this checkpoint (when running in a worktree).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_commit_sha: Option<String>,
+    /// Failure signature counts within the main loop (deterministic/structural failures).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub loop_failure_signatures: HashMap<FailureSignature, usize>,
+    /// Failure signature counts across loop_restart edges.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub restart_failure_signatures: HashMap<FailureSignature, usize>,
 }
 
 impl Checkpoint {
     /// Create a checkpoint from the current execution state.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_context(
         context: &Context,
         current_node: impl Into<String>,
@@ -38,6 +45,8 @@ impl Checkpoint {
         node_retries: HashMap<String, u32>,
         node_outcomes: HashMap<String, Outcome>,
         next_node_id: Option<String>,
+        loop_failure_signatures: HashMap<FailureSignature, usize>,
+        restart_failure_signatures: HashMap<FailureSignature, usize>,
     ) -> Self {
         Self {
             timestamp: Utc::now(),
@@ -49,6 +58,8 @@ impl Checkpoint {
             node_outcomes,
             next_node_id,
             git_commit_sha: None,
+            loop_failure_signatures,
+            restart_failure_signatures,
         }
     }
 
@@ -94,6 +105,8 @@ mod tests {
             HashMap::new(),
             HashMap::new(),
             None,
+            HashMap::new(),
+            HashMap::new(),
         );
 
         assert_eq!(cp.current_node, "node_a");
@@ -131,6 +144,8 @@ mod tests {
             retries,
             outcomes,
             Some("next_step".to_string()),
+            HashMap::new(),
+            HashMap::new(),
         );
 
         cp.save(&path).unwrap();
@@ -170,10 +185,83 @@ mod tests {
     #[test]
     fn serialization_roundtrip() {
         let ctx = Context::new();
-        let cp = Checkpoint::from_context(&ctx, "n1", vec![], HashMap::new(), HashMap::new(), None);
+        let cp = Checkpoint::from_context(
+            &ctx,
+            "n1",
+            vec![],
+            HashMap::new(),
+            HashMap::new(),
+            None,
+            HashMap::new(),
+            HashMap::new(),
+        );
 
         let json = serde_json::to_string(&cp).unwrap();
         let deserialized: Checkpoint = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.current_node, "n1");
+    }
+
+    #[test]
+    fn signature_maps_roundtrip() {
+        use crate::error::{FailureClass, FailureSignature};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("checkpoint.json");
+
+        let ctx = Context::new();
+        let mut loop_sigs = HashMap::new();
+        loop_sigs.insert(
+            FailureSignature::new(
+                "verify",
+                FailureClass::Deterministic,
+                None,
+                Some("test failed"),
+            ),
+            2,
+        );
+        let mut restart_sigs = HashMap::new();
+        restart_sigs.insert(
+            FailureSignature::new("build", FailureClass::Structural, None, Some("scope error")),
+            1,
+        );
+
+        let cp = Checkpoint::from_context(
+            &ctx,
+            "verify",
+            vec![],
+            HashMap::new(),
+            HashMap::new(),
+            None,
+            loop_sigs,
+            restart_sigs,
+        );
+        cp.save(&path).unwrap();
+
+        let loaded = Checkpoint::load(&path).unwrap();
+        assert_eq!(loaded.loop_failure_signatures.len(), 1);
+        assert_eq!(loaded.restart_failure_signatures.len(), 1);
+        let sig = FailureSignature::new(
+            "verify",
+            FailureClass::Deterministic,
+            None,
+            Some("test failed"),
+        );
+        assert_eq!(loaded.loop_failure_signatures.get(&sig), Some(&2));
+    }
+
+    #[test]
+    fn backward_compat_missing_signature_fields() {
+        // A checkpoint saved before signatures were added should deserialize with empty maps
+        let json = r#"{
+            "timestamp": "2025-01-01T00:00:00Z",
+            "current_node": "work",
+            "completed_nodes": ["start"],
+            "node_retries": {},
+            "context_values": {},
+            "logs": []
+        }"#;
+        let cp: Checkpoint = serde_json::from_str(json).unwrap();
+        assert!(cp.loop_failure_signatures.is_empty());
+        assert!(cp.restart_failure_signatures.is_empty());
     }
 }

@@ -16,7 +16,7 @@ use crate::artifact::{offload_large_values, sync_artifacts_to_env, ArtifactStore
 use crate::checkpoint::Checkpoint;
 use crate::condition::evaluate_condition;
 use crate::context::Context;
-use crate::error::{classify_failure_reason, ArcError, FailureClass, Result};
+use crate::error::{classify_failure_reason, ArcError, FailureClass, FailureSignature, Result};
 use crate::event::{EventEmitter, PipelineEvent};
 use crate::graph::{Edge, Graph, Node};
 use crate::handler::{EngineServices, HandlerRegistry};
@@ -57,6 +57,17 @@ fn classify_outcome(outcome: &Outcome) -> Option<FailureClass> {
             Some(FailureClass::Deterministic)
         }
     }
+}
+
+/// Mutable state carried across loop restarts and recursive `run_internal` calls.
+#[derive(Default)]
+struct LoopState {
+    node_visits: HashMap<String, usize>,
+    /// Tracks deterministic/structural failure signatures across main-loop stages.
+    /// Never reset on success — prevents impl-succeeds/verify-fails cycles.
+    loop_failure_signatures: HashMap<FailureSignature, usize>,
+    /// Tracks failure signatures across loop_restart edges.
+    restart_failure_signatures: HashMap<FailureSignature, usize>,
 }
 
 // --- Retry policy types ---
@@ -666,10 +677,7 @@ pub async fn git_add_worktree_remote(
 }
 
 /// Remove a git worktree inside a remote execution environment.
-pub async fn git_remove_worktree_remote(
-    exec_env: &dyn ExecutionEnvironment,
-    path: &str,
-) -> bool {
+pub async fn git_remove_worktree_remote(exec_env: &dyn ExecutionEnvironment, path: &str) -> bool {
     let cmd = format!("{GIT_REMOTE} worktree remove --force {path}");
     matches!(
         exec_env.exec_command(&cmd, 30_000, None, None, None).await,
@@ -678,10 +686,7 @@ pub async fn git_remove_worktree_remote(
 }
 
 /// Fast-forward merge to a given SHA inside a remote execution environment.
-pub async fn git_merge_ff_only_remote(
-    exec_env: &dyn ExecutionEnvironment,
-    sha: &str,
-) -> bool {
+pub async fn git_merge_ff_only_remote(exec_env: &dyn ExecutionEnvironment, sha: &str) -> bool {
     let cmd = format!("{GIT_REMOTE} merge --ff-only {sha}");
     matches!(
         exec_env.exec_command(&cmd, 30_000, None, None, None).await,
@@ -692,10 +697,7 @@ pub async fn git_merge_ff_only_remote(
 /// Get the current HEAD SHA from a remote execution environment.
 pub async fn git_head_sha_remote(exec_env: &dyn ExecutionEnvironment) -> Option<String> {
     let cmd = format!("{GIT_REMOTE} rev-parse HEAD");
-    match exec_env
-        .exec_command(&cmd, 10_000, None, None, None)
-        .await
-    {
+    match exec_env.exec_command(&cmd, 10_000, None, None, None).await {
         Ok(r) if r.exit_code == 0 => Some(r.stdout.trim().to_string()),
         _ => None,
     }
@@ -929,7 +931,7 @@ impl PipelineEngine {
     /// Returns an error if no start node is found, a node is missing, or a goal gate fails
     /// without a retry target.
     pub async fn run(&self, graph: &Graph, config: &RunConfig) -> Result<Outcome> {
-        self.run_internal(graph, config, None, None, HashMap::new())
+        self.run_internal(graph, config, None, None, LoopState::default())
             .await
     }
 
@@ -945,7 +947,12 @@ impl PipelineEngine {
         config: &RunConfig,
         checkpoint: &Checkpoint,
     ) -> Result<Outcome> {
-        self.run_internal(graph, config, Some(checkpoint), None, HashMap::new())
+        let loop_state = LoopState {
+            node_visits: HashMap::new(),
+            loop_failure_signatures: checkpoint.loop_failure_signatures.clone(),
+            restart_failure_signatures: checkpoint.restart_failure_signatures.clone(),
+        };
+        self.run_internal(graph, config, Some(checkpoint), None, loop_state)
             .await
     }
 
@@ -956,7 +963,7 @@ impl PipelineEngine {
         config: &RunConfig,
         resume_checkpoint: Option<&Checkpoint>,
         start_at: Option<&str>,
-        mut node_visits: HashMap<String, usize>,
+        mut loop_state: LoopState,
     ) -> Result<Outcome> {
         let run_start = Instant::now();
         let run_id = config.run_id.clone();
@@ -1045,7 +1052,7 @@ impl PipelineEngine {
             completed_nodes = cp.completed_nodes.clone();
             // Rebuild visit counts from completed_nodes (which records every visit)
             for id in &completed_nodes {
-                *node_visits.entry(id.clone()).or_insert(0) += 1;
+                *loop_state.node_visits.entry(id.clone()).or_insert(0) += 1;
             }
             // Gap #5: Restore retry counters from checkpoint
             node_retries = cp.node_retries.clone();
@@ -1108,7 +1115,10 @@ impl PipelineEngine {
                 .ok_or_else(|| ArcError::Engine(format!("node not found: {current_node_id}")))?;
 
             // Always track visit count (used for stage directory naming)
-            let count = node_visits.entry(current_node_id.clone()).or_insert(0);
+            let count = loop_state
+                .node_visits
+                .entry(current_node_id.clone())
+                .or_insert(0);
             *count += 1;
             if max_node_visits > 0 && *count > max_node_visits {
                 return Err(ArcError::Engine(format!(
@@ -1173,7 +1183,7 @@ impl PipelineEngine {
             }
 
             // Step 2: Execute node handler with retry policy
-            let visit = *node_visits.get(&current_node_id).unwrap_or(&1);
+            let visit = *loop_state.node_visits.get(&current_node_id).unwrap_or(&1);
             context.set("internal.node_visit_count", serde_json::json!(visit));
             context.set("current_node", serde_json::json!(&node.id));
             let retry_policy = build_retry_policy(node, graph);
@@ -1223,6 +1233,36 @@ impl PipelineEngine {
             let stage_duration_ms = millis_u64(stage_start.elapsed());
 
             let outcome_failure_class = classify_outcome(&outcome);
+
+            // Circuit breaker: track deterministic/structural failure signatures
+            let failure_sig = if let Some(fc) = outcome_failure_class {
+                let sig_hint = outcome
+                    .context_updates
+                    .get("failure_signature")
+                    .and_then(|v| v.as_str());
+                let sig = FailureSignature::new(
+                    &node.id,
+                    fc,
+                    sig_hint,
+                    outcome.failure_reason.as_deref(),
+                );
+                if fc.is_signature_tracked() {
+                    let count = loop_state
+                        .loop_failure_signatures
+                        .entry(sig.clone())
+                        .or_insert(0);
+                    *count += 1;
+                    let limit = graph.loop_restart_signature_limit();
+                    if *count >= limit {
+                        return Err(ArcError::Engine(format!(
+                            "deterministic failure cycle detected: signature {sig} repeated {count} times (limit {limit})"
+                        )));
+                    }
+                }
+                Some(sig)
+            } else {
+                None
+            };
 
             if outcome.status == StageStatus::Fail {
                 self.services.emitter.emit(&PipelineEvent::StageFailed {
@@ -1285,6 +1325,12 @@ impl PipelineEngine {
                 "failure_class",
                 serde_json::json!(outcome_failure_class.map_or(String::new(), |fc| fc.to_string())),
             );
+            context.set(
+                "failure_signature",
+                serde_json::json!(failure_sig
+                    .as_ref()
+                    .map_or(String::new(), |s| s.to_string())),
+            );
             if let Some(ref pref) = outcome.preferred_label {
                 context.set("preferred_label", serde_json::json!(pref));
             }
@@ -1309,6 +1355,8 @@ impl PipelineEngine {
                 node_retries.clone(),
                 node_outcomes.clone(),
                 next_node_id_for_checkpoint,
+                loop_state.loop_failure_signatures.clone(),
+                loop_state.restart_failure_signatures.clone(),
             );
             let checkpoint_path = config.logs_root.join("checkpoint.json");
             if let Err(e) = checkpoint.save(&checkpoint_path) {
@@ -1457,6 +1505,20 @@ impl PipelineEngine {
                     incoming_edge = Some(edge);
                     // Gap #6: Handle loop_restart by recursively running from the target
                     if edge.loop_restart() {
+                        // Circuit breaker: check restart failure signatures
+                        if let Some(ref sig) = failure_sig {
+                            let count = loop_state
+                                .restart_failure_signatures
+                                .entry(sig.clone())
+                                .or_insert(0);
+                            *count += 1;
+                            let limit = graph.loop_restart_signature_limit();
+                            if *count >= limit {
+                                return Err(ArcError::Engine(format!(
+                                    "loop_restart circuit breaker: signature {sig} repeated {count} times (limit {limit})"
+                                )));
+                            }
+                        }
                         self.services.emitter.emit(&PipelineEvent::LoopRestart {
                             from_node: node.id.clone(),
                             to_node: edge.to.clone(),
@@ -1466,7 +1528,7 @@ impl PipelineEngine {
                             config,
                             None,
                             Some(&edge.to),
-                            node_visits,
+                            loop_state,
                         ))
                         .await;
                     }
@@ -3481,6 +3543,344 @@ mod tests {
         assert_eq!(
             classify_outcome(&outcome),
             Some(FailureClass::TransientInfra)
+        );
+    }
+
+    // --- Circuit breaker tests ---
+
+    /// Build a graph where `work` always fails deterministically,
+    /// and a fail edge loops back to `work`.
+    fn looping_fail_graph() -> Graph {
+        let mut g = Graph::new("loop_fail");
+        g.attrs
+            .insert("goal".to_string(), AttrValue::String("test".to_string()));
+        g.attrs
+            .insert("default_max_retry".to_string(), AttrValue::Integer(0));
+
+        let mut start = Node::new("start");
+        start.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Mdiamond".to_string()),
+        );
+        g.nodes.insert("start".to_string(), start);
+
+        let mut work = Node::new("work");
+        work.attrs.insert(
+            "type".to_string(),
+            AttrValue::String("always_fail".to_string()),
+        );
+        work.attrs
+            .insert("max_retries".to_string(), AttrValue::Integer(0));
+        g.nodes.insert("work".to_string(), work);
+
+        let mut exit = Node::new("exit");
+        exit.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Msquare".to_string()),
+        );
+        g.nodes.insert("exit".to_string(), exit);
+
+        g.edges.push(Edge::new("start", "work"));
+        // Fail loops back
+        let mut fail_edge = Edge::new("work", "work");
+        fail_edge.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("outcome=fail".to_string()),
+        );
+        g.edges.push(fail_edge);
+        // Success goes to exit (never taken)
+        let mut ok_edge = Edge::new("work", "exit");
+        ok_edge.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("outcome=success".to_string()),
+        );
+        g.edges.push(ok_edge);
+        g
+    }
+
+    /// Handler that always returns transient_infra failure.
+    struct TransientFailHandler;
+
+    #[async_trait]
+    impl HandlerTrait for TransientFailHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+            _services: &crate::handler::EngineServices,
+        ) -> std::result::Result<Outcome, ArcError> {
+            let mut outcome = Outcome::fail("connection refused");
+            outcome.context_updates.insert(
+                "failure_class".to_string(),
+                serde_json::json!("transient_infra"),
+            );
+            Ok(outcome)
+        }
+    }
+
+    /// Handler that fails with a semantically different message each time.
+    /// Uses words instead of numbers to avoid normalization collapsing them.
+    struct VaryingFailHandler {
+        counter: std::sync::atomic::AtomicUsize,
+    }
+
+    static VARYING_REASONS: &[&str] = &[
+        "syntax error in module alpha",
+        "type mismatch in module beta",
+        "missing field in module gamma",
+        "undefined reference in module delta",
+        "assertion failed in module epsilon",
+    ];
+
+    #[async_trait]
+    impl HandlerTrait for VaryingFailHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+            _services: &crate::handler::EngineServices,
+        ) -> std::result::Result<Outcome, ArcError> {
+            let n = self.counter.fetch_add(1, Ordering::Relaxed);
+            let reason = VARYING_REASONS[n % VARYING_REASONS.len()];
+            Ok(Outcome::fail(reason))
+        }
+    }
+
+    #[tokio::test]
+    async fn loop_circuit_breaker_aborts_on_repeated_deterministic_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let g = looping_fail_graph();
+
+        let mut registry = make_registry();
+        registry.register("always_fail", Box::new(AlwaysFailHandler));
+        let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+        let config = RunConfig {
+            logs_root: dir.path().to_path_buf(),
+            cancel_token: None,
+            dry_run: false,
+            run_id: "test-run".into(),
+            git_checkpoint: None,
+            base_sha: None,
+            run_branch: None,
+            meta_branch: None,
+        };
+        let result = engine.run(&g, &config).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("deterministic failure cycle detected"),
+            "expected circuit breaker error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn loop_circuit_breaker_ignores_transient_failures() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = looping_fail_graph();
+        // Set a high visit limit so we don't trip it; we want to hit the visit limit, not circuit breaker
+        g.attrs
+            .insert("max_node_visits".to_string(), AttrValue::Integer(5));
+
+        let mut registry = make_registry();
+        registry.register("always_fail", Box::new(TransientFailHandler));
+        let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+        let config = RunConfig {
+            logs_root: dir.path().to_path_buf(),
+            cancel_token: None,
+            dry_run: false,
+            run_id: "test-run".into(),
+            git_checkpoint: None,
+            base_sha: None,
+            run_branch: None,
+            meta_branch: None,
+        };
+        let result = engine.run(&g, &config).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        // Should hit visit limit, NOT circuit breaker
+        assert!(
+            err.contains("exceeded max visit limit"),
+            "expected visit limit error (transient shouldn't trigger circuit breaker), got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn loop_circuit_breaker_different_reasons_get_separate_counters() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = looping_fail_graph();
+        // Each failure has a different message, so no signature repeats.
+        // Should hit max_node_visits instead of circuit breaker.
+        g.attrs
+            .insert("max_node_visits".to_string(), AttrValue::Integer(5));
+
+        let mut registry = make_registry();
+        registry.register(
+            "always_fail",
+            Box::new(VaryingFailHandler {
+                counter: std::sync::atomic::AtomicUsize::new(0),
+            }),
+        );
+        let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+        let config = RunConfig {
+            logs_root: dir.path().to_path_buf(),
+            cancel_token: None,
+            dry_run: false,
+            run_id: "test-run".into(),
+            git_checkpoint: None,
+            base_sha: None,
+            run_branch: None,
+            meta_branch: None,
+        };
+        let result = engine.run(&g, &config).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("exceeded max visit limit"),
+            "expected visit limit (each failure unique), got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn restart_circuit_breaker_aborts_on_repeated_failure() {
+        // In a pipeline with loop_restart edges, a repeating deterministic failure
+        // triggers a circuit breaker (either loop or restart, depending on topology).
+        let dir = tempfile::tempdir().unwrap();
+        let mut g = Graph::new("restart_test");
+        g.attrs
+            .insert("goal".to_string(), AttrValue::String("test".to_string()));
+        g.attrs
+            .insert("default_max_retry".to_string(), AttrValue::Integer(0));
+        g.attrs
+            .insert("max_node_visits".to_string(), AttrValue::Integer(100));
+
+        let mut start = Node::new("start");
+        start.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Mdiamond".to_string()),
+        );
+        g.nodes.insert("start".to_string(), start);
+
+        let mut work = Node::new("work");
+        work.attrs.insert(
+            "type".to_string(),
+            AttrValue::String("always_fail".to_string()),
+        );
+        work.attrs
+            .insert("max_retries".to_string(), AttrValue::Integer(0));
+        g.nodes.insert("work".to_string(), work);
+
+        let mut exit = Node::new("exit");
+        exit.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Msquare".to_string()),
+        );
+        g.nodes.insert("exit".to_string(), exit);
+
+        g.edges.push(Edge::new("start", "work"));
+        // loop_restart edge on failure
+        let mut restart_edge = Edge::new("work", "start");
+        restart_edge.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("outcome=fail".to_string()),
+        );
+        restart_edge
+            .attrs
+            .insert("loop_restart".to_string(), AttrValue::Boolean(true));
+        g.edges.push(restart_edge);
+        // Success goes to exit
+        let mut ok_edge = Edge::new("work", "exit");
+        ok_edge.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("outcome=success".to_string()),
+        );
+        g.edges.push(ok_edge);
+
+        let mut registry = make_registry();
+        registry.register("always_fail", Box::new(AlwaysFailHandler));
+        let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+        let config = RunConfig {
+            logs_root: dir.path().to_path_buf(),
+            cancel_token: None,
+            dry_run: false,
+            run_id: "test-run".into(),
+            git_checkpoint: None,
+            base_sha: None,
+            run_branch: None,
+            meta_branch: None,
+        };
+        let result = engine.run(&g, &config).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        // A circuit breaker fires (loop or restart) rather than looping indefinitely
+        assert!(
+            err.contains("failure cycle detected") || err.contains("circuit breaker"),
+            "expected circuit breaker error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn failure_signature_stored_in_context() {
+        let dir = tempfile::tempdir().unwrap();
+        // Simple pipeline: start -> work (fails) -> exit (via fail edge)
+        let mut g = Graph::new("sig_context_test");
+        g.attrs
+            .insert("goal".to_string(), AttrValue::String("test".to_string()));
+        g.attrs
+            .insert("default_max_retry".to_string(), AttrValue::Integer(0));
+
+        let mut start = Node::new("start");
+        start.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Mdiamond".to_string()),
+        );
+        g.nodes.insert("start".to_string(), start);
+
+        let mut work = Node::new("work");
+        work.attrs.insert(
+            "type".to_string(),
+            AttrValue::String("always_fail".to_string()),
+        );
+        work.attrs
+            .insert("max_retries".to_string(), AttrValue::Integer(0));
+        g.nodes.insert("work".to_string(), work);
+
+        let mut exit = Node::new("exit");
+        exit.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Msquare".to_string()),
+        );
+        g.nodes.insert("exit".to_string(), exit);
+
+        g.edges.push(Edge::new("start", "work"));
+        g.edges.push(Edge::new("work", "exit"));
+
+        let mut registry = make_registry();
+        registry.register("always_fail", Box::new(AlwaysFailHandler));
+        let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+        let config = RunConfig {
+            logs_root: dir.path().to_path_buf(),
+            cancel_token: None,
+            dry_run: false,
+            run_id: "test-run".into(),
+            git_checkpoint: None,
+            base_sha: None,
+            run_branch: None,
+            meta_branch: None,
+        };
+        let _outcome = engine.run(&g, &config).await.unwrap();
+
+        // Check the checkpoint for the failure_signature context value
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let cp = Checkpoint::load(&checkpoint_path).unwrap();
+        let sig_value = cp.context_values.get("failure_signature").unwrap();
+        let sig_str = sig_value.as_str().unwrap();
+        assert!(
+            sig_str.contains("work|deterministic|"),
+            "expected failure signature in context, got: {sig_str}"
         );
     }
 }

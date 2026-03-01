@@ -55,9 +55,15 @@ impl FromStr for FailureClass {
             "structural" => Self::Structural,
 
             // Aliases: transient_infra
-            "transient" | "transient-infra" | "infra_transient" | "transient infra"
-            | "infrastructure_transient" | "retryable" | "toolchain_workspace_io"
-            | "toolchain-workspace-io" | "toolchain_or_dependency_registry_unavailable"
+            "transient"
+            | "transient-infra"
+            | "infra_transient"
+            | "transient infra"
+            | "infrastructure_transient"
+            | "retryable"
+            | "toolchain_workspace_io"
+            | "toolchain-workspace-io"
+            | "toolchain_or_dependency_registry_unavailable"
             | "toolchain-dependency-registry-unavailable" => Self::TransientInfra,
 
             // Aliases: deterministic
@@ -206,6 +212,80 @@ pub fn classify_failure_reason(reason: &str) -> FailureClass {
     }
 
     FailureClass::Deterministic
+}
+
+/// Normalize a failure reason for stable signature grouping.
+///
+/// Replaces variable data (hex strings, digits) with placeholders so that
+/// semantically identical errors produce the same signature regardless of
+/// line numbers, commit hashes, or timestamps.
+pub fn normalize_failure_reason(reason: &str) -> String {
+    use regex::Regex;
+    use std::sync::LazyLock;
+
+    static HEX_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b[0-9a-f]{7,64}\b").unwrap());
+    static DIGITS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b\d+\b").unwrap());
+    static COMMA_SPACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r",\s+").unwrap());
+    static WHITESPACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
+
+    let s = reason.trim().to_lowercase();
+    if s.is_empty() {
+        return String::new();
+    }
+    let s = HEX_RE.replace_all(&s, "<hex>");
+    let s = DIGITS_RE.replace_all(&s, "<n>");
+    let s = COMMA_SPACE_RE.replace_all(&s, ",");
+    let s = WHITESPACE_RE.replace_all(&s, " ");
+    let s = s.trim();
+    if s.len() > 240 {
+        s[..240].to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+/// Composite key that uniquely identifies a specific recurring failure.
+///
+/// Format: `node_id|failure_class|normalized_reason`
+///
+/// Used by circuit breakers to detect when the same failure keeps repeating,
+/// e.g. "verify|deterministic|assertion failed in foo_test".
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FailureSignature(String);
+
+impl FailureSignature {
+    /// Build a signature from failure context.
+    ///
+    /// The signature hint from `outcome.context_updates["failure_signature"]` takes
+    /// priority over the raw `failure_reason`, allowing handlers to provide explicit
+    /// grouping keys.
+    pub fn new(
+        node_id: &str,
+        failure_class: FailureClass,
+        signature_hint: Option<&str>,
+        failure_reason: Option<&str>,
+    ) -> Self {
+        let reason = signature_hint
+            .map(normalize_failure_reason)
+            .filter(|s| !s.is_empty())
+            .or_else(|| failure_reason.map(normalize_failure_reason))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "unknown".to_string());
+        Self(format!("{}|{}|{}", node_id.trim(), failure_class, reason))
+    }
+}
+
+impl fmt::Display for FailureSignature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl FailureClass {
+    /// Whether this failure class should be tracked by the cycle breaker.
+    pub fn is_signature_tracked(self) -> bool {
+        matches!(self, Self::Deterministic | Self::Structural)
+    }
 }
 
 #[derive(Error, Debug, Clone)]
@@ -1188,5 +1268,134 @@ mod tests {
             classify_failure_reason("invalid configuration parameter"),
             FailureClass::Deterministic
         );
+    }
+
+    // --- normalize_failure_reason tests ---
+
+    #[test]
+    fn normalize_empty_and_whitespace_returns_empty() {
+        assert_eq!(normalize_failure_reason(""), "");
+        assert_eq!(normalize_failure_reason("   "), "");
+        assert_eq!(normalize_failure_reason("\n\t"), "");
+    }
+
+    #[test]
+    fn normalize_lowercases_and_trims() {
+        assert_eq!(normalize_failure_reason("  Hello World  "), "hello world");
+    }
+
+    #[test]
+    fn normalize_replaces_hex_strings() {
+        assert_eq!(
+            normalize_failure_reason("commit abc123def0"),
+            "commit <hex>"
+        );
+        // Short hex (< 7 chars) not replaced
+        assert_eq!(normalize_failure_reason("value abcdef"), "value abcdef");
+    }
+
+    #[test]
+    fn normalize_replaces_digit_sequences() {
+        assert_eq!(normalize_failure_reason("line 42"), "line <n>");
+        assert_eq!(normalize_failure_reason("error 0"), "error <n>");
+    }
+
+    #[test]
+    fn normalize_collapses_comma_space_and_whitespace() {
+        assert_eq!(normalize_failure_reason("a,  b,   c"), "a,b,c");
+        assert_eq!(normalize_failure_reason("a   b"), "a b");
+    }
+
+    #[test]
+    fn normalize_truncates_to_240_chars() {
+        let long = "a".repeat(300);
+        let result = normalize_failure_reason(&long);
+        assert_eq!(result.len(), 240);
+    }
+
+    #[test]
+    fn normalize_combined_example() {
+        assert_eq!(
+            normalize_failure_reason("Error at line 42 in abc123def"),
+            "error at line <n> in <hex>"
+        );
+    }
+
+    // --- FailureSignature tests ---
+
+    #[test]
+    fn failure_signature_format() {
+        let sig = FailureSignature::new(
+            "verify",
+            FailureClass::Deterministic,
+            None,
+            Some("test failed"),
+        );
+        assert_eq!(sig.to_string(), "verify|deterministic|test failed");
+    }
+
+    #[test]
+    fn failure_signature_display() {
+        let sig = FailureSignature::new(
+            "build",
+            FailureClass::Structural,
+            None,
+            Some("scope violation"),
+        );
+        assert_eq!(format!("{sig}"), "build|structural|scope violation");
+    }
+
+    #[test]
+    fn failure_signature_hint_takes_priority() {
+        let sig = FailureSignature::new(
+            "verify",
+            FailureClass::Deterministic,
+            Some("custom hint"),
+            Some("raw reason"),
+        );
+        assert_eq!(sig.to_string(), "verify|deterministic|custom hint");
+    }
+
+    #[test]
+    fn failure_signature_missing_reason_falls_back_to_unknown() {
+        let sig = FailureSignature::new("node", FailureClass::Deterministic, None, None);
+        assert_eq!(sig.to_string(), "node|deterministic|unknown");
+    }
+
+    #[test]
+    fn failure_signature_equality_and_hash() {
+        let sig1 = FailureSignature::new(
+            "verify",
+            FailureClass::Deterministic,
+            None,
+            Some("test failed"),
+        );
+        let sig2 = FailureSignature::new(
+            "verify",
+            FailureClass::Deterministic,
+            None,
+            Some("test failed"),
+        );
+        assert_eq!(sig1, sig2);
+
+        let mut map = std::collections::HashMap::new();
+        map.insert(sig1.clone(), 1);
+        assert_eq!(map.get(&sig2), Some(&1));
+    }
+
+    // --- is_signature_tracked tests ---
+
+    #[test]
+    fn is_signature_tracked_deterministic_and_structural() {
+        assert!(FailureClass::Deterministic.is_signature_tracked());
+        assert!(FailureClass::Structural.is_signature_tracked());
+    }
+
+    #[test]
+    fn is_signature_tracked_false_for_others() {
+        assert!(!FailureClass::TransientInfra.is_signature_tracked());
+        assert!(!FailureClass::BudgetExhausted.is_signature_tracked());
+        assert!(!FailureClass::Canceled.is_signature_tracked());
+        assert!(!FailureClass::CompilationLoop.is_signature_tracked());
     }
 }

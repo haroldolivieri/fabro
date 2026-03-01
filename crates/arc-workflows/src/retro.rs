@@ -245,9 +245,7 @@ pub fn derive_retro(
             *total_cost.get_or_insert(0.0) += c;
         }
 
-        let files = outcome
-            .map(|o| o.files_touched.clone())
-            .unwrap_or_default();
+        let files = outcome.map(|o| o.files_touched.clone()).unwrap_or_default();
         all_files.extend(files.iter().cloned());
 
         stages.push(StageRetro {
@@ -344,6 +342,8 @@ mod tests {
             node_outcomes,
             next_node_id: None,
             git_commit_sha: None,
+            loop_failure_signatures: HashMap::new(),
+            restart_failure_signatures: HashMap::new(),
         }
     }
 
@@ -355,7 +355,16 @@ mod tests {
                 .into_iter()
                 .collect();
 
-        let retro = derive_retro("run-1", "my_pipeline", "Fix the bug", &cp, false, None, 20000, &durations);
+        let retro = derive_retro(
+            "run-1",
+            "my_pipeline",
+            "Fix the bug",
+            &cp,
+            false,
+            None,
+            20000,
+            &durations,
+        );
 
         assert_eq!(retro.run_id, "run-1");
         assert_eq!(retro.pipeline_name, "my_pipeline");
@@ -393,11 +402,19 @@ mod tests {
             },
             next_node_id: None,
             git_commit_sha: None,
+            loop_failure_signatures: HashMap::new(),
+            restart_failure_signatures: HashMap::new(),
         };
 
         let retro = derive_retro(
-            "run-2", "pipe", "goal", &cp, true,
-            Some("boom"), 5000, &HashMap::new(),
+            "run-2",
+            "pipe",
+            "goal",
+            &cp,
+            true,
+            Some("boom"),
+            5000,
+            &HashMap::new(),
         );
 
         assert_eq!(retro.stats.stages_failed, 1);
@@ -428,7 +445,10 @@ mod tests {
 
         assert_eq!(retro.smoothness, Some(SmoothnessRating::Smooth));
         assert_eq!(retro.intent.as_deref(), Some("Fix authentication bug"));
-        assert_eq!(retro.outcome.as_deref(), Some("Successfully fixed the login flow"));
+        assert_eq!(
+            retro.outcome.as_deref(),
+            Some("Successfully fixed the login flow")
+        );
         assert_eq!(retro.learnings.as_ref().unwrap().len(), 1);
         assert!(retro.friction_points.is_none()); // empty vec -> None
         assert_eq!(retro.open_items.as_ref().unwrap().len(), 1);
@@ -438,7 +458,16 @@ mod tests {
     fn save_and_load_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let cp = make_checkpoint_with_stages();
-        let mut retro = derive_retro("r1", "pipe", "goal", &cp, false, None, 1000, &HashMap::new());
+        let mut retro = derive_retro(
+            "r1",
+            "pipe",
+            "goal",
+            &cp,
+            false,
+            None,
+            1000,
+            &HashMap::new(),
+        );
         retro.smoothness = Some(SmoothnessRating::Bumpy);
         retro.intent = Some("Test intent".to_string());
 

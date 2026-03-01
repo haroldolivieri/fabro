@@ -737,6 +737,8 @@ mod tests {
             std::collections::HashMap::new(),
             std::collections::HashMap::new(),
             Some("node_b".to_string()),
+            std::collections::HashMap::new(),
+            std::collections::HashMap::new(),
         );
         let cp_json = serde_json::to_vec_pretty(&cp).unwrap();
         store.write_checkpoint("RUN2", &cp_json, &[]).unwrap();
@@ -769,6 +771,8 @@ mod tests {
             std::collections::HashMap::new(),
             std::collections::HashMap::new(),
             None,
+            std::collections::HashMap::new(),
+            std::collections::HashMap::new(),
         );
         let cp1_json = serde_json::to_vec_pretty(&cp1).unwrap();
         store.write_checkpoint("RUN3", &cp1_json, &[]).unwrap();
@@ -780,6 +784,8 @@ mod tests {
             std::collections::HashMap::new(),
             std::collections::HashMap::new(),
             Some("node_c".to_string()),
+            std::collections::HashMap::new(),
+            std::collections::HashMap::new(),
         );
         let cp2_json = serde_json::to_vec_pretty(&cp2).unwrap();
         store.write_checkpoint("RUN3", &cp2_json, &[]).unwrap();
@@ -846,10 +852,7 @@ mod tests {
 
     #[test]
     fn sanitize_ref_component_mixed() {
-        assert_eq!(
-            sanitize_ref_component("My Node!@#123"),
-            "my-node-123"
-        );
+        assert_eq!(sanitize_ref_component("My Node!@#123"), "my-node-123");
     }
 
     #[test]

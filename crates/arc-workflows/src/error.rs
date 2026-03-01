@@ -84,6 +84,56 @@ pub fn classify_sdk_error(err: &SdkError) -> FailureClass {
     }
 }
 
+const TRANSIENT_INFRA_HINTS: &[&str] = &[
+    "timeout",
+    "timed out",
+    "rate limit",
+    "rate limited",
+    "connection refused",
+    "connection reset",
+    "500",
+    "502",
+    "503",
+    "504",
+    "context deadline exceeded",
+    "could not resolve host",
+    "could not resolve hostname",
+    "temporary failure in name resolution",
+    "network is unreachable",
+    "broken pipe",
+    "tls handshake timeout",
+    "i/o timeout",
+    "no route to host",
+    "temporarily unavailable",
+    "try again",
+    "too many requests",
+    "service unavailable",
+    "gateway timeout",
+    "econnrefused",
+    "econnreset",
+    "dial tcp",
+    "transport is closing",
+    "stream disconnected",
+    "stream closed before",
+];
+
+const BUDGET_EXHAUSTED_HINTS: &[&str] = &[
+    "turn limit",
+    "token limit",
+    "context length",
+    "budget",
+    "quota exceeded",
+    "max_turns",
+    "max turns",
+    "max_tokens",
+    "max tokens",
+    "context window exceeded",
+    "budget exhausted",
+    "token limit exceeded",
+];
+
+const STRUCTURAL_HINTS: &[&str] = &["scope violation"];
+
 /// Classify a failure reason string using heuristics.
 ///
 /// This is the fallback when structured error information is not available
@@ -96,28 +146,20 @@ pub fn classify_failure_reason(reason: &str) -> FailureClass {
         return FailureClass::Canceled;
     }
 
-    if lower.contains("turn limit")
-        || lower.contains("token limit")
-        || lower.contains("context length")
-        || lower.contains("budget")
-        || lower.contains("quota exceeded")
+    if BUDGET_EXHAUSTED_HINTS
+        .iter()
+        .any(|hint| lower.contains(hint))
     {
         return FailureClass::BudgetExhausted;
     }
 
-    if lower.contains("scope violation") {
+    if STRUCTURAL_HINTS.iter().any(|hint| lower.contains(hint)) {
         return FailureClass::Structural;
     }
 
-    if lower.contains("timeout")
-        || lower.contains("timed out")
-        || lower.contains("rate limit")
-        || lower.contains("rate limited")
-        || lower.contains("connection refused")
-        || lower.contains("connection reset")
-        || lower.contains("503")
-        || lower.contains("502")
-        || lower.contains("500")
+    if TRANSIENT_INFRA_HINTS
+        .iter()
+        .any(|hint| lower.contains(hint))
     {
         return FailureClass::TransientInfra;
     }
@@ -539,7 +581,152 @@ mod tests {
         assert_eq!(classify_sdk_error(&err), FailureClass::Deterministic);
     }
 
-    // --- classify_failure_reason tests ---
+    // --- hints count guards ---
+
+    #[test]
+    fn transient_infra_hints_count() {
+        assert_eq!(TRANSIENT_INFRA_HINTS.len(), 30);
+    }
+
+    #[test]
+    fn budget_exhausted_hints_count() {
+        assert_eq!(BUDGET_EXHAUSTED_HINTS.len(), 12);
+    }
+
+    #[test]
+    fn structural_hints_count() {
+        assert_eq!(STRUCTURAL_HINTS.len(), 1);
+    }
+
+    // --- classify_failure_reason regression tests ---
+
+    // Canceled
+
+    #[test]
+    fn classify_reason_cancel() {
+        assert_eq!(
+            classify_failure_reason("operation cancelled by user"),
+            FailureClass::Canceled
+        );
+    }
+
+    #[test]
+    fn classify_reason_abort() {
+        assert_eq!(
+            classify_failure_reason("aborted by signal"),
+            FailureClass::Canceled
+        );
+    }
+
+    // Budget exhausted
+
+    #[test]
+    fn classify_reason_turn_limit() {
+        assert_eq!(
+            classify_failure_reason("exceeded turn limit of 10"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_token_limit() {
+        assert_eq!(
+            classify_failure_reason("token limit reached"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_context_length() {
+        assert_eq!(
+            classify_failure_reason("context length exceeded"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_budget() {
+        assert_eq!(
+            classify_failure_reason("budget exceeded for run"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_quota_exceeded() {
+        assert_eq!(
+            classify_failure_reason("quota exceeded"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_max_turns() {
+        assert_eq!(
+            classify_failure_reason("hit max_turns limit"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_max_turns_space() {
+        assert_eq!(
+            classify_failure_reason("max turns reached"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_max_tokens() {
+        assert_eq!(
+            classify_failure_reason("max_tokens exceeded"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_max_tokens_space() {
+        assert_eq!(
+            classify_failure_reason("max tokens reached"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_context_window_exceeded() {
+        assert_eq!(
+            classify_failure_reason("context window exceeded"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_budget_exhausted() {
+        assert_eq!(
+            classify_failure_reason("budget exhausted for this session"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    #[test]
+    fn classify_reason_token_limit_exceeded() {
+        assert_eq!(
+            classify_failure_reason("token limit exceeded"),
+            FailureClass::BudgetExhausted
+        );
+    }
+
+    // Structural
+
+    #[test]
+    fn classify_reason_scope_violation() {
+        assert_eq!(
+            classify_failure_reason("scope violation detected"),
+            FailureClass::Structural
+        );
+    }
+
+    // Transient infra
 
     #[test]
     fn classify_reason_timeout() {
@@ -566,36 +753,206 @@ mod tests {
     }
 
     #[test]
-    fn classify_reason_turn_limit() {
+    fn classify_reason_connection_reset() {
         assert_eq!(
-            classify_failure_reason("exceeded turn limit of 10"),
-            FailureClass::BudgetExhausted
+            classify_failure_reason("connection reset by peer"),
+            FailureClass::TransientInfra
         );
     }
 
     #[test]
-    fn classify_reason_token_limit() {
+    fn classify_reason_500() {
         assert_eq!(
-            classify_failure_reason("token limit reached"),
-            FailureClass::BudgetExhausted
+            classify_failure_reason("HTTP 500 Internal Server Error"),
+            FailureClass::TransientInfra
         );
     }
 
     #[test]
-    fn classify_reason_cancel() {
+    fn classify_reason_502() {
         assert_eq!(
-            classify_failure_reason("operation cancelled by user"),
-            FailureClass::Canceled
+            classify_failure_reason("HTTP 502 Bad Gateway"),
+            FailureClass::TransientInfra
         );
     }
 
     #[test]
-    fn classify_reason_scope_violation() {
+    fn classify_reason_503() {
         assert_eq!(
-            classify_failure_reason("scope violation detected"),
-            FailureClass::Structural
+            classify_failure_reason("HTTP 503 Service Unavailable"),
+            FailureClass::TransientInfra
         );
     }
+
+    #[test]
+    fn classify_reason_504() {
+        assert_eq!(
+            classify_failure_reason("HTTP 504 Gateway Timeout"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_context_deadline_exceeded() {
+        assert_eq!(
+            classify_failure_reason("context deadline exceeded"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_could_not_resolve_host() {
+        assert_eq!(
+            classify_failure_reason("could not resolve host api.example.com"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_could_not_resolve_hostname() {
+        assert_eq!(
+            classify_failure_reason("could not resolve hostname"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_temporary_failure_in_name_resolution() {
+        assert_eq!(
+            classify_failure_reason("temporary failure in name resolution"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_network_is_unreachable() {
+        assert_eq!(
+            classify_failure_reason("network is unreachable"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_broken_pipe() {
+        assert_eq!(
+            classify_failure_reason("broken pipe"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_tls_handshake_timeout() {
+        assert_eq!(
+            classify_failure_reason("tls handshake timeout"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_io_timeout() {
+        assert_eq!(
+            classify_failure_reason("i/o timeout"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_no_route_to_host() {
+        assert_eq!(
+            classify_failure_reason("no route to host"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_temporarily_unavailable() {
+        assert_eq!(
+            classify_failure_reason("resource temporarily unavailable"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_try_again() {
+        assert_eq!(
+            classify_failure_reason("try again later"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_too_many_requests() {
+        assert_eq!(
+            classify_failure_reason("too many requests"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_service_unavailable() {
+        assert_eq!(
+            classify_failure_reason("service unavailable"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_gateway_timeout() {
+        assert_eq!(
+            classify_failure_reason("gateway timeout"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_econnrefused() {
+        assert_eq!(
+            classify_failure_reason("ECONNREFUSED"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_econnreset() {
+        assert_eq!(
+            classify_failure_reason("ECONNRESET"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_dial_tcp() {
+        assert_eq!(
+            classify_failure_reason("dial tcp 10.0.0.1:443: connect: connection refused"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_transport_is_closing() {
+        assert_eq!(
+            classify_failure_reason("transport is closing"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_stream_disconnected() {
+        assert_eq!(
+            classify_failure_reason("stream disconnected"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_stream_closed_before() {
+        assert_eq!(
+            classify_failure_reason("stream closed before completion"),
+            FailureClass::TransientInfra
+        );
+    }
+
+    // Default deterministic
 
     #[test]
     fn classify_reason_default_deterministic() {

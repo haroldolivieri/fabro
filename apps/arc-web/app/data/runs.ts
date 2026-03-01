@@ -1,5 +1,13 @@
 export type CiStatus = "passing" | "failing" | "pending";
 
+export type CheckStatus = "success" | "failure" | "skipped" | "pending" | "queued";
+
+export interface CheckRun {
+  name: string;
+  status: CheckStatus;
+  duration?: string;
+}
+
 export interface RunItem {
   id: string;
   repo: string;
@@ -8,12 +16,13 @@ export interface RunItem {
   number?: number;
   additions?: number;
   deletions?: number;
-  ci?: CiStatus;
+  checks?: CheckRun[];
   elapsed?: string;
   elapsedWarning?: boolean;
   resources?: string;
   actionDisabled?: boolean;
   comments?: number;
+  question?: string;
 }
 
 export type ColumnStatus = "working" | "pending" | "review" | "merge";
@@ -21,6 +30,12 @@ export type ColumnStatus = "working" | "pending" | "review" | "merge";
 export interface RunWithStatus extends RunItem {
   status: ColumnStatus;
   statusLabel: string;
+}
+
+export function deriveCiStatus(checks: CheckRun[]): CiStatus {
+  if (checks.some((c) => c.status === "failure")) return "failing";
+  if (checks.some((c) => c.status === "pending" || c.status === "queued")) return "pending";
+  return "passing";
 }
 
 export const columns: {
@@ -82,6 +97,7 @@ export const columns: {
         additions: 567,
         deletions: 234,
         elapsed: "1h 12m",
+        question: "Accept or push for another round?",
       },
       {
         id: "run-5",
@@ -91,6 +107,7 @@ export const columns: {
         additions: 145,
         deletions: 23,
         elapsed: "28m",
+        question: "Proceed from investigation to fix?",
       },
     ],
   },
@@ -110,7 +127,15 @@ export const columns: {
         number: 889,
         additions: 234,
         deletions: 67,
-        ci: "failing",
+        checks: [
+          { name: "lint", status: "success", duration: "23s" },
+          { name: "typecheck", status: "success", duration: "1m 12s" },
+          { name: "unit-tests", status: "success", duration: "2m 34s" },
+          { name: "integration-tests", status: "failure", duration: "4m 56s" },
+          { name: "e2e / chrome", status: "failure", duration: "3m 2s" },
+          { name: "build", status: "success", duration: "1m 45s" },
+          { name: "coverage", status: "skipped" },
+        ],
         elapsed: "35m",
         comments: 4,
       },
@@ -122,7 +147,13 @@ export const columns: {
         number: 156,
         additions: 412,
         deletions: 0,
-        ci: "pending",
+        checks: [
+          { name: "lint", status: "success", duration: "18s" },
+          { name: "typecheck", status: "success", duration: "56s" },
+          { name: "unit-tests", status: "pending" },
+          { name: "integration-tests", status: "queued" },
+          { name: "build", status: "pending" },
+        ],
         elapsed: "12m",
         actionDisabled: true,
         comments: 1,
@@ -145,7 +176,20 @@ export const columns: {
         number: 1249,
         additions: 189,
         deletions: 45,
-        ci: "passing",
+        checks: [
+          { name: "lint", status: "success", duration: "21s" },
+          { name: "typecheck", status: "success", duration: "1m 8s" },
+          { name: "unit-tests", status: "success", duration: "3m 12s" },
+          { name: "integration-tests", status: "success", duration: "5m 34s" },
+          { name: "e2e / chrome", status: "success", duration: "4m 22s" },
+          { name: "e2e / firefox", status: "success", duration: "4m 45s" },
+          { name: "build", status: "success", duration: "2m 1s" },
+          { name: "deploy-preview", status: "success", duration: "1m 33s" },
+          { name: "security-scan", status: "skipped" },
+          { name: "performance", status: "success", duration: "2m 18s" },
+          { name: "bundle-size", status: "success", duration: "34s" },
+          { name: "accessibility", status: "success", duration: "1m 12s" },
+        ],
         elapsed: "3d",
         elapsedWarning: true,
         comments: 7,
@@ -158,7 +202,14 @@ export const columns: {
         number: 430,
         additions: 56,
         deletions: 12,
-        ci: "passing",
+        checks: [
+          { name: "lint", status: "success", duration: "15s" },
+          { name: "typecheck", status: "success", duration: "48s" },
+          { name: "unit-tests", status: "success", duration: "1m 56s" },
+          { name: "build", status: "success", duration: "1m 22s" },
+          { name: "coverage", status: "success", duration: "2m 4s" },
+          { name: "bundle-size", status: "skipped" },
+        ],
         elapsed: "1h 5m",
         comments: 2,
       },
@@ -170,7 +221,12 @@ export const columns: {
         number: 76,
         additions: 34,
         deletions: 8,
-        ci: "passing",
+        checks: [
+          { name: "lint", status: "success", duration: "12s" },
+          { name: "typecheck", status: "success", duration: "34s" },
+          { name: "unit-tests", status: "success", duration: "1m 15s" },
+          { name: "build", status: "success", duration: "58s" },
+        ],
         elapsed: "48m",
         comments: 0,
       },

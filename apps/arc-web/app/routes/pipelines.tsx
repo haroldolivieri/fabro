@@ -18,8 +18,8 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { columns as staticColumns, ciConfig, statusColors } from "../data/runs";
-import type { CiStatus, RunItem, RunWithStatus } from "../data/runs";
+import { columns as staticColumns, ciConfig, statusColors, deriveCiStatus } from "../data/runs";
+import type { CiStatus, CheckRun, CheckStatus, RunItem, RunWithStatus } from "../data/runs";
 import type { Route } from "./+types/pipelines";
 
 export function meta({}: Route.MetaArgs) {
@@ -58,13 +58,131 @@ const iconMap = {
   pr: GitPullRequestIcon,
 };
 
-function CiBadge({ status }: { status: CiStatus }) {
-  const config = ciConfig[status];
+function CheckStatusIcon({ status }: { status: CheckStatus }) {
+  switch (status) {
+    case "success":
+      return (
+        <svg viewBox="0 0 16 16" fill="currentColor" className="size-3 shrink-0 text-mint" aria-hidden="true">
+          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+        </svg>
+      );
+    case "failure":
+      return (
+        <svg viewBox="0 0 16 16" fill="currentColor" className="size-3 shrink-0 text-coral" aria-hidden="true">
+          <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
+        </svg>
+      );
+    case "pending":
+      return (
+        <span className="flex size-3 shrink-0 items-center justify-center">
+          <span className="size-2 rounded-full bg-amber" />
+        </span>
+      );
+    case "queued":
+      return (
+        <span className="flex size-3 shrink-0 items-center justify-center">
+          <span className="size-2 rounded-full border border-navy-600" />
+        </span>
+      );
+    case "skipped":
+      return (
+        <svg viewBox="0 0 16 16" fill="currentColor" className="size-3 shrink-0 text-navy-600" aria-hidden="true">
+          <path d="M2 7.75A.75.75 0 0 1 2.75 7h10a.75.75 0 0 1 0 1.5h-10A.75.75 0 0 1 2 7.75Z" />
+        </svg>
+      );
+  }
+}
+
+function SummaryStatusIcon({ status }: { status: CiStatus }) {
+  switch (status) {
+    case "passing":
+      return (
+        <svg viewBox="0 0 16 16" fill="currentColor" className="size-4 shrink-0 text-mint" aria-hidden="true">
+          <path fillRule="evenodd" d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16Zm3.78-9.72a.75.75 0 0 0-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.06 0l4.25-4.25Z" />
+        </svg>
+      );
+    case "failing":
+      return (
+        <svg viewBox="0 0 16 16" fill="currentColor" className="size-4 shrink-0 text-coral" aria-hidden="true">
+          <path fillRule="evenodd" d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16ZM5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8 4.22 10.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+        </svg>
+      );
+    case "pending":
+      return (
+        <svg viewBox="0 0 16 16" fill="currentColor" className="size-4 shrink-0 text-amber" aria-hidden="true">
+          <path fillRule="evenodd" d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16Zm.75-11.25a.75.75 0 0 0-1.5 0v3.69L5.22 10.47a.75.75 0 1 0 1.06 1.06l2.5-2.5a.75.75 0 0 0 .22-.53V4.75Z" />
+        </svg>
+      );
+  }
+}
+
+function summarizeChecks(checks: CheckRun[]) {
+  const counts = {
+    success: checks.filter((c) => c.status === "success").length,
+    failure: checks.filter((c) => c.status === "failure").length,
+    skipped: checks.filter((c) => c.status === "skipped").length,
+    pending: checks.filter((c) => c.status === "pending" || c.status === "queued").length,
+  };
+
+  let summary: string;
+  const parts: string[] = [];
+
+  if (counts.failure > 0) {
+    summary = `${counts.failure} failing check${counts.failure !== 1 ? "s" : ""}`;
+    if (counts.success > 0) parts.push(`${counts.success} success`);
+    if (counts.skipped > 0) parts.push(`${counts.skipped} skipped`);
+    if (counts.pending > 0) parts.push(`${counts.pending} pending`);
+  } else if (counts.pending > 0) {
+    summary = `${counts.pending} check${counts.pending !== 1 ? "s" : ""} pending`;
+    if (counts.success > 0) parts.push(`${counts.success} success`);
+    if (counts.skipped > 0) parts.push(`${counts.skipped} skipped`);
+  } else {
+    summary = "All checks passing";
+    if (counts.skipped > 0) {
+      parts.push(`${counts.skipped} skipped`);
+      parts.push(`${counts.success} success`);
+    }
+  }
+
+  return { summary, detail: parts.join(", ") };
+}
+
+function ChecksStatus({ checks }: { checks: CheckRun[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const overallStatus = deriveCiStatus(checks);
+  const config = ciConfig[overallStatus];
+  const { summary, detail } = summarizeChecks(checks);
+
   return (
-    <span className={`inline-flex items-center gap-1.5 font-mono text-xs ${config.text}`}>
-      <span className={`size-1.5 rounded-full ${config.dot}`} />
-      {config.label}
-    </span>
+    <div
+      className="-mx-4 mt-3 overflow-hidden border-y border-white/[0.04]"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-white/[0.03]"
+      >
+        <SummaryStatusIcon status={overallStatus} />
+        <span className={`min-w-0 flex-1 truncate font-mono text-xs font-medium ${config.text}`}>{summary}</span>
+        <ChevronDownIcon className={`size-3 shrink-0 text-navy-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+        <div className="overflow-hidden">
+          <div className="border-t border-white/[0.04] px-4 pb-2 pt-1.5">
+            {checks.map((check) => (
+              <div key={check.name} className="flex items-center gap-2 py-1 font-mono text-[11px]">
+                <CheckStatusIcon status={check.status} />
+                <span className={check.status === "skipped" || check.status === "queued" ? "text-navy-600" : "text-ice-300"}>{check.name}</span>
+                <span className="ml-auto text-navy-600">
+                  {check.duration ?? (check.status === "skipped" ? "skipped" : check.status === "queued" ? "queued" : "")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -115,7 +233,7 @@ function PrCard({
 
       <p className="text-sm leading-snug text-ice-100">{pr.title}</p>
 
-      {(pr.additions != null || pr.resources != null || pr.ci != null || pr.elapsed != null) && (
+      {(pr.additions != null || pr.resources != null || pr.elapsed != null) && (
         <div className="mt-3 flex items-center gap-3 font-mono text-xs">
           {pr.resources != null && (
             <span className="text-ice-300">{pr.resources}</span>
@@ -144,7 +262,13 @@ function PrCard({
         </div>
       )}
 
-      {(actions != null && actions.length > 0 || pr.ci != null) && (
+      {pr.checks != null && <ChecksStatus checks={pr.checks} />}
+
+      {pr.question != null && (
+        <p className="mt-3 truncate text-xs italic text-amber/70">{pr.question}</p>
+      )}
+
+      {actions != null && actions.length > 0 && (
         <div className="mt-3 flex items-center gap-1.5">
           {actions?.map((label) => (
             <button
@@ -189,7 +313,6 @@ function PrCard({
               {label}
             </button>
           ))}
-          {pr.ci != null && <span className="ml-auto flex items-center"><CiBadge status={pr.ci} /></span>}
         </div>
       )}
     </Link>
@@ -299,7 +422,7 @@ function RunRow({ run }: { run: RunWithStatus }) {
           <>
             <GitPullRequestIcon className="size-3" />
             #{run.number}
-            {run.ci != null && <span className={`size-1.5 rounded-full ${ciConfig[run.ci].dot}`} />}
+            {run.checks != null && <span className={`size-1.5 rounded-full ${ciConfig[deriveCiStatus(run.checks)].dot}`} />}
           </>
         )}
       </span>

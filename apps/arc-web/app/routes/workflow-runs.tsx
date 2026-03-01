@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDownIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { Link } from "react-router";
-import { allRunsFlat, ciConfig, columns, statusColors } from "../data/runs";
+import { allRunsFlat, ciConfig, columns, deriveCiStatus, statusColors } from "../data/runs";
 import type { ColumnStatus, RunWithStatus } from "../data/runs";
 
 const runs = allRunsFlat();
@@ -49,7 +49,7 @@ function RunRow({ run }: { run: RunWithStatus }) {
           <>
             <GitPullRequestIcon className="size-3" />
             #{run.number}
-            {run.ci != null && <span className={`size-1.5 rounded-full ${ciConfig[run.ci].dot}`} />}
+            {run.checks != null && <span className={`size-1.5 rounded-full ${ciConfig[deriveCiStatus(run.checks)].dot}`} />}
           </>
         )}
       </span>

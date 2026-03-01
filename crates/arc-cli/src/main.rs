@@ -1,3 +1,5 @@
+mod logging;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
@@ -45,6 +47,10 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     if !cli.no_dotenv {
         dotenvy::dotenv().ok();
+    }
+
+    if let Err(err) = logging::init_tracing() {
+        eprintln!("Warning: failed to initialize logging: {err:#}");
     }
 
     match cli.command {

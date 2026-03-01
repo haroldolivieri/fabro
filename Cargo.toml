@@ -26,12 +26,14 @@ bytes = "1"
 tokio-util = "0.7"
 clap = { version = "4", features = ["derive"] }
 jsonschema = "0.42"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["clock"] }
 bollard = "0.18"
 tar = "0.4"
 dialoguer = "0.12"
 git2 = "0.19"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-appender = "0.2"
 rmcp = { version = "0.15.0", default-features = false }
 walkdir = "2"
 regex = "1"

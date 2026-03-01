@@ -190,6 +190,19 @@ pub async fn run_retro_agent(
     Ok(narrative)
 }
 
+/// Return a placeholder narrative for dry-run mode. Exercises the full
+/// derive → apply_narrative → save path without making LLM calls.
+pub fn dry_run_narrative() -> RetroNarrative {
+    RetroNarrative {
+        smoothness: crate::retro::SmoothnessRating::Smooth,
+        intent: "[dry-run] No LLM analysis performed".to_string(),
+        outcome: "[dry-run] Pipeline completed in simulated mode".to_string(),
+        learnings: vec![],
+        friction_points: vec![],
+        open_items: vec![],
+    }
+}
+
 fn build_profile(provider: Provider, model: &str) -> Box<dyn ProviderProfile> {
     match provider {
         Provider::OpenAi => Box::new(OpenAiProfile::new(model)),

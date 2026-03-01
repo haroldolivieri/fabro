@@ -622,35 +622,38 @@ pub async fn run_command(args: RunArgs, styles: &'static Styles) -> anyhow::Resu
             let _ = retro.save(&logs_dir);
 
             // Run retro agent session (execution_env still alive via _cleanup_guard)
-            if !dry_run_mode {
-                if let Ok(client) = arc_llm::client::Client::from_env().await {
-                    match crate::retro_agent::run_retro_agent(
-                        &execution_env,
-                        &logs_dir,
-                        &client,
-                        provider_enum,
-                        &model,
-                    )
-                    .await
-                    {
-                        Ok(narrative) => {
-                            retro.apply_narrative(narrative);
-                            let _ = retro.save(&logs_dir);
-                            eprintln!(
-                                "{dim}Retro saved to {}/retro.json{reset}",
-                                logs_dir.display(),
-                                dim = styles.dim,
-                                reset = styles.reset,
-                            );
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "{dim}Retro agent skipped: {e}{reset}",
-                                dim = styles.dim,
-                                reset = styles.reset,
-                            );
-                        }
-                    }
+            let narrative_result = if dry_run_mode {
+                Ok(crate::retro_agent::dry_run_narrative())
+            } else if let Ok(client) = arc_llm::client::Client::from_env().await {
+                crate::retro_agent::run_retro_agent(
+                    &execution_env,
+                    &logs_dir,
+                    &client,
+                    provider_enum,
+                    &model,
+                )
+                .await
+            } else {
+                Err(anyhow::anyhow!("No LLM client available"))
+            };
+
+            match narrative_result {
+                Ok(narrative) => {
+                    retro.apply_narrative(narrative);
+                    let _ = retro.save(&logs_dir);
+                    eprintln!(
+                        "{dim}Retro saved to {}/retro.json{reset}",
+                        logs_dir.display(),
+                        dim = styles.dim,
+                        reset = styles.reset,
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "{dim}Retro agent skipped: {e}{reset}",
+                        dim = styles.dim,
+                        reset = styles.reset,
+                    );
                 }
             }
         }

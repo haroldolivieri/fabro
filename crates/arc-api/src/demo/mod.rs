@@ -1620,7 +1620,7 @@ mod verifications {
             run_id: r.run_id.into(),
             run_title: r.run_title.into(),
             workflow: r.workflow.into(),
-            result: r.result.clone(),
+            result: r.result,
             timestamp: r.timestamp.into(),
         }).collect()
     }
@@ -1646,8 +1646,8 @@ mod verifications {
                     name: c.name.into(),
                     slug: c.slug.into(),
                     description: c.description.into(),
-                    type_: c.type_.clone(),
-                    mode: Some(c.mode.clone()),
+                    type_: c.type_,
+                    mode: Some(c.mode),
                     f1: c.f1,
                     pass_at_1: c.pass_at_1,
                     evaluations: c.evaluations.to_vec(),
@@ -1666,8 +1666,8 @@ mod verifications {
                         .map(|(_, s)| SiblingControl {
                             name: s.name.into(),
                             slug: s.slug.into(),
-                            type_: s.type_.clone(),
-                            mode: Some(s.mode.clone()),
+                            type_: s.type_,
+                            mode: Some(s.mode),
                         })
                         .collect();
 
@@ -1681,11 +1681,11 @@ mod verifications {
                             name: ctrl.name.into(),
                             slug: ctrl.slug.into(),
                             description: ctrl.description.into(),
-                            type_: ctrl.type_.clone(),
+                            type_: ctrl.type_,
                             category: cat.name.into(),
                         },
                         performance: ControlPerformance {
-                            mode: ctrl.mode.clone(),
+                            mode: ctrl.mode,
                             f1: ctrl.f1,
                             pass_at_1: ctrl.pass_at_1,
                             evaluations: ctrl.evaluations.to_vec(),
@@ -1714,8 +1714,8 @@ mod verifications {
                 controls: cat.controls.iter().map(|c| RunVerificationControl {
                     name: c.name.into(),
                     description: c.description.into(),
-                    type_: c.type_.clone(),
-                    status: c.run_status.clone(),
+                    type_: c.type_,
+                    status: c.run_status,
                 }).collect(),
             }
         }).collect()

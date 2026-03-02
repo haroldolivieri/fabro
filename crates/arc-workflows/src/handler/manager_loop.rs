@@ -1,47 +1,23 @@
+use std::collections::HashMap;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 
 use crate::condition::evaluate_condition;
 use crate::context::Context;
+use crate::engine::{PipelineEngine, RunConfig};
 use crate::error::ArcError;
 use crate::graph::{Graph, Node};
 use crate::outcome::{Outcome, StageStatus};
+use crate::pipeline::prepare_pipeline;
 
 use super::{EngineServices, Handler};
 
-/// Trait for observing child pipeline state during the manager loop.
-#[async_trait]
-pub trait ChildObserver: Send + Sync {
-    /// Launch the child pipeline. Called before the observation loop when `child_autostart` is true.
-    async fn launch_child(
-        &self,
-        _dotfile: &str,
-        _workdir: &str,
-        _context: &Context,
-    ) -> Result<(), ArcError> {
-        Ok(())
-    }
-
-    /// Ingest child telemetry into the context.
-    async fn observe(&self, context: &Context) -> Result<(), ArcError>;
-
-    /// Optionally steer the child pipeline (e.g., write intervention instructions).
-    async fn steer(&self, context: &Context, node: &Node) -> Result<(), ArcError>;
-}
-
-/// Orchestrates observe/steer/wait cycles over a child pipeline.
-pub struct ManagerLoopHandler {
-    observer: Option<Box<dyn ChildObserver>>,
-}
-
-impl ManagerLoopHandler {
-    #[must_use]
-    pub fn new(observer: Option<Box<dyn ChildObserver>>) -> Self {
-        Self { observer }
-    }
-}
+/// Orchestrates a child pipeline engine, polling for completion or stop conditions.
+pub struct ManagerLoopHandler;
 
 /// Parse a duration string like "45s", "200ms", "5m" into a Duration.
 /// Falls back to 45 seconds on parse failure.
@@ -65,6 +41,33 @@ fn parse_duration_str(s: &str) -> Duration {
     Duration::from_secs(45)
 }
 
+/// Read DOT source from node attributes: inline `stack.child_dot_source` or
+/// file path `stack.child_dotfile`.
+fn read_child_dot(node: &Node) -> Result<String, ArcError> {
+    if let Some(dot) = node.attrs.get("stack.child_dot_source").and_then(|v| v.as_str()) {
+        return Ok(dot.to_string());
+    }
+    if let Some(path) = node.attrs.get("stack.child_dotfile").and_then(|v| v.as_str()) {
+        return std::fs::read_to_string(path)
+            .map_err(|e| ArcError::Handler(format!("Failed to read child dotfile {path}: {e}")));
+    }
+    Err(ArcError::Handler("No child DOT source".to_string()))
+}
+
+/// Compute the context diff: keys that changed or were added relative to `before`.
+fn context_diff(
+    before: &HashMap<String, serde_json::Value>,
+    after: &HashMap<String, serde_json::Value>,
+) -> HashMap<String, serde_json::Value> {
+    let mut diff = HashMap::new();
+    for (key, value) in after {
+        if before.get(key) != Some(value) {
+            diff.insert(key.clone(), value.clone());
+        }
+    }
+    diff
+}
+
 #[async_trait]
 impl Handler for ManagerLoopHandler {
     async fn execute(
@@ -72,8 +75,8 @@ impl Handler for ManagerLoopHandler {
         node: &Node,
         context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
-        _services: &EngineServices,
+        logs_root: &Path,
+        services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         let poll_interval = node
             .attrs
@@ -101,103 +104,112 @@ impl Handler for ManagerLoopHandler {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        let actions_str = node
-            .attrs
-            .get("manager.actions")
-            .and_then(|v| v.as_str())
-            .unwrap_or("observe,wait");
-        let do_observe = actions_str.contains("observe");
-        let do_steer = actions_str.contains("steer");
-        let do_wait = actions_str.contains("wait");
+        // Read and parse child DOT source
+        let dot_source = match read_child_dot(node) {
+            Ok(s) => s,
+            Err(e) => return Ok(Outcome::fail(e.to_string())),
+        };
 
-        // Child autostart: launch child pipeline before the observation loop
-        let child_autostart = node
-            .attrs
-            .get("stack.child_autostart")
-            .and_then(|v| v.as_str())
-            .unwrap_or("true");
-        if child_autostart != "false" {
-            if let Some(ref observer) = self.observer {
-                let child_dotfile = node
-                    .attrs
-                    .get("stack.child_dotfile")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let child_workdir = node
-                    .attrs
-                    .get("stack.child_workdir")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                observer
-                    .launch_child(child_dotfile, child_workdir, context)
-                    .await?;
+        let child_graph = match prepare_pipeline(&dot_source) {
+            Ok(g) => g,
+            Err(e) => {
+                return Ok(Outcome::fail(format!(
+                    "Failed to parse child pipeline: {e}"
+                )))
             }
-        }
+        };
 
-        // Steer cooldown tracking
-        let steer_cooldown = node
-            .attrs
-            .get("manager.steer_cooldown")
-            .and_then(|v| v.as_str())
-            .map_or(Duration::ZERO, parse_duration_str);
-        let mut last_steer_time: Option<Instant> = None;
+        // Build child RunConfig
+        let visit = context
+            .get("internal.node_visit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1);
+        let child_logs = logs_root.join(format!("nodes/{}_{visit}/child", node.id));
+        let _ = std::fs::create_dir_all(&child_logs);
 
-        // Observation loop
+        let parent_run_id = context
+            .get("internal.run_id")
+            .and_then(|v| v.as_str().map(String::from))
+            .unwrap_or_default();
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        let child_cancel = Arc::clone(&cancel_token);
+
+        let child_config = RunConfig {
+            logs_root: child_logs,
+            cancel_token: Some(cancel_token),
+            dry_run: false,
+            run_id: format!("{parent_run_id}_child_{}", node.id),
+            git_checkpoint: None,
+            base_sha: None,
+            run_branch: None,
+            meta_branch: None,
+            labels: HashMap::new(),
+        };
+
+        // Clone parent context for child; snapshot before for diffing
+        let child_context = context.clone_context();
+        let before_snapshot = context.snapshot();
+
+        // Spawn child engine
+        let engine = PipelineEngine::from_services(services);
+        let mut child_handle =
+            tokio::spawn(
+                async move { engine.run_with_context(&child_graph, &child_config, child_context).await },
+            );
+
+        // Poll loop
         for cycle in 1..=max_cycles {
-            // Observe
-            if do_observe {
-                if let Some(ref observer) = self.observer {
-                    observer.observe(context).await?;
-                }
-            }
+            tokio::select! {
+                result = &mut child_handle => {
+                    // Child finished
+                    let (child_outcome, child_final_context) = match result {
+                        Ok(Ok(pair)) => pair,
+                        Ok(Err(e)) => return Ok(Outcome::fail(format!("Child engine error: {e}"))),
+                        Err(e) => return Ok(Outcome::fail(format!("Child task panicked: {e}"))),
+                    };
 
-            // Steer (with cooldown)
-            if do_steer {
-                let cooldown_elapsed = match last_steer_time {
-                    Some(t) => t.elapsed() >= steer_cooldown,
-                    None => true,
-                };
-                if cooldown_elapsed {
-                    if let Some(ref observer) = self.observer {
-                        observer.steer(context, node).await?;
-                        last_steer_time = Some(Instant::now());
+                    // Compute context diff
+                    let after_snapshot = child_final_context.snapshot();
+                    let diff = context_diff(&before_snapshot, &after_snapshot);
+
+                    let mut outcome = Outcome {
+                        status: child_outcome.status.clone(),
+                        notes: Some(format!("Child completed at cycle {cycle}")),
+                        context_updates: diff,
+                        ..Outcome::success()
+                    };
+
+                    if child_outcome.status == StageStatus::Fail {
+                        outcome.failure_reason = child_outcome.failure_reason;
+                    }
+
+                    return Ok(outcome);
+                }
+                _ = tokio::time::sleep(poll_interval) => {
+                    // Check stop condition
+                    if !stop_condition.is_empty() {
+                        let dummy_outcome = Outcome::success();
+                        if evaluate_condition(stop_condition, &dummy_outcome, context) {
+                            child_cancel.store(true, Ordering::Relaxed);
+                            // Give child a moment to wind down
+                            let _ = tokio::time::timeout(
+                                Duration::from_millis(100),
+                                &mut child_handle,
+                            ).await;
+                            return Ok(Outcome {
+                                status: StageStatus::Success,
+                                notes: Some(format!("Stop condition satisfied at cycle {cycle}")),
+                                ..Outcome::success()
+                            });
+                        }
                     }
                 }
             }
-
-            // Check child status from context
-            let child_status = context.get_string("context.stack.child.status", "");
-            if child_status == "completed" || child_status == "failed" {
-                let child_outcome = context.get_string("context.stack.child.outcome", "");
-                if child_outcome == "success" {
-                    return Ok(Outcome {
-                        status: StageStatus::Success,
-                        notes: Some(format!("Child completed at cycle {cycle}")),
-                        ..Outcome::success()
-                    });
-                }
-                if child_status == "failed" {
-                    return Ok(Outcome::fail(format!("Child failed at cycle {cycle}")));
-                }
-            }
-
-            // Evaluate stop condition
-            if !stop_condition.is_empty() {
-                let dummy_outcome = Outcome::success();
-                if evaluate_condition(stop_condition, &dummy_outcome, context) {
-                    return Ok(Outcome {
-                        status: StageStatus::Success,
-                        notes: Some(format!("Stop condition satisfied at cycle {cycle}")),
-                        ..Outcome::success()
-                    });
-                }
-            }
-
-            // Wait
-            if do_wait {
-                tokio::time::sleep(poll_interval).await;
-            }
         }
+
+        // Max cycles exceeded — cancel child
+        child_cancel.store(true, Ordering::Relaxed);
+        let _ = tokio::time::timeout(Duration::from_millis(100), &mut child_handle).await;
 
         Ok(Outcome::fail(format!(
             "Max cycles ({max_cycles}) exceeded for manager loop node: {}",
@@ -211,12 +223,16 @@ mod tests {
     use super::*;
     use crate::event::EventEmitter;
     use crate::graph::AttrValue;
+    use crate::handler::exit::ExitHandler;
     use crate::handler::start::StartHandler;
     use crate::handler::HandlerRegistry;
 
     fn make_services() -> EngineServices {
+        let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+        registry.register("start", Box::new(StartHandler));
+        registry.register("exit", Box::new(ExitHandler));
         EngineServices {
-            registry: std::sync::Arc::new(HandlerRegistry::new(Box::new(StartHandler))),
+            registry: std::sync::Arc::new(registry),
             emitter: std::sync::Arc::new(EventEmitter::new()),
             execution_env: std::sync::Arc::new(arc_agent::LocalExecutionEnvironment::new(
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
@@ -225,22 +241,264 @@ mod tests {
         }
     }
 
+    fn child_dot_succeeds() -> &'static str {
+        "digraph Child { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit }"
+    }
+
     #[tokio::test]
-    async fn manager_loop_max_cycles_exceeded() {
-        let handler = ManagerLoopHandler::new(None);
+    async fn child_pipeline_succeeds() {
+        let handler = ManagerLoopHandler;
         let mut node = Node::new("manager");
+        node.attrs.insert(
+            "stack.child_dot_source".to_string(),
+            AttrValue::String(child_dot_succeeds().to_string()),
+        );
+        node.attrs
+            .insert("manager.max_cycles".to_string(), AttrValue::Integer(100));
+        node.attrs.insert(
+            "manager.poll_interval".to_string(),
+            AttrValue::Duration(Duration::from_millis(10)),
+        );
+
+        let context = Context::new();
+        let graph = Graph::new("test");
+        let dir = tempfile::tempdir().unwrap();
+
+        let outcome = handler
+            .execute(&node, &context, &graph, dir.path(), &make_services())
+            .await
+            .unwrap();
+        assert_eq!(outcome.status, StageStatus::Success);
+        assert!(outcome.notes.as_deref().unwrap().contains("Child completed"));
+    }
+
+    #[tokio::test]
+    async fn no_dot_source_fails() {
+        let handler = ManagerLoopHandler;
+        let mut node = Node::new("manager");
+        node.attrs
+            .insert("manager.max_cycles".to_string(), AttrValue::Integer(10));
+        node.attrs.insert(
+            "manager.poll_interval".to_string(),
+            AttrValue::Duration(Duration::from_millis(1)),
+        );
+
+        let context = Context::new();
+        let graph = Graph::new("test");
+        let dir = tempfile::tempdir().unwrap();
+
+        let outcome = handler
+            .execute(&node, &context, &graph, dir.path(), &make_services())
+            .await
+            .unwrap();
+        assert_eq!(outcome.status, StageStatus::Fail);
+        assert!(outcome
+            .failure_reason
+            .as_deref()
+            .unwrap()
+            .contains("No child DOT source"));
+    }
+
+    #[tokio::test]
+    async fn invalid_dot_source_fails() {
+        let handler = ManagerLoopHandler;
+        let mut node = Node::new("manager");
+        node.attrs.insert(
+            "stack.child_dot_source".to_string(),
+            AttrValue::String("not valid dot!!!".to_string()),
+        );
+        node.attrs
+            .insert("manager.max_cycles".to_string(), AttrValue::Integer(10));
+        node.attrs.insert(
+            "manager.poll_interval".to_string(),
+            AttrValue::Duration(Duration::from_millis(1)),
+        );
+
+        let context = Context::new();
+        let graph = Graph::new("test");
+        let dir = tempfile::tempdir().unwrap();
+
+        let outcome = handler
+            .execute(&node, &context, &graph, dir.path(), &make_services())
+            .await
+            .unwrap();
+        assert_eq!(outcome.status, StageStatus::Fail);
+        assert!(outcome
+            .failure_reason
+            .as_deref()
+            .unwrap()
+            .contains("Failed to parse child pipeline"));
+    }
+
+    #[tokio::test]
+    async fn context_flows_parent_to_child_and_back() {
+        // Register a handler that reads parent context and sets a result
+        struct ContextEchoHandler;
+
+        #[async_trait]
+        impl Handler for ContextEchoHandler {
+            async fn execute(
+                &self,
+                _node: &Node,
+                context: &Context,
+                _graph: &Graph,
+                _logs_root: &Path,
+                _services: &EngineServices,
+            ) -> Result<Outcome, ArcError> {
+                let target = context.get_string("review.target", "");
+                let mut outcome = Outcome::success();
+                outcome
+                    .context_updates
+                    .insert("review.result".to_string(), serde_json::json!("approved"));
+                outcome.context_updates.insert(
+                    "review.echo".to_string(),
+                    serde_json::json!(target),
+                );
+                Ok(outcome)
+            }
+        }
+
+        let mut registry = HandlerRegistry::new(Box::new(ContextEchoHandler));
+        registry.register("start", Box::new(StartHandler));
+        registry.register("exit", Box::new(ExitHandler));
+        let services = EngineServices {
+            registry: std::sync::Arc::new(registry),
+            emitter: std::sync::Arc::new(EventEmitter::new()),
+            execution_env: std::sync::Arc::new(arc_agent::LocalExecutionEnvironment::new(
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+            )),
+            git_state: std::sync::RwLock::new(None),
+        };
+
+        let handler = ManagerLoopHandler;
+        let mut node = Node::new("manager");
+        // Child pipeline with a "work" node (default handler = ContextEchoHandler)
+        node.attrs.insert(
+            "stack.child_dot_source".to_string(),
+            AttrValue::String(
+                "digraph Child { start [shape=Mdiamond]; work [shape=box]; exit [shape=Msquare]; start -> work -> exit }"
+                    .to_string(),
+            ),
+        );
+        node.attrs
+            .insert("manager.max_cycles".to_string(), AttrValue::Integer(100));
+        node.attrs.insert(
+            "manager.poll_interval".to_string(),
+            AttrValue::Duration(Duration::from_millis(10)),
+        );
+
+        // Parent sets a context value the child should be able to read
+        let context = Context::new();
+        context.set("review.target", serde_json::json!("src/main.rs"));
+
+        let graph = Graph::new("test");
+        let dir = tempfile::tempdir().unwrap();
+
+        let outcome = handler
+            .execute(&node, &context, &graph, dir.path(), &services)
+            .await
+            .unwrap();
+        assert_eq!(outcome.status, StageStatus::Success);
+        assert_eq!(
+            outcome.context_updates.get("review.result"),
+            Some(&serde_json::json!("approved"))
+        );
+        assert_eq!(
+            outcome.context_updates.get("review.echo"),
+            Some(&serde_json::json!("src/main.rs"))
+        );
+    }
+
+    #[tokio::test]
+    async fn child_dotfile_reads_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let dot_path = dir.path().join("child.dot");
+        std::fs::write(&dot_path, child_dot_succeeds()).unwrap();
+
+        let handler = ManagerLoopHandler;
+        let mut node = Node::new("manager");
+        node.attrs.insert(
+            "stack.child_dotfile".to_string(),
+            AttrValue::String(dot_path.to_string_lossy().to_string()),
+        );
+        node.attrs
+            .insert("manager.max_cycles".to_string(), AttrValue::Integer(100));
+        node.attrs.insert(
+            "manager.poll_interval".to_string(),
+            AttrValue::Duration(Duration::from_millis(10)),
+        );
+
+        let context = Context::new();
+        let graph = Graph::new("test");
+
+        let outcome = handler
+            .execute(&node, &context, &graph, dir.path(), &make_services())
+            .await
+            .unwrap();
+        assert_eq!(outcome.status, StageStatus::Success);
+    }
+
+    #[tokio::test]
+    async fn max_cycles_exceeded_cancels_child() {
+        // Use a child that takes a long time (many nodes with sleep won't work, so use a
+        // child that succeeds quickly but set max_cycles=1 and very short poll)
+        // Actually, to test max cycles exceeded we need a child that runs longer than
+        // max_cycles * poll_interval. Use a child dot that's valid but we set max_cycles=1
+        // with poll_interval=1ms so the child likely won't finish in time.
+        //
+        // But a simple start->exit child is almost instant. So we need a handler that
+        // sleeps to make the child slow.
+        struct SlowHandler;
+
+        #[async_trait]
+        impl Handler for SlowHandler {
+            async fn execute(
+                &self,
+                _node: &Node,
+                _context: &Context,
+                _graph: &Graph,
+                _logs_root: &Path,
+                _services: &EngineServices,
+            ) -> Result<Outcome, ArcError> {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                Ok(Outcome::success())
+            }
+        }
+
+        let mut registry = HandlerRegistry::new(Box::new(SlowHandler));
+        registry.register("start", Box::new(StartHandler));
+        registry.register("exit", Box::new(ExitHandler));
+        let services = EngineServices {
+            registry: std::sync::Arc::new(registry),
+            emitter: std::sync::Arc::new(EventEmitter::new()),
+            execution_env: std::sync::Arc::new(arc_agent::LocalExecutionEnvironment::new(
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+            )),
+            git_state: std::sync::RwLock::new(None),
+        };
+
+        let handler = ManagerLoopHandler;
+        let mut node = Node::new("manager");
+        node.attrs.insert(
+            "stack.child_dot_source".to_string(),
+            AttrValue::String(
+                "digraph Child { start [shape=Mdiamond]; slow [shape=box]; exit [shape=Msquare]; start -> slow -> exit }"
+                    .to_string(),
+            ),
+        );
         node.attrs
             .insert("manager.max_cycles".to_string(), AttrValue::Integer(2));
         node.attrs.insert(
             "manager.poll_interval".to_string(),
             AttrValue::Duration(Duration::from_millis(1)),
         );
+
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, dir.path(), &services)
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -252,67 +510,47 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn manager_loop_child_completed_success() {
-        let handler = ManagerLoopHandler::new(None);
+    async fn stop_condition_cancels_child() {
+        struct SlowHandler;
+
+        #[async_trait]
+        impl Handler for SlowHandler {
+            async fn execute(
+                &self,
+                _node: &Node,
+                _context: &Context,
+                _graph: &Graph,
+                _logs_root: &Path,
+                _services: &EngineServices,
+            ) -> Result<Outcome, ArcError> {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                Ok(Outcome::success())
+            }
+        }
+
+        let mut registry = HandlerRegistry::new(Box::new(SlowHandler));
+        registry.register("start", Box::new(StartHandler));
+        registry.register("exit", Box::new(ExitHandler));
+        let services = EngineServices {
+            registry: std::sync::Arc::new(registry),
+            emitter: std::sync::Arc::new(EventEmitter::new()),
+            execution_env: std::sync::Arc::new(arc_agent::LocalExecutionEnvironment::new(
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+            )),
+            git_state: std::sync::RwLock::new(None),
+        };
+
+        let handler = ManagerLoopHandler;
         let mut node = Node::new("manager");
-        node.attrs
-            .insert("manager.max_cycles".to_string(), AttrValue::Integer(10));
         node.attrs.insert(
-            "manager.poll_interval".to_string(),
-            AttrValue::Duration(Duration::from_millis(1)),
+            "stack.child_dot_source".to_string(),
+            AttrValue::String(
+                "digraph Child { start [shape=Mdiamond]; slow [shape=box]; exit [shape=Msquare]; start -> slow -> exit }"
+                    .to_string(),
+            ),
         );
-        // Pre-set child status to "completed" and outcome to "success"
-        let context = Context::new();
-        context.set("context.stack.child.status", serde_json::json!("completed"));
-        context.set("context.stack.child.outcome", serde_json::json!("success"));
-        let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
-
-        let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
-            .await
-            .unwrap();
-        assert_eq!(outcome.status, StageStatus::Success);
-        assert!(outcome
-            .notes
-            .as_deref()
-            .unwrap()
-            .contains("Child completed"));
-    }
-
-    #[tokio::test]
-    async fn manager_loop_child_failed() {
-        let handler = ManagerLoopHandler::new(None);
-        let mut node = Node::new("manager");
         node.attrs
-            .insert("manager.max_cycles".to_string(), AttrValue::Integer(10));
-        node.attrs.insert(
-            "manager.poll_interval".to_string(),
-            AttrValue::Duration(Duration::from_millis(1)),
-        );
-        let context = Context::new();
-        context.set("context.stack.child.status", serde_json::json!("failed"));
-        let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
-
-        let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
-            .await
-            .unwrap();
-        assert_eq!(outcome.status, StageStatus::Fail);
-        assert!(outcome
-            .failure_reason
-            .as_deref()
-            .unwrap()
-            .contains("Child failed"));
-    }
-
-    #[tokio::test]
-    async fn manager_loop_stop_condition_satisfied() {
-        let handler = ManagerLoopHandler::new(None);
-        let mut node = Node::new("manager");
-        node.attrs
-            .insert("manager.max_cycles".to_string(), AttrValue::Integer(10));
+            .insert("manager.max_cycles".to_string(), AttrValue::Integer(100));
         node.attrs.insert(
             "manager.poll_interval".to_string(),
             AttrValue::Duration(Duration::from_millis(1)),
@@ -321,13 +559,16 @@ mod tests {
             "manager.stop_condition".to_string(),
             AttrValue::String("context.done=true".to_string()),
         );
+
+        // Pre-set the stop condition so it fires on first poll
         let context = Context::new();
         context.set("done", serde_json::json!("true"));
+
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, dir.path(), &services)
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);

@@ -767,6 +767,20 @@ impl PipelineEngine {
         }
     }
 
+    /// Create a child engine that shares a parent's `Arc` services (registry, emitter, env).
+    #[must_use]
+    pub fn from_services(services: &EngineServices) -> Self {
+        Self {
+            services: EngineServices {
+                registry: Arc::clone(&services.registry),
+                emitter: Arc::clone(&services.emitter),
+                execution_env: Arc::clone(&services.execution_env),
+                git_state: std::sync::RwLock::new(None),
+            },
+            interviewer: None,
+        }
+    }
+
     /// Create a new engine with an interviewer for `inform()` callbacks.
     #[must_use]
     pub fn with_interviewer(
@@ -939,8 +953,29 @@ impl PipelineEngine {
     /// Returns an error if no start node is found, a node is missing, or a goal gate fails
     /// without a retry target.
     pub async fn run(&self, graph: &Graph, config: &RunConfig) -> Result<Outcome> {
-        self.run_internal(graph, config, None, None, LoopState::default())
-            .await
+        let (outcome, _context) =
+            self.run_internal(graph, config, None, None, None, LoopState::default())
+                .await?;
+        Ok(outcome)
+    }
+
+    /// Run a pipeline seeded with an existing context. Returns both the outcome
+    /// and the final context so the caller can diff changes.
+    pub async fn run_with_context(
+        &self,
+        graph: &Graph,
+        config: &RunConfig,
+        seed_context: Context,
+    ) -> Result<(Outcome, Context)> {
+        self.run_internal(
+            graph,
+            config,
+            None,
+            None,
+            Some(seed_context),
+            LoopState::default(),
+        )
+        .await
     }
 
     /// Resume from a checkpoint. Restores context, completed nodes, and continues
@@ -960,8 +995,10 @@ impl PipelineEngine {
             loop_failure_signatures: checkpoint.loop_failure_signatures.clone(),
             restart_failure_signatures: checkpoint.restart_failure_signatures.clone(),
         };
-        self.run_internal(graph, config, Some(checkpoint), None, loop_state)
-            .await
+        let (outcome, _context) = self
+            .run_internal(graph, config, Some(checkpoint), None, None, loop_state)
+            .await?;
+        Ok(outcome)
     }
 
     /// Internal run implementation supporting optional checkpoint resume and `start_at` override.
@@ -971,8 +1008,9 @@ impl PipelineEngine {
         config: &RunConfig,
         resume_checkpoint: Option<&Checkpoint>,
         start_at: Option<&str>,
+        seed_context: Option<Context>,
         mut loop_state: LoopState,
-    ) -> Result<Outcome> {
+    ) -> Result<(Outcome, Context)> {
         let run_start = Instant::now();
         let run_id = config.run_id.clone();
         let artifact_store = ArtifactStore::new(Some(config.logs_root.clone()));
@@ -1089,7 +1127,7 @@ impl PipelineEngine {
             stage_index = 0;
             current_node_id = start.to_string();
         } else {
-            context = Context::new();
+            context = seed_context.unwrap_or_default();
             Self::mirror_graph_attributes(graph, &context);
             completed_nodes = Vec::new();
             stage_index = 0;
@@ -1192,7 +1230,7 @@ impl PipelineEngine {
                             duration_ms,
                             git_commit_sha: last_git_sha.clone(),
                         });
-                        return Ok(Outcome::fail(error_msg));
+                        return Ok((Outcome::fail(error_msg), context));
                     }
                 }
             }
@@ -1596,6 +1634,7 @@ impl PipelineEngine {
                             config,
                             None,
                             Some(&edge.to),
+                            None,
                             loop_state,
                         ))
                         .await;
@@ -1651,7 +1690,7 @@ impl PipelineEngine {
             .get(completed_nodes.last().unwrap_or(&String::new()))
             .cloned()
             .unwrap_or_else(Outcome::success);
-        Ok(last_outcome)
+        Ok((last_outcome, context))
     }
 }
 

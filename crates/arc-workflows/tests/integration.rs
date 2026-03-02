@@ -1255,7 +1255,7 @@ fn make_full_registry(interviewer: Arc<dyn Interviewer>) -> HandlerRegistry {
     registry.register("wait.human", Box::new(WaitHumanHandler::new(interviewer)));
     registry.register(
         "stack.manager_loop",
-        Box::new(ManagerLoopHandler::new(None)),
+        Box::new(ManagerLoopHandler),
     );
     registry
 }
@@ -2611,6 +2611,23 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
         }
     }
 
+    // A slow handler so the child doesn't finish before the stop condition is checked
+    struct SlowHandler;
+    #[async_trait::async_trait]
+    impl Handler for SlowHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+            _services: &arc_workflows::handler::EngineServices,
+        ) -> Result<Outcome, ArcError> {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            Ok(Outcome::success())
+        }
+    }
+
     let mut graph = make_graph_with_start_exit("ManagerStopTest");
     let mut setter = Node::new("setter");
     setter.attrs.insert(
@@ -2622,6 +2639,13 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
     manager.attrs.insert(
         "type".to_string(),
         AttrValue::String("stack.manager_loop".to_string()),
+    );
+    manager.attrs.insert(
+        "stack.child_dot_source".to_string(),
+        AttrValue::String(
+            "digraph Child { start [shape=Mdiamond]; slow [shape=box]; exit [shape=Msquare]; start -> slow -> exit }"
+                .to_string(),
+        ),
     );
     manager.attrs.insert(
         "manager.stop_condition".to_string(),
@@ -2640,14 +2664,11 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
     graph.edges.push(Edge::new("manager", "exit"));
 
     let dir = tempfile::tempdir().unwrap();
-    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    let mut registry = HandlerRegistry::new(Box::new(SlowHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
     registry.register("done_setter", Box::new(DoneSetterHandler));
-    registry.register(
-        "stack.manager_loop",
-        Box::new(ManagerLoopHandler::new(None)),
-    );
+    registry.register("stack.manager_loop", Box::new(ManagerLoopHandler));
     let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
         logs_root: dir.path().to_path_buf(),
@@ -2676,11 +2697,35 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
 
 #[tokio::test]
 async fn manager_loop_max_cycles_exceeded_e2e() {
+    // A slow handler so the child doesn't finish before max cycles
+    struct SlowHandler;
+    #[async_trait::async_trait]
+    impl Handler for SlowHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+            _services: &arc_workflows::handler::EngineServices,
+        ) -> Result<Outcome, ArcError> {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            Ok(Outcome::success())
+        }
+    }
+
     let mut graph = make_graph_with_start_exit("ManagerMaxCyclesTest");
     let mut manager = Node::new("manager");
     manager.attrs.insert(
         "type".to_string(),
         AttrValue::String("stack.manager_loop".to_string()),
+    );
+    manager.attrs.insert(
+        "stack.child_dot_source".to_string(),
+        AttrValue::String(
+            "digraph Child { start [shape=Mdiamond]; slow [shape=box]; exit [shape=Msquare]; start -> slow -> exit }"
+                .to_string(),
+        ),
     );
     manager
         .attrs
@@ -2694,13 +2739,10 @@ async fn manager_loop_max_cycles_exceeded_e2e() {
     graph.edges.push(Edge::new("manager", "exit"));
 
     let dir = tempfile::tempdir().unwrap();
-    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    let mut registry = HandlerRegistry::new(Box::new(SlowHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
-    registry.register(
-        "stack.manager_loop",
-        Box::new(ManagerLoopHandler::new(None)),
-    );
+    registry.register("stack.manager_loop", Box::new(ManagerLoopHandler));
     let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
         logs_root: dir.path().to_path_buf(),
@@ -3290,52 +3332,11 @@ async fn sub_pipeline_e2e_through_engine() {
 }
 
 // ===========================================================================
-// 19b. Manager loop with ChildObserver E2E (TS Scenario 10)
+// 19b. Manager loop runs child engine E2E
 // ===========================================================================
 
 #[tokio::test]
-async fn manager_loop_with_child_observer_e2e() {
-    use arc_workflows::handler::manager_loop::{ChildObserver, ManagerLoopHandler};
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    struct SimulatingChildObserver {
-        launch_count: AtomicU32,
-        observe_count: AtomicU32,
-    }
-
-    #[async_trait::async_trait]
-    impl ChildObserver for SimulatingChildObserver {
-        async fn launch_child(
-            &self,
-            _dotfile: &str,
-            _workdir: &str,
-            _context: &arc_workflows::context::Context,
-        ) -> Result<(), arc_workflows::error::ArcError> {
-            self.launch_count.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        }
-
-        async fn observe(
-            &self,
-            context: &arc_workflows::context::Context,
-        ) -> Result<(), arc_workflows::error::ArcError> {
-            let cycle = self.observe_count.fetch_add(1, Ordering::SeqCst);
-            if cycle >= 2 {
-                context.set("context.stack.child.status", serde_json::json!("completed"));
-                context.set("context.stack.child.outcome", serde_json::json!("success"));
-            }
-            Ok(())
-        }
-
-        async fn steer(
-            &self,
-            _context: &arc_workflows::context::Context,
-            _node: &arc_workflows::graph::Node,
-        ) -> Result<(), arc_workflows::error::ArcError> {
-            Ok(())
-        }
-    }
-
+async fn manager_loop_runs_child_engine_e2e() {
     let mut graph = Graph::new("ManagerLoopE2E");
     graph.attrs.insert(
         "goal".to_string(),
@@ -3362,38 +3363,29 @@ async fn manager_loop_with_child_observer_e2e() {
         AttrValue::String("stack.manager_loop".to_string()),
     );
     supervisor.attrs.insert(
+        "stack.child_dot_source".to_string(),
+        AttrValue::String(
+            "digraph Child { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit }"
+                .to_string(),
+        ),
+    );
+    supervisor.attrs.insert(
         "manager.poll_interval".to_string(),
-        AttrValue::Duration(std::time::Duration::from_millis(1)),
+        AttrValue::Duration(std::time::Duration::from_millis(10)),
     );
     supervisor
         .attrs
-        .insert("manager.max_cycles".to_string(), AttrValue::Integer(50));
-    supervisor.attrs.insert(
-        "manager.actions".to_string(),
-        AttrValue::String("observe,wait".to_string()),
-    );
-    supervisor.attrs.insert(
-        "manager.stop_condition".to_string(),
-        AttrValue::String(String::new()),
-    );
+        .insert("manager.max_cycles".to_string(), AttrValue::Integer(100));
     graph.nodes.insert("supervisor".to_string(), supervisor);
 
     graph.edges.push(Edge::new("start", "supervisor"));
     graph.edges.push(Edge::new("supervisor", "exit"));
 
     let dir = tempfile::tempdir().unwrap();
-    let observer = SimulatingChildObserver {
-        launch_count: AtomicU32::new(0),
-        observe_count: AtomicU32::new(0),
-    };
-
     let mut registry = HandlerRegistry::new(Box::new(StartHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
-    registry.register(
-        "stack.manager_loop",
-        Box::new(ManagerLoopHandler::new(Some(Box::new(observer)))),
-    );
+    registry.register("stack.manager_loop", Box::new(ManagerLoopHandler));
 
     let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
@@ -3422,7 +3414,6 @@ async fn manager_loop_with_child_observer_e2e() {
         "supervisor should be in completed_nodes"
     );
 
-    // The manager loop handler stores notes about child completion
     let supervisor_outcome = checkpoint.node_outcomes.get("supervisor");
     assert!(
         supervisor_outcome.is_some(),
@@ -3433,6 +3424,188 @@ async fn manager_loop_with_child_observer_e2e() {
         notes.contains("Child completed"),
         "notes should mention child completion, got: {notes}"
     );
+}
+
+// ===========================================================================
+// 19b-2. Manager loop: context flows parent → child → parent
+// ===========================================================================
+
+#[tokio::test]
+async fn manager_loop_context_flows_e2e() {
+    // Handler that reads parent's context value and sets a result
+    struct ContextEchoHandler;
+
+    #[async_trait::async_trait]
+    impl Handler for ContextEchoHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+            _services: &arc_workflows::handler::EngineServices,
+        ) -> Result<Outcome, ArcError> {
+            let target = context.get_string("review.target", "");
+            let mut outcome = Outcome::success();
+            outcome
+                .context_updates
+                .insert("review.result".to_string(), serde_json::json!("approved"));
+            outcome.context_updates.insert(
+                "review.echo".to_string(),
+                serde_json::json!(target),
+            );
+            Ok(outcome)
+        }
+    }
+
+    let mut graph = make_graph_with_start_exit("ManagerContextFlowE2E");
+
+    // A setter node that puts review.target into context before the manager
+    struct SetterHandler;
+    #[async_trait::async_trait]
+    impl Handler for SetterHandler {
+        async fn execute(
+            &self,
+            _node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _logs_root: &Path,
+            _services: &arc_workflows::handler::EngineServices,
+        ) -> Result<Outcome, ArcError> {
+            let mut outcome = Outcome::success();
+            outcome
+                .context_updates
+                .insert("review.target".to_string(), serde_json::json!("src/main.rs"));
+            Ok(outcome)
+        }
+    }
+
+    let mut setter = Node::new("setter");
+    setter.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("setter".to_string()),
+    );
+    graph.nodes.insert("setter".to_string(), setter);
+
+    let mut supervisor = Node::new("supervisor");
+    supervisor.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("stack.manager_loop".to_string()),
+    );
+    supervisor.attrs.insert(
+        "stack.child_dot_source".to_string(),
+        AttrValue::String(
+            "digraph Child { start [shape=Mdiamond]; work [shape=box]; exit [shape=Msquare]; start -> work -> exit }"
+                .to_string(),
+        ),
+    );
+    supervisor.attrs.insert(
+        "manager.poll_interval".to_string(),
+        AttrValue::Duration(std::time::Duration::from_millis(10)),
+    );
+    supervisor
+        .attrs
+        .insert("manager.max_cycles".to_string(), AttrValue::Integer(100));
+    graph.nodes.insert("supervisor".to_string(), supervisor);
+
+    graph.edges.push(Edge::new("start", "setter"));
+    graph.edges.push(Edge::new("setter", "supervisor"));
+    graph.edges.push(Edge::new("supervisor", "exit"));
+
+    let dir = tempfile::tempdir().unwrap();
+    // Default handler = ContextEchoHandler (handles the child's "work" node)
+    let mut registry = HandlerRegistry::new(Box::new(ContextEchoHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("setter", Box::new(SetterHandler));
+    registry.register("stack.manager_loop", Box::new(ManagerLoopHandler));
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "test-run".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+        labels: std::collections::HashMap::new(),
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // Check that child's context updates were propagated through the manager
+    let checkpoint = Checkpoint::load(&dir.path().join("checkpoint.json")).unwrap();
+    let sup_outcome = checkpoint.node_outcomes.get("supervisor").unwrap();
+    assert_eq!(
+        sup_outcome.context_updates.get("review.result"),
+        Some(&serde_json::json!("approved")),
+        "child's review.result should propagate to parent"
+    );
+    assert_eq!(
+        sup_outcome.context_updates.get("review.echo"),
+        Some(&serde_json::json!("src/main.rs")),
+        "child should have read parent's review.target"
+    );
+}
+
+// ===========================================================================
+// 19b-3. Manager loop with child_dotfile E2E
+// ===========================================================================
+
+#[tokio::test]
+async fn manager_loop_child_dotfile_e2e() {
+    let dir = tempfile::tempdir().unwrap();
+    let dot_path = dir.path().join("child.dot");
+    std::fs::write(
+        &dot_path,
+        "digraph Child { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit }",
+    )
+    .unwrap();
+
+    let mut graph = make_graph_with_start_exit("ManagerDotfileE2E");
+    let mut supervisor = Node::new("supervisor");
+    supervisor.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("stack.manager_loop".to_string()),
+    );
+    supervisor.attrs.insert(
+        "stack.child_dotfile".to_string(),
+        AttrValue::String(dot_path.to_string_lossy().to_string()),
+    );
+    supervisor.attrs.insert(
+        "manager.poll_interval".to_string(),
+        AttrValue::Duration(std::time::Duration::from_millis(10)),
+    );
+    supervisor
+        .attrs
+        .insert("manager.max_cycles".to_string(), AttrValue::Integer(100));
+    graph.nodes.insert("supervisor".to_string(), supervisor);
+    graph.edges.push(Edge::new("start", "supervisor"));
+    graph.edges.push(Edge::new("supervisor", "exit"));
+
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("stack.manager_loop", Box::new(ManagerLoopHandler));
+
+    let engine = PipelineEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
+    let config = RunConfig {
+        logs_root: dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "test-run".into(),
+        git_checkpoint: None,
+        base_sha: None,
+        run_branch: None,
+        meta_branch: None,
+        labels: std::collections::HashMap::new(),
+    };
+
+    let outcome = engine.run(&graph, &config).await.expect("run");
+    assert_eq!(outcome.status, StageStatus::Success);
 }
 
 // ===========================================================================

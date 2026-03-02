@@ -140,7 +140,7 @@ pub fn default_registry(
     registry.register("sub_pipeline", Box::new(sub_pipeline::SubPipelineHandler));
     registry.register(
         "stack.manager_loop",
-        Box::new(manager_loop::ManagerLoopHandler::new(None)),
+        Box::new(manager_loop::ManagerLoopHandler),
     );
     registry
 }

@@ -312,8 +312,11 @@ impl Handler for ParallelHandler {
                         }
                         GitCheckpointMode::Remote(_) => {
                             let wt_path_str = format!(
-                                "/home/daytona/workspace/.arc-parallel/{}/{}",
-                                node.id, branch_key
+                                "{}/.arc/logs/{}/parallel/{}/{}",
+                                services.execution_env.working_directory(),
+                                gs.run_id,
+                                node.id,
+                                branch_key
                             );
                             let ok = crate::engine::git_create_branch_at_remote(
                                 &*services.execution_env,

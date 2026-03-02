@@ -32,16 +32,12 @@ export const VerificationsApiAxiosParamCreator = function (configuration?: Confi
     return {
         /**
          * 
-         * @summary Control detail with performance and recent results
-         * @param {string} slug 
+         * @summary List Verifications
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getVerificationDetail: async (slug: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'slug' is not null or undefined
-            assertParamExists('getVerificationDetail', 'slug', slug)
-            const localVarPath = `/verifications/{slug}`
-                .replace(`{${"slug"}}`, encodeURIComponent(String(slug)));
+        listVerifications: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/verifications`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -66,12 +62,16 @@ export const VerificationsApiAxiosParamCreator = function (configuration?: Confi
         },
         /**
          * 
-         * @summary List all verification categories with controls
+         * @summary Retrieve Verification
+         * @param {string} slug 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listVerifications: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            const localVarPath = `/verifications`;
+        retrieveVerification: async (slug: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'slug' is not null or undefined
+            assertParamExists('retrieveVerification', 'slug', slug)
+            const localVarPath = `/verifications/{slug}`
+                .replace(`{${"slug"}}`, encodeURIComponent(String(slug)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -105,20 +105,7 @@ export const VerificationsApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
-         * @summary Control detail with performance and recent results
-         * @param {string} slug 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async getVerificationDetail(slug: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<VerificationDetailResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.getVerificationDetail(slug, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['VerificationsApi.getVerificationDetail']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * 
-         * @summary List all verification categories with controls
+         * @summary List Verifications
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -126,6 +113,19 @@ export const VerificationsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listVerifications(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['VerificationsApi.listVerifications']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Retrieve Verification
+         * @param {string} slug 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async retrieveVerification(slug: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<VerificationDetailResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveVerification(slug, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['VerificationsApi.retrieveVerification']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
@@ -139,22 +139,22 @@ export const VerificationsApiFactory = function (configuration?: Configuration, 
     return {
         /**
          * 
-         * @summary Control detail with performance and recent results
-         * @param {string} slug 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getVerificationDetail(slug: string, options?: RawAxiosRequestConfig): AxiosPromise<VerificationDetailResponse> {
-            return localVarFp.getVerificationDetail(slug, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * 
-         * @summary List all verification categories with controls
+         * @summary List Verifications
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         listVerifications(options?: RawAxiosRequestConfig): AxiosPromise<Array<VerificationCategory>> {
             return localVarFp.listVerifications(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Retrieve Verification
+         * @param {string} slug 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retrieveVerification(slug: string, options?: RawAxiosRequestConfig): AxiosPromise<VerificationDetailResponse> {
+            return localVarFp.retrieveVerification(slug, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -165,23 +165,23 @@ export const VerificationsApiFactory = function (configuration?: Configuration, 
 export class VerificationsApi extends BaseAPI {
     /**
      * 
-     * @summary Control detail with performance and recent results
-     * @param {string} slug 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public getVerificationDetail(slug: string, options?: RawAxiosRequestConfig) {
-        return VerificationsApiFp(this.configuration).getVerificationDetail(slug, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * 
-     * @summary List all verification categories with controls
+     * @summary List Verifications
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
     public listVerifications(options?: RawAxiosRequestConfig) {
         return VerificationsApiFp(this.configuration).listVerifications(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Retrieve Verification
+     * @param {string} slug 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public retrieveVerification(slug: string, options?: RawAxiosRequestConfig) {
+        return VerificationsApiFp(this.configuration).retrieveVerification(slug, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

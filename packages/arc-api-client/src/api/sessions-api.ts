@@ -40,7 +40,7 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
     return {
         /**
          * 
-         * @summary Create a new session
+         * @summary Create Session
          * @param {CreateSessionRequest} createSessionRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -75,75 +75,7 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Session detail with full turn history
-         * @param {string} id 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getSession: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('getSession', 'id', id)
-            const localVarPath = `/sessions/{id}`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            localVarHeaderParameter['Accept'] = 'application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * 
-         * @summary SSE stream for live assistant responses
-         * @param {string} id 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getSessionEvents: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('getSessionEvents', 'id', id)
-            const localVarPath = `/sessions/{id}/events`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            localVarHeaderParameter['Accept'] = 'text/event-stream';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * 
-         * @summary List sessions grouped by recency
+         * @summary List Sessions
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -173,17 +105,51 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Send a user message
+         * @summary Retrieve Session
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retrieveSession: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('retrieveSession', 'id', id)
+            const localVarPath = `/sessions/{id}`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Send Session Message
          * @param {string} id 
          * @param {SendMessageRequest} sendMessageRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        sendMessage: async (id: string, sendMessageRequest: SendMessageRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        sendSessionMessage: async (id: string, sendMessageRequest: SendMessageRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
-            assertParamExists('sendMessage', 'id', id)
+            assertParamExists('sendSessionMessage', 'id', id)
             // verify required parameter 'sendMessageRequest' is not null or undefined
-            assertParamExists('sendMessage', 'sendMessageRequest', sendMessageRequest)
+            assertParamExists('sendSessionMessage', 'sendMessageRequest', sendMessageRequest)
             const localVarPath = `/sessions/{id}/messages`
                 .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
@@ -210,6 +176,40 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 
+         * @summary Stream Session Events
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        streamSessionEvents: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('streamSessionEvents', 'id', id)
+            const localVarPath = `/sessions/{id}/events`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'text/event-stream';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -221,7 +221,7 @@ export const SessionsApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
-         * @summary Create a new session
+         * @summary Create Session
          * @param {CreateSessionRequest} createSessionRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -234,33 +234,7 @@ export const SessionsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Session detail with full turn history
-         * @param {string} id 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async getSession(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SessionDetail>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.getSession(id, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['SessionsApi.getSession']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * 
-         * @summary SSE stream for live assistant responses
-         * @param {string} id 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async getSessionEvents(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<string>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.getSessionEvents(id, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['SessionsApi.getSessionEvents']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * 
-         * @summary List sessions grouped by recency
+         * @summary List Sessions
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -272,16 +246,42 @@ export const SessionsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Send a user message
+         * @summary Retrieve Session
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async retrieveSession(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SessionDetail>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveSession(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SessionsApi.retrieveSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Send Session Message
          * @param {string} id 
          * @param {SendMessageRequest} sendMessageRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async sendMessage(id: string, sendMessageRequest: SendMessageRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SteerRun200Response>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.sendMessage(id, sendMessageRequest, options);
+        async sendSessionMessage(id: string, sendMessageRequest: SendMessageRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SteerRun200Response>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.sendSessionMessage(id, sendMessageRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['SessionsApi.sendMessage']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['SessionsApi.sendSessionMessage']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Stream Session Events
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async streamSessionEvents(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<string>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.streamSessionEvents(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SessionsApi.streamSessionEvents']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
@@ -295,7 +295,7 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
     return {
         /**
          * 
-         * @summary Create a new session
+         * @summary Create Session
          * @param {CreateSessionRequest} createSessionRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -305,27 +305,7 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          * 
-         * @summary Session detail with full turn history
-         * @param {string} id 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getSession(id: string, options?: RawAxiosRequestConfig): AxiosPromise<SessionDetail> {
-            return localVarFp.getSession(id, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * 
-         * @summary SSE stream for live assistant responses
-         * @param {string} id 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getSessionEvents(id: string, options?: RawAxiosRequestConfig): AxiosPromise<string> {
-            return localVarFp.getSessionEvents(id, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * 
-         * @summary List sessions grouped by recency
+         * @summary List Sessions
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -334,14 +314,34 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          * 
-         * @summary Send a user message
+         * @summary Retrieve Session
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retrieveSession(id: string, options?: RawAxiosRequestConfig): AxiosPromise<SessionDetail> {
+            return localVarFp.retrieveSession(id, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Send Session Message
          * @param {string} id 
          * @param {SendMessageRequest} sendMessageRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        sendMessage(id: string, sendMessageRequest: SendMessageRequest, options?: RawAxiosRequestConfig): AxiosPromise<SteerRun200Response> {
-            return localVarFp.sendMessage(id, sendMessageRequest, options).then((request) => request(axios, basePath));
+        sendSessionMessage(id: string, sendMessageRequest: SendMessageRequest, options?: RawAxiosRequestConfig): AxiosPromise<SteerRun200Response> {
+            return localVarFp.sendSessionMessage(id, sendMessageRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Stream Session Events
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        streamSessionEvents(id: string, options?: RawAxiosRequestConfig): AxiosPromise<string> {
+            return localVarFp.streamSessionEvents(id, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -352,7 +352,7 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
 export class SessionsApi extends BaseAPI {
     /**
      * 
-     * @summary Create a new session
+     * @summary Create Session
      * @param {CreateSessionRequest} createSessionRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -363,29 +363,7 @@ export class SessionsApi extends BaseAPI {
 
     /**
      * 
-     * @summary Session detail with full turn history
-     * @param {string} id 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public getSession(id: string, options?: RawAxiosRequestConfig) {
-        return SessionsApiFp(this.configuration).getSession(id, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * 
-     * @summary SSE stream for live assistant responses
-     * @param {string} id 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public getSessionEvents(id: string, options?: RawAxiosRequestConfig) {
-        return SessionsApiFp(this.configuration).getSessionEvents(id, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * 
-     * @summary List sessions grouped by recency
+     * @summary List Sessions
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -395,14 +373,36 @@ export class SessionsApi extends BaseAPI {
 
     /**
      * 
-     * @summary Send a user message
+     * @summary Retrieve Session
+     * @param {string} id 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public retrieveSession(id: string, options?: RawAxiosRequestConfig) {
+        return SessionsApiFp(this.configuration).retrieveSession(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Send Session Message
      * @param {string} id 
      * @param {SendMessageRequest} sendMessageRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public sendMessage(id: string, sendMessageRequest: SendMessageRequest, options?: RawAxiosRequestConfig) {
-        return SessionsApiFp(this.configuration).sendMessage(id, sendMessageRequest, options).then((request) => request(this.axios, this.basePath));
+    public sendSessionMessage(id: string, sendMessageRequest: SendMessageRequest, options?: RawAxiosRequestConfig) {
+        return SessionsApiFp(this.configuration).sendSessionMessage(id, sendMessageRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Stream Session Events
+     * @param {string} id 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public streamSessionEvents(id: string, options?: RawAxiosRequestConfig) {
+        return SessionsApiFp(this.configuration).streamSessionEvents(id, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

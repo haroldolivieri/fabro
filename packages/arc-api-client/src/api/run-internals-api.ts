@@ -22,30 +22,26 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
-import type { RunListItem } from '../models';
+import type { RunStage } from '../models';
 // @ts-ignore
-import type { StartRunResponse } from '../models';
-// @ts-ignore
-import type { WorkflowDetail } from '../models';
-// @ts-ignore
-import type { WorkflowListItem } from '../models';
+import type { StageTurn } from '../models';
 /**
- * WorkflowsApi - axios parameter creator
+ * RunInternalsApi - axios parameter creator
  */
-export const WorkflowsApiAxiosParamCreator = function (configuration?: Configuration) {
+export const RunInternalsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
          * 
-         * @summary List Workflow Runs
-         * @param {string} name 
+         * @summary List Run Stages
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkflowRuns: async (name: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'name' is not null or undefined
-            assertParamExists('listWorkflowRuns', 'name', name)
-            const localVarPath = `/workflows/{name}/runs`
-                .replace(`{${"name"}}`, encodeURIComponent(String(name)));
+        listRunStages: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('listRunStages', 'id', id)
+            const localVarPath = `/runs/{id}/stages`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -70,12 +66,20 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
         },
         /**
          * 
-         * @summary List Workflows
+         * @summary List Stage Turns
+         * @param {string} id 
+         * @param {string} stageId 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkflows: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            const localVarPath = `/workflows`;
+        listStageTurns: async (id: string, stageId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('listStageTurns', 'id', id)
+            // verify required parameter 'stageId' is not null or undefined
+            assertParamExists('listStageTurns', 'stageId', stageId)
+            const localVarPath = `/runs/{id}/stages/{stageId}/turns`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)))
+                .replace(`{${"stageId"}}`, encodeURIComponent(String(stageId)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -100,16 +104,16 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
         },
         /**
          * 
-         * @summary Retrieve Workflow
-         * @param {string} name 
+         * @summary Retrieve Run Configuration
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveWorkflow: async (name: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'name' is not null or undefined
-            assertParamExists('retrieveWorkflow', 'name', name)
-            const localVarPath = `/workflows/{name}`
-                .replace(`{${"name"}}`, encodeURIComponent(String(name)));
+        retrieveRunConfiguration: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('retrieveRunConfiguration', 'id', id)
+            const localVarPath = `/runs/{id}/configuration`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -121,7 +125,7 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
-            localVarHeaderParameter['Accept'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'text/plain';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
@@ -134,16 +138,16 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
         },
         /**
          * 
-         * @summary Start Workflow Run
-         * @param {string} name 
+         * @summary Retrieve Run Context
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        startWorkflowRun: async (name: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'name' is not null or undefined
-            assertParamExists('startWorkflowRun', 'name', name)
-            const localVarPath = `/workflows/{name}/runs`
-                .replace(`{${"name"}}`, encodeURIComponent(String(name)));
+        retrieveRunContext: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('retrieveRunContext', 'id', id)
+            const localVarPath = `/runs/{id}/context`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -151,7 +155,7 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
                 baseOptions = configuration.baseOptions;
             }
 
-            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
@@ -170,158 +174,164 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
 };
 
 /**
- * WorkflowsApi - functional programming interface
+ * RunInternalsApi - functional programming interface
  */
-export const WorkflowsApiFp = function(configuration?: Configuration) {
-    const localVarAxiosParamCreator = WorkflowsApiAxiosParamCreator(configuration)
+export const RunInternalsApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = RunInternalsApiAxiosParamCreator(configuration)
     return {
         /**
          * 
-         * @summary List Workflow Runs
-         * @param {string} name 
+         * @summary List Run Stages
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listWorkflowRuns(name: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<RunListItem>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkflowRuns(name, options);
+        async listRunStages(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<RunStage>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunStages(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['WorkflowsApi.listWorkflowRuns']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.listRunStages']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
          * 
-         * @summary List Workflows
+         * @summary List Stage Turns
+         * @param {string} id 
+         * @param {string} stageId 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listWorkflows(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkflowListItem>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkflows(options);
+        async listStageTurns(id: string, stageId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<StageTurn>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listStageTurns(id, stageId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['WorkflowsApi.listWorkflows']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.listStageTurns']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
          * 
-         * @summary Retrieve Workflow
-         * @param {string} name 
+         * @summary Retrieve Run Configuration
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveWorkflow(name: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkflowDetail>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveWorkflow(name, options);
+        async retrieveRunConfiguration(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<string>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunConfiguration(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['WorkflowsApi.retrieveWorkflow']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.retrieveRunConfiguration']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
          * 
-         * @summary Start Workflow Run
-         * @param {string} name 
+         * @summary Retrieve Run Context
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async startWorkflowRun(name: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<StartRunResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.startWorkflowRun(name, options);
+        async retrieveRunContext(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<object>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunContext(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['WorkflowsApi.startWorkflowRun']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.retrieveRunContext']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
 };
 
 /**
- * WorkflowsApi - factory interface
+ * RunInternalsApi - factory interface
  */
-export const WorkflowsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
-    const localVarFp = WorkflowsApiFp(configuration)
+export const RunInternalsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = RunInternalsApiFp(configuration)
     return {
         /**
          * 
-         * @summary List Workflow Runs
-         * @param {string} name 
+         * @summary List Run Stages
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkflowRuns(name: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<RunListItem>> {
-            return localVarFp.listWorkflowRuns(name, options).then((request) => request(axios, basePath));
+        listRunStages(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<RunStage>> {
+            return localVarFp.listRunStages(id, options).then((request) => request(axios, basePath));
         },
         /**
          * 
-         * @summary List Workflows
+         * @summary List Stage Turns
+         * @param {string} id 
+         * @param {string} stageId 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkflows(options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkflowListItem>> {
-            return localVarFp.listWorkflows(options).then((request) => request(axios, basePath));
+        listStageTurns(id: string, stageId: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<StageTurn>> {
+            return localVarFp.listStageTurns(id, stageId, options).then((request) => request(axios, basePath));
         },
         /**
          * 
-         * @summary Retrieve Workflow
-         * @param {string} name 
+         * @summary Retrieve Run Configuration
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveWorkflow(name: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkflowDetail> {
-            return localVarFp.retrieveWorkflow(name, options).then((request) => request(axios, basePath));
+        retrieveRunConfiguration(id: string, options?: RawAxiosRequestConfig): AxiosPromise<string> {
+            return localVarFp.retrieveRunConfiguration(id, options).then((request) => request(axios, basePath));
         },
         /**
          * 
-         * @summary Start Workflow Run
-         * @param {string} name 
+         * @summary Retrieve Run Context
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        startWorkflowRun(name: string, options?: RawAxiosRequestConfig): AxiosPromise<StartRunResponse> {
-            return localVarFp.startWorkflowRun(name, options).then((request) => request(axios, basePath));
+        retrieveRunContext(id: string, options?: RawAxiosRequestConfig): AxiosPromise<object> {
+            return localVarFp.retrieveRunContext(id, options).then((request) => request(axios, basePath));
         },
     };
 };
 
 /**
- * WorkflowsApi - object-oriented interface
+ * RunInternalsApi - object-oriented interface
  */
-export class WorkflowsApi extends BaseAPI {
+export class RunInternalsApi extends BaseAPI {
     /**
      * 
-     * @summary List Workflow Runs
-     * @param {string} name 
+     * @summary List Run Stages
+     * @param {string} id 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listWorkflowRuns(name: string, options?: RawAxiosRequestConfig) {
-        return WorkflowsApiFp(this.configuration).listWorkflowRuns(name, options).then((request) => request(this.axios, this.basePath));
+    public listRunStages(id: string, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).listRunStages(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * 
-     * @summary List Workflows
+     * @summary List Stage Turns
+     * @param {string} id 
+     * @param {string} stageId 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listWorkflows(options?: RawAxiosRequestConfig) {
-        return WorkflowsApiFp(this.configuration).listWorkflows(options).then((request) => request(this.axios, this.basePath));
+    public listStageTurns(id: string, stageId: string, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).listStageTurns(id, stageId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * 
-     * @summary Retrieve Workflow
-     * @param {string} name 
+     * @summary Retrieve Run Configuration
+     * @param {string} id 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public retrieveWorkflow(name: string, options?: RawAxiosRequestConfig) {
-        return WorkflowsApiFp(this.configuration).retrieveWorkflow(name, options).then((request) => request(this.axios, this.basePath));
+    public retrieveRunConfiguration(id: string, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).retrieveRunConfiguration(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * 
-     * @summary Start Workflow Run
-     * @param {string} name 
+     * @summary Retrieve Run Context
+     * @param {string} id 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public startWorkflowRun(name: string, options?: RawAxiosRequestConfig) {
-        return WorkflowsApiFp(this.configuration).startWorkflowRun(name, options).then((request) => request(this.axios, this.basePath));
+    public retrieveRunContext(id: string, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).retrieveRunContext(id, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

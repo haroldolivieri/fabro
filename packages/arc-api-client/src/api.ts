@@ -14,12 +14,15 @@
 
 
 
+export * from './api/human-in-the-loop-api';
 export * from './api/insights-api';
 export * from './api/projects-api';
 export * from './api/retros-api';
+export * from './api/run-internals-api';
 export * from './api/runs-api';
 export * from './api/sessions-api';
 export * from './api/settings-api';
+export * from './api/usage-api';
 export * from './api/verifications-api';
 export * from './api/workflows-api';
 

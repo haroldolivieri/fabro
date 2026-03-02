@@ -30,12 +30,46 @@ export const RetrosApiAxiosParamCreator = function (configuration?: Configuratio
     return {
         /**
          * 
-         * @summary List all retros across runs
+         * @summary List Retros
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         listRetros: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/retros`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Retrieve Retro
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retrieveRetro: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('retrieveRetro', 'id', id)
+            const localVarPath = `/runs/{id}/retro`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -69,7 +103,7 @@ export const RetrosApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
-         * @summary List all retros across runs
+         * @summary List Retros
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -77,6 +111,19 @@ export const RetrosApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listRetros(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RetrosApi.listRetros']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Retrieve Retro
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async retrieveRetro(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRetro(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RetrosApi.retrieveRetro']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
@@ -90,12 +137,22 @@ export const RetrosApiFactory = function (configuration?: Configuration, basePat
     return {
         /**
          * 
-         * @summary List all retros across runs
+         * @summary List Retros
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         listRetros(options?: RawAxiosRequestConfig): AxiosPromise<Array<RetroListItem>> {
             return localVarFp.listRetros(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Retrieve Retro
+         * @param {string} id 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retrieveRetro(id: string, options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.retrieveRetro(id, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -106,12 +163,23 @@ export const RetrosApiFactory = function (configuration?: Configuration, basePat
 export class RetrosApi extends BaseAPI {
     /**
      * 
-     * @summary List all retros across runs
+     * @summary List Retros
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
     public listRetros(options?: RawAxiosRequestConfig) {
         return RetrosApiFp(this.configuration).listRetros(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Retrieve Retro
+     * @param {string} id 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public retrieveRetro(id: string, options?: RawAxiosRequestConfig) {
+        return RetrosApiFp(this.configuration).retrieveRetro(id, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

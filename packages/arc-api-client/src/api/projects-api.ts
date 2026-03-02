@@ -32,7 +32,7 @@ export const ProjectsApiAxiosParamCreator = function (configuration?: Configurat
     return {
         /**
          * 
-         * @summary List branches for a project
+         * @summary List Branches
          * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -66,7 +66,7 @@ export const ProjectsApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary List available projects
+         * @summary List Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -105,7 +105,7 @@ export const ProjectsApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
-         * @summary List branches for a project
+         * @summary List Branches
          * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -118,7 +118,7 @@ export const ProjectsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary List available projects
+         * @summary List Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -139,7 +139,7 @@ export const ProjectsApiFactory = function (configuration?: Configuration, baseP
     return {
         /**
          * 
-         * @summary List branches for a project
+         * @summary List Branches
          * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -149,7 +149,7 @@ export const ProjectsApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          * 
-         * @summary List available projects
+         * @summary List Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -165,7 +165,7 @@ export const ProjectsApiFactory = function (configuration?: Configuration, baseP
 export class ProjectsApi extends BaseAPI {
     /**
      * 
-     * @summary List branches for a project
+     * @summary List Branches
      * @param {string} id 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -176,7 +176,7 @@ export class ProjectsApi extends BaseAPI {
 
     /**
      * 
-     * @summary List available projects
+     * @summary List Projects
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

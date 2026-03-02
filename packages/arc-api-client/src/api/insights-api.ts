@@ -38,7 +38,42 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
     return {
         /**
          * 
-         * @summary Delete a saved query
+         * @summary Create Saved Query
+         * @param {SaveQueryRequest} saveQueryRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createSavedQuery: async (saveQueryRequest: SaveQueryRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'saveQueryRequest' is not null or undefined
+            assertParamExists('createSavedQuery', 'saveQueryRequest', saveQueryRequest)
+            const localVarPath = `/insights/queries`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(saveQueryRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Delete Saved Query
          * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -71,7 +106,7 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Execute a SQL query
+         * @summary Execute Query
          * @param {ExecuteQueryRequest} executeQueryRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -106,7 +141,7 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Query execution history
+         * @summary List Query History
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -136,7 +171,7 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary List saved queries
+         * @summary List Saved Queries
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -166,42 +201,7 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Save a query
-         * @param {SaveQueryRequest} saveQueryRequest 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        saveQuery: async (saveQueryRequest: SaveQueryRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'saveQueryRequest' is not null or undefined
-            assertParamExists('saveQuery', 'saveQueryRequest', saveQueryRequest)
-            const localVarPath = `/insights/queries`;
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            localVarHeaderParameter['Content-Type'] = 'application/json';
-            localVarHeaderParameter['Accept'] = 'application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-            localVarRequestOptions.data = serializeDataIfNeeded(saveQueryRequest, localVarRequestOptions, configuration)
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * 
-         * @summary Update a saved query
+         * @summary Update Saved Query
          * @param {string} id 
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
@@ -249,7 +249,20 @@ export const InsightsApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
-         * @summary Delete a saved query
+         * @summary Create Saved Query
+         * @param {SaveQueryRequest} saveQueryRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createSavedQuery(saveQueryRequest: SaveQueryRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SavedQuery>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createSavedQuery(saveQueryRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['InsightsApi.createSavedQuery']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Delete Saved Query
          * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -262,7 +275,7 @@ export const InsightsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Execute a SQL query
+         * @summary Execute Query
          * @param {ExecuteQueryRequest} executeQueryRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -275,7 +288,7 @@ export const InsightsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Query execution history
+         * @summary List Query History
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -287,7 +300,7 @@ export const InsightsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary List saved queries
+         * @summary List Saved Queries
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -299,20 +312,7 @@ export const InsightsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Save a query
-         * @param {SaveQueryRequest} saveQueryRequest 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async saveQuery(saveQueryRequest: SaveQueryRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SavedQuery>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.saveQuery(saveQueryRequest, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['InsightsApi.saveQuery']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * 
-         * @summary Update a saved query
+         * @summary Update Saved Query
          * @param {string} id 
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
@@ -335,7 +335,17 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
     return {
         /**
          * 
-         * @summary Delete a saved query
+         * @summary Create Saved Query
+         * @param {SaveQueryRequest} saveQueryRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createSavedQuery(saveQueryRequest: SaveQueryRequest, options?: RawAxiosRequestConfig): AxiosPromise<SavedQuery> {
+            return localVarFp.createSavedQuery(saveQueryRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Delete Saved Query
          * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -345,7 +355,7 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          * 
-         * @summary Execute a SQL query
+         * @summary Execute Query
          * @param {ExecuteQueryRequest} executeQueryRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -355,7 +365,7 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          * 
-         * @summary Query execution history
+         * @summary List Query History
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -364,7 +374,7 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          * 
-         * @summary List saved queries
+         * @summary List Saved Queries
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -373,17 +383,7 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          * 
-         * @summary Save a query
-         * @param {SaveQueryRequest} saveQueryRequest 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        saveQuery(saveQueryRequest: SaveQueryRequest, options?: RawAxiosRequestConfig): AxiosPromise<SavedQuery> {
-            return localVarFp.saveQuery(saveQueryRequest, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * 
-         * @summary Update a saved query
+         * @summary Update Saved Query
          * @param {string} id 
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
@@ -401,7 +401,18 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
 export class InsightsApi extends BaseAPI {
     /**
      * 
-     * @summary Delete a saved query
+     * @summary Create Saved Query
+     * @param {SaveQueryRequest} saveQueryRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public createSavedQuery(saveQueryRequest: SaveQueryRequest, options?: RawAxiosRequestConfig) {
+        return InsightsApiFp(this.configuration).createSavedQuery(saveQueryRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Delete Saved Query
      * @param {string} id 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -412,7 +423,7 @@ export class InsightsApi extends BaseAPI {
 
     /**
      * 
-     * @summary Execute a SQL query
+     * @summary Execute Query
      * @param {ExecuteQueryRequest} executeQueryRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -423,7 +434,7 @@ export class InsightsApi extends BaseAPI {
 
     /**
      * 
-     * @summary Query execution history
+     * @summary List Query History
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -433,7 +444,7 @@ export class InsightsApi extends BaseAPI {
 
     /**
      * 
-     * @summary List saved queries
+     * @summary List Saved Queries
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -443,18 +454,7 @@ export class InsightsApi extends BaseAPI {
 
     /**
      * 
-     * @summary Save a query
-     * @param {SaveQueryRequest} saveQueryRequest 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public saveQuery(saveQueryRequest: SaveQueryRequest, options?: RawAxiosRequestConfig) {
-        return InsightsApiFp(this.configuration).saveQuery(saveQueryRequest, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * 
-     * @summary Update a saved query
+     * @summary Update Saved Query
      * @param {string} id 
      * @param {SaveQueryRequest} saveQueryRequest 
      * @param {*} [options] Override http request option.

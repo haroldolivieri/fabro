@@ -7,6 +7,12 @@ info:
 tags:
   - name: Runs
     description: Run management operations
+  - name: Run Internals
+    description: Internal run details (stages, turns, context, configuration)
+  - name: Human-in-the-Loop
+    description: Questions, answers, and steering for runs
+  - name: Usage
+    description: Token and cost usage
   - name: Workflows
     description: Workflow definitions and execution
   - name: Verifications
@@ -29,7 +35,7 @@ paths:
     get:
       operationId: listRuns
       tags: [Runs]
-      summary: List all runs (board view)
+      summary: List Runs
       responses:
         "200":
           description: Array of runs for the board view
@@ -42,7 +48,7 @@ paths:
     post:
       operationId: startRun
       tags: [Runs]
-      summary: Start a new run
+      summary: Start Run
       requestBody:
         required: true
         content:
@@ -65,9 +71,9 @@ paths:
 
   /runs/{id}:
     get:
-      operationId: getRunStatus
+      operationId: retrieveRun
       tags: [Runs]
-      summary: Get run status
+      summary: Retrieve Run
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -84,7 +90,7 @@ paths:
     post:
       operationId: cancelRun
       tags: [Runs]
-      summary: Cancel a running run
+      summary: Cancel Run
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -110,9 +116,9 @@ paths:
 
   /runs/{id}/graph:
     get:
-      operationId: getGraph
+      operationId: retrieveRunSvg
       tags: [Runs]
-      summary: Get run graph as SVG
+      summary: Retrieve Run SVG
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -133,9 +139,9 @@ paths:
 
   /runs/{id}/checkpoint:
     get:
-      operationId: getCheckpoint
+      operationId: retrieveRunCheckpoint
       tags: [Runs]
-      summary: Get run checkpoint
+      summary: Retrieve Run Checkpoint
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -149,9 +155,9 @@ paths:
 
   /runs/{id}/context:
     get:
-      operationId: getContext
-      tags: [Runs]
-      summary: Get run context
+      operationId: retrieveRunContext
+      tags: [Run Internals]
+      summary: Retrieve Run Context
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -166,9 +172,9 @@ paths:
 
   /runs/{id}/events:
     get:
-      operationId: getEvents
+      operationId: streamRunEvents
       tags: [Runs]
-      summary: Subscribe to run events via SSE
+      summary: Stream Run Events
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -185,9 +191,9 @@ paths:
 
   /runs/{id}/questions:
     get:
-      operationId: getQuestions
-      tags: [Runs]
-      summary: Get pending questions for a run
+      operationId: listRunQuestions
+      tags: [Human-in-the-Loop]
+      summary: List Run Questions
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -204,9 +210,9 @@ paths:
 
   /runs/{id}/questions/{qid}/answer:
     post:
-      operationId: submitAnswer
-      tags: [Runs]
-      summary: Submit an answer to a question
+      operationId: submitRunAnswer
+      tags: [Human-in-the-Loop]
+      summary: Submit Run Answer
       parameters:
         - $ref: "#/components/parameters/RunId"
         - name: qid
@@ -238,9 +244,9 @@ paths:
 
   /runs/{id}/retro:
     get:
-      operationId: getRetro
-      tags: [Runs]
-      summary: Get run retrospective
+      operationId: retrieveRetro
+      tags: [Retros]
+      summary: Retrieve Retro
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -254,9 +260,9 @@ paths:
 
   /runs/{id}/stages:
     get:
-      operationId: getRunStages
-      tags: [Runs]
-      summary: List stages with status and duration
+      operationId: listRunStages
+      tags: [Run Internals]
+      summary: List Run Stages
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -273,9 +279,9 @@ paths:
 
   /runs/{id}/stages/{stageId}/turns:
     get:
-      operationId: getStageTurns
-      tags: [Runs]
-      summary: Conversation transcript for a stage
+      operationId: listStageTurns
+      tags: [Run Internals]
+      summary: List Stage Turns
       parameters:
         - $ref: "#/components/parameters/RunId"
         - name: stageId
@@ -297,9 +303,9 @@ paths:
 
   /runs/{id}/files:
     get:
-      operationId: getRunFiles
+      operationId: listRunFiles
       tags: [Runs]
-      summary: File diffs grouped by checkpoint
+      summary: List Run Files
       parameters:
         - $ref: "#/components/parameters/RunId"
         - name: checkpoint
@@ -319,9 +325,9 @@ paths:
 
   /runs/{id}/usage:
     get:
-      operationId: getRunUsage
-      tags: [Runs]
-      summary: Token and cost breakdown by stage and model
+      operationId: retrieveRunUsage
+      tags: [Usage]
+      summary: Retrieve Run Usage
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -336,9 +342,9 @@ paths:
 
   /runs/{id}/verifications:
     get:
-      operationId: getRunVerifications
+      operationId: listRunVerifications
       tags: [Runs]
-      summary: Verification results for this run
+      summary: List Run Verifications
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -355,9 +361,9 @@ paths:
 
   /runs/{id}/configuration:
     get:
-      operationId: getRunConfiguration
-      tags: [Runs]
-      summary: Run configuration (TOML)
+      operationId: retrieveRunConfiguration
+      tags: [Run Internals]
+      summary: Retrieve Run Configuration
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -373,8 +379,8 @@ paths:
   /runs/{id}/steer:
     post:
       operationId: steerRun
-      tags: [Runs]
-      summary: Submit steering guidance on a file line
+      tags: [Human-in-the-Loop]
+      summary: Steer Run
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -427,7 +433,7 @@ paths:
     get:
       operationId: listWorkflows
       tags: [Workflows]
-      summary: List all workflows
+      summary: List Workflows
       responses:
         "200":
           description: Array of workflows
@@ -440,9 +446,9 @@ paths:
 
   /workflows/{name}:
     get:
-      operationId: getWorkflow
+      operationId: retrieveWorkflow
       tags: [Workflows]
-      summary: Get workflow detail with config and graph
+      summary: Retrieve Workflow
       parameters:
         - name: name
           in: path
@@ -463,7 +469,7 @@ paths:
     get:
       operationId: listWorkflowRuns
       tags: [Workflows]
-      summary: List runs for this workflow
+      summary: List Workflow Runs
       parameters:
         - name: name
           in: path
@@ -482,9 +488,9 @@ paths:
         "404":
           description: Workflow not found
     post:
-      operationId: triggerWorkflowRun
+      operationId: startWorkflowRun
       tags: [Workflows]
-      summary: Trigger a run for this workflow
+      summary: Start Workflow Run
       parameters:
         - name: name
           in: path
@@ -507,7 +513,7 @@ paths:
     get:
       operationId: listVerifications
       tags: [Verifications]
-      summary: List all verification categories with controls
+      summary: List Verifications
       responses:
         "200":
           description: Array of verification categories
@@ -520,9 +526,9 @@ paths:
 
   /verifications/{slug}:
     get:
-      operationId: getVerificationDetail
+      operationId: retrieveVerification
       tags: [Verifications]
-      summary: Control detail with performance and recent results
+      summary: Retrieve Verification
       parameters:
         - name: slug
           in: path
@@ -545,7 +551,7 @@ paths:
     get:
       operationId: listRetros
       tags: [Retros]
-      summary: List all retros across runs
+      summary: List Retros
       responses:
         "200":
           description: Array of retros
@@ -562,7 +568,7 @@ paths:
     get:
       operationId: listSessions
       tags: [Sessions]
-      summary: List sessions grouped by recency
+      summary: List Sessions
       responses:
         "200":
           description: Array of session groups
@@ -575,7 +581,7 @@ paths:
     post:
       operationId: createSession
       tags: [Sessions]
-      summary: Create a new session
+      summary: Create Session
       requestBody:
         required: true
         content:
@@ -592,9 +598,9 @@ paths:
 
   /sessions/{id}:
     get:
-      operationId: getSession
+      operationId: retrieveSession
       tags: [Sessions]
-      summary: Session detail with full turn history
+      summary: Retrieve Session
       parameters:
         - name: id
           in: path
@@ -613,9 +619,9 @@ paths:
 
   /sessions/{id}/messages:
     post:
-      operationId: sendMessage
+      operationId: sendSessionMessage
       tags: [Sessions]
-      summary: Send a user message
+      summary: Send Session Message
       parameters:
         - name: id
           in: path
@@ -645,9 +651,9 @@ paths:
 
   /sessions/{id}/events:
     get:
-      operationId: getSessionEvents
+      operationId: streamSessionEvents
       tags: [Sessions]
-      summary: SSE stream for live assistant responses
+      summary: Stream Session Events
       parameters:
         - name: id
           in: path
@@ -670,7 +676,7 @@ paths:
     get:
       operationId: listSavedQueries
       tags: [Insights]
-      summary: List saved queries
+      summary: List Saved Queries
       responses:
         "200":
           description: Array of saved queries
@@ -681,9 +687,9 @@ paths:
                 items:
                   $ref: "#/components/schemas/SavedQuery"
     post:
-      operationId: saveQuery
+      operationId: createSavedQuery
       tags: [Insights]
-      summary: Save a query
+      summary: Create Saved Query
       requestBody:
         required: true
         content:
@@ -702,7 +708,7 @@ paths:
     put:
       operationId: updateSavedQuery
       tags: [Insights]
-      summary: Update a saved query
+      summary: Update Saved Query
       parameters:
         - name: id
           in: path
@@ -727,7 +733,7 @@ paths:
     delete:
       operationId: deleteSavedQuery
       tags: [Insights]
-      summary: Delete a saved query
+      summary: Delete Saved Query
       parameters:
         - name: id
           in: path
@@ -744,7 +750,7 @@ paths:
     post:
       operationId: executeQuery
       tags: [Insights]
-      summary: Execute a SQL query
+      summary: Execute Query
       requestBody:
         required: true
         content:
@@ -763,7 +769,7 @@ paths:
     get:
       operationId: listQueryHistory
       tags: [Insights]
-      summary: Query execution history
+      summary: List Query History
       responses:
         "200":
           description: Array of history entries
@@ -778,9 +784,9 @@ paths:
 
   /settings:
     get:
-      operationId: getSettings
+      operationId: retrieveServerSettings
       tags: [Settings]
-      summary: Get all setting groups with current values
+      summary: Retrieve Server Settings
       responses:
         "200":
           description: Array of setting groups
@@ -797,7 +803,7 @@ paths:
     get:
       operationId: listProjects
       tags: [Projects]
-      summary: List available projects
+      summary: List Projects
       responses:
         "200":
           description: Array of projects
@@ -812,7 +818,7 @@ paths:
     get:
       operationId: listBranches
       tags: [Projects]
-      summary: List branches for a project
+      summary: List Branches
       parameters:
         - name: id
           in: path

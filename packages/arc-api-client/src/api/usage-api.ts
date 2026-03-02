@@ -22,20 +22,24 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
-import type { SettingGroup } from '../models';
+import type { RunUsage } from '../models';
 /**
- * SettingsApi - axios parameter creator
+ * UsageApi - axios parameter creator
  */
-export const SettingsApiAxiosParamCreator = function (configuration?: Configuration) {
+export const UsageApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
          * 
-         * @summary Retrieve Server Settings
+         * @summary Retrieve Run Usage
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveServerSettings: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            const localVarPath = `/settings`;
+        retrieveRunUsage: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('retrieveRunUsage', 'id', id)
+            const localVarPath = `/runs/{id}/usage`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -62,56 +66,59 @@ export const SettingsApiAxiosParamCreator = function (configuration?: Configurat
 };
 
 /**
- * SettingsApi - functional programming interface
+ * UsageApi - functional programming interface
  */
-export const SettingsApiFp = function(configuration?: Configuration) {
-    const localVarAxiosParamCreator = SettingsApiAxiosParamCreator(configuration)
+export const UsageApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = UsageApiAxiosParamCreator(configuration)
     return {
         /**
          * 
-         * @summary Retrieve Server Settings
+         * @summary Retrieve Run Usage
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveServerSettings(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SettingGroup>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveServerSettings(options);
+        async retrieveRunUsage(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunUsage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunUsage(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['SettingsApi.retrieveServerSettings']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['UsageApi.retrieveRunUsage']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
 };
 
 /**
- * SettingsApi - factory interface
+ * UsageApi - factory interface
  */
-export const SettingsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
-    const localVarFp = SettingsApiFp(configuration)
+export const UsageApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = UsageApiFp(configuration)
     return {
         /**
          * 
-         * @summary Retrieve Server Settings
+         * @summary Retrieve Run Usage
+         * @param {string} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveServerSettings(options?: RawAxiosRequestConfig): AxiosPromise<Array<SettingGroup>> {
-            return localVarFp.retrieveServerSettings(options).then((request) => request(axios, basePath));
+        retrieveRunUsage(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunUsage> {
+            return localVarFp.retrieveRunUsage(id, options).then((request) => request(axios, basePath));
         },
     };
 };
 
 /**
- * SettingsApi - object-oriented interface
+ * UsageApi - object-oriented interface
  */
-export class SettingsApi extends BaseAPI {
+export class UsageApi extends BaseAPI {
     /**
      * 
-     * @summary Retrieve Server Settings
+     * @summary Retrieve Run Usage
+     * @param {string} id 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public retrieveServerSettings(options?: RawAxiosRequestConfig) {
-        return SettingsApiFp(this.configuration).retrieveServerSettings(options).then((request) => request(this.axios, this.basePath));
+    public retrieveRunUsage(id: string, options?: RawAxiosRequestConfig) {
+        return UsageApiFp(this.configuration).retrieveRunUsage(id, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

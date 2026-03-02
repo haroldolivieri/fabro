@@ -202,6 +202,7 @@ pub fn extract_stage_durations(logs_root: &Path) -> HashMap<String, u64> {
 /// Build a `Retro` from checkpoint data and run metadata. All qualitative
 /// fields (`smoothness`, `intent`, `outcome`, etc.) are left as `None` for
 /// the retro agent to fill in.
+#[allow(clippy::too_many_arguments)]
 pub fn derive_retro(
     run_id: &str,
     pipeline_name: &str,

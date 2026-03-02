@@ -554,41 +554,28 @@ fn flatten_sub_agent_event(
         }
         return ("Agent.SubAgentEvent".to_string(), fields);
     };
-    let agent_id = sub_fields.remove("agent_id");
-    let depth = sub_fields.remove("depth");
-    let nested_event = sub_fields.remove("event").unwrap_or(serde_json::Value::Null);
 
-    let (nested_name, nested_fields) = match &nested_event {
-        serde_json::Value::Object(event_map) => {
-            let (name, value) = event_map
-                .iter()
-                .next()
-                .expect("nested event must have one key");
-            let fields = match value {
-                serde_json::Value::Object(m) => m.clone(),
-                _ => serde_json::Map::new(),
-            };
-            (Some(name.clone()), fields)
-        }
-        serde_json::Value::String(name) => (Some(name.clone()), serde_json::Map::new()),
-        _ => (None, serde_json::Map::new()),
+    // Extract the inner event name for dot notation, but keep full inner
+    // event as `nested_event` JSON to avoid field collisions when sub-agents
+    // are themselves nested (SubAgentEvent wrapping SubAgentEvent).
+    let nested_event = sub_fields.remove("event").unwrap_or(serde_json::Value::Null);
+    let inner_name = match &nested_event {
+        serde_json::Value::Object(map) => map.keys().next().cloned(),
+        serde_json::Value::String(name) => Some(name.clone()),
+        _ => None,
     };
 
-    let event_name = match &nested_name {
+    let event_name = match &inner_name {
         Some(name) => format!("Agent.SubAgentEvent.{name}"),
         None => "Agent.SubAgentEvent".to_string(),
     };
 
-    let mut fields = nested_fields;
+    // Start with the SubAgentEvent's own fields (agent_id, depth)
+    let mut fields = sub_fields;
     if let Some(s) = stage {
         fields.insert("stage".to_string(), s);
     }
-    if let Some(id) = agent_id {
-        fields.insert("agent_id".to_string(), id);
-    }
-    if let Some(d) = depth {
-        fields.insert("depth".to_string(), d);
-    }
+    fields.insert("nested_event".to_string(), nested_event);
 
     (event_name, fields)
 }
@@ -1253,7 +1240,44 @@ mod tests {
         assert_eq!(fields["stage"], "code");
         assert_eq!(fields["agent_id"], "sub_1");
         assert_eq!(fields["depth"], 1);
-        assert_eq!(fields["tool_name"], "write_file");
+        // Inner event preserved as nested_event JSON (not flattened)
+        let nested = fields["nested_event"].as_object().unwrap();
+        let tool_call = nested["ToolCallStarted"].as_object().unwrap();
+        assert_eq!(tool_call["tool_name"], "write_file");
+    }
+
+    #[test]
+    fn flatten_event_doubly_nested_sub_agent_preserves_all_data() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".to_string(),
+            event: AgentEvent::SubAgentEvent {
+                agent_id: "sub_1".to_string(),
+                depth: 1,
+                event: Box::new(AgentEvent::SubAgentEvent {
+                    agent_id: "sub_2".to_string(),
+                    depth: 2,
+                    event: Box::new(AgentEvent::ToolCallStarted {
+                        tool_name: "read_file".to_string(),
+                        tool_call_id: "call_3".to_string(),
+                        arguments: serde_json::json!({}),
+                    }),
+                }),
+            },
+        };
+        let (name, fields) = flatten_event(&event);
+        assert_eq!(name, "Agent.SubAgentEvent.SubAgentEvent");
+        // Outer SubAgentEvent fields at top level
+        assert_eq!(fields["agent_id"], "sub_1");
+        assert_eq!(fields["depth"], 1);
+        assert_eq!(fields["stage"], "code");
+        // Inner SubAgentEvent preserved in nested_event with all data intact
+        let nested = fields["nested_event"].as_object().unwrap();
+        let inner_sub = nested["SubAgentEvent"].as_object().unwrap();
+        assert_eq!(inner_sub["agent_id"], "sub_2");
+        assert_eq!(inner_sub["depth"], 2);
+        let inner_event = inner_sub["event"].as_object().unwrap();
+        let tool_call = inner_event["ToolCallStarted"].as_object().unwrap();
+        assert_eq!(tool_call["tool_name"], "read_file");
     }
 
     #[test]

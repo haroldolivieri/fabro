@@ -361,9 +361,7 @@ impl AgentEvent {
             Self::SubAgentClosed { agent_id, depth } => {
                 debug!(session_id, agent_id, depth, "Sub-agent closed");
             }
-            Self::SubAgentEvent { event, .. } => {
-                event.trace(session_id);
-            }
+            Self::SubAgentEvent { .. } => {}
             Self::McpServerReady {
                 server_name,
                 tool_count,

@@ -91,6 +91,7 @@ impl DockerExecutionEnvironment {
     }
 
     fn emit(&self, event: ExecutionEnvEvent) {
+        event.trace();
         if let Some(ref cb) = self.event_callback {
             cb(event);
         }

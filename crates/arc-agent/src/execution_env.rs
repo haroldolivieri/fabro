@@ -151,6 +151,69 @@ pub enum ExecutionEnvEvent {
     },
 }
 
+impl ExecutionEnvEvent {
+    pub fn trace(&self) {
+        use tracing::{debug, error, info, warn};
+        match self {
+            Self::Initializing { env_type } => {
+                debug!(env_type, "Execution env initializing");
+            }
+            Self::Ready {
+                env_type,
+                duration_ms,
+            } => {
+                info!(env_type, duration_ms, "Execution env ready");
+            }
+            Self::InitializeFailed {
+                env_type,
+                error,
+                duration_ms,
+            } => {
+                error!(env_type, error, duration_ms, "Execution env init failed");
+            }
+            Self::CleanupStarted { env_type } => {
+                debug!(env_type, "Execution env cleanup started");
+            }
+            Self::CleanupCompleted {
+                env_type,
+                duration_ms,
+            } => {
+                debug!(env_type, duration_ms, "Execution env cleanup completed");
+            }
+            Self::CleanupFailed { env_type, error } => {
+                warn!(env_type, error, "Execution env cleanup failed");
+            }
+            Self::ImagePulling { image } => {
+                debug!(image, "Docker image pulling");
+            }
+            Self::ImagePulled { image, duration_ms } => {
+                debug!(image, duration_ms, "Docker image pulled");
+            }
+            Self::SnapshotEnsuring { name } => {
+                debug!(name, "Snapshot ensuring");
+            }
+            Self::SnapshotCreating { name } => {
+                debug!(name, "Snapshot creating");
+            }
+            Self::SnapshotReady { name, duration_ms } => {
+                info!(name, duration_ms, "Snapshot ready");
+            }
+            Self::SnapshotFailed { name, error } => {
+                error!(name, error, "Snapshot failed");
+            }
+            Self::GitCloneStarted { url, branch } => {
+                debug!(url, branch = branch.as_deref().unwrap_or(""), "Git clone started");
+            }
+            Self::GitCloneCompleted { url, duration_ms } => {
+                debug!(url, duration_ms, "Git clone completed");
+            }
+            Self::GitCloneFailed { url, error } => {
+                error!(url, error, "Git clone failed");
+            }
+        }
+    }
+}
+
 /// Callback type for execution environment events.
 pub type ExecEnvEventCallback = Arc<dyn Fn(ExecutionEnvEvent) + Send + Sync>;
 

@@ -187,6 +187,206 @@ pub enum AgentEvent {
     },
 }
 
+impl AgentEvent {
+    pub fn trace(&self, session_id: &str) {
+        use tracing::{debug, error, info, warn};
+        match self {
+            Self::SessionStarted => {
+                info!(session_id, "Agent session started");
+            }
+            Self::SessionEnded => {
+                info!(session_id, "Agent session ended");
+            }
+            Self::UserInput { text } => {
+                debug!(session_id, text_len = text.len(), "User input received");
+            }
+            Self::AssistantTextStart => {
+                debug!(session_id, "Assistant response started");
+            }
+            Self::AssistantMessage {
+                model,
+                usage,
+                tool_call_count,
+                ..
+            } => {
+                info!(
+                    session_id,
+                    model,
+                    input_tokens = usage.input_tokens,
+                    output_tokens = usage.output_tokens,
+                    tool_call_count,
+                    "Assistant message"
+                );
+            }
+            Self::TextDelta { .. } => {}
+            Self::ToolCallStarted {
+                tool_name,
+                tool_call_id,
+                ..
+            } => {
+                debug!(
+                    session_id,
+                    tool = tool_name.as_str(),
+                    tool_call_id,
+                    "Tool call started"
+                );
+            }
+            Self::ToolCallOutputDelta { .. } => {}
+            Self::ToolCallCompleted {
+                tool_name,
+                tool_call_id,
+                is_error,
+                ..
+            } => {
+                debug!(
+                    session_id,
+                    tool = tool_name.as_str(),
+                    tool_call_id,
+                    is_error,
+                    "Tool call completed"
+                );
+            }
+            Self::Error { error } => {
+                error!(session_id, error, "Agent error");
+            }
+            Self::ContextWindowWarning {
+                estimated_tokens,
+                context_window_size,
+                usage_percent,
+            } => {
+                warn!(
+                    session_id,
+                    estimated_tokens,
+                    context_window_size,
+                    usage_percent,
+                    "Context window usage high"
+                );
+            }
+            Self::LoopDetected => {
+                warn!(session_id, "Loop detected");
+            }
+            Self::TurnLimitReached { max_turns } => {
+                warn!(session_id, max_turns, "Turn limit reached");
+            }
+            Self::SkillExpanded { skill_name } => {
+                debug!(session_id, skill = skill_name.as_str(), "Skill expanded");
+            }
+            Self::SteeringInjected { text } => {
+                debug!(session_id, text_len = text.len(), "Steering injected");
+            }
+            Self::CompactionStarted {
+                estimated_tokens,
+                context_window_size,
+            } => {
+                info!(
+                    session_id,
+                    estimated_tokens,
+                    context_window_size,
+                    "Context compaction started"
+                );
+            }
+            Self::CompactionCompleted {
+                original_turn_count,
+                preserved_turn_count,
+                summary_token_estimate,
+                tracked_file_count,
+            } => {
+                info!(
+                    session_id,
+                    original_turn_count,
+                    preserved_turn_count,
+                    summary_token_estimate,
+                    tracked_file_count,
+                    "Context compaction completed"
+                );
+            }
+            Self::LlmRetry {
+                provider,
+                model,
+                attempt,
+                delay_secs,
+                error,
+            } => {
+                warn!(
+                    session_id,
+                    provider,
+                    model,
+                    attempt,
+                    delay_secs,
+                    error,
+                    "LLM request failed, retrying"
+                );
+            }
+            Self::SubAgentSpawned {
+                agent_id,
+                depth,
+                task,
+            } => {
+                debug!(
+                    session_id,
+                    agent_id,
+                    depth,
+                    task,
+                    "Sub-agent spawned"
+                );
+            }
+            Self::SubAgentCompleted {
+                agent_id,
+                depth,
+                success,
+                turns_used,
+            } => {
+                debug!(
+                    session_id,
+                    agent_id,
+                    depth,
+                    success,
+                    turns_used,
+                    "Sub-agent completed"
+                );
+            }
+            Self::SubAgentFailed {
+                agent_id,
+                depth,
+                error,
+            } => {
+                warn!(
+                    session_id,
+                    agent_id,
+                    depth,
+                    error,
+                    "Sub-agent failed"
+                );
+            }
+            Self::SubAgentClosed { agent_id, depth } => {
+                debug!(session_id, agent_id, depth, "Sub-agent closed");
+            }
+            Self::SubAgentEvent { event, .. } => {
+                event.trace(session_id);
+            }
+            Self::McpServerReady {
+                server_name,
+                tool_count,
+            } => {
+                info!(
+                    session_id,
+                    server = server_name.as_str(),
+                    tool_count,
+                    "MCP server ready"
+                );
+            }
+            Self::McpServerFailed { server_name, error } => {
+                error!(
+                    session_id,
+                    server = server_name.as_str(),
+                    error,
+                    "MCP server failed"
+                );
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionEvent {
     pub event: AgentEvent,

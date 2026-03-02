@@ -173,6 +173,259 @@ pub enum PipelineEvent {
     },
 }
 
+impl PipelineEvent {
+    pub fn trace(&self) {
+        use tracing::{debug, error, info, warn};
+        match self {
+            Self::PipelineStarted { name, run_id, .. } => {
+                info!(pipeline = name.as_str(), run_id, "Pipeline started");
+            }
+            Self::PipelineCompleted {
+                duration_ms,
+                artifact_count,
+                ..
+            } => {
+                info!(duration_ms, artifact_count, "Pipeline completed");
+            }
+            Self::PipelineFailed {
+                error, duration_ms, ..
+            } => {
+                error!(error, duration_ms, "Pipeline failed");
+            }
+            Self::StageStarted {
+                name,
+                index,
+                handler_type,
+                attempt,
+                max_attempts,
+            } => {
+                debug!(
+                    stage = name.as_str(),
+                    index,
+                    handler_type = handler_type.as_deref().unwrap_or(""),
+                    attempt,
+                    max_attempts,
+                    "Stage started"
+                );
+            }
+            Self::StageCompleted {
+                name,
+                index,
+                duration_ms,
+                status,
+                attempt,
+                max_attempts,
+                ..
+            } => {
+                debug!(
+                    stage = name.as_str(),
+                    index,
+                    duration_ms,
+                    status,
+                    attempt,
+                    max_attempts,
+                    "Stage completed"
+                );
+            }
+            Self::StageFailed {
+                name,
+                index,
+                error,
+                will_retry,
+                ..
+            } => {
+                if *will_retry {
+                    warn!(
+                        stage = name.as_str(),
+                        index,
+                        error,
+                        will_retry,
+                        "Stage failed"
+                    );
+                } else {
+                    error!(
+                        stage = name.as_str(),
+                        index,
+                        error,
+                        will_retry,
+                        "Stage failed"
+                    );
+                }
+            }
+            Self::StageRetrying {
+                name,
+                index,
+                attempt,
+                max_attempts,
+                delay_ms,
+            } => {
+                warn!(
+                    stage = name.as_str(),
+                    index,
+                    attempt,
+                    max_attempts,
+                    delay_ms,
+                    "Stage retrying"
+                );
+            }
+            Self::ParallelStarted {
+                branch_count,
+                join_policy,
+                error_policy,
+            } => {
+                debug!(
+                    branch_count,
+                    join_policy,
+                    error_policy,
+                    "Parallel execution started"
+                );
+            }
+            Self::ParallelBranchStarted { branch, index } => {
+                debug!(branch, index, "Parallel branch started");
+            }
+            Self::ParallelBranchCompleted {
+                branch,
+                index,
+                duration_ms,
+                status,
+            } => {
+                debug!(
+                    branch,
+                    index,
+                    duration_ms,
+                    status,
+                    "Parallel branch completed"
+                );
+            }
+            Self::ParallelCompleted {
+                duration_ms,
+                success_count,
+                failure_count,
+            } => {
+                debug!(
+                    duration_ms,
+                    success_count,
+                    failure_count,
+                    "Parallel execution completed"
+                );
+            }
+            Self::InterviewStarted {
+                stage,
+                question_type,
+                ..
+            } => {
+                debug!(stage, question_type, "Interview started");
+            }
+            Self::InterviewCompleted { duration_ms, .. } => {
+                debug!(duration_ms, "Interview completed");
+            }
+            Self::InterviewTimeout {
+                stage, duration_ms, ..
+            } => {
+                warn!(stage, duration_ms, "Interview timeout");
+            }
+            Self::CheckpointSaved { node_id } => {
+                debug!(node_id, "Checkpoint saved");
+            }
+            Self::GitCheckpoint {
+                run_id,
+                node_id,
+                status,
+                ..
+            } => {
+                debug!(run_id, node_id, status, "Git checkpoint");
+            }
+            Self::EdgeSelected {
+                from_node,
+                to_node,
+                label,
+                ..
+            } => {
+                debug!(
+                    from_node,
+                    to_node,
+                    label = label.as_deref().unwrap_or(""),
+                    "Edge selected"
+                );
+            }
+            Self::LoopRestart {
+                from_node,
+                to_node,
+            } => {
+                debug!(from_node, to_node, "Loop restart");
+            }
+            Self::Prompt { stage, text } => {
+                debug!(stage, text_len = text.len(), "Prompt sent");
+            }
+            Self::Agent { .. } => {}
+            Self::ExecutionEnv { .. } => {}
+            Self::ParallelEarlyTermination {
+                reason,
+                completed_count,
+                pending_count,
+            } => {
+                warn!(
+                    reason,
+                    completed_count,
+                    pending_count,
+                    "Parallel early termination"
+                );
+            }
+            Self::SubgraphStarted {
+                node_id,
+                start_node,
+            } => {
+                debug!(node_id, start_node, "Subgraph started");
+            }
+            Self::SubgraphCompleted {
+                node_id,
+                steps_executed,
+                status,
+                duration_ms,
+            } => {
+                debug!(
+                    node_id,
+                    steps_executed,
+                    status,
+                    duration_ms,
+                    "Subgraph completed"
+                );
+            }
+            Self::SetupStarted { command_count } => {
+                info!(command_count, "Setup started");
+            }
+            Self::SetupCommandStarted { command, index } => {
+                debug!(command, index, "Setup command started");
+            }
+            Self::SetupCommandCompleted {
+                command,
+                index,
+                exit_code,
+                duration_ms,
+            } => {
+                debug!(
+                    command,
+                    index,
+                    exit_code,
+                    duration_ms,
+                    "Setup command completed"
+                );
+            }
+            Self::SetupCompleted { duration_ms } => {
+                info!(duration_ms, "Setup completed");
+            }
+            Self::SetupFailed {
+                command,
+                index,
+                exit_code,
+                ..
+            } => {
+                error!(command, index, exit_code, "Setup command failed");
+            }
+        }
+    }
+}
+
 /// Listener callback type for pipeline events.
 type EventListener = Box<dyn Fn(&PipelineEvent) + Send + Sync>;
 
@@ -208,6 +461,7 @@ impl EventEmitter {
     }
 
     pub fn emit(&self, event: &PipelineEvent) {
+        event.trace();
         for listener in &self.listeners {
             listener(event);
         }

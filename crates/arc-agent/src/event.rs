@@ -15,6 +15,7 @@ impl EventEmitter {
     }
 
     pub fn emit(&self, session_id: String, event: AgentEvent) {
+        event.trace(&session_id);
         let wrapped = SessionEvent {
             event,
             timestamp: SystemTime::now(),

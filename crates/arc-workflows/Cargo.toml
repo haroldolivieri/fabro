@@ -41,6 +41,7 @@ regex.workspace = true
 scopeguard = "1"
 git2.workspace = true
 tokio-util.workspace = true
+tracing.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"

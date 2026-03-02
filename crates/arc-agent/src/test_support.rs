@@ -49,6 +49,7 @@ impl MockExecutionEnvironment {
 
 impl MockExecutionEnvironment {
     fn emit(&self, event: crate::execution_env::ExecutionEnvEvent) {
+        event.trace();
         if let Some(ref cb) = self.event_callback {
             cb(event);
         }

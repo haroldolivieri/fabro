@@ -69,6 +69,7 @@ impl Checkpoint {
     ///
     /// Returns an error if serialization or file writing fails.
     pub fn save(&self, path: &Path) -> Result<()> {
+        tracing::debug!(path = %path.display(), node = %self.current_node, "Saving checkpoint");
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| ArcError::Checkpoint(format!("serialize failed: {e}")))?;
         std::fs::write(path, json)?;
@@ -81,6 +82,7 @@ impl Checkpoint {
     ///
     /// Returns an error if the file cannot be read or deserialization fails.
     pub fn load(path: &Path) -> Result<Self> {
+        tracing::debug!(path = %path.display(), "Loading checkpoint");
         let data = std::fs::read_to_string(path)?;
         let checkpoint: Self = serde_json::from_str(&data)
             .map_err(|e| ArcError::Checkpoint(format!("deserialize failed: {e}")))?;

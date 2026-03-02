@@ -555,7 +555,14 @@ pub async fn git_checkpoint_host(
     .await
     {
         Ok(Ok(sha)) => Some(sha),
-        Ok(Err(_)) | Err(_) => None,
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "Git checkpoint commit failed");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Git checkpoint commit failed");
+            None
+        }
     }
 }
 
@@ -1007,7 +1014,7 @@ impl PipelineEngine {
                 let dot_source =
                     std::fs::read(config.logs_root.join("graph.dot")).unwrap_or_default();
                 if let Err(e) = store.init_run(&config.run_id, &manifest_bytes, &dot_source) {
-                    eprintln!("Warning: metadata branch init failed: {e}");
+                    tracing::warn!(run_id = %config.run_id, error = %e, "Metadata branch init failed");
                 }
             }
         }
@@ -1155,6 +1162,7 @@ impl PipelineEngine {
                 .or_insert(0);
             *count += 1;
             if max_node_visits > 0 && *count >= max_node_visits {
+                tracing::warn!(node = %current_node_id, visits = *count, limit = max_node_visits, "Node visit limit exceeded, pipeline stuck in cycle");
                 return Err(ArcError::Engine(format!(
                     "node \"{}\" visited {count} times (limit {max_node_visits}); pipeline is stuck in a cycle",
                     current_node_id

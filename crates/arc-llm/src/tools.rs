@@ -3,6 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
+use tracing::{debug, warn};
 
 /// Context passed to tool execute handlers (Section 5.2).
 #[derive(Clone)]
@@ -209,10 +210,12 @@ pub async fn execute_all_tools_with_repair(
                 let validated_args = match validate_tool_args(&args, &t.definition.parameters) {
                     Ok(()) => args,
                     Err(validation_error) => {
+                        debug!(tool = %call_name, "Tool call validation failed");
                         if let Some(repair_fn) = repair {
                             match repair_fn(call_clone, validation_error).await {
                                 Ok(repaired) => repaired,
                                 Err(repair_error) => {
+                                    warn!(tool = %call_name, "Tool call repair failed");
                                     return ToolResult::error(
                                         call_id,
                                         format!("Tool call validation failed and repair failed: {repair_error}"),
@@ -230,7 +233,10 @@ pub async fn execute_all_tools_with_repair(
 
                 match handler(validated_args, ctx).await {
                     Ok(result) => ToolResult::success(call_id, result),
-                    Err(err_msg) => ToolResult::error(call_id, err_msg),
+                    Err(err_msg) => {
+                        warn!(tool = %call_name, "Tool execution returned error");
+                        ToolResult::error(call_id, err_msg)
+                    }
                 }
             }
         })

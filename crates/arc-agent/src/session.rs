@@ -21,6 +21,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 use tokio_util::sync::CancellationToken;
+use tracing::debug;
 
 pub struct Session {
     id: String,
@@ -87,6 +88,7 @@ impl Session {
             self.provider_profile.provider(),
         )
         .await;
+        debug!(doc_count = self.project_docs.len(), doc_root = %doc_root, "Project docs discovered");
 
         // Discover skills
         let skill_dirs = match &self.config.skill_dirs {
@@ -97,6 +99,7 @@ impl Session {
             }
         };
         self.skills = discover_skills(self.execution_env.as_ref(), &skill_dirs).await;
+        debug!(skill_count = self.skills.len(), "Skills discovered");
 
         // Register use_skill tool when skills are available
         if !self.skills.is_empty() {
@@ -147,6 +150,11 @@ impl Session {
 
         // Populate environment context
         self.env_context = self.build_env_context().await;
+        debug!(
+            is_git_repo = self.env_context.is_git_repo,
+            model = %self.env_context.model,
+            "Environment context built"
+        );
 
         // Build system prompt once (static for the session lifetime)
         self.system_prompt = self.provider_profile.build_system_prompt(

@@ -152,6 +152,7 @@ dependencies = [
  "tokio-stream",
  "toml",
  "tower",
+ "tracing",
  "ulid",
  "uuid",
 ]
@@ -199,6 +200,7 @@ dependencies = [
  "git2",
  "tempfile",
  "thiserror 2.0.18",
+ "tracing",
  "walkdir",
 ]
 
@@ -222,6 +224,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "tracing",
  "uuid",
 ]
 

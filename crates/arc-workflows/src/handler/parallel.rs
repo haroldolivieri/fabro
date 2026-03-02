@@ -287,6 +287,7 @@ impl Handler for ParallelHandler {
                                 .join(&node.id)
                                 .join(branch_key)
                                 .join("worktree");
+                            tracing::debug!(branch = %branch_name, path = %wt_path.display(), "Creating worktree for parallel branch");
                             let wd = work_dir.clone();
                             let bn = branch_name.clone();
                             let bs = bsha.clone();

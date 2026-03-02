@@ -1,6 +1,7 @@
 use crate::error::SdkError;
 use crate::types::RetryPolicy;
 use std::future::Future;
+use tracing::warn;
 
 /// Retry a fallible async operation according to the given policy (Section 6.6).
 ///
@@ -35,6 +36,13 @@ where
                 } else {
                     policy.delay_for_attempt(attempt)
                 };
+
+                warn!(
+                    attempt = attempt,
+                    delay_secs = delay,
+                    error = %err,
+                    "LLM request failed, retrying"
+                );
 
                 if let Some(ref on_retry) = policy.on_retry {
                     on_retry(&err, attempt, delay);

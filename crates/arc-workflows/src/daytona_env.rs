@@ -316,6 +316,7 @@ impl ExecutionEnvironment for DaytonaExecutionEnvironment {
             })
         };
 
+        tracing::info!("Creating Daytona sandbox");
         let sandbox = self
             .client
             .create(params, daytona_sdk::CreateSandboxOptions::default())
@@ -424,7 +425,7 @@ impl ExecutionEnvironment for DaytonaExecutionEnvironment {
                 }
             }
             Err(e) => {
-                eprintln!("Warning: could not detect git repo for Daytona clone: {e}");
+                tracing::warn!(error = %e, "Could not detect git repo for Daytona clone");
                 // Create working directory even without a repo
                 let fs_svc = sandbox
                     .fs()
@@ -440,6 +441,7 @@ impl ExecutionEnvironment for DaytonaExecutionEnvironment {
         self.sandbox
             .set(sandbox)
             .map_err(|_| "Daytona sandbox already initialized".to_string())?;
+        tracing::info!("Daytona sandbox ready");
 
         let init_duration = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.emit(ExecutionEnvEvent::Ready {
@@ -456,6 +458,7 @@ impl ExecutionEnvironment for DaytonaExecutionEnvironment {
         });
         let start = Instant::now();
         if let Some(sandbox) = self.sandbox.get() {
+            tracing::info!("Destroying Daytona sandbox");
             if let Err(e) = sandbox.delete().await {
                 let err = format!("Failed to delete Daytona sandbox: {e}");
                 self.emit(ExecutionEnvEvent::CleanupFailed {

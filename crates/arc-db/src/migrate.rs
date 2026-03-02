@@ -1,4 +1,5 @@
 use sqlx::SqlitePool;
+use tracing::{debug, info};
 
 const CURRENT_VERSION: i64 = 1;
 
@@ -14,6 +15,7 @@ pub async fn initialize_db(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let from_version = row.0;
 
     if from_version < CURRENT_VERSION {
+        info!(from_version = from_version, to_version = CURRENT_VERSION, "Running database migrations");
         let mut tx = pool.begin().await?;
 
         if from_version < 1 {
@@ -25,6 +27,9 @@ pub async fn initialize_db(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             .await?;
 
         tx.commit().await?;
+        info!(version = CURRENT_VERSION, "Database migrations complete");
+    } else {
+        debug!(version = from_version, "Database already at current version");
     }
 
     Ok(())

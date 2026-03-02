@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use git2::{Oid, Signature};
+use tracing::{debug, warn};
 
 use crate::gitobj::{FileMode, Store, TreeEntries};
 use crate::Result;
@@ -60,6 +61,7 @@ impl<'a> SnapshotStore<'a> {
 
     /// Write a snapshot to a branch.
     pub fn write(&self, opts: &WriteOptions<'_>) -> Result<WriteResult> {
+        debug!(branch = %opts.branch, "Writing snapshot");
         // 1. Resolve existing branch tip or use base_tree
         let (base_tree_oid, parent_oid) = match self.objects.resolve_ref(&opts.branch)? {
             Some(commit_oid) => {
@@ -84,6 +86,7 @@ impl<'a> SnapshotStore<'a> {
                 }
                 Err(crate::Error::ReadFile { .. }) => {
                     // File disappeared since detection — treat as deleted
+                    warn!(path = %path, "File disappeared since detection, treating as deleted");
                     entries.remove(path);
                 }
                 Err(e) => return Err(e),
@@ -109,6 +112,7 @@ impl<'a> SnapshotStore<'a> {
             if let Some(parent) = parent_oid {
                 let parent_commit = self.objects.repo().find_commit(parent)?;
                 if parent_commit.tree_id() == new_tree_oid {
+                    debug!(branch = %opts.branch, "Snapshot skipped (tree unchanged)");
                     return Ok(WriteResult {
                         commit_oid: parent,
                         tree_oid: new_tree_oid,
@@ -126,6 +130,7 @@ impl<'a> SnapshotStore<'a> {
 
         // 9. Update ref
         self.objects.update_ref(&opts.branch, commit_oid)?;
+        debug!(branch = %opts.branch, commit = %commit_oid, "Snapshot written");
 
         Ok(WriteResult {
             commit_oid,
@@ -197,11 +202,13 @@ impl<'a> SnapshotStore<'a> {
 
     /// Delete a snapshot branch.
     pub fn delete(&self, branch: &str) -> Result<()> {
+        debug!(branch = %branch, "Deleting snapshot branch");
         self.objects.delete_ref(branch)
     }
 
     /// Rename a snapshot branch.
     pub fn rename(&self, old: &str, new: &str) -> Result<()> {
+        debug!(old = %old, new = %new, "Renaming snapshot branch");
         let oid = self
             .objects
             .resolve_ref(old)?

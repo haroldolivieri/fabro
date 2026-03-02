@@ -79,21 +79,32 @@ impl ClientHandler for LoggingClientHandler {
         _context: NotificationContext<RoleClient>,
     ) {
         let logger = params.logger.as_deref();
+        let data_str = params.data.to_string();
+        let truncated: &str = if data_str.len() > 200 {
+            // Safety: find a char boundary at or before 200 bytes
+            let end = (0..=200)
+                .rev()
+                .find(|&i| data_str.is_char_boundary(i))
+                .unwrap_or(0);
+            &data_str[..end]
+        } else {
+            &data_str
+        };
         match params.level {
             LoggingLevel::Emergency
             | LoggingLevel::Alert
             | LoggingLevel::Critical
             | LoggingLevel::Error => {
-                error!(level = ?params.level, ?logger, data = %params.data, "MCP server log");
+                error!(level = ?params.level, ?logger, data = %truncated, "MCP server log");
             }
             LoggingLevel::Warning => {
-                warn!(level = ?params.level, ?logger, data = %params.data, "MCP server log");
+                warn!(level = ?params.level, ?logger, data = %truncated, "MCP server log");
             }
             LoggingLevel::Notice | LoggingLevel::Info => {
-                info!(level = ?params.level, ?logger, data = %params.data, "MCP server log");
+                info!(level = ?params.level, ?logger, data = %truncated, "MCP server log");
             }
             LoggingLevel::Debug => {
-                debug!(level = ?params.level, ?logger, data = %params.data, "MCP server log");
+                debug!(level = ?params.level, ?logger, data = %truncated, "MCP server log");
             }
         }
     }

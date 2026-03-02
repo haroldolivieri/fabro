@@ -13,6 +13,8 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
+use tracing::{error, info};
+
 use arc_agent::LocalExecutionEnvironment;
 
 use crate::jwt_auth::{AuthMode, AuthenticatedService};
@@ -186,6 +188,7 @@ async fn start_pipeline(
     };
 
     let run_id = ulid::Ulid::new().to_string();
+    info!(run_id = %run_id, "Pipeline started");
     let interviewer = Arc::new(WebInterviewer::new());
     let (event_tx, _) = broadcast::channel(256);
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
@@ -289,12 +292,15 @@ async fn start_pipeline(
         if let Some(pipeline) = pipelines.get_mut(&run_id_clone) {
             match result {
                 Ok(_) => {
+                    info!(run_id = %run_id_clone, "Pipeline completed");
                     pipeline.status = PipelineStatus::Completed;
                 }
                 Err(arc_workflows::error::ArcError::Cancelled) => {
+                    info!(run_id = %run_id_clone, "Pipeline cancelled");
                     pipeline.status = PipelineStatus::Cancelled;
                 }
                 Err(e) => {
+                    error!(run_id = %run_id_clone, error = %e, "Pipeline failed");
                     pipeline.status = PipelineStatus::Failed;
                     pipeline.error = Some(e.to_string());
                 }

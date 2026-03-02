@@ -5,6 +5,7 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
+use tracing::warn;
 
 /// JWT claims for service-to-service authentication.
 #[derive(Debug, Deserialize)]
@@ -39,7 +40,7 @@ pub fn resolve_auth_mode() -> AuthMode {
         .as_deref()
         == Some("true")
     {
-        eprintln!("WARNING: JWT authentication is disabled. Do not use this in production.");
+        warn!("JWT authentication disabled");
         AuthMode::Disabled
     } else {
         panic!(

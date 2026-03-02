@@ -109,14 +109,11 @@ impl McpConnectionManager {
         for config in configs {
             match self.start_one_server(config).await {
                 Ok(tool_count) => {
-                    info!(
-                        "MCP server '{}' ready with {} tools",
-                        config.name, tool_count
-                    );
+                    info!(server = %config.name, tools = tool_count, "MCP server ready");
                     results.push((config.name.clone(), Ok(tool_count)));
                 }
                 Err(e) => {
-                    error!("MCP server '{}' failed to start: {}", config.name, e);
+                    error!(server = %config.name, error = %e, "MCP server failed to start");
                     results.push((config.name.clone(), Err(e)));
                 }
             }

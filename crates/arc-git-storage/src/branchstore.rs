@@ -1,4 +1,5 @@
 use git2::{Oid, Signature};
+use tracing::{debug, warn};
 
 use crate::gitobj::{FileMode, Store, TreeEntries};
 use crate::Result;
@@ -46,6 +47,7 @@ impl<'a> BranchStore<'a> {
             self.objects
                 .write_commit(empty_tree, &[], "initialize branch", &self.author)?;
         self.objects.update_ref(&self.branch, commit_oid)?;
+        debug!(branch = %self.branch, "Created git storage branch");
         Ok(())
     }
 
@@ -56,6 +58,7 @@ impl<'a> BranchStore<'a> {
         f: impl FnOnce(&mut TreeEntries) -> Result<()>,
     ) -> Result<Oid> {
         let parent_oid = self.objects.resolve_ref(&self.branch)?.ok_or_else(|| {
+            warn!(branch = %self.branch, "Branch not found during write");
             crate::Error::BranchNotFound {
                 branch: self.branch.clone(),
             }
@@ -71,6 +74,7 @@ impl<'a> BranchStore<'a> {
             self.objects
                 .write_commit(new_tree, &[parent_oid], message, &self.author)?;
         self.objects.update_ref(&self.branch, commit_oid)?;
+        debug!(branch = %self.branch, commit = %commit_oid, "Wrote git storage commit");
         Ok(commit_oid)
     }
 

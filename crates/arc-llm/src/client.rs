@@ -5,6 +5,7 @@ use crate::providers;
 use crate::types::{Request, Response};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::debug;
 
 /// The core client that routes requests to provider adapters (Section 2.2, 3).
 #[derive(Clone)]
@@ -98,6 +99,12 @@ impl Client {
             client.register_provider(Arc::new(adapter)).await?;
         }
 
+        debug!(
+            providers = ?client.provider_names(),
+            default = ?client.default_provider(),
+            "LLM client initialized from environment"
+        );
+
         Ok(client)
     }
 
@@ -115,7 +122,8 @@ impl Client {
         if self.default_provider.is_none() {
             self.default_provider = Some(name.clone());
         }
-        self.providers.insert(name, adapter);
+        self.providers.insert(name.clone(), adapter);
+        debug!(provider = %name, "Provider registered");
         Ok(())
     }
 

@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
+use tracing::{debug, warn};
 
 /// Module-level default client (Section 2.5).
 static DEFAULT_CLIENT: OnceCell<Arc<Client>> = OnceCell::const_new();
@@ -129,6 +130,7 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
         loop {
             if let Some(ref token) = abort_signal {
                 if token.is_cancelled() {
+                    warn!("Generation aborted by cancellation token");
                     return Err(SdkError::Abort {
                         message: "Generation aborted by cancellation token".into(),
                     });
@@ -136,6 +138,14 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
             }
 
             let request = build_request(&params, &messages, tool_definitions.as_deref());
+
+            debug!(
+                model = %params.model,
+                provider = ?params.provider,
+                messages = messages.len(),
+                tools = tool_definitions.as_ref().map_or(0, |t| t.len()),
+                "Sending LLM request"
+            );
 
             let client_ref = client.clone();
             let response = if let Some(per_step) = params.timeout.as_ref().and_then(|t| t.per_step)
@@ -150,8 +160,11 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
                     }),
                 )
                 .await
-                .map_err(|_| SdkError::RequestTimeout {
-                    message: format!("Per-step timeout of {per_step}s exceeded"),
+                .map_err(|_| {
+                    warn!(timeout_secs = per_step, "Per-step timeout exceeded");
+                    SdkError::RequestTimeout {
+                        message: format!("Per-step timeout of {per_step}s exceeded"),
+                    }
                 })?
             } else {
                 retry(&retry_policy, || {
@@ -162,6 +175,15 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
                 .await
             }?;
 
+            debug!(
+                model = %response.model,
+                provider = %response.provider,
+                input_tokens = response.usage.input_tokens,
+                output_tokens = response.usage.output_tokens,
+                finish_reason = ?response.finish_reason,
+                "LLM response received"
+            );
+
             let tool_calls = response.tool_calls();
             let mut tool_results = Vec::new();
 
@@ -170,6 +192,7 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
                 && params.tools.is_some()
                 && max_tool_rounds > 0
             {
+                debug!(tool_calls = tool_calls.len(), round = round, "Executing tool calls");
                 let tools = params.tools.as_ref().expect("checked above");
                 if tools.iter().any(|t| t.is_active()) {
                     let tool_refs: Vec<&Tool> =
@@ -231,8 +254,11 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
         let duration = std::time::Duration::from_secs_f64(total);
         tokio::time::timeout(duration, generate_future)
             .await
-            .map_err(|_| SdkError::RequestTimeout {
-                message: format!("Total timeout of {total}s exceeded"),
+            .map_err(|_| {
+                warn!(timeout_secs = total, "Total generation timeout exceeded");
+                SdkError::RequestTimeout {
+                    message: format!("Total timeout of {total}s exceeded"),
+                }
             })?
     } else {
         generate_future.await
@@ -473,6 +499,12 @@ impl StreamAccumulator {
                 self.finish_reason = Some(finish_reason.clone());
                 self.usage = Some(usage.clone());
                 self.response = Some(*response.clone());
+                debug!(
+                    model = %response.model,
+                    input_tokens = response.usage.input_tokens,
+                    output_tokens = response.usage.output_tokens,
+                    "LLM stream complete"
+                );
             }
             _ => {}
         }
@@ -607,6 +639,8 @@ async fn stream_with_tool_loop(params: GenerateParams) -> Result<StreamEventStre
             .tools
             .as_ref()
             .is_some_and(|tools| tools.iter().any(|t| t.is_active()));
+
+    debug!(model = %params.model, "Starting LLM stream");
 
     if !has_active_tools {
         // No tool loop needed, just stream directly

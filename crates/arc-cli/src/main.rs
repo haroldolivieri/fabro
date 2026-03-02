@@ -2,6 +2,7 @@ mod logging;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use tracing::debug;
 
 #[derive(Parser)]
 #[command(name = "arc", version)]
@@ -52,6 +53,15 @@ async fn main() -> Result<()> {
     if let Err(err) = logging::init_tracing() {
         eprintln!("Warning: failed to initialize logging: {err:#}");
     }
+
+    let command_name = match &cli.command {
+        Command::Llm { .. } => "llm",
+        Command::Agent(_) => "agent",
+        Command::Run(_) => "run",
+        Command::Validate(_) => "validate",
+        Command::Serve(_) => "serve",
+    };
+    debug!(command = %command_name, "CLI command started");
 
     match cli.command {
         Command::Llm { command } => match command {

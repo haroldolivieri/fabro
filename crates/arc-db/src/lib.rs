@@ -6,12 +6,14 @@ use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::SqlitePool;
+use tracing::debug;
 
 pub use migrate::initialize_db;
 pub use workflow_run::WorkflowRun;
 
 /// Connect to a SQLite database at the given path, creating it if it doesn't exist.
 pub async fn connect(path: &Path) -> Result<SqlitePool, sqlx::Error> {
+    debug!(path = %path.display(), "Connecting to SQLite database");
     let options = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(true)

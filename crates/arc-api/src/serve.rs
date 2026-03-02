@@ -3,6 +3,7 @@ use std::sync::Arc;
 use arc_llm::provider::Provider;
 use arc_util::terminal::Styles;
 use tokio::net::TcpListener;
+use tracing::info;
 
 use clap::Args;
 
@@ -122,6 +123,8 @@ pub async fn serve_command(args: ServeArgs, styles: &'static Styles) -> anyhow::
 
     let addr = format!("{}:{}", args.host, args.port);
     let listener = TcpListener::bind(&addr).await?;
+
+    info!(host = %args.host, port = args.port, dry_run = dry_run_mode, "API server started");
 
     eprintln!(
         "{bold}Arc server listening on {green}{addr}{reset}",

@@ -2,6 +2,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 
 use crate::error::{error_from_status_code, SdkError};
 use crate::types::{Message, RateLimitInfo, Role};
+use tracing::warn;
 
 /// Parse an error response body, extracting the message and error code.
 ///
@@ -163,10 +164,12 @@ pub async fn send_and_read_response(
 ) -> Result<(String, reqwest::header::HeaderMap), SdkError> {
     let http_resp = request.send().await.map_err(|e| {
         if e.is_timeout() {
+            warn!(provider = %provider, error = %e, "Provider request timed out");
             SdkError::RequestTimeout {
                 message: format!("{provider}: {e}"),
             }
         } else {
+            warn!(provider = %provider, error = %e, "Provider network error");
             SdkError::Network {
                 message: e.to_string(),
             }
@@ -181,6 +184,7 @@ pub async fn send_and_read_response(
     })?;
 
     if !status.is_success() {
+        warn!(provider = %provider, status = status.as_u16(), "Provider returned error");
         let (msg, code, raw) = parse_error_body(&body, error_code_field);
         return Err(error_from_status_code(
             status.as_u16(),
@@ -254,6 +258,7 @@ impl LineReader {
                     });
                 }
                 Err(_) => {
+                    warn!("Stream read timed out waiting for next event");
                     return Err(SdkError::Stream {
                         message: "stream read timed out waiting for next event".to_string(),
                     });

@@ -23,6 +23,7 @@ fn git_cmd(dir: &Path) -> Command {
 
 /// Assert the working directory is a clean git repo (no uncommitted changes).
 pub fn ensure_clean(repo: &Path) -> Result<()> {
+    tracing::debug!(path = %repo.display(), "Checking git cleanliness");
     let output = git_cmd(repo)
         .args(["status", "--porcelain"])
         .output()
@@ -144,6 +145,7 @@ pub fn checkpoint_commit(
     completed_count: usize,
     shadow_sha: Option<&str>,
 ) -> Result<String> {
+    tracing::debug!(path = %work_dir.display(), node_id, "Creating git checkpoint commit");
     // Stage everything
     let output = git_cmd(work_dir)
         .args(["add", "-A"])
@@ -202,6 +204,7 @@ pub fn checkpoint_commit(
 /// Compute the diff between a base commit and HEAD.
 /// Returns the patch text (may be empty if no changes).
 pub fn diff_against(work_dir: &Path, base: &str) -> Result<String> {
+    tracing::debug!(path = %work_dir.display(), "Computing git diff");
     let output = git_cmd(work_dir)
         .args(["diff", base, "HEAD"])
         .output()

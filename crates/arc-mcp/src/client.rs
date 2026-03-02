@@ -10,7 +10,7 @@ use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig
 use rmcp::transport::StreamableHttpClientTransport;
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{debug, error, info, warn};
 
 use crate::client_handler::LoggingClientHandler;
 use crate::config::{McpServerConfig, McpTransport};
@@ -81,6 +81,12 @@ impl McpClient {
             }
         };
 
+        let transport_type = match &transport {
+            PendingTransport::Stdio(_) => "stdio",
+            PendingTransport::Http(_) => "http",
+        };
+        debug!(server = %config.name, transport = transport_type, "Creating MCP client");
+
         Ok(Self {
             server_name: config.name.clone(),
             state: Mutex::new(ClientState::Connecting(Some(transport))),
@@ -103,6 +109,8 @@ impl McpClient {
             // Drop the lock before the blocking handshake
             drop(guard);
 
+            debug!(server = %self.server_name, "Starting MCP server handshake");
+
             let handshake = async {
                 match transport {
                     PendingTransport::Stdio(t) => {
@@ -117,6 +125,7 @@ impl McpClient {
             let service = tokio::time::timeout(timeout, handshake)
                 .await
                 .map_err(|_| {
+                    error!(server = %self.server_name, timeout_secs = timeout.as_secs(), "MCP server handshake timed out");
                     anyhow!(
                         "timed out initializing MCP server '{}' after {:?}",
                         self.server_name,
@@ -124,6 +133,7 @@ impl McpClient {
                     )
                 })?
                 .map_err(|e| {
+                    error!(server = %self.server_name, error = %e, "MCP server handshake failed");
                     anyhow!(
                         "failed to initialize MCP server '{}': {}",
                         self.server_name,
@@ -161,7 +171,7 @@ impl McpClient {
             )
         })?;
 
-        let tools = result
+        let tools: Vec<_> = result
             .into_iter()
             .map(|tool| {
                 let name = tool.name.to_string();
@@ -170,6 +180,8 @@ impl McpClient {
                 (name, description, input_schema)
             })
             .collect();
+
+        debug!(server = %self.server_name, tool_count = tools.len(), "Listed MCP server tools");
 
         Ok(tools)
     }
@@ -201,9 +213,12 @@ impl McpClient {
             task: None,
         };
 
+        debug!(server = %self.server_name, tool = %name, "Calling MCP tool");
+
         let result = tokio::time::timeout(timeout, service.call_tool(params))
             .await
             .map_err(|_| {
+                warn!(server = %self.server_name, tool = %name, timeout_secs = timeout.as_secs(), "MCP tool call timed out");
                 anyhow!(
                     "timed out calling tool '{}' on MCP server '{}' after {:?}",
                     name,

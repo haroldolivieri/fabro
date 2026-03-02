@@ -106,7 +106,7 @@ async fn list_pipelines(
         .iter()
         .map(|(id, pipeline)| PipelineStatusResponse {
             id: id.clone(),
-            status: pipeline.status.clone(),
+            status: pipeline.status,
             error: pipeline.error.clone(),
         })
         .collect();
@@ -273,7 +273,7 @@ async fn get_pipeline_status(
             StatusCode::OK,
             Json(PipelineStatusResponse {
                 id: id.clone(),
-                status: pipeline.status.clone(),
+                status: pipeline.status,
                 error: pipeline.error.clone(),
             }),
         )

@@ -6,12 +6,12 @@ fn arc() -> Command {
     Command::cargo_bin("arc").unwrap()
 }
 
-// == LLM: models ==============================================================
+// == Models ===================================================================
 
 #[test]
 fn models_list_prints_all_models() {
     arc()
-        .args(["llm", "models", "list"])
+        .args(["models", "list"])
         .assert()
         .success()
         .stdout(predicate::str::contains("claude-opus-4-6"))
@@ -26,7 +26,7 @@ fn models_list_prints_all_models() {
 #[test]
 fn models_list_filters_by_provider() {
     let assert = arc()
-        .args(["llm", "models", "list", "--provider", "anthropic"])
+        .args(["models", "list", "--provider", "anthropic"])
         .assert()
         .success()
         .stdout(predicate::str::contains("claude-opus-4-6"))
@@ -41,7 +41,7 @@ fn models_list_filters_by_provider() {
 #[test]
 fn models_list_filters_by_query() {
     arc()
-        .args(["llm", "models", "list", "--query", "opus"])
+        .args(["models", "list", "--query", "opus"])
         .assert()
         .success()
         .stdout(predicate::str::contains("claude-opus-4-6"))
@@ -51,7 +51,7 @@ fn models_list_filters_by_query() {
 #[test]
 fn models_list_query_is_case_insensitive() {
     arc()
-        .args(["llm", "models", "list", "--query", "OPUS"])
+        .args(["models", "list", "--query", "OPUS"])
         .assert()
         .success()
         .stdout(predicate::str::contains("claude-opus-4-6"));
@@ -60,7 +60,7 @@ fn models_list_query_is_case_insensitive() {
 #[test]
 fn models_list_query_matches_aliases() {
     arc()
-        .args(["llm", "models", "list", "--query", "codex"])
+        .args(["models", "list", "--query", "codex"])
         .assert()
         .success()
         .stdout(predicate::str::contains("gpt-5.2-codex"));
@@ -69,103 +69,12 @@ fn models_list_query_matches_aliases() {
 #[test]
 fn models_bare_defaults_to_list() {
     arc()
-        .args(["llm", "models"])
+        .args(["models"])
         .assert()
         .success()
         .stdout(predicate::str::contains("claude-opus-4-6"))
         .stdout(predicate::str::contains("gpt-5.2"))
         .stdout(predicate::str::contains("gemini-3.1-pro-preview"));
-}
-
-#[test]
-fn models_sync_downloads_and_saves() {
-    let server = httpmock::MockServer::start();
-    let mock_response = serde_json::json!({
-        "data": [{"id": "test-model", "name": "Test Model"}]
-    });
-    server.mock(|when, then| {
-        when.method("GET").path("/api/v1/models");
-        then.status(200)
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&mock_response).unwrap());
-    });
-
-    let dir = tempfile::tempdir().unwrap();
-    let output_path = dir.path().join("models.json");
-
-    arc()
-        .args([
-            "llm",
-            "models",
-            "sync",
-            "--url",
-            &server.url("/api/v1/models"),
-            "--output",
-            output_path.to_str().unwrap(),
-        ])
-        .assert()
-        .success()
-        .stderr(predicate::str::contains("Saved models to"));
-
-    let contents = std::fs::read_to_string(&output_path).unwrap();
-    let expected = serde_json::to_string_pretty(&mock_response).unwrap();
-    assert_eq!(contents, expected);
-}
-
-#[test]
-fn models_sync_reports_http_errors() {
-    let server = httpmock::MockServer::start();
-    server.mock(|when, then| {
-        when.method("GET").path("/api/v1/models");
-        then.status(500);
-    });
-
-    let dir = tempfile::tempdir().unwrap();
-    let output_path = dir.path().join("models.json");
-
-    arc()
-        .args([
-            "llm",
-            "models",
-            "sync",
-            "--url",
-            &server.url("/api/v1/models"),
-            "--output",
-            output_path.to_str().unwrap(),
-        ])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
-}
-
-#[test]
-#[ignore = "requires network"]
-fn models_sync_integration_smoke_test() {
-    let dir = tempfile::tempdir().unwrap();
-    let output_path = dir.path().join("models.json");
-
-    arc()
-        .args([
-            "llm",
-            "models",
-            "sync",
-            "--output",
-            output_path.to_str().unwrap(),
-        ])
-        .assert()
-        .success();
-
-    let contents = std::fs::read_to_string(&output_path).unwrap();
-    assert!(contents.contains("\"data\""));
-}
-
-#[test]
-fn models_sync_help_mentions_openrouter() {
-    arc()
-        .args(["llm", "models", "sync", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("openrouter").or(predicate::str::contains("OpenRouter")));
 }
 
 // == LLM: prompt ==============================================================
@@ -468,6 +377,7 @@ fn dry_run_simple() {
     arc()
         .args([
             "run",
+            "start",
             "--dry-run",
             "--auto-approve",
             "../../test/simple.dot",
@@ -481,6 +391,7 @@ fn dry_run_branching() {
     arc()
         .args([
             "run",
+            "start",
             "--dry-run",
             "--auto-approve",
             "../../test/branching.dot",
@@ -494,6 +405,7 @@ fn dry_run_conditions() {
     arc()
         .args([
             "run",
+            "start",
             "--dry-run",
             "--auto-approve",
             "../../test/conditions.dot",
@@ -507,6 +419,7 @@ fn dry_run_parallel() {
     arc()
         .args([
             "run",
+            "start",
             "--dry-run",
             "--auto-approve",
             "../../test/parallel.dot",
@@ -520,6 +433,7 @@ fn dry_run_styled() {
     arc()
         .args([
             "run",
+            "start",
             "--dry-run",
             "--auto-approve",
             "../../test/styled.dot",
@@ -533,6 +447,7 @@ fn dry_run_legacy_tool() {
     arc()
         .args([
             "run",
+            "start",
             "--dry-run",
             "--auto-approve",
             "../../test/legacy_tool.dot",
@@ -551,6 +466,7 @@ fn dry_run_writes_ndjson_and_live_json() {
     arc()
         .args([
             "run",
+            "start",
             "--dry-run",
             "--auto-approve",
             "--logs-dir",

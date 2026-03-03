@@ -3,9 +3,9 @@
   "theme": "almond",
   "name": "Arc",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#357F9E",
+    "light": "#67B2D7",
+    "dark": "#357F9E"
   },
   "favicon": "/favicon.svg",
   "navigation": {
@@ -40,8 +40,7 @@
               "workflows/transitions",
               "workflows/variables",
               "workflows/human-in-the-loop",
-              "workflows/stylesheets",
-              "workflows/best-practices"
+              "workflows/stylesheets"
             ]
           },
           {
@@ -102,6 +101,13 @@
       {
         "tab": "Guides",
         "groups": [
+          {
+            "group": "Best Practices",
+            "icon": "star",
+            "pages": [
+              "workflows/best-practices"
+            ]
+          },
           {
             "group": "Example Workflows",
             "icon": "flask",

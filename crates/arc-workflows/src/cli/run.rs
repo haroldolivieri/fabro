@@ -269,8 +269,9 @@ pub async fn run_command(
 
     if args.verbose {
         eprintln!(
-            "{}",
-            styles.dim.apply_to(format!("Logs: {}", logs_dir.display())),
+            "{} {}",
+            styles.dim.apply_to("Logs:"),
+            styles.underline.apply_to(logs_dir.display()),
         );
     }
 
@@ -711,8 +712,8 @@ pub async fn run_command(
 
     let status_str = outcome.status.to_string().to_uppercase();
     let status_color = match outcome.status {
-        StageStatus::Success | StageStatus::PartialSuccess => &styles.green,
-        _ => &styles.red,
+        StageStatus::Success | StageStatus::PartialSuccess => &styles.bold_green,
+        _ => &styles.bold_red,
     };
     eprintln!(
         "Status: {}",
@@ -764,8 +765,9 @@ pub async fn run_command(
         );
     }
     eprintln!(
-        "{}",
-        styles.dim.apply_to(format!("Logs: {}", logs_dir.display())),
+        "{} {}",
+        styles.dim.apply_to("Logs:"),
+        styles.underline.apply_to(logs_dir.display()),
     );
 
     // 9. Exit code
@@ -1034,8 +1036,8 @@ async fn run_from_branch(
     );
     let status_str = outcome.status.to_string().to_uppercase();
     let status_color = match outcome.status {
-        StageStatus::Success | StageStatus::PartialSuccess => &styles.green,
-        _ => &styles.red,
+        StageStatus::Success | StageStatus::PartialSuccess => &styles.bold_green,
+        _ => &styles.bold_red,
     };
     eprintln!(
         "Status: {}",
@@ -1046,8 +1048,9 @@ async fn run_from_branch(
         super::format_duration_human(run_duration_ms)
     );
     eprintln!(
-        "{}",
-        styles.dim.apply_to(format!("Logs: {}", logs_dir.display())),
+        "{} {}",
+        styles.dim.apply_to("Logs:"),
+        styles.underline.apply_to(logs_dir.display()),
     );
 
     match outcome.status {
@@ -1192,13 +1195,13 @@ async fn run_preflight(
     if ok {
         eprintln!(
             "\n{}",
-            styles.green.apply_to("Preflight: OK"),
+            styles.bold_green.apply_to("Preflight: OK"),
         );
         Ok(())
     } else {
         eprintln!(
             "\n{}",
-            styles.red.apply_to("Preflight: FAIL"),
+            styles.bold_red.apply_to("Preflight: FAIL"),
         );
         std::process::exit(1);
     }
@@ -1273,8 +1276,9 @@ async fn generate_retro(
             match retro.save(logs_dir) {
                 Ok(()) => {
                     eprintln!(
-                        "{}",
-                        styles.dim.apply_to(format!("Retro saved to {}/retro.json", logs_dir.display())),
+                        "{} {}",
+                        styles.dim.apply_to("Retro saved to"),
+                        styles.underline.apply_to(format!("{}/retro.json", logs_dir.display())),
                     );
                 }
                 Err(e) => {

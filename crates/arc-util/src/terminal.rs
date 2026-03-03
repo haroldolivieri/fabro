@@ -9,8 +9,12 @@ pub struct Styles {
     pub green: Style,
     pub yellow: Style,
     pub red: Style,
+    pub magenta: Style,
+    pub underline: Style,
     pub bold_dim: Style,
     pub bold_cyan: Style,
+    pub bold_green: Style,
+    pub bold_red: Style,
 }
 
 impl Styles {
@@ -23,8 +27,12 @@ impl Styles {
             green: Style::new().green().force_styling(use_color),
             yellow: Style::new().yellow().force_styling(use_color),
             red: Style::new().red().force_styling(use_color),
+            magenta: Style::new().magenta().force_styling(use_color),
+            underline: Style::new().underlined().force_styling(use_color),
             bold_dim: Style::new().bold().dim().force_styling(use_color),
             bold_cyan: Style::new().bold().cyan().force_styling(use_color),
+            bold_green: Style::new().bold().green().force_styling(use_color),
+            bold_red: Style::new().bold().red().force_styling(use_color),
         }
     }
 
@@ -68,6 +76,8 @@ mod tests {
         assert_eq!(format!("{}", s.green.apply_to("text")), "text");
         assert_eq!(format!("{}", s.yellow.apply_to("text")), "text");
         assert_eq!(format!("{}", s.red.apply_to("text")), "text");
+        assert_eq!(format!("{}", s.magenta.apply_to("text")), "text");
+        assert_eq!(format!("{}", s.underline.apply_to("text")), "text");
     }
 
     #[test]
@@ -80,6 +90,22 @@ mod tests {
         let output = format!("{}", s.bold_cyan.apply_to("tool"));
         assert!(output.contains("\x1b["), "bold_cyan should contain ANSI codes");
         assert!(output.contains("tool"));
+
+        let output = format!("{}", s.bold_green.apply_to("pass"));
+        assert!(output.contains("\x1b["), "bold_green should contain ANSI codes");
+        assert!(output.contains("pass"));
+
+        let output = format!("{}", s.bold_red.apply_to("fail"));
+        assert!(output.contains("\x1b["), "bold_red should contain ANSI codes");
+        assert!(output.contains("fail"));
+
+        let output = format!("{}", s.magenta.apply_to("medium"));
+        assert!(output.contains("\x1b["), "magenta should contain ANSI codes");
+        assert!(output.contains("medium"));
+
+        let output = format!("{}", s.underline.apply_to("path"));
+        assert!(output.contains("\x1b["), "underline should contain ANSI codes");
+        assert!(output.contains("path"));
     }
 
     #[test]

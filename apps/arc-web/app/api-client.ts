@@ -3,6 +3,11 @@ import { getAppConfig } from "./lib/config.server";
 
 const ARC_JWT_PRIVATE_KEY = process.env.ARC_JWT_PRIVATE_KEY;
 
+function decodePemEnv(value: string): string {
+  if (value.startsWith("-----")) return value;
+  return Buffer.from(value, "base64").toString("utf-8");
+}
+
 let cachedKey: CryptoKey | null = null;
 
 async function getSigningKey(): Promise<CryptoKey> {
@@ -10,7 +15,7 @@ async function getSigningKey(): Promise<CryptoKey> {
   if (!ARC_JWT_PRIVATE_KEY) {
     throw new Error("ARC_JWT_PRIVATE_KEY environment variable is not set");
   }
-  cachedKey = await importPKCS8(ARC_JWT_PRIVATE_KEY, "EdDSA");
+  cachedKey = await importPKCS8(decodePemEnv(ARC_JWT_PRIVATE_KEY), "EdDSA");
   return cachedKey;
 }
 

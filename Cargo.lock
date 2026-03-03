@@ -141,6 +141,7 @@ dependencies = [
  "arc-util",
  "arc-workflows",
  "axum",
+ "base64",
  "clap",
  "dirs",
  "http-body-util",

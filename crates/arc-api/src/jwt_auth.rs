@@ -26,6 +26,16 @@ pub enum AuthMode {
     Disabled,
 }
 
+/// Decode a PEM env var that may be raw PEM or base64-encoded PEM.
+fn decode_pem_env(name: &str, value: &str) -> String {
+    if value.starts_with("-----") {
+        return value.to_string();
+    }
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, value)
+        .unwrap_or_else(|e| panic!("{name} is not valid PEM or base64: {e}"));
+    String::from_utf8(bytes).unwrap_or_else(|e| panic!("{name} base64 decoded to invalid UTF-8: {e}"))
+}
+
 /// Resolve the authentication mode from the API config section.
 ///
 /// Call this once at startup before serving requests. Panics if the
@@ -39,13 +49,15 @@ pub fn resolve_auth_mode(api_config: &crate::server_config::ApiConfig) -> AuthMo
             AuthMode::Disabled
         }
         ApiAuthenticationStrategy::Jwt => {
-            let pem = std::env::var("ARC_JWT_PUBLIC_KEY").unwrap_or_else(|_| {
+            let raw = std::env::var("ARC_JWT_PUBLIC_KEY").unwrap_or_else(|_| {
                 panic!(
                     "ARC_JWT_PUBLIC_KEY is not set. Either provide an Ed25519 public key in PEM \
-                     format or set authentication_strategy = \"insecure_disabled\" in \
-                     ~/.arc/arc.toml to allow unauthenticated access (development only)."
+                     format (or base64-encoded PEM) or set authentication_strategy = \
+                     \"insecure_disabled\" in ~/.arc/arc.toml to allow unauthenticated access \
+                     (development only)."
                 )
             });
+            let pem = decode_pem_env("ARC_JWT_PUBLIC_KEY", &raw);
             let key = DecodingKey::from_ed_pem(pem.as_bytes())
                 .expect("ARC_JWT_PUBLIC_KEY contains an invalid Ed25519 PEM public key");
             AuthMode::Jwt(Arc::new(key))

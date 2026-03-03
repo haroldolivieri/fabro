@@ -25,6 +25,7 @@ export function loader({ request }: Route.LoaderArgs) {
       pull_requests: "write",
       checks: "write",
       issues: "write",
+      emails: "read",
     },
     default_events: [] as string[],
   };

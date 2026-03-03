@@ -20,20 +20,35 @@ export async function loader({ request }: Route.LoaderArgs) {
   const tokens = await github.validateAuthorizationCode(code);
   const accessToken = tokens.accessToken();
 
-  const userResponse = await fetch("https://api.github.com/user", {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const [userResponse, emailsResponse] = await Promise.all([
+    fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+    fetch("https://api.github.com/user/emails", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+  ]);
   const profile = (await userResponse.json()) as {
+    id: number;
+    node_id: string;
     login: string;
     name: string | null;
-    email: string | null;
     avatar_url: string;
   };
+  const emails = (await emailsResponse.json()) as Array<{
+    email: string;
+    primary: boolean;
+    verified: boolean;
+  }>;
+  const primaryEmail = emails.find((e) => e.primary && e.verified)?.email ?? "";
 
   const session = await getSession(request);
+  session.set("userUrl", `https://api.github.com/user/${profile.id}`);
+  session.set("githubId", profile.id);
+  session.set("githubNodeId", profile.node_id);
   session.set("githubLogin", profile.login);
   session.set("name", profile.name ?? profile.login);
-  session.set("email", profile.email ?? "");
+  session.set("email", primaryEmail);
   session.set("avatarUrl", profile.avatar_url);
   session.set("accessToken", accessToken);
 

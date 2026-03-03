@@ -1,6 +1,6 @@
 import { importPKCS8, SignJWT } from "jose";
 
-const ARC_API_BASE_URL = process.env.ARC_API_BASE_URL;
+const ARC_API_BASE_URL = process.env.ARC_API_BASE_URL ?? "http://localhost:3000";
 const ARC_JWT_PRIVATE_KEY = process.env.ARC_JWT_PRIVATE_KEY;
 
 let cachedKey: CryptoKey | null = null;

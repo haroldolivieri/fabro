@@ -1,6 +1,10 @@
-import { createCookieSessionStorage, redirect } from "react-router";
+import { redirect } from "react-router";
+import { createSqliteSessionStorage } from "./session-storage.server";
 
 interface SessionData {
+  userUrl: string;
+  githubId: number;
+  githubNodeId: string;
   githubLogin: string;
   name: string;
   email: string;
@@ -13,16 +17,7 @@ function getSessionStorage() {
   if (!secret) {
     throw new Error("SESSION_SECRET is not set");
   }
-  return createCookieSessionStorage<SessionData>({
-    cookie: {
-      name: "__arc_session",
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      secrets: [secret],
-      path: "/",
-    },
-  });
+  return createSqliteSessionStorage(secret);
 }
 
 export async function getSession(request: Request) {
@@ -45,6 +40,7 @@ export async function getUser(request: Request) {
   const githubLogin = session.get("githubLogin");
   if (!githubLogin) return null;
   return {
+    userUrl: session.get("userUrl") ?? "",
     githubLogin,
     name: session.get("name") ?? githubLogin,
     email: session.get("email") ?? "",

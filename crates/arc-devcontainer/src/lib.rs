@@ -262,17 +262,11 @@ impl DevcontainerResolver {
                 merged_container_env.insert(k.clone(), variables::substitute(v, &vars));
             }
         }
-        let container_env_option = if merged_container_env.is_empty() {
-            None
-        } else {
-            Some(merged_container_env.clone())
-        };
-
         // Generate final Dockerfile
         let dockerfile_content = dockerfile::generate(
             &base_dockerfile,
             &resolved_features.layers,
-            &container_env_option,
+            &merged_container_env,
             devcontainer.remote_user.as_deref(),
         );
 

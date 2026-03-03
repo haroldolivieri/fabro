@@ -132,14 +132,45 @@ async fn ensure_oras() -> crate::Result<()> {
     Ok(())
 }
 
-/// Fetch a single OCI feature using `oras pull` and extract its contents.
-/// Returns the parsed feature metadata.
-async fn fetch_feature_oci(
-    feature_id: &str,
-    output_dir: &Path,
-) -> crate::Result<FeatureMetadata> {
-    ensure_oras().await?;
+/// Extract a tgz archive in the given directory.
+async fn extract_tgz(feature_dir: &Path, feature_id: &str) -> crate::Result<()> {
+    let status = tokio::process::Command::new("tar")
+        .args(["xzf", "devcontainer-feature.tgz"])
+        .current_dir(feature_dir)
+        .status()
+        .await
+        .map_err(|e| DevcontainerError::Feature(format!("failed to extract tgz: {e}")))?;
 
+    if !status.success() {
+        return Err(DevcontainerError::Feature(format!(
+            "tar extraction failed for {feature_id}"
+        )));
+    }
+    Ok(())
+}
+
+/// Read and parse devcontainer-feature.json from a feature directory.
+async fn read_feature_metadata(feature_dir: &Path) -> crate::Result<FeatureMetadata> {
+    let metadata_path = feature_dir.join("devcontainer-feature.json");
+    let metadata_str = tokio::fs::read_to_string(&metadata_path)
+        .await
+        .map_err(|e| {
+            DevcontainerError::Feature(format!(
+                "failed to read {}: {e}",
+                metadata_path.display()
+            ))
+        })?;
+
+    serde_json::from_str(&metadata_str).map_err(|e| {
+        DevcontainerError::Feature(format!(
+            "failed to parse {}: {e}",
+            metadata_path.display()
+        ))
+    })
+}
+
+/// Create a feature output directory under the temp dir.
+async fn create_feature_dir(output_dir: &Path, feature_id: &str) -> crate::Result<std::path::PathBuf> {
     let dir_name = dir_name_from_id(feature_id);
     let feature_dir = output_dir.join(&dir_name);
     tokio::fs::create_dir_all(&feature_dir)
@@ -150,6 +181,15 @@ async fn fetch_feature_oci(
                 feature_dir.display()
             ))
         })?;
+    Ok(feature_dir)
+}
+
+/// Fetch a single OCI feature using `oras pull` and extract its contents.
+async fn fetch_feature_oci(
+    feature_id: &str,
+    output_dir: &Path,
+) -> crate::Result<FeatureMetadata> {
+    let feature_dir = create_feature_dir(output_dir, feature_id).await?;
 
     info!(feature_id, "pulling feature with oras");
 
@@ -167,44 +207,11 @@ async fn fetch_feature_oci(
         )));
     }
 
-    // Extract any tgz files
-    let tgz_path = feature_dir.join("devcontainer-feature.tgz");
-    if tgz_path.exists() {
-        let status = tokio::process::Command::new("tar")
-            .args(["xzf", "devcontainer-feature.tgz"])
-            .current_dir(&feature_dir)
-            .status()
-            .await
-            .map_err(|e| {
-                DevcontainerError::Feature(format!("failed to extract tgz: {e}"))
-            })?;
-
-        if !status.success() {
-            return Err(DevcontainerError::Feature(format!(
-                "tar extraction failed for {feature_id}"
-            )));
-        }
+    if feature_dir.join("devcontainer-feature.tgz").exists() {
+        extract_tgz(&feature_dir, feature_id).await?;
     }
 
-    // Read metadata
-    let metadata_path = feature_dir.join("devcontainer-feature.json");
-    let metadata_str = tokio::fs::read_to_string(&metadata_path)
-        .await
-        .map_err(|e| {
-            DevcontainerError::Feature(format!(
-                "failed to read {}: {e}",
-                metadata_path.display()
-            ))
-        })?;
-
-    let metadata: FeatureMetadata = serde_json::from_str(&metadata_str).map_err(|e| {
-        DevcontainerError::Feature(format!(
-            "failed to parse {}: {e}",
-            metadata_path.display()
-        ))
-    })?;
-
-    Ok(metadata)
+    read_feature_metadata(&feature_dir).await
 }
 
 /// Fetch a local feature by copying its directory.
@@ -221,28 +228,10 @@ async fn fetch_feature_local(
         )));
     }
 
-    let dir_name = dir_name_from_id(feature_id);
-    let feature_dir = output_dir.join(&dir_name);
+    let feature_dir = create_feature_dir(output_dir, feature_id).await?;
     copy_dir_recursive(&local_path, &feature_dir).await?;
 
-    let metadata_path = feature_dir.join("devcontainer-feature.json");
-    let metadata_str = tokio::fs::read_to_string(&metadata_path)
-        .await
-        .map_err(|e| {
-            DevcontainerError::Feature(format!(
-                "failed to read {}: {e}",
-                metadata_path.display()
-            ))
-        })?;
-
-    let metadata: FeatureMetadata = serde_json::from_str(&metadata_str).map_err(|e| {
-        DevcontainerError::Feature(format!(
-            "failed to parse {}: {e}",
-            metadata_path.display()
-        ))
-    })?;
-
-    Ok(metadata)
+    read_feature_metadata(&feature_dir).await
 }
 
 /// Fetch a feature from an HTTPS URL (tgz archive).
@@ -250,16 +239,7 @@ async fn fetch_feature_https(
     feature_id: &str,
     output_dir: &Path,
 ) -> crate::Result<FeatureMetadata> {
-    let dir_name = dir_name_from_id(feature_id);
-    let feature_dir = output_dir.join(&dir_name);
-    tokio::fs::create_dir_all(&feature_dir)
-        .await
-        .map_err(|e| {
-            DevcontainerError::Feature(format!(
-                "failed to create dir {}: {e}",
-                feature_dir.display()
-            ))
-        })?;
+    let feature_dir = create_feature_dir(output_dir, feature_id).await?;
 
     info!(feature_id, "downloading feature from HTTPS");
 
@@ -286,37 +266,9 @@ async fn fetch_feature_https(
         ))
     })?;
 
-    let status = tokio::process::Command::new("tar")
-        .args(["xzf", "devcontainer-feature.tgz"])
-        .current_dir(&feature_dir)
-        .status()
-        .await
-        .map_err(|e| DevcontainerError::Feature(format!("failed to extract tgz: {e}")))?;
+    extract_tgz(&feature_dir, feature_id).await?;
 
-    if !status.success() {
-        return Err(DevcontainerError::Feature(format!(
-            "tar extraction failed for {feature_id}"
-        )));
-    }
-
-    let metadata_path = feature_dir.join("devcontainer-feature.json");
-    let metadata_str = tokio::fs::read_to_string(&metadata_path)
-        .await
-        .map_err(|e| {
-            DevcontainerError::Feature(format!(
-                "failed to read {}: {e}",
-                metadata_path.display()
-            ))
-        })?;
-
-    let metadata: FeatureMetadata = serde_json::from_str(&metadata_str).map_err(|e| {
-        DevcontainerError::Feature(format!(
-            "failed to parse {}: {e}",
-            metadata_path.display()
-        ))
-    })?;
-
-    Ok(metadata)
+    read_feature_metadata(&feature_dir).await
 }
 
 /// Dispatch feature fetch based on the feature ID prefix.
@@ -324,12 +276,17 @@ async fn fetch_feature_dispatch(
     feature_id: &str,
     output_dir: &Path,
     devcontainer_dir: &Path,
+    oras_checked: &mut bool,
 ) -> crate::Result<FeatureMetadata> {
     if feature_id.starts_with("./") || feature_id.starts_with("../") {
         fetch_feature_local(feature_id, output_dir, devcontainer_dir).await
     } else if feature_id.starts_with("https://") {
         fetch_feature_https(feature_id, output_dir).await
     } else {
+        if !*oras_checked {
+            ensure_oras().await?;
+            *oras_checked = true;
+        }
         fetch_feature_oci(feature_id, output_dir).await
     }
 }
@@ -560,9 +517,10 @@ pub async fn resolve_features(
     let mut all_options: HashMap<String, serde_json::Value> = features.clone();
 
     // Fetch all features and collect metadata
+    let mut oras_checked = false;
     let mut metadata_map: HashMap<String, FeatureMetadata> = HashMap::new();
     for feature_id in &feature_ids {
-        let metadata = fetch_feature_dispatch(feature_id, &tmp_dir, devcontainer_dir).await?;
+        let metadata = fetch_feature_dispatch(feature_id, &tmp_dir, devcontainer_dir, &mut oras_checked).await?;
         metadata_map.insert(feature_id.clone(), metadata);
     }
 
@@ -581,7 +539,7 @@ pub async fn resolve_features(
                     });
                     if !already_present {
                         info!(dep_id, "auto-injecting missing dependsOn target");
-                        let dep_metadata = fetch_feature_dispatch(dep_id, &tmp_dir, devcontainer_dir).await?;
+                        let dep_metadata = fetch_feature_dispatch(dep_id, &tmp_dir, devcontainer_dir, &mut oras_checked).await?;
                         metadata_map.insert(dep_id.clone(), dep_metadata);
                         feature_ids.push(dep_id.clone());
                         all_options.insert(dep_id.clone(), dep_options.clone());

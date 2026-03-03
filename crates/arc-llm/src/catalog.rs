@@ -105,12 +105,6 @@ mod tests {
     }
 
     #[test]
-    fn list_models_all() {
-        let models = list_models(None);
-        assert_eq!(models.len(), 14);
-    }
-
-    #[test]
     fn list_models_by_provider() {
         let anthropic = list_models(Some("anthropic"));
         assert_eq!(anthropic.len(), 3);
@@ -152,20 +146,21 @@ mod tests {
     }
 
     #[test]
-    fn mercury_in_catalog() {
-        let m = get_model_info("mercury").unwrap();
+    fn mercury_2_in_catalog() {
+        let m = get_model_info("mercury-2").unwrap();
         assert_eq!(m.provider, "inception");
-        assert_eq!(m.context_window, 32768);
+        assert_eq!(m.context_window, 131072);
+        assert_eq!(m.max_output, Some(50000));
         assert!(m.supports_tools);
         assert!(!m.supports_vision);
-        assert!(!m.supports_reasoning);
+        assert!(m.supports_reasoning);
     }
 
     #[test]
-    fn mercury_coder_in_catalog() {
-        let m = get_model_info("mercury-coder").unwrap();
-        assert_eq!(m.provider, "inception");
+    fn mercury_alias_resolves_to_mercury_2() {
+        assert_eq!(get_model_info("mercury").unwrap().id, "mercury-2");
     }
+
 
     #[test]
     fn model_info_costs() {

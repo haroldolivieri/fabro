@@ -1,13 +1,12 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
-import { homedir } from "node:os";
+import { resolve, dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import { redirect } from "react-router";
 import { parse, stringify } from "smol-toml";
+import { ARC_CONFIG_PATH, reloadAppConfig } from "../lib/config.server";
 import type { Route } from "./+types/setup-callback";
 
 const ENV_PATH = resolve(import.meta.dirname, "../../../../.env");
-const TOML_PATH = resolve(homedir(), ".arc", "arc.toml");
 
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
@@ -39,7 +38,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Write non-secrets to TOML config
   let tomlConfig: Record<string, unknown> = {};
   try {
-    tomlConfig = parse(await readFile(TOML_PATH, "utf-8")) as Record<string, unknown>;
+    tomlConfig = parse(await readFile(ARC_CONFIG_PATH, "utf-8")) as Record<string, unknown>;
   } catch {
     // file doesn't exist yet
   }
@@ -49,8 +48,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     app_id: String(data.id),
     client_id: data.client_id,
   };
-  await mkdir(resolve(homedir(), ".arc"), { recursive: true });
-  await writeFile(TOML_PATH, stringify(tomlConfig), "utf-8");
+  await mkdir(dirname(ARC_CONFIG_PATH), { recursive: true });
+  await writeFile(ARC_CONFIG_PATH, stringify(tomlConfig), "utf-8");
+  reloadAppConfig();
 
   // Write secrets to .env
   let existing = "";

@@ -41,8 +41,10 @@ const GIT_DEFAULTS: GitConfig = {
   client_id: null,
 };
 
+export const ARC_CONFIG_PATH = join(homedir(), ".arc", "arc.toml");
+
 function loadAppConfig(): AppConfig {
-  const configPath = join(homedir(), ".arc", "arc.toml");
+  const configPath = ARC_CONFIG_PATH;
 
   let raw: Record<string, unknown> = {};
   try {
@@ -62,9 +64,13 @@ function loadAppConfig(): AppConfig {
   };
 }
 
-/** Loaded once at module init; restart the server to pick up changes. */
-const appConfig: AppConfig = loadAppConfig();
+/** Loaded once at module init; call reloadAppConfig() to pick up changes. */
+let appConfig: AppConfig = loadAppConfig();
 
 export function getAppConfig(): AppConfig {
   return appConfig;
+}
+
+export function reloadAppConfig(): void {
+  appConfig = loadAppConfig();
 }

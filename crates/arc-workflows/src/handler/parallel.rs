@@ -686,15 +686,13 @@ impl Handler for ParallelHandler {
             }
         };
 
-        // Build suggested_next_ids from branch targets
-        let branch_ids: Vec<String> = results.iter().map(|r| r.id.clone()).collect();
+        // Find the join/convergence node: follow each branch's outgoing edges
+        // and find the common downstream target (typically the fan-in node).
+        let join_node = find_join_node(&results, graph);
 
         let is_fail = status == StageStatus::Fail;
         let mut outcome = Outcome {
             status,
-            preferred_label: None,
-            suggested_next_ids: branch_ids,
-            context_updates: std::collections::HashMap::new(),
             notes: Some(format!(
                 "Parallel node dispatched {total} branches ({success_count} succeeded, {fail_count} failed)"
             )),
@@ -706,8 +704,8 @@ impl Handler for ParallelHandler {
             } else {
                 None
             },
-            usage: None,
-            files_touched: Vec::new(),
+            jump_to_node: if is_fail { None } else { join_node },
+            ..Outcome::success()
         };
 
         if is_fail {
@@ -716,6 +714,39 @@ impl Handler for ParallelHandler {
 
         Ok(outcome)
     }
+}
+
+/// Find the convergence (join/fan-in) node by following each branch's outgoing edges
+/// and finding the first node reachable from all branches.
+fn find_join_node(results: &[BranchResult], graph: &Graph) -> Option<String> {
+    if results.is_empty() {
+        return None;
+    }
+
+    // Collect outgoing targets for each branch
+    let mut target_sets: Vec<std::collections::HashSet<String>> = Vec::new();
+    for result in results {
+        let targets: std::collections::HashSet<String> = graph
+            .outgoing_edges(&result.id)
+            .into_iter()
+            .map(|e| e.to.clone())
+            .collect();
+        target_sets.push(targets);
+    }
+
+    // Find the intersection — nodes reachable from ALL branches
+    let Some(first) = target_sets.first() else {
+        return None;
+    };
+    let common: std::collections::HashSet<&String> = first
+        .iter()
+        .filter(|id| target_sets.iter().all(|set| set.contains(*id)))
+        .collect();
+
+    // Return the first common target (lexically sorted for determinism)
+    let mut common_sorted: Vec<&String> = common.into_iter().collect();
+    common_sorted.sort();
+    common_sorted.first().map(|id| (*id).clone())
 }
 
 #[cfg(test)]

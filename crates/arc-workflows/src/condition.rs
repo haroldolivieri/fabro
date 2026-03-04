@@ -145,13 +145,7 @@ mod tests {
     fn make_outcome(status: StageStatus) -> Outcome {
         Outcome {
             status,
-            preferred_label: None,
-            suggested_next_ids: Vec::new(),
-            context_updates: std::collections::HashMap::new(),
-            notes: None,
-            failure: None,
-            usage: None,
-            files_touched: Vec::new(),
+            ..Outcome::success()
         }
     }
 

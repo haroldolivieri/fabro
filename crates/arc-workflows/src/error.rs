@@ -399,13 +399,8 @@ impl ArcError {
         };
         crate::outcome::Outcome {
             status: crate::outcome::StageStatus::Fail,
-            preferred_label: None,
-            suggested_next_ids: Vec::new(),
-            context_updates: std::collections::HashMap::new(),
-            notes: None,
             failure: Some(failure),
-            usage: None,
-            files_touched: Vec::new(),
+            ..crate::outcome::Outcome::success()
         }
     }
 }

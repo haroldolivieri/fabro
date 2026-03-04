@@ -98,6 +98,10 @@ pub struct Outcome {
     pub usage: Option<StageUsage>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files_touched: Vec<String>,
+    /// When set, the engine bypasses edge selection and jumps directly to this node.
+    /// Used by the parallel handler to skip re-executing branch nodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jump_to_node: Option<String>,
 }
 
 impl Outcome {
@@ -112,6 +116,7 @@ impl Outcome {
             failure: None,
             usage: None,
             files_touched: Vec::new(),
+            jump_to_node: None,
         }
     }
 
@@ -126,6 +131,7 @@ impl Outcome {
             failure: Some(FailureDetail::new(reason, FailureClass::Deterministic)),
             usage: None,
             files_touched: Vec::new(),
+            jump_to_node: None,
         }
     }
 
@@ -142,6 +148,7 @@ impl Outcome {
             failure: Some(FailureDetail::new(reason, failure_class)),
             usage: None,
             files_touched: Vec::new(),
+            jump_to_node: None,
         }
     }
 
@@ -158,6 +165,7 @@ impl Outcome {
             failure: Some(FailureDetail::new(reason, failure_class)),
             usage: None,
             files_touched: Vec::new(),
+            jump_to_node: None,
         }
     }
 
@@ -181,6 +189,7 @@ impl Outcome {
             failure: None,
             usage: None,
             files_touched: Vec::new(),
+            jump_to_node: None,
         }
     }
 

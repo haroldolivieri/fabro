@@ -1502,16 +1502,32 @@ impl WorkflowRunEngine {
             }
 
             // Step 5: Select next edge (done before checkpoint so we can store next_node_id)
-            let next_edge = select_edge(&node.id, &outcome, &context, graph);
-            if let Some(edge) = next_edge {
+            // If the handler specified a direct jump (e.g., parallel -> fan-in),
+            // bypass edge selection entirely.
+            let (next_edge, jump_target) = if let Some(ref target) = outcome.jump_to_node {
                 self.services.emitter.emit(&WorkflowRunEvent::EdgeSelected {
                     from_node: node.id.clone(),
-                    to_node: edge.to.clone(),
-                    label: edge.label().map(String::from),
-                    condition: edge.condition().map(String::from),
+                    to_node: target.clone(),
+                    label: None,
+                    condition: None,
                 });
-            }
-            let next_node_id_for_checkpoint = next_edge.map(|e| e.to.clone());
+                (None, Some(target.clone()))
+            } else {
+                let edge = select_edge(&node.id, &outcome, &context, graph);
+                if let Some(ref e) = edge {
+                    self.services.emitter.emit(&WorkflowRunEvent::EdgeSelected {
+                        from_node: node.id.clone(),
+                        to_node: e.to.clone(),
+                        label: e.label().map(String::from),
+                        condition: e.condition().map(String::from),
+                    });
+                }
+                (edge, None)
+            };
+            let next_node_id_for_checkpoint = jump_target
+                .as_ref()
+                .cloned()
+                .or_else(|| next_edge.map(|e| e.to.clone()));
 
             // Step 6: Save checkpoint with all state
             let mut checkpoint = Checkpoint::from_context(
@@ -1648,7 +1664,12 @@ impl WorkflowRunEngine {
                 }
             }
 
-            // Step 7: Follow selected edge
+            // Step 7: Follow selected edge (or direct jump)
+            if let Some(target) = jump_target {
+                incoming_edge = None;
+                current_node_id = target;
+                continue;
+            }
             match next_edge {
                 None => {
                     // Gap #1: Failure routing -- when FAIL and no matching edge,

@@ -493,7 +493,15 @@ impl ProgressAwareInterviewer {
 #[async_trait]
 impl Interviewer for ProgressAwareInterviewer {
     async fn ask(&self, question: Question) -> Answer {
-        self.hide_bars();
+        {
+            let ui = self.progress.lock().expect("progress lock poisoned");
+            if let ProgressRenderer::Tty(tty) = &ui.renderer {
+                let sep = tty.multi.add(ProgressBar::new_spinner());
+                sep.set_style(style_empty());
+                sep.finish();
+                tty.multi.set_draw_target(ProgressDrawTarget::hidden());
+            }
+        }
         let answer = self.inner.ask(question).await;
         self.show_bars();
         answer

@@ -1,0 +1,11 @@
+digraph Simplify {
+    graph [goal="Review and simplify recent code changes"]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    simplify [label="Simplify", prompt="@docs-internal/prompts/simplify.md"]
+
+    start -> simplify -> exit
+}

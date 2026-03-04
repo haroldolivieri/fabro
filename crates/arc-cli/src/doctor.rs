@@ -690,6 +690,261 @@ pub fn check_web(
 }
 
 // ---------------------------------------------------------------------------
+// Cryptographic key validation
+// ---------------------------------------------------------------------------
+
+pub struct TlsCheckInput {
+    pub cert_pem: String,
+    pub key_pem: String,
+    pub ca_pem: String,
+}
+
+pub struct CryptoInput {
+    pub auth_strategies: Vec<ApiAuthStrategy>,
+    pub tls_files: Option<TlsCheckInput>,
+    pub jwt_public_key: Option<String>,
+    pub jwt_private_key: Option<String>,
+    pub session_secret: Option<String>,
+}
+
+fn decode_pem_value(name: &str, value: &str) -> Result<String, String> {
+    if value.starts_with("-----") {
+        return Ok(value.to_string());
+    }
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, value)
+        .map_err(|e| format!("{name} is not valid PEM or base64: {e}"))?;
+    String::from_utf8(bytes).map_err(|e| format!("{name} base64 decoded to invalid UTF-8: {e}"))
+}
+
+fn validate_tls_cert(pem: &str, now_epoch: i64) -> Result<String, String> {
+    let mut reader = std::io::Cursor::new(pem.as_bytes());
+    let certs: Vec<_> = rustls_pemfile::certs(&mut reader)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("failed to parse certificate PEM: {e}"))?;
+    if certs.is_empty() {
+        return Err("no certificates found in PEM".to_string());
+    }
+    let (_, parsed) = x509_parser::parse_x509_certificate(&certs[0])
+        .map_err(|e| format!("failed to parse X.509 certificate: {e}"))?;
+    let not_after = parsed.validity().not_after.timestamp();
+    if not_after <= now_epoch {
+        return Err("certificate has expired".to_string());
+    }
+    let cn = parsed
+        .subject()
+        .iter_common_name()
+        .next()
+        .and_then(|cn| cn.as_str().ok())
+        .unwrap_or("(no CN)");
+    Ok(format!("CN={cn}, valid"))
+}
+
+fn validate_tls_private_key(pem: &str) -> Result<(), String> {
+    let mut reader = std::io::Cursor::new(pem.as_bytes());
+    rustls_pemfile::private_key(&mut reader)
+        .map_err(|e| format!("failed to parse private key PEM: {e}"))?
+        .ok_or_else(|| "no private key found in PEM".to_string())?;
+    Ok(())
+}
+
+fn validate_tls_ca(pem: &str) -> Result<(), String> {
+    let mut reader = std::io::Cursor::new(pem.as_bytes());
+    let certs: Vec<_> = rustls_pemfile::certs(&mut reader)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("failed to parse CA certificate PEM: {e}"))?;
+    if certs.is_empty() {
+        return Err("no CA certificates found in PEM".to_string());
+    }
+    Ok(())
+}
+
+fn validate_session_secret(value: &str) -> Result<(), String> {
+    if value.len() < 64 {
+        return Err(format!(
+            "too short ({} chars, need at least 64 hex chars for 256-bit entropy)",
+            value.len()
+        ));
+    }
+    if !value.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("contains non-hex characters".to_string());
+    }
+    Ok(())
+}
+
+pub fn check_crypto(input: &CryptoInput) -> CheckResult {
+    let has_jwt = input
+        .auth_strategies
+        .contains(&ApiAuthStrategy::Jwt);
+    let has_mtls = input
+        .auth_strategies
+        .contains(&ApiAuthStrategy::Mtls);
+    let now_epoch = chrono::Utc::now().timestamp();
+
+    let mut details = Vec::new();
+    let mut worst_status = CheckStatus::Pass;
+    let mut error_messages = Vec::new();
+
+    // mTLS certs
+    if has_mtls {
+        match &input.tls_files {
+            Some(tls) => {
+                match validate_tls_cert(&tls.cert_pem, now_epoch) {
+                    Ok(info) => details.push(CheckDetail {
+                        text: format!("TLS cert: valid ({info})"),
+                    }),
+                    Err(e) => {
+                        worst_status = CheckStatus::Error;
+                        error_messages.push(format!("TLS cert: {e}"));
+                        details.push(CheckDetail {
+                            text: format!("TLS cert: {e}"),
+                        });
+                    }
+                }
+                match validate_tls_private_key(&tls.key_pem) {
+                    Ok(()) => details.push(CheckDetail {
+                        text: "TLS key: valid".to_string(),
+                    }),
+                    Err(e) => {
+                        worst_status = CheckStatus::Error;
+                        error_messages.push(format!("TLS key: {e}"));
+                        details.push(CheckDetail {
+                            text: format!("TLS key: {e}"),
+                        });
+                    }
+                }
+                match validate_tls_ca(&tls.ca_pem) {
+                    Ok(()) => details.push(CheckDetail {
+                        text: "TLS CA: valid".to_string(),
+                    }),
+                    Err(e) => {
+                        worst_status = CheckStatus::Error;
+                        error_messages.push(format!("TLS CA: {e}"));
+                        details.push(CheckDetail {
+                            text: format!("TLS CA: {e}"),
+                        });
+                    }
+                }
+            }
+            None => {
+                worst_status = CheckStatus::Error;
+                error_messages.push("mTLS configured but TLS files not readable".to_string());
+                details.push(CheckDetail {
+                    text: "mTLS configured but TLS files not readable".to_string(),
+                });
+            }
+        }
+    }
+
+    // JWT public key
+    if has_jwt {
+        match &input.jwt_public_key {
+            Some(raw) => match decode_pem_value("ARC_JWT_PUBLIC_KEY", raw) {
+                Ok(pem) => {
+                    match jsonwebtoken::DecodingKey::from_ed_pem(pem.as_bytes()) {
+                        Ok(_) => details.push(CheckDetail {
+                            text: "JWT public key: valid Ed25519".to_string(),
+                        }),
+                        Err(e) => {
+                            worst_status = CheckStatus::Error;
+                            error_messages.push(format!("JWT public key: {e}"));
+                            details.push(CheckDetail {
+                                text: format!("JWT public key: invalid — {e}"),
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    worst_status = CheckStatus::Error;
+                    error_messages.push(e.clone());
+                    details.push(CheckDetail { text: e });
+                }
+            },
+            None => {
+                worst_status = CheckStatus::Error;
+                error_messages.push("JWT configured but ARC_JWT_PUBLIC_KEY not set".to_string());
+                details.push(CheckDetail {
+                    text: "JWT configured but ARC_JWT_PUBLIC_KEY not set".to_string(),
+                });
+            }
+        }
+    }
+
+    // JWT private key (only when set)
+    if let Some(raw) = &input.jwt_private_key {
+        match decode_pem_value("ARC_JWT_PRIVATE_KEY", raw) {
+            Ok(pem) => match jsonwebtoken::EncodingKey::from_ed_pem(pem.as_bytes()) {
+                Ok(_) => details.push(CheckDetail {
+                    text: "JWT private key: valid Ed25519".to_string(),
+                }),
+                Err(e) => {
+                    worst_status = CheckStatus::Error;
+                    error_messages.push(format!("JWT private key: {e}"));
+                    details.push(CheckDetail {
+                        text: format!("JWT private key: invalid — {e}"),
+                    });
+                }
+            },
+            Err(e) => {
+                worst_status = CheckStatus::Error;
+                error_messages.push(e.clone());
+                details.push(CheckDetail { text: e });
+            }
+        }
+    }
+
+    // Session secret (only when set)
+    if let Some(secret) = &input.session_secret {
+        match validate_session_secret(secret) {
+            Ok(()) => details.push(CheckDetail {
+                text: "Session secret: valid".to_string(),
+            }),
+            Err(e) => {
+                worst_status = CheckStatus::Error;
+                error_messages.push(format!("Session secret: {e}"));
+                details.push(CheckDetail {
+                    text: format!("Session secret: {e}"),
+                });
+            }
+        }
+    }
+
+    // No auth at all
+    if !has_jwt && !has_mtls && input.jwt_private_key.is_none() && input.session_secret.is_none() {
+        return CheckResult {
+            name: "Cryptographic keys".to_string(),
+            status: CheckStatus::Warning,
+            summary: "no authentication configured".to_string(),
+            details: vec![CheckDetail {
+                text: "No authentication strategies or keys configured".to_string(),
+            }],
+            remediation: Some(
+                "Configure authentication_strategies in [api] section of arc.toml".to_string(),
+            ),
+        };
+    }
+
+    let summary = match worst_status {
+        CheckStatus::Pass => "all keys valid".to_string(),
+        CheckStatus::Warning => "some issues".to_string(),
+        CheckStatus::Error => "invalid keys found".to_string(),
+    };
+
+    let remediation = if error_messages.is_empty() {
+        None
+    } else {
+        Some(error_messages.join("; "))
+    };
+
+    CheckResult {
+        name: "Cryptographic keys".to_string(),
+        status: worst_status,
+        summary,
+        details,
+        remediation,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Orchestrator (does real I/O)
 // ---------------------------------------------------------------------------
 
@@ -824,6 +1079,42 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
 
     let daytona_configured = std::env::var("DAYTONA_API_KEY").is_ok();
 
+    // Gather crypto inputs
+    let has_mtls = server_config
+        .api
+        .authentication_strategies
+        .contains(&ApiAuthStrategy::Mtls);
+    let tls_files = if has_mtls {
+        server_config.api.tls.as_ref().and_then(|tls| {
+            let expand = |p: &std::path::Path| -> PathBuf {
+                if let Ok(stripped) = p.strip_prefix("~") {
+                    dirs::home_dir()
+                        .map(|h| h.join(stripped))
+                        .unwrap_or_else(|| p.to_path_buf())
+                } else {
+                    p.to_path_buf()
+                }
+            };
+            let cert_pem = std::fs::read_to_string(expand(&tls.cert)).ok()?;
+            let key_pem = std::fs::read_to_string(expand(&tls.key)).ok()?;
+            let ca_pem = std::fs::read_to_string(expand(&tls.ca)).ok()?;
+            Some(TlsCheckInput {
+                cert_pem,
+                key_pem,
+                ca_pem,
+            })
+        })
+    } else {
+        None
+    };
+    let crypto_input = CryptoInput {
+        auth_strategies: server_config.api.authentication_strategies.clone(),
+        tls_files,
+        jwt_public_key: std::env::var("ARC_JWT_PUBLIC_KEY").ok(),
+        jwt_private_key: std::env::var("ARC_JWT_PRIVATE_KEY").ok(),
+        session_secret: std::env::var("SESSION_SECRET").ok(),
+    };
+
     let dep_results = probe_system_deps();
 
     // Live probes (only when --live is set)
@@ -901,6 +1192,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
             check_brave_search(brave_key_set, brave_live_result.as_ref()),
             check_sandbox(&sandbox_status),
             check_github_app(&github_status),
+            check_crypto(&crypto_input),
         ],
     };
 
@@ -1546,5 +1838,230 @@ mod tests {
         ];
         let result = check_system_deps(&deps);
         assert_eq!(result.status, CheckStatus::Error);
+    }
+
+    // -- check_crypto --
+
+    /// Generate a self-signed cert + private key PEM for TLS tests.
+    fn generate_test_tls_cert() -> (String, String) {
+        let output = std::process::Command::new("openssl")
+            .args([
+                "req", "-x509", "-newkey", "ec",
+                "-pkeyopt", "ec_paramgen_curve:prime256v1",
+                "-keyout", "/dev/stdout", "-out", "/dev/stdout",
+                "-days", "3650", "-nodes", "-subj", "/CN=test-server",
+            ])
+            .output()
+            .expect("openssl must be available for tests");
+        let combined = String::from_utf8(output.stdout).unwrap();
+        let key_start = combined.find("-----BEGIN PRIVATE KEY-----").unwrap();
+        let key_end = combined.find("-----END PRIVATE KEY-----").unwrap()
+            + "-----END PRIVATE KEY-----".len();
+        let cert_start = combined.find("-----BEGIN CERTIFICATE-----").unwrap();
+        let cert_end = combined.find("-----END CERTIFICATE-----").unwrap()
+            + "-----END CERTIFICATE-----".len();
+        let key_pem = combined[key_start..key_end].to_string();
+        let cert_pem = combined[cert_start..cert_end].to_string();
+        (cert_pem, key_pem)
+    }
+
+    fn generate_test_ed25519_keypair() -> (String, String) {
+        let output = std::process::Command::new("openssl")
+            .args(["genpkey", "-algorithm", "Ed25519"])
+            .output()
+            .expect("openssl must be available for tests");
+        let private_pem = String::from_utf8(output.stdout).unwrap();
+        let output = std::process::Command::new("openssl")
+            .args(["pkey", "-pubout"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                child.stdin.take().unwrap().write_all(private_pem.as_bytes()).unwrap();
+                child.wait_with_output()
+            })
+            .expect("openssl pkey failed");
+        let public_pem = String::from_utf8(output.stdout).unwrap();
+        (public_pem, private_pem)
+    }
+
+    #[test]
+    fn crypto_all_keys_valid() {
+        let (cert_pem, key_pem) = generate_test_tls_cert();
+        let (public_pem, private_pem) = generate_test_ed25519_keypair();
+        let input = CryptoInput {
+            auth_strategies: vec![ApiAuthStrategy::Jwt, ApiAuthStrategy::Mtls],
+            tls_files: Some(TlsCheckInput {
+                cert_pem: cert_pem.clone(),
+                key_pem,
+                ca_pem: cert_pem,
+            }),
+            jwt_public_key: Some(public_pem),
+            jwt_private_key: Some(private_pem),
+            session_secret: Some("a".repeat(64)),
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Pass);
+        assert_eq!(result.summary, "all keys valid");
+    }
+
+    #[test]
+    fn crypto_invalid_cert_pem() {
+        let (public_pem, private_pem) = generate_test_ed25519_keypair();
+        let input = CryptoInput {
+            auth_strategies: vec![ApiAuthStrategy::Jwt, ApiAuthStrategy::Mtls],
+            tls_files: Some(TlsCheckInput {
+                cert_pem: "not a pem".to_string(),
+                key_pem: "not a pem".to_string(),
+                ca_pem: "not a pem".to_string(),
+            }),
+            jwt_public_key: Some(public_pem),
+            jwt_private_key: Some(private_pem),
+            session_secret: None,
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(result.details.iter().any(|d| d.text.contains("TLS cert")));
+    }
+
+    #[test]
+    fn crypto_expired_cert() {
+        let (cert_pem, _) = generate_test_tls_cert();
+        // Use a timestamp far in the future to simulate the cert being expired
+        let far_future = i64::MAX / 2;
+        let result = validate_tls_cert(&cert_pem, far_future);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expired"));
+    }
+
+    #[test]
+    fn crypto_session_secret_too_short() {
+        let input = CryptoInput {
+            auth_strategies: vec![],
+            tls_files: None,
+            jwt_public_key: None,
+            jwt_private_key: None,
+            session_secret: Some("abcdef".to_string()),
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(result.details.iter().any(|d| d.text.contains("too short")));
+    }
+
+    #[test]
+    fn crypto_session_secret_non_hex() {
+        let input = CryptoInput {
+            auth_strategies: vec![],
+            tls_files: None,
+            jwt_public_key: None,
+            jwt_private_key: None,
+            session_secret: Some("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz".to_string()),
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(result.details.iter().any(|d| d.text.contains("non-hex")));
+    }
+
+    #[test]
+    fn crypto_no_auth_configured() {
+        let input = CryptoInput {
+            auth_strategies: vec![],
+            tls_files: None,
+            jwt_public_key: None,
+            jwt_private_key: None,
+            session_secret: None,
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Warning);
+        assert!(result.summary.contains("no authentication configured"));
+    }
+
+    #[test]
+    fn crypto_jwt_configured_but_key_missing() {
+        let input = CryptoInput {
+            auth_strategies: vec![ApiAuthStrategy::Jwt],
+            tls_files: None,
+            jwt_public_key: None,
+            jwt_private_key: None,
+            session_secret: None,
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(result.details.iter().any(|d| d.text.contains("ARC_JWT_PUBLIC_KEY not set")));
+    }
+
+    #[test]
+    fn crypto_mtls_configured_but_files_missing() {
+        let input = CryptoInput {
+            auth_strategies: vec![ApiAuthStrategy::Mtls],
+            tls_files: None,
+            jwt_public_key: None,
+            jwt_private_key: None,
+            session_secret: None,
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(result.details.iter().any(|d| d.text.contains("TLS files not readable")));
+    }
+
+    #[test]
+    fn crypto_invalid_jwt_public_key() {
+        let input = CryptoInput {
+            auth_strategies: vec![ApiAuthStrategy::Jwt],
+            tls_files: None,
+            jwt_public_key: Some("-----BEGIN PUBLIC KEY-----\nINVALID\n-----END PUBLIC KEY-----".to_string()),
+            jwt_private_key: None,
+            session_secret: None,
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(result.details.iter().any(|d| d.text.contains("JWT public key: invalid")));
+    }
+
+    #[test]
+    fn crypto_invalid_jwt_private_key() {
+        let input = CryptoInput {
+            auth_strategies: vec![],
+            tls_files: None,
+            jwt_public_key: None,
+            jwt_private_key: Some("-----BEGIN PRIVATE KEY-----\nINVALID\n-----END PRIVATE KEY-----".to_string()),
+            session_secret: None,
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(result.details.iter().any(|d| d.text.contains("JWT private key: invalid")));
+    }
+
+    #[test]
+    fn crypto_base64_encoded_jwt_key() {
+        let (public_pem, _) = generate_test_ed25519_keypair();
+        let encoded = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            public_pem.as_bytes(),
+        );
+        let input = CryptoInput {
+            auth_strategies: vec![ApiAuthStrategy::Jwt],
+            tls_files: None,
+            jwt_public_key: Some(encoded),
+            jwt_private_key: None,
+            session_secret: None,
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Pass);
+        assert!(result.details.iter().any(|d| d.text.contains("JWT public key: valid")));
+    }
+
+    #[test]
+    fn crypto_valid_session_secret() {
+        let input = CryptoInput {
+            auth_strategies: vec![],
+            tls_files: None,
+            jwt_public_key: None,
+            jwt_private_key: None,
+            session_secret: Some("a1b2c3d4e5f6".repeat(6)),
+        };
+        let result = check_crypto(&input);
+        assert_eq!(result.status, CheckStatus::Pass);
     }
 }

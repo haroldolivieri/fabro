@@ -620,4 +620,41 @@ mod tests {
         prune_from(&args, base).unwrap();
         assert!(!orphan_dir.exists(), "orphan directory should be deleted");
     }
+
+    #[test]
+    fn parse_label_filters_basic() {
+        let args = vec!["env=prod".to_string()];
+        let result = parse_label_filters(&args);
+        assert_eq!(result, vec![("env".to_string(), "prod".to_string())]);
+    }
+
+    #[test]
+    fn parse_label_filters_multiple() {
+        let args = vec!["a=1".to_string(), "b=2".to_string()];
+        let result = parse_label_filters(&args);
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&("a".to_string(), "1".to_string())));
+        assert!(result.contains(&("b".to_string(), "2".to_string())));
+    }
+
+    #[test]
+    fn parse_label_filters_value_with_equals() {
+        let args = vec!["key=a=b".to_string()];
+        let result = parse_label_filters(&args);
+        assert_eq!(result, vec![("key".to_string(), "a=b".to_string())]);
+    }
+
+    #[test]
+    fn parse_label_filters_skips_no_equals() {
+        let args = vec!["nope".to_string(), "a=1".to_string()];
+        let result = parse_label_filters(&args);
+        assert_eq!(result, vec![("a".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn parse_label_filters_empty() {
+        let args: Vec<String> = vec![];
+        let result = parse_label_filters(&args);
+        assert!(result.is_empty());
+    }
 }

@@ -595,4 +595,44 @@ mod tests {
     fn parse_duration_str_invalid_fallback() {
         assert_eq!(parse_duration_str("bad"), Duration::from_secs(45));
     }
+
+    #[test]
+    fn context_diff_detects_additions() {
+        let before = HashMap::new();
+        let mut after = HashMap::new();
+        after.insert("key".to_string(), serde_json::json!("value"));
+        let diff = context_diff(&before, &after);
+        assert_eq!(diff.len(), 1);
+        assert_eq!(diff.get("key"), Some(&serde_json::json!("value")));
+    }
+
+    #[test]
+    fn context_diff_detects_changes() {
+        let mut before = HashMap::new();
+        before.insert("key".to_string(), serde_json::json!("old"));
+        let mut after = HashMap::new();
+        after.insert("key".to_string(), serde_json::json!("new"));
+        let diff = context_diff(&before, &after);
+        assert_eq!(diff.len(), 1);
+        assert_eq!(diff.get("key"), Some(&serde_json::json!("new")));
+    }
+
+    #[test]
+    fn context_diff_ignores_unchanged() {
+        let mut before = HashMap::new();
+        before.insert("key".to_string(), serde_json::json!("same"));
+        let mut after = HashMap::new();
+        after.insert("key".to_string(), serde_json::json!("same"));
+        let diff = context_diff(&before, &after);
+        assert!(diff.is_empty());
+    }
+
+    #[test]
+    fn context_diff_ignores_deletions() {
+        let mut before = HashMap::new();
+        before.insert("removed".to_string(), serde_json::json!("gone"));
+        let after = HashMap::new();
+        let diff = context_diff(&before, &after);
+        assert!(diff.is_empty());
+    }
 }

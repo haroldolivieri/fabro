@@ -685,4 +685,1005 @@ mod tests {
         assert!(s.contains("abcdef12"));
     }
 
+    // ── Helper function tests ──────────────────────────────────────────
+
+    #[test]
+    fn format_cost_zero() {
+        assert_eq!(format_cost(0.0), "$0.00");
+    }
+
+    #[test]
+    fn format_cost_normal() {
+        assert_eq!(format_cost(1.5), "$1.50");
+    }
+
+    #[test]
+    fn format_cost_rounds() {
+        assert_eq!(format_cost(123.456), "$123.46");
+    }
+
+    #[test]
+    fn format_tokens_human_zero() {
+        assert_eq!(format_tokens_human(0), "0");
+    }
+
+    #[test]
+    fn format_tokens_human_small() {
+        assert_eq!(format_tokens_human(999), "999");
+    }
+
+    #[test]
+    fn format_tokens_human_thousands() {
+        assert_eq!(format_tokens_human(1000), "1.0k");
+    }
+
+    #[test]
+    fn format_tokens_human_mid_thousands() {
+        assert_eq!(format_tokens_human(15234), "15.2k");
+    }
+
+    #[test]
+    fn format_tokens_human_millions() {
+        assert_eq!(format_tokens_human(1_000_000), "1.0m");
+    }
+
+    #[test]
+    fn format_tokens_human_mid_millions() {
+        assert_eq!(format_tokens_human(3_456_789), "3.5m");
+    }
+
+    // ── compute_stage_cost tests ───────────────────────────────────────
+
+    #[test]
+    fn compute_stage_cost_known_model() {
+        let usage = StageUsage {
+            model: "claude-sonnet-4-5".into(),
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            reasoning_tokens: None,
+            cost: None,
+        };
+        let cost = compute_stage_cost(&usage);
+        assert!(cost.is_some());
+        assert!(cost.unwrap() > 0.0);
+    }
+
+    #[test]
+    fn compute_stage_cost_unknown_model() {
+        let usage = StageUsage {
+            model: "nonexistent-model-xyz".into(),
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            reasoning_tokens: None,
+            cost: None,
+        };
+        assert_eq!(compute_stage_cost(&usage), None);
+    }
+
+    // ── format_event_summary tests ─────────────────────────────────────
+
+    #[test]
+    fn format_summary_workflow_run_started() {
+        let event = WorkflowRunEvent::WorkflowRunStarted {
+            name: "test-wf".into(),
+            run_id: "run-123".into(),
+            base_sha: None,
+            run_branch: None,
+            worktree_dir: None,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[WORKFLOW_RUN_STARTED]"));
+        assert!(s.contains("test-wf"));
+        assert!(s.contains("run-123"));
+    }
+
+    #[test]
+    fn format_summary_workflow_run_completed_no_cost() {
+        let event = WorkflowRunEvent::WorkflowRunCompleted {
+            duration_ms: 5000,
+            artifact_count: 3,
+            total_cost: None,
+            final_git_commit_sha: None,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[WORKFLOW_RUN_COMPLETED]"));
+        assert!(s.contains("5000"));
+        assert!(s.contains("artifacts=3"));
+    }
+
+    #[test]
+    fn format_summary_workflow_run_completed_with_cost() {
+        let event = WorkflowRunEvent::WorkflowRunCompleted {
+            duration_ms: 5000,
+            artifact_count: 3,
+            total_cost: Some(1.5),
+            final_git_commit_sha: None,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[WORKFLOW_RUN_COMPLETED]"));
+        assert!(s.contains("total_cost=$1.50"));
+    }
+
+    #[test]
+    fn format_summary_workflow_run_failed() {
+        let event = WorkflowRunEvent::WorkflowRunFailed {
+            error: crate::error::ArcError::Parse("bad input".into()),
+            duration_ms: 1000,
+            git_commit_sha: None,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[WORKFLOW_RUN_FAILED]"));
+        assert!(s.contains("1000"));
+    }
+
+    #[test]
+    fn format_summary_stage_started_no_handler() {
+        let event = WorkflowRunEvent::StageStarted {
+            node_id: "n1".into(),
+            name: "build".into(),
+            index: 0,
+            handler_type: None,
+            attempt: 1,
+            max_attempts: 3,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STAGE_STARTED]"));
+        assert!(s.contains("node_id=n1"));
+        assert!(s.contains("name=build"));
+        assert!(s.contains("attempt=1/3"));
+    }
+
+    #[test]
+    fn format_summary_stage_started_with_handler() {
+        let event = WorkflowRunEvent::StageStarted {
+            node_id: "n1".into(),
+            name: "build".into(),
+            index: 0,
+            handler_type: Some("agent".into()),
+            attempt: 1,
+            max_attempts: 3,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STAGE_STARTED]"));
+        assert!(s.contains("handler_type=agent"));
+    }
+
+    #[test]
+    fn format_summary_stage_completed_with_usage() {
+        let event = WorkflowRunEvent::StageCompleted {
+            node_id: "n1".into(),
+            name: "code".into(),
+            index: 0,
+            duration_ms: 2000,
+            status: "success".into(),
+            preferred_label: None,
+            suggested_next_ids: vec![],
+            usage: Some(StageUsage {
+                model: "nonexistent-model".into(),
+                input_tokens: 500,
+                output_tokens: 300,
+                cache_read_tokens: None,
+                cache_write_tokens: None,
+                reasoning_tokens: None,
+                cost: None,
+            }),
+            failure: None,
+            notes: None,
+            files_touched: vec![],
+            attempt: 1,
+            max_attempts: 1,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STAGE_COMPLETED]"));
+        assert!(s.contains("tokens=800"));
+    }
+
+    #[test]
+    fn format_summary_stage_completed_with_failure() {
+        let event = WorkflowRunEvent::StageCompleted {
+            node_id: "n1".into(),
+            name: "code".into(),
+            index: 0,
+            duration_ms: 2000,
+            status: "failure".into(),
+            preferred_label: None,
+            suggested_next_ids: vec![],
+            usage: None,
+            failure: Some(crate::outcome::FailureDetail::new(
+                "tests failed",
+                crate::error::FailureClass::Deterministic,
+            )),
+            notes: None,
+            files_touched: vec![],
+            attempt: 1,
+            max_attempts: 1,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STAGE_COMPLETED]"));
+        assert!(s.contains("failure_reason=\"tests failed\""));
+        assert!(s.contains("failure_class=deterministic"));
+    }
+
+    #[test]
+    fn format_summary_stage_completed_with_notes() {
+        let event = WorkflowRunEvent::StageCompleted {
+            node_id: "n1".into(),
+            name: "code".into(),
+            index: 0,
+            duration_ms: 2000,
+            status: "success".into(),
+            preferred_label: None,
+            suggested_next_ids: vec![],
+            usage: None,
+            failure: None,
+            notes: Some("all good".into()),
+            files_touched: vec![],
+            attempt: 1,
+            max_attempts: 1,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STAGE_COMPLETED]"));
+        assert!(s.contains("notes=\"all good\""));
+    }
+
+    #[test]
+    fn format_summary_stage_completed_with_files() {
+        let event = WorkflowRunEvent::StageCompleted {
+            node_id: "n1".into(),
+            name: "code".into(),
+            index: 0,
+            duration_ms: 2000,
+            status: "success".into(),
+            preferred_label: None,
+            suggested_next_ids: vec![],
+            usage: None,
+            failure: None,
+            notes: None,
+            files_touched: vec!["a.rs".into(), "b.rs".into()],
+            attempt: 1,
+            max_attempts: 1,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STAGE_COMPLETED]"));
+        assert!(s.contains("files_touched=2"));
+    }
+
+    #[test]
+    fn format_summary_stage_failed() {
+        let event = WorkflowRunEvent::StageFailed {
+            node_id: "n1".into(),
+            name: "build".into(),
+            index: 0,
+            failure: crate::outcome::FailureDetail::new(
+                "timeout",
+                crate::error::FailureClass::TransientInfra,
+            ),
+            will_retry: true,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STAGE_FAILED]"));
+        assert!(s.contains("will_retry=true"));
+        assert!(s.contains("transient_infra"));
+    }
+
+    #[test]
+    fn format_summary_stage_retrying() {
+        let event = WorkflowRunEvent::StageRetrying {
+            node_id: "n1".into(),
+            name: "build".into(),
+            index: 0,
+            attempt: 2,
+            max_attempts: 3,
+            delay_ms: 5000,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STAGE_RETRYING]"));
+        assert!(s.contains("attempt=2/3"));
+        assert!(s.contains("delay=5000ms"));
+    }
+
+    #[test]
+    fn format_summary_parallel_started() {
+        let event = WorkflowRunEvent::ParallelStarted {
+            branch_count: 3,
+            join_policy: "all".into(),
+            error_policy: "fail_fast".into(),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[PARALLEL_STARTED]"));
+        assert!(s.contains("branches=3"));
+        assert!(s.contains("join_policy=all"));
+    }
+
+    #[test]
+    fn format_summary_parallel_branch_started() {
+        let event = WorkflowRunEvent::ParallelBranchStarted {
+            branch: "lint".into(),
+            index: 0,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[PARALLEL_BRANCH_STARTED]"));
+        assert!(s.contains("branch=lint"));
+    }
+
+    #[test]
+    fn format_summary_parallel_branch_completed() {
+        let event = WorkflowRunEvent::ParallelBranchCompleted {
+            branch: "lint".into(),
+            index: 0,
+            duration_ms: 3000,
+            status: "success".into(),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[PARALLEL_BRANCH_COMPLETED]"));
+        assert!(s.contains("branch=lint"));
+        assert!(s.contains("status=success"));
+    }
+
+    #[test]
+    fn format_summary_parallel_completed() {
+        let event = WorkflowRunEvent::ParallelCompleted {
+            duration_ms: 5000,
+            success_count: 2,
+            failure_count: 1,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[PARALLEL_COMPLETED]"));
+        assert!(s.contains("succeeded=2"));
+        assert!(s.contains("failed=1"));
+    }
+
+    #[test]
+    fn format_summary_parallel_early_termination() {
+        let event = WorkflowRunEvent::ParallelEarlyTermination {
+            reason: "fail_fast".into(),
+            completed_count: 1,
+            pending_count: 2,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[PARALLEL_EARLY_TERMINATION]"));
+        assert!(s.contains("reason=fail_fast"));
+        assert!(s.contains("completed=1"));
+        assert!(s.contains("pending=2"));
+    }
+
+    #[test]
+    fn format_summary_interview_started() {
+        let event = WorkflowRunEvent::InterviewStarted {
+            question: "What is the goal?".into(),
+            stage: "review".into(),
+            question_type: "free_text".into(),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[INTERVIEW_STARTED]"));
+        assert!(s.contains("stage=review"));
+        assert!(s.contains("What is the goal?"));
+    }
+
+    #[test]
+    fn format_summary_interview_completed() {
+        let event = WorkflowRunEvent::InterviewCompleted {
+            question: "What?".into(),
+            answer: "Everything".into(),
+            duration_ms: 1000,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[INTERVIEW_COMPLETED]"));
+        assert!(s.contains("question=\"What?\""));
+        assert!(s.contains("answer=\"Everything\""));
+    }
+
+    #[test]
+    fn format_summary_interview_timeout() {
+        let event = WorkflowRunEvent::InterviewTimeout {
+            question: "q".into(),
+            stage: "review".into(),
+            duration_ms: 30000,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[INTERVIEW_TIMEOUT]"));
+        assert!(s.contains("stage=review"));
+        assert!(s.contains("30000"));
+    }
+
+    #[test]
+    fn format_summary_checkpoint_saved() {
+        let event = WorkflowRunEvent::CheckpointSaved {
+            node_id: "n1".into(),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[CHECKPOINT_SAVED]"));
+        assert!(s.contains("node=n1"));
+    }
+
+    #[test]
+    fn format_summary_git_checkpoint() {
+        let event = WorkflowRunEvent::GitCheckpoint {
+            run_id: "run-1".into(),
+            node_id: "n1".into(),
+            git_commit_sha: "abc123".into(),
+            status: "committed".into(),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[GIT_CHECKPOINT]"));
+        assert!(s.contains("sha=abc123"));
+        assert!(s.contains("status=committed"));
+    }
+
+    #[test]
+    fn format_summary_edge_selected_no_label() {
+        let event = WorkflowRunEvent::EdgeSelected {
+            from_node: "a".into(),
+            to_node: "b".into(),
+            label: None,
+            condition: None,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[EDGE_SELECTED]"));
+        assert!(s.contains("from=a"));
+        assert!(s.contains("to=b"));
+    }
+
+    #[test]
+    fn format_summary_edge_selected_with_label_and_condition() {
+        let event = WorkflowRunEvent::EdgeSelected {
+            from_node: "a".into(),
+            to_node: "b".into(),
+            label: Some("pass".into()),
+            condition: Some("tests_pass".into()),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[EDGE_SELECTED]"));
+        assert!(s.contains("label=\"pass\""));
+        assert!(s.contains("condition=\"tests_pass\""));
+    }
+
+    #[test]
+    fn format_summary_loop_restart() {
+        let event = WorkflowRunEvent::LoopRestart {
+            from_node: "check".into(),
+            to_node: "build".into(),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[LOOP_RESTART]"));
+        assert!(s.contains("from=check"));
+        assert!(s.contains("to=build"));
+    }
+
+    #[test]
+    fn format_summary_prompt_short() {
+        let event = WorkflowRunEvent::Prompt {
+            stage: "code".into(),
+            text: "Fix the bug".into(),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[PROMPT]"));
+        assert!(s.contains("Fix the bug"));
+    }
+
+    #[test]
+    fn format_summary_prompt_long_truncates() {
+        let long_text = "x".repeat(200);
+        let event = WorkflowRunEvent::Prompt {
+            stage: "code".into(),
+            text: long_text,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[PROMPT]"));
+        assert!(!s.contains(&"x".repeat(200)));
+        assert!(s.contains(&"x".repeat(80)));
+    }
+
+    #[test]
+    fn format_summary_agent_assistant_message() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::AssistantMessage {
+                text: "hello".into(),
+                model: "claude-sonnet-4-5".into(),
+                usage: arc_llm::types::Usage {
+                    input_tokens: 1000,
+                    output_tokens: 500,
+                    total_tokens: 1500,
+                    ..Default::default()
+                },
+                tool_call_count: 2,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[ASSISTANT_MESSAGE]"));
+        assert!(s.contains("model=claude-sonnet-4-5"));
+        assert!(s.contains("tool_calls=2"));
+    }
+
+    #[test]
+    fn format_summary_agent_assistant_message_with_cache_and_reasoning() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::AssistantMessage {
+                text: "hello".into(),
+                model: "claude-sonnet-4-5".into(),
+                usage: arc_llm::types::Usage {
+                    input_tokens: 1000,
+                    output_tokens: 500,
+                    total_tokens: 1500,
+                    cache_read_tokens: Some(800),
+                    reasoning_tokens: Some(200),
+                    ..Default::default()
+                },
+                tool_call_count: 0,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[ASSISTANT_MESSAGE]"));
+        assert!(s.contains("cache_read=800"));
+        assert!(s.contains("reasoning=200"));
+    }
+
+    #[test]
+    fn format_summary_agent_tool_call_started() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::ToolCallStarted {
+                tool_name: "read_file".into(),
+                tool_call_id: "tc-1".into(),
+                arguments: serde_json::json!({}),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[TOOL_CALL_STARTED]"));
+        assert!(s.contains("tool=read_file"));
+    }
+
+    #[test]
+    fn format_summary_agent_tool_call_completed() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::ToolCallCompleted {
+                tool_name: "read_file".into(),
+                tool_call_id: "tc-1".into(),
+                output: serde_json::json!("content"),
+                is_error: false,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[TOOL_CALL_COMPLETED]"));
+        assert!(s.contains("tool=read_file"));
+        assert!(s.contains("is_error=false"));
+    }
+
+    #[test]
+    fn format_summary_agent_error() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::Error {
+                error: arc_agent::error::AgentError::InvalidState("bad state".into()),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SESSION_ERROR]"));
+        assert!(s.contains("stage=code"));
+    }
+
+    #[test]
+    fn format_summary_agent_context_window_warning() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::ContextWindowWarning {
+                estimated_tokens: 90000,
+                context_window_size: 100000,
+                usage_percent: 90,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[CONTEXT_WINDOW_WARNING]"));
+        assert!(s.contains("usage=90%"));
+    }
+
+    #[test]
+    fn format_summary_agent_loop_detected() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::LoopDetected,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[LOOP_DETECTED]"));
+        assert!(s.contains("stage=code"));
+    }
+
+    #[test]
+    fn format_summary_agent_turn_limit_reached() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::TurnLimitReached { max_turns: 25 },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[TURN_LIMIT_REACHED]"));
+        assert!(s.contains("max_turns=25"));
+    }
+
+    #[test]
+    fn format_summary_agent_compaction_started() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::CompactionStarted {
+                estimated_tokens: 80000,
+                context_window_size: 100000,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[COMPACTION_STARTED]"));
+        assert!(s.contains("estimated_tokens=80000"));
+        assert!(s.contains("context_window=100000"));
+    }
+
+    #[test]
+    fn format_summary_agent_compaction_completed() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::CompactionCompleted {
+                original_turn_count: 50,
+                preserved_turn_count: 10,
+                summary_token_estimate: 2000,
+                tracked_file_count: 5,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[COMPACTION_COMPLETED]"));
+        assert!(s.contains("original_turns=50"));
+        assert!(s.contains("preserved_turns=10"));
+        assert!(s.contains("tracked_files=5"));
+    }
+
+    #[test]
+    fn format_summary_agent_llm_retry() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::LlmRetry {
+                provider: "anthropic".into(),
+                model: "claude-sonnet-4-5".into(),
+                attempt: 2,
+                delay_secs: 1.5,
+                error: arc_llm::error::SdkError::RequestTimeout {
+                    message: "timed out".into(),
+                },
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[LLM_RETRY]"));
+        assert!(s.contains("provider=anthropic"));
+        assert!(s.contains("attempt=2"));
+        assert!(s.contains("delay=1500ms"));
+    }
+
+    #[test]
+    fn format_summary_agent_subagent_failed() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::SubAgentFailed {
+                agent_id: "abcdef12-3456".into(),
+                depth: 1,
+                error: arc_agent::error::AgentError::ToolExecution("failed".into()),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SUBAGENT_FAILED]"));
+        assert!(s.contains("abcdef12"));
+        assert!(s.contains("depth=1"));
+    }
+
+    #[test]
+    fn format_summary_agent_subagent_closed() {
+        let event = WorkflowRunEvent::Agent {
+            stage: "code".into(),
+            event: AgentEvent::SubAgentClosed {
+                agent_id: "abcdef12-3456".into(),
+                depth: 2,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SUBAGENT_CLOSED]"));
+        assert!(s.contains("abcdef12"));
+        assert!(s.contains("depth=2"));
+    }
+
+    #[test]
+    fn format_summary_subgraph_started() {
+        let event = WorkflowRunEvent::SubgraphStarted {
+            node_id: "sg1".into(),
+            start_node: "inner_start".into(),
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SUBGRAPH_STARTED]"));
+        assert!(s.contains("node=sg1"));
+        assert!(s.contains("start_node=inner_start"));
+    }
+
+    #[test]
+    fn format_summary_subgraph_completed() {
+        let event = WorkflowRunEvent::SubgraphCompleted {
+            node_id: "sg1".into(),
+            steps_executed: 5,
+            status: "success".into(),
+            duration_ms: 3000,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SUBGRAPH_COMPLETED]"));
+        assert!(s.contains("node=sg1"));
+        assert!(s.contains("steps=5"));
+        assert!(s.contains("status=success"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_ready() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::Ready {
+                provider: "docker".into(),
+                duration_ms: 1500,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_READY]"));
+        assert!(s.contains("docker"));
+        assert!(s.contains("1500"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_init_failed() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::InitializeFailed {
+                provider: "docker".into(),
+                error: "daemon not running".into(),
+                duration_ms: 500,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_INIT_FAILED]"));
+        assert!(s.contains("daemon not running"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_cleanup_started() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::CleanupStarted {
+                provider: "docker".into(),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_CLEANUP_STARTED]"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_cleanup_completed() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::CleanupCompleted {
+                provider: "docker".into(),
+                duration_ms: 200,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_CLEANUP_COMPLETED]"));
+        assert!(s.contains("200"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_cleanup_failed() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::CleanupFailed {
+                provider: "docker".into(),
+                error: "busy".into(),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_CLEANUP_FAILED]"));
+        assert!(s.contains("busy"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_snapshot_pulling() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::SnapshotPulling {
+                name: "base-img".into(),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_SNAPSHOT_PULLING]"));
+        assert!(s.contains("base-img"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_snapshot_pulled() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::SnapshotPulled {
+                name: "base-img".into(),
+                duration_ms: 3000,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_SNAPSHOT_PULLED]"));
+        assert!(s.contains("base-img"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_snapshot_ensuring() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::SnapshotEnsuring {
+                name: "snap1".into(),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_SNAPSHOT_ENSURING]"));
+        assert!(s.contains("snap1"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_snapshot_creating() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::SnapshotCreating {
+                name: "snap1".into(),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_SNAPSHOT_CREATING]"));
+        assert!(s.contains("snap1"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_snapshot_ready() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::SnapshotReady {
+                name: "snap1".into(),
+                duration_ms: 2000,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_SNAPSHOT_READY]"));
+        assert!(s.contains("snap1"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_snapshot_failed() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::SnapshotFailed {
+                name: "snap1".into(),
+                error: "disk full".into(),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_SNAPSHOT_FAILED]"));
+        assert!(s.contains("disk full"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_git_clone_started_with_branch() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::GitCloneStarted {
+                url: "https://github.com/repo".into(),
+                branch: Some("main".into()),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_GIT_CLONE_STARTED]"));
+        assert!(s.contains("branch=main"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_git_clone_started_no_branch() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::GitCloneStarted {
+                url: "https://github.com/repo".into(),
+                branch: None,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_GIT_CLONE_STARTED]"));
+        assert!(s.contains("branch=(default)"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_git_clone_completed() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::GitCloneCompleted {
+                url: "https://github.com/repo".into(),
+                duration_ms: 5000,
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_GIT_CLONE_COMPLETED]"));
+        assert!(s.contains("5000"));
+    }
+
+    #[test]
+    fn format_summary_sandbox_git_clone_failed() {
+        let event = WorkflowRunEvent::Sandbox {
+            event: arc_agent::SandboxEvent::GitCloneFailed {
+                url: "https://github.com/repo".into(),
+                error: "auth failed".into(),
+            },
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SANDBOX_GIT_CLONE_FAILED]"));
+        assert!(s.contains("auth failed"));
+    }
+
+    #[test]
+    fn format_summary_setup_command_started() {
+        let event = WorkflowRunEvent::SetupCommandStarted {
+            command: "npm install".into(),
+            index: 0,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SETUP_COMMAND_STARTED]"));
+        assert!(s.contains("npm install"));
+        assert!(s.contains("index=0"));
+    }
+
+    #[test]
+    fn format_summary_setup_command_completed() {
+        let event = WorkflowRunEvent::SetupCommandCompleted {
+            command: "npm install".into(),
+            index: 0,
+            exit_code: 0,
+            duration_ms: 3000,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SETUP_COMMAND_COMPLETED]"));
+        assert!(s.contains("exit_code=0"));
+        assert!(s.contains("3000"));
+    }
+
+    #[test]
+    fn format_summary_setup_completed() {
+        let event = WorkflowRunEvent::SetupCompleted { duration_ms: 10000 };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SETUP_COMPLETED]"));
+        assert!(s.contains("10000"));
+    }
+
+    #[test]
+    fn format_summary_setup_failed_truncates_long_stderr() {
+        let long_stderr = "e".repeat(200);
+        let event = WorkflowRunEvent::SetupFailed {
+            command: "make".into(),
+            index: 0,
+            exit_code: 1,
+            stderr: long_stderr,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[SETUP_FAILED]"));
+        assert!(s.contains("exit_code=1"));
+        assert!(!s.contains(&"e".repeat(200)));
+        assert!(s.contains(&"e".repeat(80)));
+    }
+
+    #[test]
+    fn format_summary_stall_watchdog_timeout() {
+        let event = WorkflowRunEvent::StallWatchdogTimeout {
+            node: "build".into(),
+            idle_seconds: 300,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[STALL_WATCHDOG_TIMEOUT]"));
+        assert!(s.contains("node=build"));
+        assert!(s.contains("idle_seconds=300"));
+    }
+
+    #[test]
+    fn format_summary_assets_captured() {
+        let event = WorkflowRunEvent::AssetsCaptured {
+            node_id: "n1".into(),
+            files_copied: 5,
+            total_bytes: 1024,
+            files_skipped: 1,
+        };
+        let s = format_event_summary(&event, test_styles());
+        assert!(s.contains("[ASSETS_CAPTURED]"));
+        assert!(s.contains("node=n1"));
+        assert!(s.contains("files_copied=5"));
+        assert!(s.contains("files_skipped=1"));
+    }
 }

@@ -31,8 +31,8 @@ use indicatif::HumanDuration;
 use std::time::Duration;
 
 use super::{
-    compute_stage_cost, format_cost, format_event_summary, format_tokens_human, print_diagnostics,
-    read_dot_file, RunArgs, SandboxProvider,
+    compute_stage_cost, format_cost, format_tokens_human, print_diagnostics, read_dot_file,
+    RunArgs, SandboxProvider,
 };
 
 /// Return the default model string for a given provider.
@@ -287,22 +287,14 @@ pub async fn run_command(
         }
     }
 
-    // Create progress UI (used for non-verbose mode)
+    // Create progress UI (used for both normal and verbose modes)
     let is_tty = std::io::stderr().is_terminal();
-    let progress_ui = Arc::new(Mutex::new(progress::ProgressUI::new(is_tty)));
+    let progress_ui = Arc::new(Mutex::new(progress::ProgressUI::new(is_tty, args.verbose)));
 
-    if args.verbose {
-        eprintln!(
-            "{} {}",
-            styles.dim.apply_to("Logs:"),
-            styles.underline.apply_to(super::tilde_path(&logs_dir)),
-        );
-    } else {
-        progress_ui
-            .lock()
-            .expect("progress lock poisoned")
-            .show_logs_dir(&logs_dir);
-    }
+    progress_ui
+        .lock()
+        .expect("progress lock poisoned")
+        .show_logs_dir(&logs_dir);
 
     // 3. Build event emitter
     let mut emitter = EventEmitter::new();
@@ -385,19 +377,11 @@ pub async fn run_command(
         });
     }
 
-    if args.verbose {
-        emitter.on_event(move |event| {
-            eprintln!("{}", format_event_summary(event, styles));
-        });
-    } else {
-        progress::ProgressUI::register(&progress_ui, &mut emitter);
-    }
+    progress::ProgressUI::register(&progress_ui, &mut emitter);
 
     // 4. Build interviewer
     let interviewer: Arc<dyn Interviewer> = if args.auto_approve {
         Arc::new(AutoApproveInterviewer)
-    } else if args.verbose {
-        Arc::new(ConsoleInterviewer::new(styles))
     } else {
         Arc::new(progress::ProgressAwareInterviewer::new(
             ConsoleInterviewer::new(styles),
@@ -617,7 +601,7 @@ pub async fn run_command(
         if dry_run_mode {
             None
         } else {
-            let api = AgentApiBackend::new(model.clone(), provider_enum, args.verbose, styles);
+            let api = AgentApiBackend::new(model.clone(), provider_enum);
             let cli = AgentCliBackend::new(model.clone(), provider_enum);
             Some(Box::new(BackendRouter::new(Box::new(api), cli)))
         }
@@ -700,9 +684,7 @@ pub async fn run_command(
     }
 
     // Finish progress bars before printing summary
-    if !args.verbose {
-        progress_ui.lock().expect("progress lock poisoned").finish();
-    }
+    progress_ui.lock().expect("progress lock poisoned").finish();
 
     // Auto-derive retro (always, cheap) and optionally run retro agent
     if !args.no_retro {
@@ -1005,7 +987,7 @@ async fn run_from_branch(
         if dry_run_mode {
             None
         } else {
-            let api = AgentApiBackend::new(model.clone(), provider_enum, args.verbose, styles);
+            let api = AgentApiBackend::new(model.clone(), provider_enum);
             let cli = AgentCliBackend::new(model.clone(), provider_enum);
             Some(Box::new(BackendRouter::new(Box::new(api), cli)))
         }

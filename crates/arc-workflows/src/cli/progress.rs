@@ -12,7 +12,7 @@ use crate::interviewer::{Answer, Interviewer, Question};
 use crate::outcome::StageStatus;
 use arc_agent::AgentEvent;
 
-use super::{compute_stage_cost, format_cost};
+use super::{compute_stage_cost, format_cost, format_tokens_human};
 
 // ── Cached styles ───────────────────────────────────────────────────────
 
@@ -159,6 +159,8 @@ struct ActiveStage {
     has_model: bool,
     spinner: ProgressBar,
     tool_calls: VecDeque<ToolCallEntry>,
+    turn_count: u32,
+    tool_call_count: u32,
 }
 
 const MAX_TOOL_CALLS: usize = 5;
@@ -178,6 +180,7 @@ enum ProgressRenderer {
 
 pub struct ProgressUI {
     renderer: ProgressRenderer,
+    verbose: bool,
     active_stages: HashMap<String, ActiveStage>,
     setup_command_count: usize,
     sandbox_bar: Option<ProgressBar>,
@@ -187,7 +190,7 @@ pub struct ProgressUI {
 }
 
 impl ProgressUI {
-    pub fn new(is_tty: bool) -> Self {
+    pub fn new(is_tty: bool, verbose: bool) -> Self {
         let renderer = if is_tty {
             ProgressRenderer::Tty(TtyRenderer {
                 multi: MultiProgress::new(),
@@ -197,6 +200,7 @@ impl ProgressUI {
         };
         Self {
             renderer,
+            verbose,
             active_stages: HashMap::new(),
             setup_command_count: 0,
             sandbox_bar: None,
@@ -219,7 +223,7 @@ impl ProgressUI {
     pub fn finish(&mut self) {
         for (_id, stage) in self.active_stages.drain() {
             for entry in &stage.tool_calls {
-                if entry.is_branch {
+                if entry.is_branch || self.verbose {
                     entry.bar.abandon();
                 } else {
                     entry.bar.finish_and_clear();
@@ -277,7 +281,32 @@ impl ProgressUI {
                     .and_then(compute_stage_cost)
                     .map(|c| format!("{}   ", format_cost(c)))
                     .unwrap_or_default();
-                let prefix = format!("{cost_str}{dur}");
+                let stats_str = if self.verbose {
+                    let stage = self.active_stages.get(node_id);
+                    let turn_count = stage.map_or(0, |s| s.turn_count);
+                    let tool_call_count = stage.map_or(0, |s| s.tool_call_count);
+                    let total_tokens = usage
+                        .as_ref()
+                        .map(|u| u.input_tokens + u.output_tokens)
+                        .unwrap_or(0);
+                    if turn_count > 0 || tool_call_count > 0 || total_tokens > 0 {
+                        let dim = Style::new().dim();
+                        format!(
+                            "  {}",
+                            dim.apply_to(format!(
+                                "({} turns, {} tool calls, {} tokens)",
+                                turn_count,
+                                tool_call_count,
+                                format_tokens_human(total_tokens),
+                            ))
+                        )
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                let prefix = format!("{cost_str}{dur}{stats_str}");
                 let glyph = if succeeded {
                     green_check()
                 } else {
@@ -317,6 +346,74 @@ impl ProgressUI {
             }
             WorkflowRunEvent::SshAccessReady { ssh_command } => {
                 self.on_ssh_access_ready(ssh_command);
+            }
+            WorkflowRunEvent::EdgeSelected {
+                from_node,
+                to_node,
+                label,
+                condition,
+            } if self.verbose => {
+                let detail = if let Some(c) = condition {
+                    format!("  [{c}]")
+                } else if let Some(l) = label {
+                    format!("  \"{l}\"")
+                } else {
+                    String::new()
+                };
+                self.insert_info_line(&format!("\u{2192} {from_node} \u{2192} {to_node}{detail}"));
+            }
+            WorkflowRunEvent::LoopRestart { from_node, to_node } if self.verbose => {
+                self.insert_info_line(&format!(
+                    "\u{21ba} {from_node} \u{2192} {to_node}  (loop restart)"
+                ));
+            }
+            WorkflowRunEvent::SetupCommandCompleted {
+                command,
+                index,
+                exit_code,
+                duration_ms,
+            } if self.verbose => {
+                let total = self.setup_command_count;
+                let dur = format_duration_ms(*duration_ms);
+                let glyph = if *exit_code == 0 {
+                    green_check()
+                } else {
+                    red_cross()
+                };
+                let msg = format!(
+                    "{glyph} [{}/{total}] {}",
+                    index + 1,
+                    truncate(command, 60),
+                );
+                match &self.renderer {
+                    ProgressRenderer::Tty(tty) => {
+                        let bar = if let Some(ref setup_bar) = self.setup_bar {
+                            tty.multi
+                                .insert_before(setup_bar, ProgressBar::new_spinner())
+                        } else {
+                            tty.multi.add(ProgressBar::new_spinner())
+                        };
+                        bar.set_style(style_tool_done());
+                        bar.set_prefix(dur);
+                        bar.finish_with_message(msg);
+                    }
+                    ProgressRenderer::Plain => {
+                        eprintln!("      {msg}  {dur}");
+                    }
+                }
+            }
+            WorkflowRunEvent::StageRetrying {
+                node_id: _,
+                name,
+                attempt,
+                max_attempts,
+                delay_ms,
+                ..
+            } if self.verbose => {
+                let dur = format_duration_ms(*delay_ms);
+                self.insert_info_line(&format!(
+                    "\u{21bb} {name}: retrying (attempt {attempt}/{max_attempts}, delay {dur})"
+                ));
             }
             _ => {}
         }
@@ -474,6 +571,8 @@ impl ProgressUI {
                     has_model: false,
                     spinner: bar,
                     tool_calls: VecDeque::new(),
+                    turn_count: 0,
+                    tool_call_count: 0,
                 },
             );
         }
@@ -484,8 +583,8 @@ impl ProgressUI {
             ProgressRenderer::Tty(_) => {
                 if let Some(stage) = self.active_stages.remove(node_id) {
                     for entry in &stage.tool_calls {
-                        if entry.is_branch {
-                            // Already finished by on_parallel_branch_completed; keep visible
+                        if entry.is_branch || self.verbose {
+                            // Keep visible: branches always, all entries in verbose mode
                             entry.bar.abandon();
                         } else {
                             entry.bar.finish_and_clear();
@@ -515,6 +614,7 @@ impl ProgressUI {
             AgentEvent::AssistantMessage { model, .. } => {
                 if let ProgressRenderer::Tty(_) = &self.renderer {
                     if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
+                        stage.turn_count += 1;
                         if !stage.has_model {
                             stage.has_model = true;
                             let dim = Style::new().dim();
@@ -537,7 +637,88 @@ impl ProgressUI {
                 is_error,
                 ..
             } => {
+                if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
+                    stage.tool_call_count += 1;
+                }
                 self.on_tool_call_completed(stage_node_id, tool_call_id, *is_error);
+            }
+            AgentEvent::ContextWindowWarning { usage_percent, .. } if self.verbose => {
+                let yellow = Style::new().yellow();
+                self.insert_info_line_for_stage(
+                    stage_node_id,
+                    &format!(
+                        "{} context window: {usage_percent}% used",
+                        yellow.apply_to("\u{26a0}")
+                    ),
+                );
+            }
+            AgentEvent::CompactionCompleted {
+                original_turn_count,
+                preserved_turn_count,
+                tracked_file_count,
+                ..
+            } if self.verbose => {
+                let dim = Style::new().dim();
+                self.insert_info_line_for_stage(
+                    stage_node_id,
+                    &format!(
+                        "{}",
+                        dim.apply_to(format!(
+                            "\u{27f3} compaction: {original_turn_count} \u{2192} {preserved_turn_count} turns, {tracked_file_count} files"
+                        ))
+                    ),
+                );
+            }
+            AgentEvent::LlmRetry {
+                model,
+                attempt,
+                delay_secs,
+                error,
+                ..
+            } if self.verbose => {
+                let yellow = Style::new().yellow();
+                let delay_ms = (*delay_secs * 1000.0) as u64;
+                let dur = format_duration_ms(delay_ms);
+                self.insert_info_line_for_stage(
+                    stage_node_id,
+                    &format!(
+                        "{} retry: {model} attempt {attempt} ({error}, delay {dur})",
+                        yellow.apply_to("\u{26a0}")
+                    ),
+                );
+            }
+            AgentEvent::SubAgentSpawned {
+                agent_id, task, ..
+            } if self.verbose => {
+                let dim = Style::new().dim();
+                let short_id = &agent_id[..agent_id.len().min(8)];
+                self.insert_info_line_for_stage(
+                    stage_node_id,
+                    &format!(
+                        "{}",
+                        dim.apply_to(format!(
+                            "\u{25b8} subagent[{short_id}] \"{}\"",
+                            truncate(task, 50)
+                        ))
+                    ),
+                );
+            }
+            AgentEvent::SubAgentCompleted {
+                agent_id,
+                turns_used,
+                success,
+                ..
+            } if self.verbose => {
+                let short_id = &agent_id[..agent_id.len().min(8)];
+                let glyph = if *success {
+                    green_check()
+                } else {
+                    red_cross()
+                };
+                self.insert_info_line_for_stage(
+                    stage_node_id,
+                    &format!("{glyph} subagent[{short_id}] ({turns_used} turns)"),
+                );
             }
             _ => {}
         }
@@ -554,8 +735,8 @@ impl ProgressUI {
 
         if let ProgressRenderer::Tty(tty) = &self.renderer {
             if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
-                // Evict oldest if at capacity (prefer completed entries)
-                if stage.tool_calls.len() >= MAX_TOOL_CALLS {
+                // Evict oldest if at capacity (prefer completed entries); skip in verbose mode
+                if !self.verbose && stage.tool_calls.len() >= MAX_TOOL_CALLS {
                     let evict_idx = stage
                         .tool_calls
                         .iter()
@@ -645,6 +826,43 @@ impl ProgressUI {
             }
             ProgressRenderer::Plain => {
                 eprintln!("      {glyph} {branch}  {dur}");
+            }
+        }
+    }
+
+    /// Insert a static info line (verbose-only) at the current position.
+    fn insert_info_line(&mut self, message: &str) {
+        match &self.renderer {
+            ProgressRenderer::Tty(tty) => {
+                let bar = tty.multi.add(ProgressBar::new_spinner());
+                bar.set_style(style_static_dim());
+                bar.finish_with_message(message.to_string());
+            }
+            ProgressRenderer::Plain => {
+                eprintln!("    {message}");
+            }
+        }
+    }
+
+    /// Insert a static info line nested under a stage's tool calls.
+    fn insert_info_line_for_stage(&mut self, stage_node_id: &str, message: &str) {
+        match &self.renderer {
+            ProgressRenderer::Tty(tty) => {
+                let after = self
+                    .active_stages
+                    .get(stage_node_id)
+                    .map(|s| s.tool_calls.back().map_or(&s.spinner, |e| &e.bar));
+                let bar = if let Some(after_bar) = after {
+                    tty.multi
+                        .insert_after(after_bar, ProgressBar::new_spinner())
+                } else {
+                    tty.multi.add(ProgressBar::new_spinner())
+                };
+                bar.set_style(style_tool_done());
+                bar.finish_with_message(message.to_string());
+            }
+            ProgressRenderer::Plain => {
+                eprintln!("      {message}");
             }
         }
     }
@@ -749,7 +967,7 @@ mod tests {
 
     #[test]
     fn parallel_branches_tracked_as_tool_calls() {
-        let mut ui = ProgressUI::new(true);
+        let mut ui = ProgressUI::new(true, false);
 
         ui.handle_event(&stage_started("fork1", "Fork Analysis"));
         assert!(ui.active_stages.contains_key("fork1"));
@@ -810,7 +1028,7 @@ mod tests {
 
     #[test]
     fn parallel_branch_failure_tracked() {
-        let mut ui = ProgressUI::new(true);
+        let mut ui = ProgressUI::new(true, false);
 
         ui.handle_event(&stage_started("fork1", "Fork"));
         ui.handle_event(&WorkflowRunEvent::ParallelStarted {
@@ -838,7 +1056,7 @@ mod tests {
 
     #[test]
     fn plain_mode_sets_parallel_parent() {
-        let mut ui = ProgressUI::new(false);
+        let mut ui = ProgressUI::new(false, false);
 
         ui.handle_event(&stage_started("fork1", "Fork"));
         ui.handle_event(&WorkflowRunEvent::ParallelStarted {

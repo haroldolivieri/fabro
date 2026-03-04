@@ -10,7 +10,6 @@ use arc_agent::{
 };
 use arc_llm::client::Client;
 use arc_llm::provider::Provider;
-use arc_util::terminal::Styles;
 
 use crate::context::Context;
 use crate::error::ArcError;
@@ -25,19 +24,15 @@ use crate::outcome::StageUsage;
 pub struct AgentApiBackend {
     model: String,
     provider: Provider,
-    verbose: bool,
-    styles: &'static Styles,
     sessions: Mutex<HashMap<String, Session>>,
 }
 
 impl AgentApiBackend {
     #[must_use]
-    pub fn new(model: String, provider: Provider, verbose: bool, styles: &'static Styles) -> Self {
+    pub fn new(model: String, provider: Provider) -> Self {
         Self {
             model,
             provider,
-            verbose,
-            styles,
             sessions: Mutex::new(HashMap::new()),
         }
     }
@@ -224,10 +219,8 @@ impl CodergenBackend for AgentApiBackend {
         let pending_clone = Arc::clone(&pending_tool_calls);
         let files_clone = Arc::clone(&files_touched);
 
-        // Subscribe to session events: forward to pipeline emitter and optionally print to stderr.
-        let verbose = self.verbose;
+        // Subscribe to session events: forward to pipeline emitter.
         let node_id = node.id.clone();
-        let styles = self.styles;
         let pipeline_emitter = Arc::clone(emitter);
         let mut rx = session.subscribe();
         tokio::spawn(async move {
@@ -282,34 +275,6 @@ impl CodergenBackend for AgentApiBackend {
                     });
                 }
 
-                // Verbose stderr printing (gated on verbosity)
-                if verbose {
-                    match &event.event {
-                        AgentEvent::ToolCallStarted {
-                            tool_name,
-                            arguments,
-                            ..
-                        } => {
-                            eprintln!(
-                                "{} {} {}{}",
-                                styles.dim.apply_to(format!("[{node_id}]")),
-                                styles.dim.apply_to("\u{25cf}"),
-                                styles.bold_cyan.apply_to(tool_name),
-                                styles
-                                    .dim
-                                    .apply_to(format!("({})", format_tool_args(arguments))),
-                            );
-                        }
-                        AgentEvent::Error { error } => {
-                            eprintln!(
-                                "{} {}",
-                                styles.dim.apply_to(format!("[{node_id}]")),
-                                styles.red.apply_to(format!("\u{2717} {error}")),
-                            );
-                        }
-                        _ => {}
-                    }
-                }
             }
         });
 
@@ -339,15 +304,9 @@ impl CodergenBackend for AgentApiBackend {
         result?;
 
         // Aggregate token usage only from new turns (prevents double-counting on reuse).
-        let (mut turn_count, mut tool_call_count) = (0usize, 0usize);
         let mut total_usage = arc_llm::types::Usage::default();
         for turn in &session.history().turns()[turns_before..] {
-            if let Turn::Assistant {
-                tool_calls, usage, ..
-            } = turn
-            {
-                turn_count += 1;
-                tool_call_count += tool_calls.len();
+            if let Turn::Assistant { usage, .. } = turn {
                 total_usage = total_usage + usage.clone();
             }
         }
@@ -362,20 +321,6 @@ impl CodergenBackend for AgentApiBackend {
             cost: None,
         };
         stage_usage.cost = super::compute_stage_cost(&stage_usage);
-
-        // Print session summary to stderr.
-        if self.verbose {
-            let total_tokens = total_usage.input_tokens + total_usage.output_tokens;
-            let token_str = super::format_tokens_human(total_tokens);
-            let reuse_label = if is_reused { " (reused session)" } else { "" };
-            eprintln!(
-                "{}",
-                self.styles.dim.apply_to(format!(
-                    "[{}] Done ({turn_count} turns, {tool_call_count} tool calls, {token_str} tokens{reuse_label})",
-                    node.id,
-                )),
-            );
-        }
 
         // Extract last assistant response from the session history.
         let response = session
@@ -423,26 +368,6 @@ impl CodergenBackend for AgentApiBackend {
     }
 }
 
-fn format_tool_args(args: &serde_json::Value) -> String {
-    let Some(obj) = args.as_object() else {
-        return args.to_string();
-    };
-    obj.iter()
-        .map(|(k, v)| match v {
-            serde_json::Value::String(s) => {
-                let display = if s.len() > 80 {
-                    format!("{}...", &s[..77])
-                } else {
-                    s.clone()
-                };
-                format!("{k}={display:?}")
-            }
-            other => format!("{k}={other}"),
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,39 +375,20 @@ mod tests {
 
     #[test]
     fn agent_backend_stores_config() {
-        let styles = Box::leak(Box::new(Styles::new(false)));
-        let backend = AgentApiBackend::new(
-            "claude-opus-4-6".to_string(),
-            Provider::OpenAi,
-            true,
-            styles,
-        );
+        let backend = AgentApiBackend::new("claude-opus-4-6".to_string(), Provider::OpenAi);
         assert_eq!(backend.model, "claude-opus-4-6");
         assert_eq!(backend.provider, Provider::OpenAi);
-        assert!(backend.verbose);
     }
 
     #[test]
     fn agent_backend_initializes_empty_sessions() {
-        let styles = Box::leak(Box::new(Styles::new(false)));
-        let backend = AgentApiBackend::new(
-            "claude-opus-4-6".to_string(),
-            Provider::Anthropic,
-            false,
-            styles,
-        );
+        let backend = AgentApiBackend::new("claude-opus-4-6".to_string(), Provider::Anthropic);
         assert!(backend.sessions.lock().unwrap().is_empty());
     }
 
     #[test]
     fn build_profile_can_register_subagent_tools() {
-        let styles = Box::leak(Box::new(Styles::new(false)));
-        let backend = AgentApiBackend::new(
-            "claude-opus-4-6".to_string(),
-            Provider::Anthropic,
-            false,
-            styles,
-        );
+        let backend = AgentApiBackend::new("claude-opus-4-6".to_string(), Provider::Anthropic);
         let mut profile = backend.build_profile();
         let manager = Arc::new(tokio::sync::Mutex::new(SubAgentManager::new(1)));
         let factory: SessionFactory = Arc::new(|| {

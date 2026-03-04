@@ -7204,8 +7204,6 @@ async fn arc_e2e_with_real_llm() {
         Some(Box::new(AgentApiBackend::new(
             model.clone(),
             Provider::Anthropic,
-            false,
-            &TEST_STYLES,
         ))
             as Box<dyn arc_workflows::handler::codergen::CodergenBackend>)
     });

@@ -39,9 +39,9 @@ cached_style!(
 cached_style!(style_stage_done, "    {wide_msg} {prefix:.dim}");
 cached_style!(
     style_tool_running,
-    "          {spinner:.dim} {wide_msg} {elapsed:.dim}"
+    "      {spinner:.dim} {wide_msg} {elapsed:.dim}"
 );
-cached_style!(style_tool_done, "          {wide_msg} {prefix:.dim}");
+cached_style!(style_tool_done, "      {wide_msg} {prefix:.dim}");
 cached_style!(style_static_dim, "    {wide_msg:.dim}");
 cached_style!(style_empty, " ");
 

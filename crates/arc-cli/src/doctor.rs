@@ -772,26 +772,45 @@ fn validate_session_secret(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Record a validation result into the check's details/status, returning the updated worst status.
-fn record_validation(
-    label: &str,
-    result: Result<(), String>,
-    details: &mut Vec<CheckDetail>,
-    worst_status: CheckStatus,
-) -> CheckStatus {
-    match result {
-        Ok(()) => {
-            details.push(CheckDetail {
-                text: format!("{label}: valid"),
-            });
-            worst_status
+struct CryptoCheckState {
+    details: Vec<CheckDetail>,
+    errors: Vec<String>,
+    worst: CheckStatus,
+}
+
+impl CryptoCheckState {
+    fn new() -> Self {
+        Self {
+            details: Vec::new(),
+            errors: Vec::new(),
+            worst: CheckStatus::Pass,
         }
-        Err(e) => {
-            details.push(CheckDetail {
-                text: format!("{label}: {e}"),
-            });
-            CheckStatus::Error
+    }
+
+    /// Record a validation result. Ok(suffix) becomes "{label}: {suffix}" detail,
+    /// Err(msg) becomes an error detail and is accumulated for remediation.
+    fn record(&mut self, label: &str, result: Result<String, String>) {
+        match result {
+            Ok(suffix) => self.details.push(CheckDetail {
+                text: format!("{label}: {suffix}"),
+            }),
+            Err(e) => {
+                self.worst = CheckStatus::Error;
+                let text = format!("{label}: {e}");
+                self.errors.push(text.clone());
+                self.details.push(CheckDetail { text });
+            }
         }
+    }
+
+    fn record_unit(&mut self, label: &str, result: Result<(), String>) {
+        self.record(label, result.map(|()| "valid".to_string()));
+    }
+
+    fn push_error(&mut self, text: String) {
+        self.worst = CheckStatus::Error;
+        self.errors.push(text.clone());
+        self.details.push(CheckDetail { text });
     }
 }
 
@@ -799,49 +818,22 @@ pub fn check_crypto(input: &CryptoInput) -> CheckResult {
     let has_jwt = input.auth_strategies.contains(&ApiAuthStrategy::Jwt);
     let has_mtls = input.auth_strategies.contains(&ApiAuthStrategy::Mtls);
 
-    let mut details = Vec::new();
-    let mut worst = CheckStatus::Pass;
+    let mut state = CryptoCheckState::new();
 
     // mTLS certs
     if has_mtls {
         match &input.tls_files {
             Some(Ok(tls)) => {
-                match validate_tls_cert(&tls.cert_pem, input.now_epoch) {
-                    Ok(info) => details.push(CheckDetail {
-                        text: format!("TLS cert: valid ({info})"),
-                    }),
-                    Err(e) => {
-                        worst = CheckStatus::Error;
-                        details.push(CheckDetail {
-                            text: format!("TLS cert: {e}"),
-                        });
-                    }
-                }
-                worst = record_validation(
-                    "TLS key",
-                    validate_tls_private_key(&tls.key_pem),
-                    &mut details,
-                    worst,
+                state.record(
+                    "TLS cert",
+                    validate_tls_cert(&tls.cert_pem, input.now_epoch)
+                        .map(|info| format!("valid ({info})")),
                 );
-                worst = record_validation(
-                    "TLS CA",
-                    validate_tls_ca(&tls.ca_pem),
-                    &mut details,
-                    worst,
-                );
+                state.record_unit("TLS key", validate_tls_private_key(&tls.key_pem));
+                state.record_unit("TLS CA", validate_tls_ca(&tls.ca_pem));
             }
-            Some(Err(e)) => {
-                worst = CheckStatus::Error;
-                details.push(CheckDetail {
-                    text: format!("TLS files: {e}"),
-                });
-            }
-            None => {
-                worst = CheckStatus::Error;
-                details.push(CheckDetail {
-                    text: "mTLS configured but [api.tls] not set".to_string(),
-                });
-            }
+            Some(Err(e)) => state.push_error(format!("TLS files: {e}")),
+            None => state.push_error("mTLS configured but [api.tls] not set".to_string()),
         }
     }
 
@@ -857,7 +849,7 @@ pub fn check_crypto(input: &CryptoInput) -> CheckResult {
                     .map(|_| ())
                     .map_err(|e| format!("invalid Ed25519 — {e}"))
             });
-        worst = record_validation("JWT public key", result, &mut details, worst);
+        state.record_unit("JWT public key", result);
     }
 
     // JWT private key (only when set)
@@ -867,17 +859,12 @@ pub fn check_crypto(input: &CryptoInput) -> CheckResult {
                 .map(|_| ())
                 .map_err(|e| format!("invalid Ed25519 — {e}"))
         });
-        worst = record_validation("JWT private key", result, &mut details, worst);
+        state.record_unit("JWT private key", result);
     }
 
     // Session secret (only when set)
     if let Some(secret) = &input.session_secret {
-        worst = record_validation(
-            "Session secret",
-            validate_session_secret(secret),
-            &mut details,
-            worst,
-        );
+        state.record_unit("Session secret", validate_session_secret(secret));
     }
 
     // No auth at all
@@ -895,27 +882,21 @@ pub fn check_crypto(input: &CryptoInput) -> CheckResult {
         };
     }
 
-    let summary = match worst {
+    let summary = match state.worst {
         CheckStatus::Pass => "all keys valid".to_string(),
         CheckStatus::Warning => "some issues".to_string(),
         CheckStatus::Error => "invalid keys found".to_string(),
     };
 
-    let errors: Vec<_> = details
-        .iter()
-        .filter(|d| !d.text.contains(": valid"))
-        .map(|d| d.text.clone())
-        .collect();
-
     CheckResult {
         name: "Cryptographic keys".to_string(),
-        status: worst,
+        status: state.worst,
         summary,
-        details,
-        remediation: if errors.is_empty() {
+        details: state.details,
+        remediation: if state.errors.is_empty() {
             None
         } else {
-            Some(errors.join("; "))
+            Some(state.errors.join("; "))
         },
     }
 }

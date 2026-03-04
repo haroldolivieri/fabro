@@ -1,5 +1,6 @@
 mod doctor;
 mod logging;
+mod setup;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -53,6 +54,8 @@ enum Command {
         #[arg(short, long)]
         live: bool,
     },
+    /// Interactive setup wizard for Arc
+    Setup,
 }
 
 #[derive(Subcommand)]
@@ -77,6 +80,9 @@ enum LlmCommand {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     if !cli.no_dotenv {
+        if let Some(home) = dirs::home_dir() {
+            let _ = dotenvy::from_path(home.join(".arc").join(".env"));
+        }
         dotenvy::dotenv().ok();
     }
 
@@ -92,6 +98,7 @@ async fn main() -> Result<()> {
         Command::Models { .. } => "models",
         Command::Serve(_) => "serve",
         Command::Doctor { .. } => "doctor",
+        Command::Setup => "setup",
     };
     debug!(command = %command_name, "CLI command started");
 
@@ -129,6 +136,9 @@ async fn main() -> Result<()> {
         Command::Doctor { verbose, live } => {
             let exit_code = doctor::run_doctor(verbose, live).await;
             std::process::exit(exit_code);
+        }
+        Command::Setup => {
+            setup::run_setup().await?;
         }
     }
 

@@ -105,12 +105,12 @@ pub struct ServerConfig {
     pub run_defaults: RunDefaults,
 }
 
-/// Load server config from `~/.arc/arc.toml`, returning defaults if the file doesn't exist.
+/// Load server config from `~/.arc/server.toml`, returning defaults if the file doesn't exist.
 pub fn load_server_config() -> anyhow::Result<ServerConfig> {
     let Some(home) = dirs::home_dir() else {
         return Ok(ServerConfig::default());
     };
-    let path = home.join(".arc").join("arc.toml");
+    let path = home.join(".arc").join("server.toml");
     match std::fs::read_to_string(&path) {
         Ok(contents) => Ok(toml::from_str(&contents)?),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ServerConfig::default()),

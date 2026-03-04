@@ -175,7 +175,7 @@ fn parse_version(re: &Regex, output: &str) -> Option<Version> {
     ))
 }
 
-const DEP_SPECS: &[DepSpec] = &[
+pub const DEP_SPECS: &[DepSpec] = &[
     DepSpec { name: "openssl", command: &["openssl", "version"], required: true, min_version: Version::new(3, 0, 0), pattern: &OPENSSL_RE },
     DepSpec { name: "node", command: &["node", "--version"], required: true, min_version: Version::new(20, 0, 0), pattern: &NODE_RE },
     DepSpec { name: "gh", command: &["gh", "--version"], required: false, min_version: Version::new(2, 0, 0), pattern: &GH_RE },
@@ -301,9 +301,9 @@ pub fn check_config(path: Option<PathBuf>) -> CheckResult {
             status: CheckStatus::Warning,
             summary: "no config file found".to_string(),
             details: vec![CheckDetail {
-                text: "Create ~/.arc/arc.toml to configure Arc".to_string(),
+                text: "Create ~/.arc/server.toml to configure Arc".to_string(),
             }],
-            remediation: Some("Create ~/.arc/arc.toml".to_string()),
+            remediation: Some("Create ~/.arc/server.toml".to_string()),
         },
     }
 }
@@ -571,7 +571,7 @@ pub fn check_github_app(status: &GithubAppStatus) -> CheckResult {
             summary: "not configured".to_string(),
             details,
             remediation: Some(
-                "Configure GitHub App in arc.toml and set env vars to enable GitHub integration"
+                "Configure GitHub App in server.toml and set env vars to enable GitHub integration"
                     .to_string(),
             ),
         }
@@ -867,7 +867,7 @@ pub fn check_crypto(input: &CryptoInput) -> CheckResult {
                 text: "No authentication strategies or keys configured".to_string(),
             }],
             remediation: Some(
-                "Configure authentication_strategies in [api] section of arc.toml".to_string(),
+                "Configure authentication_strategies in [api] section of server.toml".to_string(),
             ),
         };
     }
@@ -978,7 +978,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
     let styles = Styles::detect_stdout();
 
     // Gather state
-    let config_path = dirs::home_dir().map(|h| h.join(".arc").join("arc.toml"));
+    let config_path = dirs::home_dir().map(|h| h.join(".arc").join("server.toml"));
     let config_exists = config_path
         .as_ref()
         .is_some_and(|p| p.exists());
@@ -1298,9 +1298,9 @@ mod tests {
 
     #[test]
     fn check_config_pass_with_path() {
-        let result = check_config(Some(PathBuf::from("/home/user/.arc/arc.toml")));
+        let result = check_config(Some(PathBuf::from("/home/user/.arc/server.toml")));
         assert_eq!(result.status, CheckStatus::Pass);
-        assert!(result.summary.contains(".arc/arc.toml"));
+        assert!(result.summary.contains(".arc/server.toml"));
     }
 
     #[test]

@@ -34,6 +34,8 @@ jsonwebtoken.workspace = true
 base64.workspace = true
 rustls-pemfile = "2"
 x509-parser = "0.16"
+rand.workspace = true
+dialoguer.workspace = true
 
 [dev-dependencies]
 assert_cmd = "2"
@@ -41,3 +43,4 @@ predicates = "3"
 tempfile = "3"
 serde_json.workspace = true
 httpmock = "0.8"
+toml.workspace = true

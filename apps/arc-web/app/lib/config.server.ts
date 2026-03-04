@@ -51,7 +51,7 @@ const GIT_DEFAULTS: GitConfig = {
   client_id: null,
 };
 
-export const ARC_CONFIG_PATH = join(homedir(), ".arc", "arc.toml");
+export const ARC_CONFIG_PATH = join(homedir(), ".arc", "server.toml");
 
 function loadAppConfig(): AppConfig {
   const configPath = ARC_CONFIG_PATH;

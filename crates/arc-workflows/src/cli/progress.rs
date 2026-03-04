@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use console::Style;
@@ -9,44 +9,43 @@ use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 
 use crate::event::{EventEmitter, WorkflowRunEvent};
 use crate::interviewer::{Answer, Interviewer, Question};
-use crate::outcome::StageUsage;
+use crate::outcome::StageStatus;
 use arc_agent::AgentEvent;
 
 use super::{compute_stage_cost, format_cost};
 
-// ── Style helpers ───────────────────────────────────────────────────────
+// ── Cached styles ───────────────────────────────────────────────────────
 
-fn style_header_running() -> ProgressStyle {
-    ProgressStyle::with_template("  {spinner:.dim} {wide_msg} {elapsed:.dim}")
-        .expect("valid template")
+macro_rules! cached_style {
+    ($name:ident, $template:expr) => {
+        fn $name() -> ProgressStyle {
+            static STYLE: OnceLock<ProgressStyle> = OnceLock::new();
+            STYLE
+                .get_or_init(|| ProgressStyle::with_template($template).expect("valid template"))
+                .clone()
+        }
+    };
 }
 
-fn style_header_done() -> ProgressStyle {
-    ProgressStyle::with_template("  {wide_msg} {prefix:.dim}")
-        .expect("valid template")
+cached_style!(style_header_running, "  {spinner:.dim} {wide_msg} {elapsed:.dim}");
+cached_style!(style_header_done, "  {wide_msg} {prefix:.dim}");
+cached_style!(style_stage_running, "  {spinner:.cyan} {wide_msg} {elapsed:.dim}");
+cached_style!(style_stage_done, "  {wide_msg} {prefix:.dim}");
+cached_style!(style_tool_running, "        {spinner:.dim} {wide_msg} {elapsed:.dim}");
+cached_style!(style_tool_done, "        {wide_msg}");
+cached_style!(style_static_dim, "  {wide_msg:.dim}");
+cached_style!(style_empty, "");
+
+// ── Cached glyphs ───────────────────────────────────────────────────────
+
+fn green_check() -> &'static str {
+    static GLYPH: OnceLock<String> = OnceLock::new();
+    GLYPH.get_or_init(|| Style::new().green().apply_to("\u{2713}").to_string())
 }
 
-fn style_stage_running() -> ProgressStyle {
-    ProgressStyle::with_template("  {spinner:.cyan} {wide_msg} {elapsed:.dim}")
-        .expect("valid template")
-}
-
-fn style_stage_done() -> ProgressStyle {
-    ProgressStyle::with_template("  {wide_msg} {prefix:.dim}")
-        .expect("valid template")
-}
-
-fn style_tool_running() -> ProgressStyle {
-    ProgressStyle::with_template("        {spinner:.dim} {wide_msg} {elapsed:.dim}")
-        .expect("valid template")
-}
-
-fn style_tool_done() -> ProgressStyle {
-    ProgressStyle::with_template("        {wide_msg}").expect("valid template")
-}
-
-fn style_static_dim() -> ProgressStyle {
-    ProgressStyle::with_template("  {wide_msg:.dim}").expect("valid template")
+fn red_cross() -> &'static str {
+    static GLYPH: OnceLock<String> = OnceLock::new();
+    GLYPH.get_or_init(|| Style::new().red().apply_to("\u{2717}").to_string())
 }
 
 // ── Duration formatting ─────────────────────────────────────────────────
@@ -70,12 +69,11 @@ fn format_duration_ms(ms: u64) -> String {
 
 fn tool_display_name(tool_name: &str, arguments: &serde_json::Value) -> String {
     if tool_name == "bash" || tool_name == "execute_command" {
-        if let Some(cmd) = arguments
-            .get("command")
-            .and_then(|v| v.as_str())
-        {
-            let truncated = if cmd.len() > 60 {
-                format!("{}...", &cmd[..57])
+        if let Some(cmd) = arguments.get("command").and_then(|v| v.as_str()) {
+            let truncated: String = if cmd.len() > 60 {
+                let mut s: String = cmd.chars().take(57).collect();
+                s.push_str("...");
+                s
             } else {
                 cmd.to_string()
             };
@@ -83,16 +81,6 @@ fn tool_display_name(tool_name: &str, arguments: &serde_json::Value) -> String {
         }
     }
     tool_name.to_string()
-}
-
-// ── ANSI styled glyphs ─────────────────────────────────────────────────
-
-fn green_check() -> String {
-    Style::new().green().apply_to("✓").to_string()
-}
-
-fn red_cross() -> String {
-    Style::new().red().apply_to("✗").to_string()
 }
 
 // ── Tool call entry ─────────────────────────────────────────────────────
@@ -106,8 +94,6 @@ enum ToolCallStatus {
 struct ToolCallEntry {
     display_name: String,
     tool_call_id: String,
-    #[allow(dead_code)]
-    started_at: Instant,
     status: ToolCallStatus,
     bar: ProgressBar,
 }
@@ -141,7 +127,6 @@ pub struct ProgressUI {
     setup_command_count: usize,
     sandbox_bar: Option<ProgressBar>,
     setup_bar: Option<ProgressBar>,
-    logs_bar: Option<ProgressBar>,
 }
 
 impl ProgressUI {
@@ -159,12 +144,10 @@ impl ProgressUI {
             setup_command_count: 0,
             sandbox_bar: None,
             setup_bar: None,
-            logs_bar: None,
         }
     }
 
     /// Register event handlers on the emitter.
-    /// The closure captures an `Arc<Mutex<Self>>` for interior mutation.
     pub fn register(progress: &Arc<Mutex<Self>>, emitter: &mut EventEmitter) {
         let p = Arc::clone(progress);
         emitter.on_event(move |event| {
@@ -175,7 +158,6 @@ impl ProgressUI {
 
     /// Clear all active bars before the summary block is printed.
     pub fn finish(&mut self) {
-        // Clear any remaining tool call bars and stage spinners
         for (_id, stage) in self.active_stages.drain() {
             for entry in &stage.tool_calls {
                 entry.bar.finish_and_clear();
@@ -188,7 +170,9 @@ impl ProgressUI {
 
     fn handle_event(&mut self, event: &WorkflowRunEvent) {
         match event {
-            WorkflowRunEvent::Sandbox { event: sandbox_event } => {
+            WorkflowRunEvent::Sandbox {
+                event: sandbox_event,
+            } => {
                 self.on_sandbox_event(sandbox_event);
             }
             WorkflowRunEvent::SetupStarted { command_count } => {
@@ -196,10 +180,6 @@ impl ProgressUI {
             }
             WorkflowRunEvent::SetupCompleted { duration_ms } => {
                 self.on_setup_completed(*duration_ms);
-            }
-            WorkflowRunEvent::WorkflowRunStarted { .. } => {
-                // Logs dir is printed by the caller — we don't have the path here.
-                // This event is handled externally to show the logs line.
             }
             WorkflowRunEvent::StageStarted { node_id, name, .. } => {
                 self.on_stage_started(node_id, name);
@@ -212,12 +192,28 @@ impl ProgressUI {
                 usage,
                 ..
             } => {
-                self.on_stage_completed(node_id, name, *duration_ms, status, usage.as_ref());
+                let succeeded = status
+                    .parse::<StageStatus>()
+                    .map(|s| matches!(s, StageStatus::Success | StageStatus::PartialSuccess))
+                    .unwrap_or(false);
+                let dur = format_duration_ms(*duration_ms);
+                let cost_str = usage
+                    .as_ref()
+                    .and_then(compute_stage_cost)
+                    .map(|c| format!("   {}", format_cost(c)))
+                    .unwrap_or_default();
+                let prefix = format!("{dur}{cost_str}");
+                let glyph = if succeeded {
+                    green_check()
+                } else {
+                    red_cross()
+                };
+                self.finish_stage(node_id, name, glyph, &prefix);
             }
             WorkflowRunEvent::StageFailed {
                 node_id, name, ..
             } => {
-                self.on_stage_failed(node_id, name);
+                self.finish_stage(node_id, name, red_cross(), "");
             }
             WorkflowRunEvent::Agent { stage, event } => {
                 self.on_agent_event(stage, event);
@@ -232,15 +228,12 @@ impl ProgressUI {
         use arc_agent::SandboxEvent;
         match event {
             SandboxEvent::Initializing { provider } => {
-                match &self.renderer {
-                    ProgressRenderer::Tty(tty) => {
-                        let bar = tty.multi.add(ProgressBar::new_spinner());
-                        bar.set_style(style_header_running());
-                        bar.set_message(format!("Initializing {provider} sandbox..."));
-                        bar.enable_steady_tick(Duration::from_millis(100));
-                        self.sandbox_bar = Some(bar);
-                    }
-                    ProgressRenderer::Plain => {}
+                if let ProgressRenderer::Tty(tty) = &self.renderer {
+                    let bar = tty.multi.add(ProgressBar::new_spinner());
+                    bar.set_style(style_header_running());
+                    bar.set_message(format!("Initializing {provider} sandbox..."));
+                    bar.enable_steady_tick(Duration::from_millis(100));
+                    self.sandbox_bar = Some(bar);
                 }
             }
             SandboxEvent::Ready {
@@ -269,45 +262,37 @@ impl ProgressUI {
 
     fn on_setup_started(&mut self, command_count: usize) {
         self.setup_command_count = command_count;
-        match &self.renderer {
-            ProgressRenderer::Tty(tty) => {
-                let bar = tty.multi.add(ProgressBar::new_spinner());
-                bar.set_style(style_header_running());
-                bar.set_message(format!(
-                    "Setup: {command_count} command{}...",
-                    if command_count == 1 { "" } else { "s" }
-                ));
-                bar.enable_steady_tick(Duration::from_millis(100));
-                self.setup_bar = Some(bar);
-            }
-            ProgressRenderer::Plain => {}
+        if let ProgressRenderer::Tty(tty) = &self.renderer {
+            let bar = tty.multi.add(ProgressBar::new_spinner());
+            bar.set_style(style_header_running());
+            bar.set_message(format!(
+                "Setup: {command_count} command{}...",
+                if command_count == 1 { "" } else { "s" }
+            ));
+            bar.enable_steady_tick(Duration::from_millis(100));
+            self.setup_bar = Some(bar);
         }
     }
 
     fn on_setup_completed(&mut self, duration_ms: u64) {
         let dur = format_duration_ms(duration_ms);
         let count = self.setup_command_count;
+        let suffix = if count == 1 { "" } else { "s" };
         match &self.renderer {
             ProgressRenderer::Tty(_) => {
                 if let Some(bar) = self.setup_bar.take() {
                     bar.set_style(style_header_done());
                     bar.set_prefix(dur);
-                    bar.finish_with_message(format!(
-                        "Setup: {count} command{}",
-                        if count == 1 { "" } else { "s" }
-                    ));
+                    bar.finish_with_message(format!("Setup: {count} command{suffix}"));
                 }
             }
             ProgressRenderer::Plain => {
-                eprintln!(
-                    "  Setup: {count} command{} ({dur})",
-                    if count == 1 { "" } else { "s" }
-                );
+                eprintln!("  Setup: {count} command{suffix} ({dur})");
             }
         }
     }
 
-    // ── Logs dir (called externally after WorkflowRunStarted) ───────────
+    // ── Logs dir (called externally) ────────────────────────────────────
 
     pub fn show_logs_dir(&mut self, logs_dir: &Path) {
         let path_str = logs_dir.display().to_string();
@@ -316,11 +301,9 @@ impl ProgressUI {
                 let bar = tty.multi.add(ProgressBar::new_spinner());
                 bar.set_style(style_static_dim());
                 bar.finish_with_message(format!("Logs: {path_str}"));
-                // Add a blank separator after header section
                 let sep = tty.multi.add(ProgressBar::new_spinner());
-                sep.set_style(ProgressStyle::with_template("").expect("valid template"));
+                sep.set_style(style_empty());
                 sep.finish();
-                self.logs_bar = Some(bar);
             }
             ProgressRenderer::Plain => {
                 eprintln!("  Logs: {path_str}");
@@ -331,65 +314,23 @@ impl ProgressUI {
     // ── Stages ──────────────────────────────────────────────────────────
 
     fn on_stage_started(&mut self, node_id: &str, name: &str) {
-        match &self.renderer {
-            ProgressRenderer::Tty(tty) => {
-                let bar = tty.multi.add(ProgressBar::new_spinner());
-                bar.set_style(style_stage_running());
-                bar.set_message(name.to_string());
-                bar.enable_steady_tick(Duration::from_millis(100));
-                self.active_stages.insert(
-                    node_id.to_string(),
-                    ActiveStage {
-                        name: name.to_string(),
-                        spinner: bar,
-                        tool_calls: VecDeque::new(),
-                    },
-                );
-            }
-            ProgressRenderer::Plain => {}
+        if let ProgressRenderer::Tty(tty) = &self.renderer {
+            let bar = tty.multi.add(ProgressBar::new_spinner());
+            bar.set_style(style_stage_running());
+            bar.set_message(name.to_string());
+            bar.enable_steady_tick(Duration::from_millis(100));
+            self.active_stages.insert(
+                node_id.to_string(),
+                ActiveStage {
+                    name: name.to_string(),
+                    spinner: bar,
+                    tool_calls: VecDeque::new(),
+                },
+            );
         }
     }
 
-    fn on_stage_completed(
-        &mut self,
-        node_id: &str,
-        name: &str,
-        duration_ms: u64,
-        status: &str,
-        usage: Option<&StageUsage>,
-    ) {
-        let dur = format_duration_ms(duration_ms);
-        let cost_str = usage
-            .and_then(compute_stage_cost)
-            .map(|c| format!("   {}", format_cost(c)))
-            .unwrap_or_default();
-
-        let succeeded = status == "success" || status == "partial_success";
-        let glyph = if succeeded { green_check() } else { red_cross() };
-
-        match &self.renderer {
-            ProgressRenderer::Tty(_) => {
-                if let Some(stage) = self.active_stages.remove(node_id) {
-                    // Clear tool call bars
-                    for entry in &stage.tool_calls {
-                        entry.bar.finish_and_clear();
-                    }
-                    // Settle the stage bar
-                    stage.spinner.set_style(style_stage_done());
-                    stage.spinner.set_prefix(format!("{dur}{cost_str}"));
-                    stage
-                        .spinner
-                        .finish_with_message(format!("{glyph} {}", stage.name));
-                }
-            }
-            ProgressRenderer::Plain => {
-                eprintln!("  {glyph} {name}  {dur}{cost_str}");
-            }
-        }
-    }
-
-    fn on_stage_failed(&mut self, node_id: &str, name: &str) {
-        let glyph = red_cross();
+    fn finish_stage(&mut self, node_id: &str, name: &str, glyph: &str, prefix: &str) {
         match &self.renderer {
             ProgressRenderer::Tty(_) => {
                 if let Some(stage) = self.active_stages.remove(node_id) {
@@ -397,14 +338,18 @@ impl ProgressUI {
                         entry.bar.finish_and_clear();
                     }
                     stage.spinner.set_style(style_stage_done());
-                    stage.spinner.set_prefix("");
+                    stage.spinner.set_prefix(prefix.to_string());
                     stage
                         .spinner
                         .finish_with_message(format!("{glyph} {}", stage.name));
                 }
             }
             ProgressRenderer::Plain => {
-                eprintln!("  {glyph} {name}");
+                if prefix.is_empty() {
+                    eprintln!("  {glyph} {name}");
+                } else {
+                    eprintln!("  {glyph} {name}  {prefix}");
+                }
             }
         }
     }
@@ -423,10 +368,9 @@ impl ProgressUI {
             AgentEvent::ToolCallCompleted {
                 tool_call_id,
                 is_error,
-                tool_name,
                 ..
             } => {
-                self.on_tool_call_completed(stage_node_id, tool_name, tool_call_id, *is_error);
+                self.on_tool_call_completed(stage_node_id, tool_call_id, *is_error);
             }
             _ => {}
         }
@@ -441,71 +385,61 @@ impl ProgressUI {
     ) {
         let display_name = tool_display_name(tool_name, arguments);
 
-        match &self.renderer {
-            ProgressRenderer::Tty(tty) => {
-                if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
-                    // Evict oldest if at capacity
-                    if stage.tool_calls.len() >= MAX_TOOL_CALLS {
-                        // Prefer evicting completed entries first
-                        let evict_idx = stage
-                            .tool_calls
-                            .iter()
-                            .position(|e| !matches!(e.status, ToolCallStatus::Running))
-                            .unwrap_or(0);
-                        if let Some(evicted) = stage.tool_calls.remove(evict_idx) {
-                            evicted.bar.finish_and_clear();
-                        }
+        if let ProgressRenderer::Tty(tty) = &self.renderer {
+            if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
+                // Evict oldest if at capacity (prefer completed entries)
+                if stage.tool_calls.len() >= MAX_TOOL_CALLS {
+                    let evict_idx = stage
+                        .tool_calls
+                        .iter()
+                        .position(|e| !matches!(e.status, ToolCallStatus::Running))
+                        .unwrap_or(0);
+                    if let Some(evicted) = stage.tool_calls.remove(evict_idx) {
+                        evicted.bar.finish_and_clear();
                     }
-                    let bar = tty.multi.insert_after(
-                        stage.tool_calls.back().map_or(&stage.spinner, |e| &e.bar),
-                        ProgressBar::new_spinner(),
-                    );
-                    bar.set_style(style_tool_running());
-                    bar.set_message(display_name.clone());
-                    bar.enable_steady_tick(Duration::from_millis(100));
-                    stage.tool_calls.push_back(ToolCallEntry {
-                        display_name,
-                        tool_call_id: tool_call_id.to_string(),
-                        started_at: Instant::now(),
-                        status: ToolCallStatus::Running,
-                        bar,
-                    });
                 }
+                let bar = tty.multi.insert_after(
+                    stage.tool_calls.back().map_or(&stage.spinner, |e| &e.bar),
+                    ProgressBar::new_spinner(),
+                );
+                bar.set_style(style_tool_running());
+                bar.set_message(display_name.clone());
+                bar.enable_steady_tick(Duration::from_millis(100));
+                stage.tool_calls.push_back(ToolCallEntry {
+                    display_name,
+                    tool_call_id: tool_call_id.to_string(),
+                    status: ToolCallStatus::Running,
+                    bar,
+                });
             }
-            ProgressRenderer::Plain => {}
         }
     }
 
     fn on_tool_call_completed(
         &mut self,
         stage_node_id: &str,
-        tool_name: &str,
         tool_call_id: &str,
         is_error: bool,
     ) {
-        let _ = tool_name; // display_name already stored in entry
-        match &self.renderer {
-            ProgressRenderer::Tty(_) => {
-                if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
-                    if let Some(entry) = stage
-                        .tool_calls
-                        .iter_mut()
-                        .find(|e| e.tool_call_id == tool_call_id)
-                    {
-                        let glyph = if is_error { red_cross() } else { green_check() };
-                        entry.status = if is_error {
-                            ToolCallStatus::Failed
-                        } else {
-                            ToolCallStatus::Succeeded
-                        };
-                        entry.bar.set_style(style_tool_done());
-                        entry
-                            .bar
-                            .finish_with_message(format!("{glyph} {}", entry.display_name));
-                    }
+        if let ProgressRenderer::Tty(_) = &self.renderer {
+            if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
+                if let Some(entry) = stage
+                    .tool_calls
+                    .iter_mut()
+                    .find(|e| e.tool_call_id == tool_call_id)
+                {
+                    let glyph = if is_error { red_cross() } else { green_check() };
+                    entry.status = if is_error {
+                        ToolCallStatus::Failed
+                    } else {
+                        ToolCallStatus::Succeeded
+                    };
+                    entry.bar.set_style(style_tool_done());
+                    entry
+                        .bar
+                        .finish_with_message(format!("{glyph} {}", entry.display_name));
                 }
             }
-            ProgressRenderer::Plain => {}
         }
     }
 }
@@ -530,16 +464,14 @@ impl ProgressAwareInterviewer {
     fn hide_bars(&self) {
         let ui = self.progress.lock().expect("progress lock poisoned");
         if let ProgressRenderer::Tty(tty) = &ui.renderer {
-            tty.multi
-                .set_draw_target(ProgressDrawTarget::hidden());
+            tty.multi.set_draw_target(ProgressDrawTarget::hidden());
         }
     }
 
     fn show_bars(&self) {
         let ui = self.progress.lock().expect("progress lock poisoned");
         if let ProgressRenderer::Tty(tty) = &ui.renderer {
-            tty.multi
-                .set_draw_target(ProgressDrawTarget::stderr());
+            tty.multi.set_draw_target(ProgressDrawTarget::stderr());
         }
     }
 }

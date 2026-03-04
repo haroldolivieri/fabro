@@ -2,8 +2,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use arc_agent::{
-    AnthropicProfile, GeminiProfile, LocalSandbox, OpenAiProfile, ProviderProfile,
-    Session, SessionConfig, SubAgentManager, WebFetchSummarizer,
+    AnthropicProfile, GeminiProfile, LocalSandbox, OpenAiProfile, ProviderProfile, Session,
+    SessionConfig, SubAgentManager, WebFetchSummarizer,
 };
 use arc_llm::client::Client;
 use arc_llm::provider::{ModelId, Provider};

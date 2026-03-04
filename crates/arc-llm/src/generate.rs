@@ -192,7 +192,11 @@ pub async fn generate(params: GenerateParams) -> Result<GenerateResult, SdkError
                 && params.tools.is_some()
                 && max_tool_rounds > 0
             {
-                debug!(tool_calls = tool_calls.len(), round = round, "Executing tool calls");
+                debug!(
+                    tool_calls = tool_calls.len(),
+                    round = round,
+                    "Executing tool calls"
+                );
                 let tools = params.tools.as_ref().expect("checked above");
                 if tools.iter().any(|t| t.is_active()) {
                     let tool_refs: Vec<&Tool> =

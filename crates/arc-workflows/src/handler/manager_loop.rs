@@ -8,7 +8,7 @@ use async_trait::async_trait;
 
 use crate::condition::evaluate_condition;
 use crate::context::Context;
-use crate::engine::{WorkflowRunEngine, RunConfig};
+use crate::engine::{RunConfig, WorkflowRunEngine};
 use crate::error::ArcError;
 use crate::graph::{Graph, Node};
 use crate::outcome::{Outcome, StageStatus};
@@ -44,10 +44,18 @@ fn parse_duration_str(s: &str) -> Duration {
 /// Read DOT source from node attributes: inline `stack.child_dot_source` or
 /// file path `stack.child_dotfile`.
 fn read_child_dot(node: &Node) -> Result<String, ArcError> {
-    if let Some(dot) = node.attrs.get("stack.child_dot_source").and_then(|v| v.as_str()) {
+    if let Some(dot) = node
+        .attrs
+        .get("stack.child_dot_source")
+        .and_then(|v| v.as_str())
+    {
         return Ok(dot.to_string());
     }
-    if let Some(path) = node.attrs.get("stack.child_dotfile").and_then(|v| v.as_str()) {
+    if let Some(path) = node
+        .attrs
+        .get("stack.child_dotfile")
+        .and_then(|v| v.as_str())
+    {
         return std::fs::read_to_string(path)
             .map_err(|e| ArcError::handler(format!("Failed to read child dotfile {path}: {e}")));
     }
@@ -152,10 +160,11 @@ impl Handler for SubWorkflowHandler {
 
         // Spawn child engine
         let engine = WorkflowRunEngine::from_services(services);
-        let mut child_handle =
-            tokio::spawn(
-                async move { engine.run_with_context(&child_graph, &child_config, child_context).await },
-            );
+        let mut child_handle = tokio::spawn(async move {
+            engine
+                .run_with_context(&child_graph, &child_config, child_context)
+                .await
+        });
 
         // Poll loop
         for cycle in 1..=max_cycles {
@@ -269,7 +278,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
-        assert!(outcome.notes.as_deref().unwrap().contains("Child completed"));
+        assert!(outcome
+            .notes
+            .as_deref()
+            .unwrap()
+            .contains("Child completed"));
     }
 
     #[tokio::test]
@@ -348,10 +361,9 @@ mod tests {
                 outcome
                     .context_updates
                     .insert("review.result".to_string(), serde_json::json!("approved"));
-                outcome.context_updates.insert(
-                    "review.echo".to_string(),
-                    serde_json::json!(target),
-                );
+                outcome
+                    .context_updates
+                    .insert("review.echo".to_string(), serde_json::json!(target));
                 Ok(outcome)
             }
         }
@@ -500,10 +512,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
-        assert!(outcome
-            .failure_reason()
-            .unwrap()
-            .contains("Max cycles"));
+        assert!(outcome.failure_reason().unwrap().contains("Max cycles"));
     }
 
     #[tokio::test]

@@ -197,10 +197,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
-        assert_eq!(
-            outcome.failure_reason(),
-            Some("No script specified")
-        );
+        assert_eq!(outcome.failure_reason(), Some("No script specified"));
     }
 
     #[tokio::test]

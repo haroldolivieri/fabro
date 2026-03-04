@@ -211,7 +211,11 @@ impl SandboxEvent {
                 error!(name, error, "Snapshot failed");
             }
             Self::GitCloneStarted { url, branch } => {
-                debug!(url, branch = branch.as_deref().unwrap_or(""), "Git clone started");
+                debug!(
+                    url,
+                    branch = branch.as_deref().unwrap_or(""),
+                    "Git clone started"
+                );
             }
             Self::GitCloneCompleted { url, duration_ms } => {
                 debug!(url, duration_ms, "Git clone completed");

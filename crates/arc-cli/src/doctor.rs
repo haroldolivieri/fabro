@@ -40,9 +40,7 @@ pub struct DoctorReport {
 
 impl DoctorReport {
     pub fn has_errors(&self) -> bool {
-        self.checks
-            .iter()
-            .any(|c| c.status == CheckStatus::Error)
+        self.checks.iter().any(|c| c.status == CheckStatus::Error)
     }
 
     pub fn issue_count(&self) -> usize {
@@ -90,7 +88,11 @@ impl DoctorReport {
             writeln!(
                 out,
                 "Doctor found issues in {issues} {}.",
-                if issues == 1 { "category" } else { "categories" }
+                if issues == 1 {
+                    "category"
+                } else {
+                    "categories"
+                }
             )
             .unwrap();
 
@@ -159,8 +161,7 @@ pub enum ProbeOutcome {
 
 static OPENSSL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:OpenSSL|LibreSSL)\s+(\d+)\.(\d+)\.(\d+)").unwrap());
-static NODE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"v(\d+)\.(\d+)\.(\d+)").unwrap());
+static NODE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"v(\d+)\.(\d+)\.(\d+)").unwrap());
 static GH_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"gh version (\d+)\.(\d+)\.(\d+)").unwrap());
 static DOT_RE: LazyLock<Regex> =
@@ -176,10 +177,34 @@ fn parse_version(re: &Regex, output: &str) -> Option<Version> {
 }
 
 pub const DEP_SPECS: &[DepSpec] = &[
-    DepSpec { name: "openssl", command: &["openssl", "version"], required: true, min_version: Version::new(3, 0, 0), pattern: &OPENSSL_RE },
-    DepSpec { name: "node", command: &["node", "--version"], required: true, min_version: Version::new(20, 0, 0), pattern: &NODE_RE },
-    DepSpec { name: "gh", command: &["gh", "--version"], required: false, min_version: Version::new(2, 0, 0), pattern: &GH_RE },
-    DepSpec { name: "dot", command: &["dot", "-V"], required: false, min_version: Version::new(2, 0, 0), pattern: &DOT_RE },
+    DepSpec {
+        name: "openssl",
+        command: &["openssl", "version"],
+        required: true,
+        min_version: Version::new(3, 0, 0),
+        pattern: &OPENSSL_RE,
+    },
+    DepSpec {
+        name: "node",
+        command: &["node", "--version"],
+        required: true,
+        min_version: Version::new(20, 0, 0),
+        pattern: &NODE_RE,
+    },
+    DepSpec {
+        name: "gh",
+        command: &["gh", "--version"],
+        required: false,
+        min_version: Version::new(2, 0, 0),
+        pattern: &GH_RE,
+    },
+    DepSpec {
+        name: "dot",
+        command: &["dot", "-V"],
+        required: false,
+        min_version: Version::new(2, 0, 0),
+        pattern: &DOT_RE,
+    },
 ];
 
 pub fn probe_system_deps() -> Vec<ProbeOutcome> {
@@ -208,7 +233,11 @@ pub fn probe_system_deps() -> Vec<ProbeOutcome> {
 
 fn dep_issue(name: &str, issue: &str, required: bool) -> (CheckStatus, String) {
     let severity = if required { "required" } else { "optional" };
-    let status = if required { CheckStatus::Error } else { CheckStatus::Warning };
+    let status = if required {
+        CheckStatus::Error
+    } else {
+        CheckStatus::Warning
+    };
     (status, format!("{name}: {issue} ({severity})"))
 }
 
@@ -607,16 +636,16 @@ fn format_auth_strategies(strategies: &[ApiAuthStrategy]) -> String {
         .join(", ")
 }
 
-pub fn check_api(
-    status: &ApiStatus,
-    live_result: Option<&Result<(), String>>,
-) -> CheckResult {
+pub fn check_api(status: &ApiStatus, live_result: Option<&Result<(), String>>) -> CheckResult {
     let mut details = vec![
         CheckDetail {
             text: format!("Base URL: {}", status.base_url),
         },
         CheckDetail {
-            text: format!("Authentication: {}", format_auth_strategies(&status.authentication_strategies)),
+            text: format!(
+                "Authentication: {}",
+                format_auth_strategies(&status.authentication_strategies)
+            ),
         },
     ];
 
@@ -648,16 +677,16 @@ fn format_auth_provider(provider: &AuthProvider) -> &'static str {
     }
 }
 
-pub fn check_web(
-    status: &WebStatus,
-    live_result: Option<&Result<(), String>>,
-) -> CheckResult {
+pub fn check_web(status: &WebStatus, live_result: Option<&Result<(), String>>) -> CheckResult {
     let mut details = vec![
         CheckDetail {
             text: format!("URL: {}", status.url),
         },
         CheckDetail {
-            text: format!("Auth provider: {}", format_auth_provider(&status.auth_provider)),
+            text: format!(
+                "Auth provider: {}",
+                format_auth_provider(&status.auth_provider)
+            ),
         },
         CheckDetail {
             text: format!("Allowed usernames: {}", status.allowed_usernames_count),
@@ -946,7 +975,11 @@ async fn probe_llm_provider(
         metadata: None,
         provider_options: None,
     };
-    let result = client.complete(&request).await.map(|_| ()).map_err(|e| e.to_string());
+    let result = client
+        .complete(&request)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string());
     (provider, result)
 }
 
@@ -979,9 +1012,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
 
     // Gather state
     let config_path = dirs::home_dir().map(|h| h.join(".arc").join("server.toml"));
-    let config_exists = config_path
-        .as_ref()
-        .is_some_and(|p| p.exists());
+    let config_exists = config_path.as_ref().is_some_and(|p| p.exists());
 
     let llm_statuses: Vec<(Provider, bool)> = Provider::ALL
         .iter()
@@ -990,8 +1021,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
 
     let brave_key_set = std::env::var("BRAVE_SEARCH_API_KEY").is_ok();
 
-    let server_config = arc_api::server_config::load_server_config()
-        .unwrap_or_default();
+    let server_config = arc_api::server_config::load_server_config().unwrap_or_default();
 
     let api_status = ApiStatus {
         base_url: server_config.api.base_url.clone(),
@@ -1127,7 +1157,11 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
 
     print!("{}", report.render(&styles, verbose, live));
 
-    if report.has_errors() { 1 } else { 0 }
+    if report.has_errors() {
+        1
+    } else {
+        0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1314,8 +1348,7 @@ mod tests {
 
     #[test]
     fn check_llm_all_configured() {
-        let statuses: Vec<(Provider, bool)> =
-            Provider::ALL.iter().map(|p| (*p, true)).collect();
+        let statuses: Vec<(Provider, bool)> = Provider::ALL.iter().map(|p| (*p, true)).collect();
         let result = check_llm_providers(&statuses, None);
         assert_eq!(result.status, CheckStatus::Pass);
         assert!(result.summary.contains("7 of 7"));
@@ -1337,8 +1370,7 @@ mod tests {
 
     #[test]
     fn check_llm_none_configured() {
-        let statuses: Vec<(Provider, bool)> =
-            Provider::ALL.iter().map(|p| (*p, false)).collect();
+        let statuses: Vec<(Provider, bool)> = Provider::ALL.iter().map(|p| (*p, false)).collect();
         let result = check_llm_providers(&statuses, None);
         assert_eq!(result.status, CheckStatus::Error);
         assert!(result.summary.contains("0 of 7"));
@@ -1350,7 +1382,10 @@ mod tests {
         let live = vec![(Provider::Anthropic, Ok(()))];
         let result = check_llm_providers(&statuses, Some(&live));
         assert_eq!(result.status, CheckStatus::Pass);
-        assert!(result.details.iter().any(|d| d.text.contains("connectivity: OK")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("connectivity: OK")));
     }
 
     #[test]
@@ -1548,7 +1583,10 @@ mod tests {
         let live = Ok(());
         let result = check_api(&status, Some(&live));
         assert_eq!(result.status, CheckStatus::Pass);
-        assert!(result.details.iter().any(|d| d.text.contains("Connectivity: OK")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("Connectivity: OK")));
     }
 
     #[test]
@@ -1560,7 +1598,10 @@ mod tests {
         let live = Err("connection refused".to_string());
         let result = check_api(&status, Some(&live));
         assert_eq!(result.status, CheckStatus::Warning);
-        assert!(result.details.iter().any(|d| d.text.contains("connection refused")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("connection refused")));
     }
 
     // -- check_web --
@@ -1606,7 +1647,10 @@ mod tests {
         let live = Ok(());
         let result = check_web(&status, Some(&live));
         assert_eq!(result.status, CheckStatus::Pass);
-        assert!(result.details.iter().any(|d| d.text.contains("Connectivity: OK")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("Connectivity: OK")));
     }
 
     #[test]
@@ -1619,7 +1663,10 @@ mod tests {
         let live = Err("connection refused".to_string());
         let result = check_web(&status, Some(&live));
         assert_eq!(result.status, CheckStatus::Warning);
-        assert!(result.details.iter().any(|d| d.text.contains("connection refused")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("connection refused")));
     }
 
     // -- render: multiple issues --
@@ -1638,25 +1685,37 @@ mod tests {
     #[test]
     fn parse_version_openssl() {
         assert_eq!(
-            parse_version(&OPENSSL_RE, "OpenSSL 3.4.1 11 Feb 2025 (Library: OpenSSL 3.4.1 11 Feb 2025)"),
+            parse_version(
+                &OPENSSL_RE,
+                "OpenSSL 3.4.1 11 Feb 2025 (Library: OpenSSL 3.4.1 11 Feb 2025)"
+            ),
             Some(Version::new(3, 4, 1)),
         );
     }
 
     #[test]
     fn parse_version_libressl() {
-        assert_eq!(parse_version(&OPENSSL_RE, "LibreSSL 3.3.6"), Some(Version::new(3, 3, 6)));
+        assert_eq!(
+            parse_version(&OPENSSL_RE, "LibreSSL 3.3.6"),
+            Some(Version::new(3, 3, 6))
+        );
     }
 
     #[test]
     fn parse_version_node() {
-        assert_eq!(parse_version(&NODE_RE, "v22.14.0"), Some(Version::new(22, 14, 0)));
+        assert_eq!(
+            parse_version(&NODE_RE, "v22.14.0"),
+            Some(Version::new(22, 14, 0))
+        );
     }
 
     #[test]
     fn parse_version_gh() {
         assert_eq!(
-            parse_version(&GH_RE, "gh version 2.67.0 (2025-01-31)\nhttps://github.com/cli/cli/releases/tag/v2.67.0"),
+            parse_version(
+                &GH_RE,
+                "gh version 2.67.0 (2025-01-31)\nhttps://github.com/cli/cli/releases/tag/v2.67.0"
+            ),
             Some(Version::new(2, 67, 0)),
         );
     }
@@ -1700,10 +1759,18 @@ mod tests {
             spec("dot", false, Version::new(2, 0, 0)),
         ];
         let outcomes = [
-            ProbeOutcome::Ok { version: Some(Version::new(3, 4, 1)) },
-            ProbeOutcome::Ok { version: Some(Version::new(22, 14, 0)) },
-            ProbeOutcome::Ok { version: Some(Version::new(2, 67, 0)) },
-            ProbeOutcome::Ok { version: Some(Version::new(12, 2, 1)) },
+            ProbeOutcome::Ok {
+                version: Some(Version::new(3, 4, 1)),
+            },
+            ProbeOutcome::Ok {
+                version: Some(Version::new(22, 14, 0)),
+            },
+            ProbeOutcome::Ok {
+                version: Some(Version::new(2, 67, 0)),
+            },
+            ProbeOutcome::Ok {
+                version: Some(Version::new(12, 2, 1)),
+            },
         ];
         let result = check_system_deps(&specs, &outcomes);
         assert_eq!(result.status, CheckStatus::Pass);
@@ -1731,7 +1798,9 @@ mod tests {
     #[test]
     fn check_system_deps_outdated_is_warning() {
         let specs = [spec("openssl", true, Version::new(3, 0, 0))];
-        let outcomes = [ProbeOutcome::Ok { version: Some(Version::new(1, 1, 1)) }];
+        let outcomes = [ProbeOutcome::Ok {
+            version: Some(Version::new(1, 1, 1)),
+        }];
         let result = check_system_deps(&specs, &outcomes);
         assert_eq!(result.status, CheckStatus::Warning);
         assert!(result.details[0].text.contains("1.1.1"));
@@ -1782,20 +1851,31 @@ mod tests {
     fn generate_test_tls_cert() -> (String, String) {
         let output = std::process::Command::new("openssl")
             .args([
-                "req", "-x509", "-newkey", "ec",
-                "-pkeyopt", "ec_paramgen_curve:prime256v1",
-                "-keyout", "/dev/stdout", "-out", "/dev/stdout",
-                "-days", "3650", "-nodes", "-subj", "/CN=test-server",
+                "req",
+                "-x509",
+                "-newkey",
+                "ec",
+                "-pkeyopt",
+                "ec_paramgen_curve:prime256v1",
+                "-keyout",
+                "/dev/stdout",
+                "-out",
+                "/dev/stdout",
+                "-days",
+                "3650",
+                "-nodes",
+                "-subj",
+                "/CN=test-server",
             ])
             .output()
             .expect("openssl must be available for tests");
         let combined = String::from_utf8(output.stdout).unwrap();
         let key_start = combined.find("-----BEGIN PRIVATE KEY-----").unwrap();
-        let key_end = combined.find("-----END PRIVATE KEY-----").unwrap()
-            + "-----END PRIVATE KEY-----".len();
+        let key_end =
+            combined.find("-----END PRIVATE KEY-----").unwrap() + "-----END PRIVATE KEY-----".len();
         let cert_start = combined.find("-----BEGIN CERTIFICATE-----").unwrap();
-        let cert_end = combined.find("-----END CERTIFICATE-----").unwrap()
-            + "-----END CERTIFICATE-----".len();
+        let cert_end =
+            combined.find("-----END CERTIFICATE-----").unwrap() + "-----END CERTIFICATE-----".len();
         let key_pem = combined[key_start..key_end].to_string();
         let cert_pem = combined[cert_start..cert_end].to_string();
         (cert_pem, key_pem)
@@ -1814,7 +1894,12 @@ mod tests {
             .spawn()
             .and_then(|mut child| {
                 use std::io::Write;
-                child.stdin.take().unwrap().write_all(private_pem.as_bytes()).unwrap();
+                child
+                    .stdin
+                    .take()
+                    .unwrap()
+                    .write_all(private_pem.as_bytes())
+                    .unwrap();
                 child.wait_with_output()
             })
             .expect("openssl pkey failed");
@@ -1913,14 +1998,20 @@ mod tests {
     fn crypto_jwt_configured_but_key_missing() {
         let result = check_crypto(&crypto_input(vec![ApiAuthStrategy::Jwt]));
         assert_eq!(result.status, CheckStatus::Error);
-        assert!(result.details.iter().any(|d| d.text.contains("ARC_JWT_PUBLIC_KEY not set")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("ARC_JWT_PUBLIC_KEY not set")));
     }
 
     #[test]
     fn crypto_mtls_configured_but_tls_not_set() {
         let result = check_crypto(&crypto_input(vec![ApiAuthStrategy::Mtls]));
         assert_eq!(result.status, CheckStatus::Error);
-        assert!(result.details.iter().any(|d| d.text.contains("[api.tls] not set")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("[api.tls] not set")));
     }
 
     #[test]
@@ -1931,29 +2022,42 @@ mod tests {
         };
         let result = check_crypto(&input);
         assert_eq!(result.status, CheckStatus::Error);
-        assert!(result.details.iter().any(|d| d.text.contains("Permission denied")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("Permission denied")));
     }
 
     #[test]
     fn crypto_invalid_jwt_public_key() {
         let input = CryptoInput {
-            jwt_public_key: Some("-----BEGIN PUBLIC KEY-----\nINVALID\n-----END PUBLIC KEY-----".to_string()),
+            jwt_public_key: Some(
+                "-----BEGIN PUBLIC KEY-----\nINVALID\n-----END PUBLIC KEY-----".to_string(),
+            ),
             ..crypto_input(vec![ApiAuthStrategy::Jwt])
         };
         let result = check_crypto(&input);
         assert_eq!(result.status, CheckStatus::Error);
-        assert!(result.details.iter().any(|d| d.text.contains("JWT public key: invalid")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("JWT public key: invalid")));
     }
 
     #[test]
     fn crypto_invalid_jwt_private_key() {
         let input = CryptoInput {
-            jwt_private_key: Some("-----BEGIN PRIVATE KEY-----\nINVALID\n-----END PRIVATE KEY-----".to_string()),
+            jwt_private_key: Some(
+                "-----BEGIN PRIVATE KEY-----\nINVALID\n-----END PRIVATE KEY-----".to_string(),
+            ),
             ..crypto_input(vec![])
         };
         let result = check_crypto(&input);
         assert_eq!(result.status, CheckStatus::Error);
-        assert!(result.details.iter().any(|d| d.text.contains("JWT private key: invalid")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("JWT private key: invalid")));
     }
 
     #[test]
@@ -1969,7 +2073,10 @@ mod tests {
         };
         let result = check_crypto(&input);
         assert_eq!(result.status, CheckStatus::Pass);
-        assert!(result.details.iter().any(|d| d.text.contains("JWT public key: valid")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.text.contains("JWT public key: valid")));
     }
 
     #[test]

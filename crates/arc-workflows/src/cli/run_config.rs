@@ -388,8 +388,7 @@ graph = "p.dot"
 "#;
         let err = parse_run_config(toml).unwrap_err();
         assert!(
-            err.to_string()
-                .contains("Unsupported run config version 2"),
+            err.to_string().contains("Unsupported run config version 2"),
             "unexpected error: {err}"
         );
     }

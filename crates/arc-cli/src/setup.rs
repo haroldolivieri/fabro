@@ -71,7 +71,8 @@ fn generate_session_secret() -> String {
 
 fn generate_jwt_keypair() -> Result<(String, String)> {
     let private_pem = run_openssl(&["genpkey", "-algorithm", "Ed25519"], "generate keypair")?;
-    let public_pem = run_openssl_with_stdin(&["pkey", "-pubout"], &private_pem, "extract public key")?;
+    let public_pem =
+        run_openssl_with_stdin(&["pkey", "-pubout"], &private_pem, "extract public key")?;
 
     let private_str = String::from_utf8(private_pem).context("private key is not valid UTF-8")?;
     let public_str = String::from_utf8(public_pem).context("public key is not valid UTF-8")?;
@@ -91,7 +92,19 @@ fn generate_mtls_certs(dir: &Path) -> Result<()> {
     std::fs::write(&ca_key_path, &ca_key)?;
 
     let ca_cert = run_openssl(
-        &["req", "-new", "-x509", "-key", ca_key_path.to_str().context("CA key path is not valid UTF-8")?, "-days", "3650", "-subj", "/CN=Arc CA"],
+        &[
+            "req",
+            "-new",
+            "-x509",
+            "-key",
+            ca_key_path
+                .to_str()
+                .context("CA key path is not valid UTF-8")?,
+            "-days",
+            "3650",
+            "-subj",
+            "/CN=Arc CA",
+        ],
         "generate CA cert",
     )?;
     let ca_cert_path = dir.join("ca.crt");
@@ -103,7 +116,14 @@ fn generate_mtls_certs(dir: &Path) -> Result<()> {
     std::fs::write(&server_key_path, &server_key)?;
 
     let csr = run_openssl_with_stdin(
-        &["req", "-new", "-key", "/dev/stdin", "-subj", "/CN=localhost"],
+        &[
+            "req",
+            "-new",
+            "-key",
+            "/dev/stdin",
+            "-subj",
+            "/CN=localhost",
+        ],
         &server_key,
         "generate server CSR",
     )?;
@@ -113,11 +133,21 @@ fn generate_mtls_certs(dir: &Path) -> Result<()> {
 
     let server_cert = run_openssl(
         &[
-            "x509", "-req",
-            "-in", csr_path.to_str().context("CSR path is not valid UTF-8")?,
-            "-CA", ca_cert_path.to_str().context("CA cert path is not valid UTF-8")?,
-            "-CAkey", ca_key_path.to_str().context("CA key path is not valid UTF-8")?,
-            "-CAcreateserial", "-days", "3650",
+            "x509",
+            "-req",
+            "-in",
+            csr_path.to_str().context("CSR path is not valid UTF-8")?,
+            "-CA",
+            ca_cert_path
+                .to_str()
+                .context("CA cert path is not valid UTF-8")?,
+            "-CAkey",
+            ca_key_path
+                .to_str()
+                .context("CA key path is not valid UTF-8")?,
+            "-CAcreateserial",
+            "-days",
+            "3650",
         ],
         "sign server cert",
     )?;
@@ -201,7 +231,9 @@ fn provider_key_url(provider: Provider) -> &'static str {
         Provider::Gemini => "https://aistudio.google.com/apikey",
         Provider::Kimi => "https://platform.moonshot.cn/console/api-keys",
         Provider::Zai => "https://open.bigmodel.cn/usercenter/apikeys",
-        Provider::Minimax => "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+        Provider::Minimax => {
+            "https://platform.minimaxi.com/user-center/basic-information/interface-key"
+        }
         Provider::Inception => "https://console.inceptionlabs.ai/api-keys",
     }
 }
@@ -223,16 +255,20 @@ fn provider_display_name(provider: Provider) -> &'static str {
 // ---------------------------------------------------------------------------
 
 fn prompt_confirm(prompt: &str, default: bool) -> Result<bool> {
-    Ok(Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-        .with_prompt(prompt)
-        .default(default)
-        .interact_on(&dialoguer::console::Term::stderr())?)
+    Ok(
+        Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+            .with_prompt(prompt)
+            .default(default)
+            .interact_on(&dialoguer::console::Term::stderr())?,
+    )
 }
 
 fn prompt_input(prompt: &str) -> Result<String> {
-    Ok(Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
-        .with_prompt(prompt)
-        .interact_on(&dialoguer::console::Term::stderr())?)
+    Ok(
+        Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
+            .with_prompt(prompt)
+            .interact_on(&dialoguer::console::Term::stderr())?,
+    )
 }
 
 fn prompt_multiselect(prompt: &str, items: &[String]) -> Result<Vec<usize>> {
@@ -306,10 +342,9 @@ pub async fn run_setup() -> Result<()> {
     };
 
     if write_config {
-        let username: String = tokio::task::spawn_blocking(|| {
-            prompt_input("GitHub username for allowed access")
-        })
-        .await??;
+        let username: String =
+            tokio::task::spawn_blocking(|| prompt_input("GitHub username for allowed access"))
+                .await??;
 
         let toml_content = format_config_toml(&username);
         std::fs::write(&config_path, &toml_content)?;
@@ -357,8 +392,7 @@ pub async fn run_setup() -> Result<()> {
         eprintln!("  Get your API key at: {url}");
 
         let prompt = env_var.to_string();
-        let key: String =
-            tokio::task::spawn_blocking(move || prompt_input(&prompt)).await??;
+        let key: String = tokio::task::spawn_blocking(move || prompt_input(&prompt)).await??;
 
         env_pairs.push((env_var.to_string(), key));
     }
@@ -413,8 +447,7 @@ pub async fn run_setup() -> Result<()> {
     // Step 6: Verify setup
     eprintln!("[Step 6/7] Verify setup");
     let run_doctor =
-        tokio::task::spawn_blocking(|| prompt_confirm("Run arc doctor to verify?", true))
-            .await??;
+        tokio::task::spawn_blocking(|| prompt_confirm("Run arc doctor to verify?", true)).await??;
 
     if run_doctor {
         eprintln!();
@@ -489,8 +522,7 @@ mod tests {
     #[test]
     fn jwt_keypair_public_parses() {
         let (_, public) = generate_jwt_keypair().unwrap();
-        jsonwebtoken::DecodingKey::from_ed_pem(public.as_bytes())
-            .expect("public key should parse");
+        jsonwebtoken::DecodingKey::from_ed_pem(public.as_bytes()).expect("public key should parse");
     }
 
     // -- mTLS cert generation --
@@ -616,10 +648,7 @@ mod tests {
 
     #[test]
     fn merge_env_full_scenario() {
-        let result = merge_env(
-            "FOO=old\nBAR=keep",
-            &[("FOO", "new"), ("BAZ", "added")],
-        );
+        let result = merge_env("FOO=old\nBAR=keep", &[("FOO", "new"), ("BAZ", "added")]);
         assert_eq!(result, "FOO=new\nBAR=keep\nBAZ=added\n");
     }
 

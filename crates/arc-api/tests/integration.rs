@@ -38,25 +38,47 @@ mod mtls_e2e {
         // CA key
         let ca_key_path = dir.join("ca.key");
         let ca_cert_path = dir.join("ca.crt");
-        run_openssl(&["genpkey", "-algorithm", "Ed25519", "-out", ca_key_path.to_str().unwrap()]);
         run_openssl(&[
-            "req", "-new", "-x509",
-            "-key", ca_key_path.to_str().unwrap(),
-            "-out", ca_cert_path.to_str().unwrap(),
-            "-days", "1",
-            "-subj", &format!("/CN={ca_cn}"),
+            "genpkey",
+            "-algorithm",
+            "Ed25519",
+            "-out",
+            ca_key_path.to_str().unwrap(),
+        ]);
+        run_openssl(&[
+            "req",
+            "-new",
+            "-x509",
+            "-key",
+            ca_key_path.to_str().unwrap(),
+            "-out",
+            ca_cert_path.to_str().unwrap(),
+            "-days",
+            "1",
+            "-subj",
+            &format!("/CN={ca_cn}"),
         ]);
 
         // Server key + cert signed by CA
         let server_key_path = dir.join("server.key");
         let server_csr_path = dir.join("server.csr");
         let server_cert_path = dir.join("server.crt");
-        run_openssl(&["genpkey", "-algorithm", "Ed25519", "-out", server_key_path.to_str().unwrap()]);
         run_openssl(&[
-            "req", "-new",
-            "-key", server_key_path.to_str().unwrap(),
-            "-out", server_csr_path.to_str().unwrap(),
-            "-subj", &format!("/CN={server_cn}"),
+            "genpkey",
+            "-algorithm",
+            "Ed25519",
+            "-out",
+            server_key_path.to_str().unwrap(),
+        ]);
+        run_openssl(&[
+            "req",
+            "-new",
+            "-key",
+            server_key_path.to_str().unwrap(),
+            "-out",
+            server_csr_path.to_str().unwrap(),
+            "-subj",
+            &format!("/CN={server_cn}"),
         ]);
 
         // Create extension file for SAN (reqwest validates server cert hostname)
@@ -64,35 +86,58 @@ mod mtls_e2e {
         std::fs::write(&ext_path, "subjectAltName=IP:127.0.0.1").unwrap();
 
         run_openssl(&[
-            "x509", "-req",
-            "-in", server_csr_path.to_str().unwrap(),
-            "-CA", ca_cert_path.to_str().unwrap(),
-            "-CAkey", ca_key_path.to_str().unwrap(),
+            "x509",
+            "-req",
+            "-in",
+            server_csr_path.to_str().unwrap(),
+            "-CA",
+            ca_cert_path.to_str().unwrap(),
+            "-CAkey",
+            ca_key_path.to_str().unwrap(),
             "-CAcreateserial",
-            "-out", server_cert_path.to_str().unwrap(),
-            "-days", "1",
-            "-extfile", ext_path.to_str().unwrap(),
+            "-out",
+            server_cert_path.to_str().unwrap(),
+            "-days",
+            "1",
+            "-extfile",
+            ext_path.to_str().unwrap(),
         ]);
 
         // Client key + cert signed by CA
         let client_key_path = dir.join("client.key");
         let client_csr_path = dir.join("client.csr");
         let client_cert_path = dir.join("client.crt");
-        run_openssl(&["genpkey", "-algorithm", "Ed25519", "-out", client_key_path.to_str().unwrap()]);
         run_openssl(&[
-            "req", "-new",
-            "-key", client_key_path.to_str().unwrap(),
-            "-out", client_csr_path.to_str().unwrap(),
-            "-subj", &format!("/CN={client_cn}"),
+            "genpkey",
+            "-algorithm",
+            "Ed25519",
+            "-out",
+            client_key_path.to_str().unwrap(),
         ]);
         run_openssl(&[
-            "x509", "-req",
-            "-in", client_csr_path.to_str().unwrap(),
-            "-CA", ca_cert_path.to_str().unwrap(),
-            "-CAkey", ca_key_path.to_str().unwrap(),
+            "req",
+            "-new",
+            "-key",
+            client_key_path.to_str().unwrap(),
+            "-out",
+            client_csr_path.to_str().unwrap(),
+            "-subj",
+            &format!("/CN={client_cn}"),
+        ]);
+        run_openssl(&[
+            "x509",
+            "-req",
+            "-in",
+            client_csr_path.to_str().unwrap(),
+            "-CA",
+            ca_cert_path.to_str().unwrap(),
+            "-CAkey",
+            ca_key_path.to_str().unwrap(),
             "-CAcreateserial",
-            "-out", client_cert_path.to_str().unwrap(),
-            "-days", "1",
+            "-out",
+            client_cert_path.to_str().unwrap(),
+            "-days",
+            "1",
         ]);
 
         PkiPaths {
@@ -192,11 +237,7 @@ mod mtls_e2e {
         let auth_mode = AuthMode::Strategies(vec![AuthStrategy::Mtls]);
         let addr = start_tls_server(&tls_config, ClientAuth::Required, auth_mode).await;
 
-        let client = build_client(
-            &pki.ca_cert,
-            Some(&pki.client_cert),
-            Some(&pki.client_key),
-        );
+        let client = build_client(&pki.ca_cert, Some(&pki.client_cert), Some(&pki.client_key));
 
         let response = client
             .get(format!("https://127.0.0.1:{}/runs", addr.port()))
@@ -465,9 +506,7 @@ mod server_lifecycle {
         // 3. Submit answer selecting first option (Approve)
         let req = Request::builder()
             .method("POST")
-            .uri(format!(
-                "/runs/{run_id}/questions/{question_id}/answer"
-            ))
+            .uri(format!("/runs/{run_id}/questions/{question_id}/answer"))
             .header("content-type", "application/json")
             .body(Body::from(
                 serde_json::to_string(&serde_json::json!({"value": "A"})).unwrap(),

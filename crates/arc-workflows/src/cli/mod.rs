@@ -2,8 +2,8 @@ pub mod backend;
 pub mod cli_backend;
 pub mod progress;
 pub mod run;
-pub mod runs;
 pub mod run_config;
+pub mod runs;
 pub mod validate;
 
 use std::path::Path;
@@ -164,7 +164,9 @@ pub fn print_diagnostics(diagnostics: &[Diagnostic], styles: &Styles) {
             ),
             Severity::Info => eprintln!(
                 "{}",
-                styles.dim.apply_to(format!("info{location}: {} ({})", d.message, d.rule)),
+                styles
+                    .dim
+                    .apply_to(format!("info{location}: {} ({})", d.message, d.rule)),
             ),
         }
     }
@@ -183,8 +185,9 @@ pub fn format_event_summary(event: &WorkflowRunEvent, styles: &Styles) -> String
             total_cost,
             ..
         } => {
-            let mut s =
-                format!("[WORKFLOW_RUN_COMPLETED] duration={duration_ms}ms artifacts={artifact_count}");
+            let mut s = format!(
+                "[WORKFLOW_RUN_COMPLETED] duration={duration_ms}ms artifacts={artifact_count}"
+            );
             if let Some(cost) = total_cost {
                 s.push_str(&format!(" total_cost={}", format_cost(*cost)));
             }
@@ -539,7 +542,12 @@ pub fn format_event_summary(event: &WorkflowRunEvent, styles: &Styles) -> String
         WorkflowRunEvent::StallWatchdogTimeout { node, idle_seconds } => {
             format!("[STALL_WATCHDOG_TIMEOUT] node={node} idle_seconds={idle_seconds}")
         }
-        WorkflowRunEvent::AssetsCaptured { node_id, files_copied, total_bytes, files_skipped } => {
+        WorkflowRunEvent::AssetsCaptured {
+            node_id,
+            files_copied,
+            total_bytes,
+            files_skipped,
+        } => {
             format!("[ASSETS_CAPTURED] node={node_id} files_copied={files_copied} total_bytes={} files_skipped={files_skipped}", HumanBytes(*total_bytes))
         }
     };
@@ -614,7 +622,8 @@ mod tests {
     }
 
     fn test_styles() -> &'static Styles {
-        static STYLES: std::sync::LazyLock<Styles> = std::sync::LazyLock::new(|| Styles::new(false));
+        static STYLES: std::sync::LazyLock<Styles> =
+            std::sync::LazyLock::new(|| Styles::new(false));
         &STYLES
     }
 

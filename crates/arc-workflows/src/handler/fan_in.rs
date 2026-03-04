@@ -37,7 +37,9 @@ impl Handler for FanInHandler {
     ) -> Result<Outcome, ArcError> {
         let results = context.get("parallel.results");
         let Some(results) = results else {
-            return Ok(Outcome::fail_deterministic("No parallel results to evaluate"));
+            return Ok(Outcome::fail_deterministic(
+                "No parallel results to evaluate",
+            ));
         };
 
         let prompt = node.prompt().filter(|p| !p.is_empty());

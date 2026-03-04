@@ -1,7 +1,7 @@
 use crate::{
     subagent::{SessionFactory, SubAgentManager},
-    AgentEvent, AnthropicProfile, GeminiProfile, LocalSandbox, OpenAiProfile,
-    ProviderProfile, Session, SessionConfig, ToolApprovalFn, Turn,
+    AgentEvent, AnthropicProfile, GeminiProfile, LocalSandbox, OpenAiProfile, ProviderProfile,
+    Session, SessionConfig, ToolApprovalFn, Turn,
 };
 use arc_llm::client::Client;
 use arc_llm::provider::{ModelId, Provider};
@@ -497,10 +497,7 @@ pub async fn run_with_args(args: AgentArgs) -> anyhow::Result<()> {
                             );
                         }
                         AgentEvent::Error { error } => {
-                            eprintln!(
-                                "  {}",
-                                s.red.apply_to(format!("\u{2717} {error}")),
-                            );
+                            eprintln!("  {}", s.red.apply_to(format!("\u{2717} {error}")),);
                         }
                         AgentEvent::SubAgentSpawned {
                             agent_id,
@@ -561,9 +558,8 @@ pub async fn run_with_args(args: AgentArgs) -> anyhow::Result<()> {
                             let short_id = &agent_id[..8.min(agent_id.len())];
                             eprintln!(
                                 "  {}",
-                                s.dim.apply_to(format!(
-                                    "[subagent {short_id}] {child_event:?}"
-                                )),
+                                s.dim
+                                    .apply_to(format!("[subagent {short_id}] {child_event:?}")),
                             );
                         }
                         _ => {}

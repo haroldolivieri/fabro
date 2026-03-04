@@ -37,11 +37,7 @@ fn dir_name_from_id(feature_id: &str) -> String {
         let stripped = feature_id
             .trim_start_matches("../")
             .trim_start_matches("./");
-        return stripped
-            .rsplit('/')
-            .next()
-            .unwrap_or(stripped)
-            .to_string();
+        return stripped.rsplit('/').next().unwrap_or(stripped).to_string();
     }
 
     // HTTPS URL: take filename, strip .tgz extension
@@ -118,9 +114,7 @@ async fn ensure_oras() -> crate::Result<()> {
             ])
             .status()
             .await
-            .map_err(|e| {
-                DevcontainerError::OrasInstall(format!("failed to download oras: {e}"))
-            })?;
+            .map_err(|e| DevcontainerError::OrasInstall(format!("failed to download oras: {e}")))?;
 
         if !status.success() {
             return Err(DevcontainerError::OrasInstall(
@@ -155,40 +149,32 @@ async fn read_feature_metadata(feature_dir: &Path) -> crate::Result<FeatureMetad
     let metadata_str = tokio::fs::read_to_string(&metadata_path)
         .await
         .map_err(|e| {
-            DevcontainerError::Feature(format!(
-                "failed to read {}: {e}",
-                metadata_path.display()
-            ))
+            DevcontainerError::Feature(format!("failed to read {}: {e}", metadata_path.display()))
         })?;
 
     serde_json::from_str(&metadata_str).map_err(|e| {
-        DevcontainerError::Feature(format!(
-            "failed to parse {}: {e}",
-            metadata_path.display()
-        ))
+        DevcontainerError::Feature(format!("failed to parse {}: {e}", metadata_path.display()))
     })
 }
 
 /// Create a feature output directory under the temp dir.
-async fn create_feature_dir(output_dir: &Path, feature_id: &str) -> crate::Result<std::path::PathBuf> {
+async fn create_feature_dir(
+    output_dir: &Path,
+    feature_id: &str,
+) -> crate::Result<std::path::PathBuf> {
     let dir_name = dir_name_from_id(feature_id);
     let feature_dir = output_dir.join(&dir_name);
-    tokio::fs::create_dir_all(&feature_dir)
-        .await
-        .map_err(|e| {
-            DevcontainerError::Feature(format!(
-                "failed to create dir {}: {e}",
-                feature_dir.display()
-            ))
-        })?;
+    tokio::fs::create_dir_all(&feature_dir).await.map_err(|e| {
+        DevcontainerError::Feature(format!(
+            "failed to create dir {}: {e}",
+            feature_dir.display()
+        ))
+    })?;
     Ok(feature_dir)
 }
 
 /// Fetch a single OCI feature using `oras pull` and extract its contents.
-async fn fetch_feature_oci(
-    feature_id: &str,
-    output_dir: &Path,
-) -> crate::Result<FeatureMetadata> {
+async fn fetch_feature_oci(feature_id: &str, output_dir: &Path) -> crate::Result<FeatureMetadata> {
     let feature_dir = create_feature_dir(output_dir, feature_id).await?;
 
     info!(feature_id, "pulling feature with oras");
@@ -243,9 +229,9 @@ async fn fetch_feature_https(
 
     info!(feature_id, "downloading feature from HTTPS");
 
-    let response = reqwest::get(feature_id).await.map_err(|e| {
-        DevcontainerError::Feature(format!("failed to download {feature_id}: {e}"))
-    })?;
+    let response = reqwest::get(feature_id)
+        .await
+        .map_err(|e| DevcontainerError::Feature(format!("failed to download {feature_id}: {e}")))?;
 
     if !response.status().is_success() {
         return Err(DevcontainerError::Feature(format!(
@@ -260,10 +246,7 @@ async fn fetch_feature_https(
 
     let tgz_path = feature_dir.join("devcontainer-feature.tgz");
     tokio::fs::write(&tgz_path, &bytes).await.map_err(|e| {
-        DevcontainerError::Feature(format!(
-            "failed to write {}: {e}",
-            tgz_path.display()
-        ))
+        DevcontainerError::Feature(format!("failed to write {}: {e}", tgz_path.display()))
     })?;
 
     extract_tgz(&feature_dir, feature_id).await?;
@@ -294,35 +277,33 @@ async fn fetch_feature_dispatch(
 /// Recursively copy a directory.
 async fn copy_dir_recursive(src: &Path, dst: &Path) -> crate::Result<()> {
     tokio::fs::create_dir_all(dst).await.map_err(|e| {
-        DevcontainerError::Feature(format!(
-            "failed to create dir {}: {e}",
-            dst.display()
-        ))
+        DevcontainerError::Feature(format!("failed to create dir {}: {e}", dst.display()))
     })?;
 
     let mut entries = tokio::fs::read_dir(src).await.map_err(|e| {
-        DevcontainerError::Feature(format!(
-            "failed to read dir {}: {e}",
-            src.display()
-        ))
+        DevcontainerError::Feature(format!("failed to read dir {}: {e}", src.display()))
     })?;
 
-    while let Some(entry) = entries.next_entry().await.map_err(|e| {
-        DevcontainerError::Feature(format!("failed to read dir entry: {e}"))
-    })? {
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| DevcontainerError::Feature(format!("failed to read dir entry: {e}")))?
+    {
         let entry_path = entry.path();
         let dest_path = dst.join(entry.file_name());
 
         if entry_path.is_dir() {
             Box::pin(copy_dir_recursive(&entry_path, &dest_path)).await?;
         } else {
-            tokio::fs::copy(&entry_path, &dest_path).await.map_err(|e| {
-                DevcontainerError::Feature(format!(
-                    "failed to copy {} to {}: {e}",
-                    entry_path.display(),
-                    dest_path.display()
-                ))
-            })?;
+            tokio::fs::copy(&entry_path, &dest_path)
+                .await
+                .map_err(|e| {
+                    DevcontainerError::Feature(format!(
+                        "failed to copy {} to {}: {e}",
+                        entry_path.display(),
+                        dest_path.display()
+                    ))
+                })?;
         }
     }
 
@@ -371,7 +352,10 @@ fn topo_sort(
                         // candidate -> id (candidate must come before id)
                         let edge = (candidate.as_str(), id.as_str());
                         if edge_set.insert(edge) {
-                            edges.entry(candidate.as_str()).or_default().push(id.as_str());
+                            edges
+                                .entry(candidate.as_str())
+                                .or_default()
+                                .push(id.as_str());
                             *in_degree.entry(id.as_str()).or_insert(0) += 1;
                         }
                     }
@@ -421,7 +405,13 @@ fn topo_sort(
 fn option_id_to_env_name(id: &str) -> String {
     let replaced: String = id
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let trimmed = replaced.trim_start_matches(|c: char| c == '_' || c.is_ascii_digit());
     if trimmed.is_empty() {
@@ -544,9 +534,9 @@ pub async fn resolve_features(
             .as_nanos()
     );
     let tmp_dir = std::env::temp_dir().join(unique_id);
-    tokio::fs::create_dir_all(&tmp_dir).await.map_err(|e| {
-        DevcontainerError::Feature(format!("failed to create temp dir: {e}"))
-    })?;
+    tokio::fs::create_dir_all(&tmp_dir)
+        .await
+        .map_err(|e| DevcontainerError::Feature(format!("failed to create temp dir: {e}")))?;
 
     // Collect feature IDs in a stable order
     let mut feature_ids: Vec<String> = features.keys().cloned().collect();
@@ -558,7 +548,9 @@ pub async fn resolve_features(
     let mut oras_checked = false;
     let mut metadata_map: HashMap<String, FeatureMetadata> = HashMap::new();
     for feature_id in &feature_ids {
-        let metadata = fetch_feature_dispatch(feature_id, &tmp_dir, devcontainer_dir, &mut oras_checked).await?;
+        let metadata =
+            fetch_feature_dispatch(feature_id, &tmp_dir, devcontainer_dir, &mut oras_checked)
+                .await?;
         metadata_map.insert(feature_id.clone(), metadata);
     }
 
@@ -577,7 +569,13 @@ pub async fn resolve_features(
                     });
                     if !already_present {
                         info!(dep_id, "auto-injecting missing dependsOn target");
-                        let dep_metadata = fetch_feature_dispatch(dep_id, &tmp_dir, devcontainer_dir, &mut oras_checked).await?;
+                        let dep_metadata = fetch_feature_dispatch(
+                            dep_id,
+                            &tmp_dir,
+                            devcontainer_dir,
+                            &mut oras_checked,
+                        )
+                        .await?;
                         metadata_map.insert(dep_id.clone(), dep_metadata);
                         feature_ids.push(dep_id.clone());
                         all_options.insert(dep_id.clone(), dep_options.clone());
@@ -595,9 +593,10 @@ pub async fn resolve_features(
     let mut resolved = ResolvedFeatures::default();
     for id in &sorted_ids {
         let dir_name = dir_name_from_id(id);
-        let options = all_options.get(id).cloned().unwrap_or(serde_json::Value::Object(
-            serde_json::Map::new(),
-        ));
+        let options = all_options
+            .get(id)
+            .cloned()
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
         let metadata = metadata_map
             .get(id)
             .cloned()
@@ -684,10 +683,7 @@ mod tests {
             dir_name_from_id("https://example.com/features/python.tar.gz"),
             "python"
         );
-        assert_eq!(
-            dir_name_from_id("https://example.com/features/go"),
-            "go"
-        );
+        assert_eq!(dir_name_from_id("https://example.com/features/go"), "go");
     }
 
     #[test]
@@ -739,11 +735,11 @@ mod tests {
                         version: None,
                         options: HashMap::new(),
                         installs_after: Vec::new(),
-                    depends_on: HashMap::new(),
-                    container_env: HashMap::new(),
-                    on_create_command: None,
-                    post_create_command: None,
-                    post_start_command: None,
+                        depends_on: HashMap::new(),
+                        container_env: HashMap::new(),
+                        on_create_command: None,
+                        post_create_command: None,
+                        post_start_command: None,
                     },
                 )
             })
@@ -1074,10 +1070,9 @@ mod tests {
     #[ignore = "requires oras"]
     async fn fetch_feature_oci_integration() {
         let tmp = tempfile::tempdir().unwrap();
-        let metadata =
-            fetch_feature_oci("ghcr.io/devcontainers/features/node:1", tmp.path())
-                .await
-                .unwrap();
+        let metadata = fetch_feature_oci("ghcr.io/devcontainers/features/node:1", tmp.path())
+            .await
+            .unwrap();
         assert!(metadata.id.is_some());
         assert!(tmp.path().join("node/install.sh").exists());
     }
@@ -1094,7 +1089,9 @@ mod tests {
         let resolved = resolve_features(&features, tmp.path(), None).await.unwrap();
         assert_eq!(resolved.layers.len(), 1);
         assert_eq!(resolved.layers[0].dir_name, "node");
-        assert!(resolved.layers[0].dockerfile_snippet.contains("export VERSION=\"20\""));
+        assert!(resolved.layers[0]
+            .dockerfile_snippet
+            .contains("export VERSION=\"20\""));
     }
 
     #[test]
@@ -1143,8 +1140,14 @@ mod tests {
             }
         }
 
-        assert_eq!(resolved.container_env.get("FOO").map(String::as_str), Some("from_b"));
-        assert_eq!(resolved.container_env.get("BAR").map(String::as_str), Some("from_a"));
+        assert_eq!(
+            resolved.container_env.get("FOO").map(String::as_str),
+            Some("from_b")
+        );
+        assert_eq!(
+            resolved.container_env.get("BAR").map(String::as_str),
+            Some("from_a")
+        );
     }
 
     #[test]
@@ -1162,9 +1165,13 @@ mod tests {
         resolved.post_start_commands.push(cmds[0].clone());
 
         assert_eq!(resolved.on_create_commands.len(), 1);
-        assert!(matches!(&resolved.on_create_commands[0], LifecycleCommand::String(s) if s == "setup-a"));
+        assert!(
+            matches!(&resolved.on_create_commands[0], LifecycleCommand::String(s) if s == "setup-a")
+        );
         assert_eq!(resolved.post_create_commands.len(), 1);
-        assert!(matches!(&resolved.post_create_commands[0], LifecycleCommand::Array(arr) if arr.len() == 2));
+        assert!(
+            matches!(&resolved.post_create_commands[0], LifecycleCommand::Array(arr) if arr.len() == 2)
+        );
         assert_eq!(resolved.post_start_commands.len(), 1);
     }
 

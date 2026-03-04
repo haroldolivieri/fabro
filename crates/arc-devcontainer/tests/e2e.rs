@@ -32,7 +32,10 @@ async fn realistic_python_project() {
     assert!(config.dockerfile.contains("ENV PIP_NO_CACHE_DIR=1"));
     assert!(config.dockerfile.contains("ENV PYTHONDONTWRITEBYTECODE=1"));
     assert_eq!(
-        config.container_env.get("PIP_NO_CACHE_DIR").map(String::as_str),
+        config
+            .container_env
+            .get("PIP_NO_CACHE_DIR")
+            .map(String::as_str),
         Some("1")
     );
 
@@ -40,7 +43,10 @@ async fn realistic_python_project() {
     assert!(config.dockerfile.contains("ENV PYTHONUNBUFFERED=1"));
     // environment HashMap gets the remoteEnv value
     assert_eq!(
-        config.environment.get("PYTHONUNBUFFERED").map(String::as_str),
+        config
+            .environment
+            .get("PYTHONUNBUFFERED")
+            .map(String::as_str),
         Some("yes")
     );
 
@@ -161,7 +167,9 @@ async fn all_lifecycle_command_forms() {
 
     // Gap 1: onCreateCommand as array
     assert_eq!(config.on_create_commands.len(), 1);
-    assert!(matches!(&config.on_create_commands[0], Command::Args(args) if args == &["make", "setup"]));
+    assert!(
+        matches!(&config.on_create_commands[0], Command::Args(args) if args == &["make", "setup"])
+    );
 
     // postCreateCommand as object (parallel)
     assert_eq!(config.post_create_commands.len(), 1);
@@ -188,7 +196,10 @@ async fn container_env_separate_from_environment() {
     assert!(!config.environment.contains_key("PIP_NO_CACHE_DIR"));
     // PYTHONUNBUFFERED is in both - environment gets remoteEnv value
     assert_eq!(
-        config.environment.get("PYTHONUNBUFFERED").map(String::as_str),
+        config
+            .environment
+            .get("PYTHONUNBUFFERED")
+            .map(String::as_str),
         Some("yes")
     );
 }
@@ -231,7 +242,9 @@ async fn remote_env_excluded_from_dockerfile() {
         .unwrap();
 
     // containerEnv IS in the Dockerfile
-    assert!(config.dockerfile.contains("ENV DEBIAN_FRONTEND=noninteractive"));
+    assert!(config
+        .dockerfile
+        .contains("ENV DEBIAN_FRONTEND=noninteractive"));
 
     // remoteEnv is NOT in the Dockerfile
     assert!(!config.dockerfile.contains("EDITOR=code"));
@@ -327,7 +340,9 @@ async fn local_feature_refs_resolved() {
         .unwrap();
 
     // Base image preserved
-    assert!(config.dockerfile.contains("FROM mcr.microsoft.com/devcontainers/base:ubuntu"));
+    assert!(config
+        .dockerfile
+        .contains("FROM mcr.microsoft.com/devcontainers/base:ubuntu"));
 
     // Feature install.sh snippets are in the Dockerfile
     assert!(config.dockerfile.contains("node-feature"));
@@ -366,7 +381,9 @@ async fn feature_container_env_merged() {
 
     // Feature containerEnv values baked into Dockerfile
     assert!(config.dockerfile.contains("ENV NODE_INSTALLED=true"));
-    assert!(config.dockerfile.contains("ENV NODE_PATH=/usr/local/lib/node_modules"));
+    assert!(config
+        .dockerfile
+        .contains("ENV NODE_PATH=/usr/local/lib/node_modules"));
     assert!(config.dockerfile.contains("ENV PYTHON_INSTALLED=true"));
     assert!(config.dockerfile.contains("ENV BASE_UTILS_INSTALLED=true"));
 
@@ -374,10 +391,31 @@ async fn feature_container_env_merged() {
     assert!(config.dockerfile.contains("ENV DEVCONTAINER=true"));
 
     // All values in config.container_env
-    assert_eq!(config.container_env.get("NODE_INSTALLED").map(String::as_str), Some("true"));
-    assert_eq!(config.container_env.get("PYTHON_INSTALLED").map(String::as_str), Some("true"));
-    assert_eq!(config.container_env.get("BASE_UTILS_INSTALLED").map(String::as_str), Some("true"));
-    assert_eq!(config.container_env.get("DEVCONTAINER").map(String::as_str), Some("true"));
+    assert_eq!(
+        config
+            .container_env
+            .get("NODE_INSTALLED")
+            .map(String::as_str),
+        Some("true")
+    );
+    assert_eq!(
+        config
+            .container_env
+            .get("PYTHON_INSTALLED")
+            .map(String::as_str),
+        Some("true")
+    );
+    assert_eq!(
+        config
+            .container_env
+            .get("BASE_UTILS_INSTALLED")
+            .map(String::as_str),
+        Some("true")
+    );
+    assert_eq!(
+        config.container_env.get("DEVCONTAINER").map(String::as_str),
+        Some("true")
+    );
 }
 
 /// Gap 3: Feature lifecycle hooks are appended after devcontainer.json lifecycle commands.
@@ -392,7 +430,9 @@ async fn feature_lifecycle_hooks_appended() {
     // base-utils: "echo base-utils-setup"
     // node-feature: "echo node-setup"
     assert!(config.on_create_commands.len() >= 2);
-    assert!(matches!(&config.on_create_commands[0], Command::Shell(s) if s == "echo devcontainer-setup"));
+    assert!(
+        matches!(&config.on_create_commands[0], Command::Shell(s) if s == "echo devcontainer-setup")
+    );
 
     // Feature on_create_commands appear after devcontainer.json's
     let feature_on_create: Vec<&str> = config.on_create_commands[1..]
@@ -407,7 +447,9 @@ async fn feature_lifecycle_hooks_appended() {
 
     // postCreateCommand: devcontainer.json first, then python-feature
     assert!(config.post_create_commands.len() >= 2);
-    assert!(matches!(&config.post_create_commands[0], Command::Shell(s) if s == "echo devcontainer-post-create"));
+    assert!(
+        matches!(&config.post_create_commands[0], Command::Shell(s) if s == "echo devcontainer-post-create")
+    );
     let feature_post_create: Vec<&str> = config.post_create_commands[1..]
         .iter()
         .filter_map(|cmd| match cmd {
@@ -419,7 +461,8 @@ async fn feature_lifecycle_hooks_appended() {
 
     // postStartCommand: only node-feature contributes (no devcontainer.json postStartCommand)
     assert!(!config.post_start_commands.is_empty());
-    let post_start: Vec<&str> = config.post_start_commands
+    let post_start: Vec<&str> = config
+        .post_start_commands
         .iter()
         .filter_map(|cmd| match cmd {
             Command::Shell(s) => Some(s.as_str()),
@@ -481,7 +524,9 @@ async fn feature_install_user_env_vars() {
         "_CONTAINER_USER should always be root",
     );
     assert!(
-        config.dockerfile.contains("_REMOTE_USER_HOME=\"/home/developer\""),
+        config
+            .dockerfile
+            .contains("_REMOTE_USER_HOME=\"/home/developer\""),
         "_REMOTE_USER_HOME should be /home/developer",
     );
     assert!(
@@ -504,7 +549,9 @@ async fn feature_install_user_env_vars_default_root() {
         config.dockerfile,
     );
     assert!(
-        config.dockerfile.contains("_REMOTE_USER_HOME=\"/home/vscode\""),
+        config
+            .dockerfile
+            .contains("_REMOTE_USER_HOME=\"/home/vscode\""),
         "_REMOTE_USER_HOME should be /home/vscode",
     );
 }

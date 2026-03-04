@@ -3,8 +3,8 @@ use std::path::Path;
 use std::time::Instant;
 
 use arc_agent::sandbox::{
-    format_lines_numbered, DirEntry, SandboxEventCallback, ExecResult, SandboxEvent,
-    Sandbox, GrepOptions,
+    format_lines_numbered, DirEntry, ExecResult, GrepOptions, Sandbox, SandboxEvent,
+    SandboxEventCallback,
 };
 use async_trait::async_trait;
 use rand::Rng;

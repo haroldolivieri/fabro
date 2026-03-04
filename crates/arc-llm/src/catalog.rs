@@ -161,7 +161,6 @@ mod tests {
         assert_eq!(get_model_info("mercury").unwrap().id, "mercury-2");
     }
 
-
     #[test]
     fn model_info_costs() {
         let claude = get_model_info("claude-opus-4-6").unwrap();

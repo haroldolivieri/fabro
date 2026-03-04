@@ -13,7 +13,7 @@ use arc_workflows::artifact::sync_artifacts_to_env;
 use arc_workflows::checkpoint::Checkpoint;
 use arc_workflows::context::Context;
 use arc_workflows::daytona_sandbox::{DaytonaConfig, DaytonaSandbox};
-use arc_workflows::engine::{WorkflowRunEngine, RunConfig};
+use arc_workflows::engine::{RunConfig, WorkflowRunEngine};
 use arc_workflows::error::ArcError;
 use arc_workflows::event::EventEmitter;
 use arc_workflows::graph::{AttrValue, Edge, Graph, Node};
@@ -1081,22 +1081,26 @@ async fn daytona_asset_collection() {
     );
 
     let mut start = Node::new("start");
-    start
-        .attrs
-        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
     graph.nodes.insert("start".to_string(), start);
 
     let mut create_assets = Node::new("create_assets");
-    create_assets
-        .attrs
-        .insert("label".to_string(), AttrValue::String("Create Assets".to_string()));
+    create_assets.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Create Assets".to_string()),
+    );
     graph
         .nodes
         .insert("create_assets".to_string(), create_assets);
 
     let mut exit = Node::new("exit");
-    exit.attrs
-        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
     graph.nodes.insert("exit".to_string(), exit);
 
     graph.edges.push(Edge::new("start", "create_assets"));

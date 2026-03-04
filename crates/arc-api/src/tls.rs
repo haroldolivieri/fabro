@@ -34,7 +34,9 @@ pub fn build_rustls_config(tls_config: &TlsConfig, client_auth: ClientAuth) -> A
             let ca_certs = load_certs(&tls_config.ca);
             let mut root_store = rustls::RootCertStore::empty();
             for cert in ca_certs {
-                root_store.add(cert).expect("failed to add CA certificate to root store");
+                root_store
+                    .add(cert)
+                    .expect("failed to add CA certificate to root store");
             }
 
             let builder = WebPkiClientVerifier::builder(Arc::new(root_store));
@@ -86,9 +88,8 @@ pub async fn serve_tls(
 
             // Extract peer certificates once per connection (not per request)
             let (_, server_conn) = tls_stream.get_ref();
-            let peer_certs = PeerCertificates(
-                server_conn.peer_certificates().map(|certs| certs.to_vec()),
-            );
+            let peer_certs =
+                PeerCertificates(server_conn.peer_certificates().map(|certs| certs.to_vec()));
 
             let io = TokioIo::new(tls_stream);
 

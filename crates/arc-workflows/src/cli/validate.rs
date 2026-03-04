@@ -1,8 +1,8 @@
 use anyhow::bail;
 use arc_util::terminal::Styles;
 
-use crate::workflow::WorkflowBuilder;
 use crate::validation::Severity;
+use crate::workflow::WorkflowBuilder;
 
 use super::{print_diagnostics, read_dot_file, ValidateArgs};
 
@@ -17,7 +17,9 @@ pub fn validate_command(args: &ValidateArgs, styles: &Styles) -> anyhow::Result<
 
     eprintln!(
         "{} ({} nodes, {} edges)",
-        styles.bold.apply_to(format!("Parsed workflow: {}", graph.name)),
+        styles
+            .bold
+            .apply_to(format!("Parsed workflow: {}", graph.name)),
         graph.nodes.len(),
         graph.edges.len(),
     );

@@ -191,7 +191,10 @@ client_id = "Iv1.abc123"
         assert_eq!(config.web.auth.provider, AuthProvider::Github);
         assert_eq!(config.web.auth.allowed_usernames, vec!["brynary", "alice"]);
         assert_eq!(config.api.base_url, "http://example.com:8080");
-        assert_eq!(config.api.authentication_strategies, vec![ApiAuthStrategy::Jwt]);
+        assert_eq!(
+            config.api.authentication_strategies,
+            vec![ApiAuthStrategy::Jwt]
+        );
         assert_eq!(config.git.provider, GitProvider::Github);
         assert_eq!(config.git.app_id.as_deref(), Some("12345"));
         assert_eq!(config.git.client_id.as_deref(), Some("Iv1.abc123"));
@@ -330,7 +333,10 @@ authentication_strategies = []
 authentication_strategies = ["jwt"]
 "#;
         let config: ServerConfig = toml::from_str(toml).unwrap();
-        assert_eq!(config.api.authentication_strategies, vec![ApiAuthStrategy::Jwt]);
+        assert_eq!(
+            config.api.authentication_strategies,
+            vec![ApiAuthStrategy::Jwt]
+        );
         assert!(config.api.tls.is_none());
     }
 }

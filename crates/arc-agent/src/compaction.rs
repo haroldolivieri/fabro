@@ -120,7 +120,10 @@ and conversational filler.{file_ops_section}"
         .map_err(AgentError::Llm)?;
 
     let summary_text = response.text();
-    debug!(summary_len = summary_text.len(), "Compaction summary generated");
+    debug!(
+        summary_len = summary_text.len(),
+        "Compaction summary generated"
+    );
     let summary_content = format!("[Context Summary]\n{summary_text}");
     let summary_token_estimate = summary_content.len() / 4;
 

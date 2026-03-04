@@ -42,9 +42,9 @@ fn millis_u64(d: std::time::Duration) -> u64 {
 fn classify_outcome(outcome: &Outcome) -> Option<FailureClass> {
     match outcome.status {
         StageStatus::Success | StageStatus::PartialSuccess | StageStatus::Skipped => None,
-        StageStatus::Fail | StageStatus::Retry => {
-            outcome.failure_class().or(Some(FailureClass::Deterministic))
-        }
+        StageStatus::Fail | StageStatus::Retry => outcome
+            .failure_class()
+            .or(Some(FailureClass::Deterministic)),
     }
 }
 
@@ -650,11 +650,7 @@ async fn git_diff_remote(sandbox: &dyn Sandbox, base: &str) -> Option<String> {
 // --- Remote worktree helpers (for Daytona / sandbox environments) ---
 
 /// Create a branch at a specific SHA inside a remote sandbox.
-pub async fn git_create_branch_at_remote(
-    sandbox: &dyn Sandbox,
-    name: &str,
-    sha: &str,
-) -> bool {
+pub async fn git_create_branch_at_remote(sandbox: &dyn Sandbox, name: &str, sha: &str) -> bool {
     let cmd = format!("{GIT_REMOTE} branch --force {name} {sha}");
     matches!(
         sandbox.exec_command(&cmd, 30_000, None, None, None).await,
@@ -663,11 +659,7 @@ pub async fn git_create_branch_at_remote(
 }
 
 /// Add a git worktree inside a remote sandbox.
-pub async fn git_add_worktree_remote(
-    sandbox: &dyn Sandbox,
-    path: &str,
-    branch: &str,
-) -> bool {
+pub async fn git_add_worktree_remote(sandbox: &dyn Sandbox, path: &str, branch: &str) -> bool {
     let cmd = format!("{GIT_REMOTE} worktree add {path} {branch}");
     matches!(
         sandbox.exec_command(&cmd, 30_000, None, None, None).await,
@@ -703,11 +695,7 @@ pub async fn git_head_sha_remote(sandbox: &dyn Sandbox) -> Option<String> {
 }
 
 /// Remove any stale worktree at `path` (best-effort), then add a fresh one.
-pub async fn git_replace_worktree_remote(
-    sandbox: &dyn Sandbox,
-    path: &str,
-    branch: &str,
-) -> bool {
+pub async fn git_replace_worktree_remote(sandbox: &dyn Sandbox, path: &str, branch: &str) -> bool {
     let _ = git_remove_worktree_remote(sandbox, path).await;
     git_add_worktree_remote(sandbox, path, branch).await
 }
@@ -939,15 +927,17 @@ impl WorkflowRunEngine {
                             },
                             will_retry: true,
                         });
-                        self.services.emitter.emit(&WorkflowRunEvent::StageRetrying {
-                            node_id: node.id.clone(),
-                            name: node.label().to_string(),
-                            index: stage_index,
-                            attempt: usize::try_from(attempt).unwrap_or(usize::MAX),
-                            max_attempts: usize::try_from(policy.max_attempts)
-                                .unwrap_or(usize::MAX),
-                            delay_ms: millis_u64(delay),
-                        });
+                        self.services
+                            .emitter
+                            .emit(&WorkflowRunEvent::StageRetrying {
+                                node_id: node.id.clone(),
+                                name: node.label().to_string(),
+                                index: stage_index,
+                                attempt: usize::try_from(attempt).unwrap_or(usize::MAX),
+                                max_attempts: usize::try_from(policy.max_attempts)
+                                    .unwrap_or(usize::MAX),
+                                delay_ms: millis_u64(delay),
+                            });
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -965,15 +955,17 @@ impl WorkflowRunEngine {
                 StageStatus::Retry => {
                     if attempt < policy.max_attempts {
                         let delay = policy.backoff.delay_for_attempt(attempt);
-                        self.services.emitter.emit(&WorkflowRunEvent::StageRetrying {
-                            node_id: node.id.clone(),
-                            name: node.label().to_string(),
-                            index: stage_index,
-                            attempt: usize::try_from(attempt).unwrap_or(usize::MAX),
-                            max_attempts: usize::try_from(policy.max_attempts)
-                                .unwrap_or(usize::MAX),
-                            delay_ms: millis_u64(delay),
-                        });
+                        self.services
+                            .emitter
+                            .emit(&WorkflowRunEvent::StageRetrying {
+                                node_id: node.id.clone(),
+                                name: node.label().to_string(),
+                                index: stage_index,
+                                attempt: usize::try_from(attempt).unwrap_or(usize::MAX),
+                                max_attempts: usize::try_from(policy.max_attempts)
+                                    .unwrap_or(usize::MAX),
+                                delay_ms: millis_u64(delay),
+                            });
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -992,7 +984,10 @@ impl WorkflowRunEngine {
             }
         }
 
-        Ok((Outcome::fail_classify("max retries exceeded"), policy.max_attempts))
+        Ok((
+            Outcome::fail_classify("max retries exceeded"),
+            policy.max_attempts,
+        ))
     }
 
     /// Run the workflow. Returns the final outcome.
@@ -1002,9 +997,9 @@ impl WorkflowRunEngine {
     /// Returns an error if no start node is found, a node is missing, or a goal gate fails
     /// without a retry target.
     pub async fn run(&self, graph: &Graph, config: &RunConfig) -> Result<Outcome> {
-        let (outcome, _context) =
-            self.run_internal(graph, config, None, None, None, LoopState::default())
-                .await?;
+        let (outcome, _context) = self
+            .run_internal(graph, config, None, None, None, LoopState::default())
+            .await?;
         Ok(outcome)
     }
 
@@ -1077,16 +1072,18 @@ impl WorkflowRunEngine {
         };
         self.services.set_git_state(git_state);
 
-        self.services.emitter.emit(&WorkflowRunEvent::WorkflowRunStarted {
-            name: graph.name.clone(),
-            run_id: run_id.clone(),
-            base_sha: config.base_sha.clone(),
-            run_branch: config.run_branch.clone(),
-            worktree_dir: match config.git_checkpoint {
-                Some(GitCheckpointMode::Host(ref p)) => Some(p.display().to_string()),
-                _ => None,
-            },
-        });
+        self.services
+            .emitter
+            .emit(&WorkflowRunEvent::WorkflowRunStarted {
+                name: graph.name.clone(),
+                run_id: run_id.clone(),
+                base_sha: config.base_sha.clone(),
+                run_branch: config.run_branch.clone(),
+                worktree_dir: match config.git_checkpoint {
+                    Some(GitCheckpointMode::Host(ref p)) => Some(p.display().to_string()),
+                    _ => None,
+                },
+            });
         self.inform(&format!("Run started: {}", graph.name), "run");
 
         // Write manifest.json (spec 5.6)
@@ -1271,14 +1268,16 @@ impl WorkflowRunEngine {
                             continue;
                         }
                         let duration_ms = millis_u64(run_start.elapsed());
-                        let error = ArcError::engine(
-                            format!("goal gate unsatisfied for node {failed_node_id} and no retry target")
-                        );
-                        self.services.emitter.emit(&WorkflowRunEvent::WorkflowRunFailed {
-                            error: error.clone(),
-                            duration_ms,
-                            git_commit_sha: last_git_sha.clone(),
-                        });
+                        let error = ArcError::engine(format!(
+                            "goal gate unsatisfied for node {failed_node_id} and no retry target"
+                        ));
+                        self.services
+                            .emitter
+                            .emit(&WorkflowRunEvent::WorkflowRunFailed {
+                                error: error.clone(),
+                                duration_ms,
+                                git_commit_sha: last_git_sha.clone(),
+                            });
                         return Ok((error.to_fail_outcome(), context));
                     }
                 }
@@ -1354,8 +1353,15 @@ impl WorkflowRunEngine {
                 }
             } else {
                 self.execute_with_retry(
-                    node, &context, graph, &config.logs_root, &retry_policy, stage_index, visit,
-                ).await?
+                    node,
+                    &context,
+                    graph,
+                    &config.logs_root,
+                    &retry_policy,
+                    stage_index,
+                    visit,
+                )
+                .await?
             };
             // Gap #5: Track retry count per node
             node_retries.insert(node.id.clone(), attempts_used);
@@ -1386,12 +1392,7 @@ impl WorkflowRunEngine {
                     .failure
                     .as_ref()
                     .and_then(|f| f.failure_signature.as_deref());
-                let sig = FailureSignature::new(
-                    &node.id,
-                    fc,
-                    sig_hint,
-                    outcome.failure_reason(),
-                );
+                let sig = FailureSignature::new(&node.id, fc, sig_hint, outcome.failure_reason());
                 if fc.is_signature_tracked() {
                     let count = loop_state
                         .loop_failure_signatures
@@ -1421,21 +1422,24 @@ impl WorkflowRunEngine {
                     will_retry: false,
                 });
             } else {
-                self.services.emitter.emit(&WorkflowRunEvent::StageCompleted {
-                    node_id: node.id.clone(),
-                    name: node.label().to_string(),
-                    index: stage_index,
-                    duration_ms: stage_duration_ms,
-                    status: outcome.status.to_string(),
-                    preferred_label: outcome.preferred_label.clone(),
-                    suggested_next_ids: outcome.suggested_next_ids.clone(),
-                    usage: outcome.usage.clone(),
-                    failure: outcome.failure.clone(),
-                    notes: outcome.notes.clone(),
-                    files_touched: outcome.files_touched.clone(),
-                    attempt: usize::try_from(attempts_used).unwrap_or(usize::MAX),
-                    max_attempts: usize::try_from(retry_policy.max_attempts).unwrap_or(usize::MAX),
-                });
+                self.services
+                    .emitter
+                    .emit(&WorkflowRunEvent::StageCompleted {
+                        node_id: node.id.clone(),
+                        name: node.label().to_string(),
+                        index: stage_index,
+                        duration_ms: stage_duration_ms,
+                        status: outcome.status.to_string(),
+                        preferred_label: outcome.preferred_label.clone(),
+                        suggested_next_ids: outcome.suggested_next_ids.clone(),
+                        usage: outcome.usage.clone(),
+                        failure: outcome.failure.clone(),
+                        notes: outcome.notes.clone(),
+                        files_touched: outcome.files_touched.clone(),
+                        attempt: usize::try_from(attempts_used).unwrap_or(usize::MAX),
+                        max_attempts: usize::try_from(retry_policy.max_attempts)
+                            .unwrap_or(usize::MAX),
+                    });
                 self.inform(&format!("Stage completed: {}", node.label()), &node.id);
             }
 
@@ -1449,8 +1453,7 @@ impl WorkflowRunEngine {
 
             // Sync artifact files to the sandbox (no-op for local envs)
             if let Err(e) =
-                sync_artifacts_to_env(&mut outcome.context_updates, &*self.services.sandbox)
-                    .await
+                sync_artifacts_to_env(&mut outcome.context_updates, &*self.services.sandbox).await
             {
                 context.append_log(format!("artifact sync failed: {e}"));
             }
@@ -1505,9 +1508,11 @@ impl WorkflowRunEngine {
             if let Err(e) = checkpoint.save(&checkpoint_path) {
                 context.append_log(format!("checkpoint save failed: {e}"));
             } else {
-                self.services.emitter.emit(&WorkflowRunEvent::CheckpointSaved {
-                    node_id: node.id.clone(),
-                });
+                self.services
+                    .emitter
+                    .emit(&WorkflowRunEvent::CheckpointSaved {
+                        node_id: node.id.clone(),
+                    });
             }
 
             // Step 6b: Write shadow branch first, then run branch commit with trailer
@@ -1586,12 +1591,14 @@ impl WorkflowRunEngine {
                     if let Err(e) = checkpoint.save(&checkpoint_path) {
                         context.append_log(format!("checkpoint re-save with SHA failed: {e}"));
                     }
-                    self.services.emitter.emit(&WorkflowRunEvent::GitCheckpoint {
-                        run_id: run_id.clone(),
-                        node_id: node.id.clone(),
-                        status: outcome.status.to_string(),
-                        git_commit_sha: sha.clone(),
-                    });
+                    self.services
+                        .emitter
+                        .emit(&WorkflowRunEvent::GitCheckpoint {
+                            run_id: run_id.clone(),
+                            node_id: node.id.clone(),
+                            status: outcome.status.to_string(),
+                            git_commit_sha: sha.clone(),
+                        });
 
                     // Save diff.patch for this stage
                     let prev = last_git_sha
@@ -1632,14 +1639,17 @@ impl WorkflowRunEngine {
                             continue;
                         }
                         let duration_ms = millis_u64(run_start.elapsed());
-                        let error = ArcError::engine(
-                            format!("stage {} failed with no outgoing fail edge", node.id)
-                        );
-                        self.services.emitter.emit(&WorkflowRunEvent::WorkflowRunFailed {
-                            error: error.clone(),
-                            duration_ms,
-                            git_commit_sha: last_git_sha.clone(),
-                        });
+                        let error = ArcError::engine(format!(
+                            "stage {} failed with no outgoing fail edge",
+                            node.id
+                        ));
+                        self.services
+                            .emitter
+                            .emit(&WorkflowRunEvent::WorkflowRunFailed {
+                                error: error.clone(),
+                                duration_ms,
+                                git_commit_sha: last_git_sha.clone(),
+                            });
                         return Err(error);
                     }
                     break;
@@ -2698,9 +2708,10 @@ mod tests {
         };
         engine.run(&g, &config).await.unwrap();
 
-        let manifest: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.path().join("manifest.json")).unwrap())
-                .unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("manifest.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(manifest["labels"]["env"], "test");
     }
 
@@ -2723,9 +2734,10 @@ mod tests {
         };
         engine.run(&g, &config).await.unwrap();
 
-        let manifest: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.path().join("manifest.json")).unwrap())
-                .unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("manifest.json")).unwrap(),
+        )
+        .unwrap();
         assert!(manifest.get("labels").is_none());
     }
 
@@ -3595,10 +3607,7 @@ mod tests {
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("(limit 2)"),
-            "expected limit of 2, got: {err}"
-        );
+        assert!(err.contains("(limit 2)"), "expected limit of 2, got: {err}");
     }
 
     // --- node_dir visit-count tests ---
@@ -4093,10 +4102,8 @@ mod tests {
         g.nodes.insert("start".to_string(), start);
 
         let mut work = Node::new("work");
-        work.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("slow".to_string()),
-        );
+        work.attrs
+            .insert("type".to_string(), AttrValue::String("slow".to_string()));
         g.nodes.insert("work".to_string(), work);
 
         let mut exit = Node::new("exit");
@@ -4214,10 +4221,8 @@ mod tests {
         g.nodes.insert("start".to_string(), start);
 
         let mut work = Node::new("work");
-        work.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("slow".to_string()),
-        );
+        work.attrs
+            .insert("type".to_string(), AttrValue::String("slow".to_string()));
         g.nodes.insert("work".to_string(), work);
 
         let mut exit = Node::new("exit");

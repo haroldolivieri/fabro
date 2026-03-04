@@ -1,6 +1,6 @@
 use crate::sandbox::{
-    format_lines_numbered, DirEntry, SandboxEventCallback, ExecResult, SandboxEvent,
-    Sandbox, GrepOptions,
+    format_lines_numbered, DirEntry, ExecResult, GrepOptions, Sandbox, SandboxEvent,
+    SandboxEventCallback,
 };
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -356,9 +356,13 @@ impl Sandbox for LocalSandbox {
                 .await
                 .map_err(|e| format!("Failed to create parent dirs: {e}"))?;
         }
-        tokio::fs::copy(&full_path, local_path)
-            .await
-            .map_err(|e| format!("Failed to copy {} to {}: {e}", full_path.display(), local_path.display()))?;
+        tokio::fs::copy(&full_path, local_path).await.map_err(|e| {
+            format!(
+                "Failed to copy {} to {}: {e}",
+                full_path.display(),
+                local_path.display()
+            )
+        })?;
         Ok(())
     }
 
@@ -613,38 +617,20 @@ mod tests {
 
     #[test]
     fn env_var_filtering() {
-        assert!(LocalSandbox::should_filter_env_var(
-            "OPENAI_API_KEY"
-        ));
-        assert!(LocalSandbox::should_filter_env_var(
-            "ANTHROPIC_API_KEY"
-        ));
-        assert!(LocalSandbox::should_filter_env_var(
-            "DB_PASSWORD"
-        ));
-        assert!(LocalSandbox::should_filter_env_var(
-            "AWS_SECRET"
-        ));
-        assert!(LocalSandbox::should_filter_env_var(
-            "AUTH_TOKEN"
-        ));
-        assert!(LocalSandbox::should_filter_env_var(
-            "MY_CREDENTIAL"
-        ));
+        assert!(LocalSandbox::should_filter_env_var("OPENAI_API_KEY"));
+        assert!(LocalSandbox::should_filter_env_var("ANTHROPIC_API_KEY"));
+        assert!(LocalSandbox::should_filter_env_var("DB_PASSWORD"));
+        assert!(LocalSandbox::should_filter_env_var("AWS_SECRET"));
+        assert!(LocalSandbox::should_filter_env_var("AUTH_TOKEN"));
+        assert!(LocalSandbox::should_filter_env_var("MY_CREDENTIAL"));
         // Case insensitive
-        assert!(LocalSandbox::should_filter_env_var(
-            "my_api_key"
-        ));
-        assert!(LocalSandbox::should_filter_env_var(
-            "Some_Secret"
-        ));
+        assert!(LocalSandbox::should_filter_env_var("my_api_key"));
+        assert!(LocalSandbox::should_filter_env_var("Some_Secret"));
         // Should not filter
         assert!(!LocalSandbox::should_filter_env_var("PATH"));
         assert!(!LocalSandbox::should_filter_env_var("HOME"));
         assert!(!LocalSandbox::should_filter_env_var("EDITOR"));
-        assert!(!LocalSandbox::should_filter_env_var(
-            "SECRET_PATH"
-        ));
+        assert!(!LocalSandbox::should_filter_env_var("SECRET_PATH"));
     }
 
     #[test]
@@ -838,9 +824,7 @@ mod tests {
 
         let env = LocalSandbox::new(dir.clone());
         let dest = dir.join("deep/nested/dir/data.bin");
-        env.download_file_to_local("data.bin", &dest)
-            .await
-            .unwrap();
+        env.download_file_to_local("data.bin", &dest).await.unwrap();
 
         assert_eq!(std::fs::read_to_string(&dest).unwrap(), "binary-ish");
         std::fs::remove_dir_all(&dir).unwrap();

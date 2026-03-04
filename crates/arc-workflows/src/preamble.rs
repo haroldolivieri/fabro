@@ -600,7 +600,10 @@ mod tests {
         let completed_nodes = vec!["plan".to_string(), "code".to_string()];
         let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
         node_outcomes.insert("plan".to_string(), Outcome::success());
-        node_outcomes.insert("code".to_string(), Outcome::fail_classify("compilation error"));
+        node_outcomes.insert(
+            "code".to_string(),
+            Outcome::fail_classify("compilation error"),
+        );
 
         let preamble = build_preamble(
             "compact",
@@ -1329,7 +1332,10 @@ mod tests {
         let context = Context::new();
         let completed_nodes = vec!["work".to_string()];
         let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
-        node_outcomes.insert("work".to_string(), Outcome::fail_classify("connection timeout"));
+        node_outcomes.insert(
+            "work".to_string(),
+            Outcome::fail_classify("connection timeout"),
+        );
 
         let preamble = build_preamble(
             "summary:high",

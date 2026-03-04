@@ -5,8 +5,8 @@ use async_trait::async_trait;
 
 use arc_agent::{
     subagent::{SessionFactory, SubAgentManager},
-    AgentEvent, AnthropicProfile, Sandbox, GeminiProfile, OpenAiProfile,
-    ProviderProfile, Session, SessionConfig, Turn,
+    AgentEvent, AnthropicProfile, GeminiProfile, OpenAiProfile, ProviderProfile, Sandbox, Session,
+    SessionConfig, Turn,
 };
 use arc_llm::client::Client;
 use arc_llm::provider::Provider;
@@ -295,7 +295,9 @@ impl CodergenBackend for AgentApiBackend {
                                 styles.dim.apply_to(format!("[{node_id}]")),
                                 styles.dim.apply_to("\u{25cf}"),
                                 styles.bold_cyan.apply_to(tool_name),
-                                styles.dim.apply_to(format!("({})", format_tool_args(arguments))),
+                                styles
+                                    .dim
+                                    .apply_to(format!("({})", format_tool_args(arguments))),
                             );
                         }
                         AgentEvent::Error { error } => {
@@ -449,7 +451,12 @@ mod tests {
     #[test]
     fn agent_backend_stores_config() {
         let styles = Box::leak(Box::new(Styles::new(false)));
-        let backend = AgentApiBackend::new("claude-opus-4-6".to_string(), Provider::OpenAi, true, styles);
+        let backend = AgentApiBackend::new(
+            "claude-opus-4-6".to_string(),
+            Provider::OpenAi,
+            true,
+            styles,
+        );
         assert_eq!(backend.model, "claude-opus-4-6");
         assert_eq!(backend.provider, Provider::OpenAi);
         assert!(backend.verbose);

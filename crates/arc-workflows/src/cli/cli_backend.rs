@@ -227,10 +227,7 @@ impl AgentCliBackend {
     }
 
     /// Detect changed files by comparing git state before and after the CLI run.
-    async fn detect_changed_files(
-        &self,
-        sandbox: &Arc<dyn Sandbox>,
-    ) -> Vec<String> {
+    async fn detect_changed_files(&self, sandbox: &Arc<dyn Sandbox>) -> Vec<String> {
         // Get unstaged changes
         let diff_result = sandbox
             .exec_command("git diff --name-only", 30_000, None, None, None)
@@ -420,25 +417,13 @@ impl CodergenBackend for BackendRouter {
         if self.should_use_cli(node) {
             self.cli_backend
                 .run(
-                    node,
-                    prompt,
-                    context,
-                    thread_id,
-                    emitter,
-                    stage_dir,
-                    sandbox,
+                    node, prompt, context, thread_id, emitter, stage_dir, sandbox,
                 )
                 .await
         } else {
             self.api_backend
                 .run(
-                    node,
-                    prompt,
-                    context,
-                    thread_id,
-                    emitter,
-                    stage_dir,
-                    sandbox,
+                    node, prompt, context, thread_id, emitter, stage_dir, sandbox,
                 )
                 .await
         }

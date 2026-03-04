@@ -431,7 +431,11 @@ impl Graph {
 
     /// Graph-level `stall_timeout`. Defaults to 600s. Returns `None` when set to zero (disabled).
     pub fn stall_timeout(&self) -> Option<Duration> {
-        match self.attrs.get("stall_timeout").and_then(AttrValue::as_duration) {
+        match self
+            .attrs
+            .get("stall_timeout")
+            .and_then(AttrValue::as_duration)
+        {
             Some(d) if d.is_zero() => None,
             Some(d) => Some(d),
             None => Some(Duration::from_secs(600)),

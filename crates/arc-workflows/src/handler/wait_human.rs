@@ -127,7 +127,9 @@ impl Handler for WaitHumanHandler {
         }
 
         if choices.is_empty() && freeform_target.is_none() {
-            return Ok(Outcome::fail_deterministic("No outgoing edges for human gate"));
+            return Ok(Outcome::fail_deterministic(
+                "No outgoing edges for human gate",
+            ));
         }
 
         // 2. Build question

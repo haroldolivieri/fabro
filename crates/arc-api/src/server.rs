@@ -19,7 +19,7 @@ use arc_agent::LocalSandbox;
 use crate::jwt_auth::{AuthMode, AuthenticatedService};
 use arc_workflows::checkpoint::Checkpoint;
 use arc_workflows::context::Context;
-use arc_workflows::engine::{WorkflowRunEngine, RunConfig};
+use arc_workflows::engine::{RunConfig, WorkflowRunEngine};
 use arc_workflows::event::{EventEmitter, WorkflowRunEvent};
 use arc_workflows::handler::HandlerRegistry;
 use arc_workflows::interviewer::web::WebInterviewer;
@@ -29,7 +29,6 @@ pub use arc_types::{
     ApiQuestion, ApiQuestionOption, RunStatus, RunStatusResponse, StartRunRequest,
     StartRunResponse, SubmitAnswerRequest, SubmitAnswerResponse,
 };
-
 
 /// Snapshot of a managed run.
 struct ManagedRun {
@@ -62,10 +61,16 @@ pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
 
     if is_demo {
         router = router
-            .route("/runs", get(crate::demo::list_runs).post(crate::demo::start_run_stub))
+            .route(
+                "/runs",
+                get(crate::demo::list_runs).post(crate::demo::start_run_stub),
+            )
             .route("/runs/{id}", get(crate::demo::get_run_status))
             .route("/runs/{id}/questions", get(crate::demo::get_questions_stub))
-            .route("/runs/{id}/questions/{qid}/answer", post(crate::demo::answer_stub))
+            .route(
+                "/runs/{id}/questions/{qid}/answer",
+                post(crate::demo::answer_stub),
+            )
             .route("/runs/{id}/events", get(crate::demo::run_events_stub))
             .route("/runs/{id}/checkpoint", get(crate::demo::checkpoint_stub))
             .route("/runs/{id}/context", get(crate::demo::context_stub))
@@ -73,25 +78,58 @@ pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
             .route("/runs/{id}/graph", get(crate::demo::get_run_graph))
             .route("/runs/{id}/retro", get(crate::demo::get_run_retro))
             .route("/runs/{id}/stages", get(crate::demo::get_run_stages))
-            .route("/runs/{id}/stages/{stageId}/turns", get(crate::demo::get_stage_turns))
+            .route(
+                "/runs/{id}/stages/{stageId}/turns",
+                get(crate::demo::get_stage_turns),
+            )
             .route("/runs/{id}/files", get(crate::demo::get_run_files))
             .route("/runs/{id}/usage", get(crate::demo::get_run_usage))
-            .route("/runs/{id}/verifications", get(crate::demo::get_run_verifications))
-            .route("/runs/{id}/configuration", get(crate::demo::get_run_configuration))
+            .route(
+                "/runs/{id}/verifications",
+                get(crate::demo::get_run_verifications),
+            )
+            .route(
+                "/runs/{id}/configuration",
+                get(crate::demo::get_run_configuration),
+            )
             .route("/runs/{id}/steer", post(crate::demo::steer_run_stub))
-            .route("/runs/{id}/preview", post(crate::demo::generate_preview_url_stub))
+            .route(
+                "/runs/{id}/preview",
+                post(crate::demo::generate_preview_url_stub),
+            )
             .route("/workflows", get(crate::demo::list_workflows))
             .route("/workflows/{name}", get(crate::demo::get_workflow))
-            .route("/workflows/{name}/runs", get(crate::demo::list_workflow_runs).post(crate::demo::trigger_workflow_run_stub))
+            .route(
+                "/workflows/{name}/runs",
+                get(crate::demo::list_workflow_runs).post(crate::demo::trigger_workflow_run_stub),
+            )
             .route("/verifications", get(crate::demo::list_verifications))
-            .route("/verifications/{slug}", get(crate::demo::get_verification_detail))
+            .route(
+                "/verifications/{slug}",
+                get(crate::demo::get_verification_detail),
+            )
             .route("/retros", get(crate::demo::list_retros))
-            .route("/sessions", get(crate::demo::list_sessions).post(crate::demo::create_session_stub))
+            .route(
+                "/sessions",
+                get(crate::demo::list_sessions).post(crate::demo::create_session_stub),
+            )
             .route("/sessions/{id}", get(crate::demo::get_session))
-            .route("/sessions/{id}/messages", post(crate::demo::send_message_stub))
-            .route("/sessions/{id}/events", get(crate::demo::session_events_stub))
-            .route("/insights/queries", get(crate::demo::list_saved_queries).post(crate::demo::save_query_stub))
-            .route("/insights/queries/{id}", put(crate::demo::update_query_stub).delete(crate::demo::delete_query_stub))
+            .route(
+                "/sessions/{id}/messages",
+                post(crate::demo::send_message_stub),
+            )
+            .route(
+                "/sessions/{id}/events",
+                get(crate::demo::session_events_stub),
+            )
+            .route(
+                "/insights/queries",
+                get(crate::demo::list_saved_queries).post(crate::demo::save_query_stub),
+            )
+            .route(
+                "/insights/queries/{id}",
+                put(crate::demo::update_query_stub).delete(crate::demo::delete_query_stub),
+            )
             .route("/insights/execute", post(crate::demo::execute_query_stub))
             .route("/insights/history", get(crate::demo::list_query_history))
             .route("/settings", get(crate::demo::get_settings))
@@ -119,7 +157,10 @@ pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
             .route("/runs/{id}/preview", post(not_implemented))
             .route("/workflows", get(not_implemented))
             .route("/workflows/{name}", get(not_implemented))
-            .route("/workflows/{name}/runs", get(not_implemented).post(not_implemented))
+            .route(
+                "/workflows/{name}/runs",
+                get(not_implemented).post(not_implemented),
+            )
             .route("/verifications", get(not_implemented))
             .route("/verifications/{slug}", get(not_implemented))
             .route("/retros", get(not_implemented))
@@ -127,8 +168,14 @@ pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
             .route("/sessions/{id}", get(not_implemented))
             .route("/sessions/{id}/messages", post(not_implemented))
             .route("/sessions/{id}/events", get(not_implemented))
-            .route("/insights/queries", get(not_implemented).post(not_implemented))
-            .route("/insights/queries/{id}", put(not_implemented).delete(not_implemented))
+            .route(
+                "/insights/queries",
+                get(not_implemented).post(not_implemented),
+            )
+            .route(
+                "/insights/queries/{id}",
+                put(not_implemented).delete(not_implemented),
+            )
             .route("/insights/execute", post(not_implemented))
             .route("/insights/history", get(not_implemented))
             .route("/settings", get(not_implemented))
@@ -136,9 +183,7 @@ pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
             .route("/projects/{id}/branches", get(not_implemented));
     }
 
-    router
-        .layer(axum::Extension(auth_mode))
-        .with_state(state)
+    router.layer(axum::Extension(auth_mode)).with_state(state)
 }
 
 async fn not_implemented() -> Response {
@@ -172,10 +217,7 @@ pub fn create_app_state_with_options(
     })
 }
 
-async fn list_runs(
-    _auth: AuthenticatedService,
-    State(state): State<Arc<AppState>>,
-) -> Response {
+async fn list_runs(_auth: AuthenticatedService, State(state): State<Arc<AppState>>) -> Response {
     let runs = state.runs.lock().expect("runs lock poisoned");
     let items: Vec<RunStatusResponse> = runs
         .iter()
@@ -223,8 +265,7 @@ async fn start_run(
 
     let registry = (state.registry_factory)(Arc::clone(&interviewer) as Arc<dyn Interviewer>);
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let sandbox: Arc<dyn arc_agent::Sandbox> =
-        Arc::new(LocalSandbox::new(cwd));
+    let sandbox: Arc<dyn arc_agent::Sandbox> = Arc::new(LocalSandbox::new(cwd));
     let engine = WorkflowRunEngine::with_interviewer(
         registry,
         Arc::new(emitter),
@@ -304,10 +345,7 @@ async fn start_run(
             let _ = retro.save(&config.logs_root);
         }
 
-        let mut runs = state_clone
-            .runs
-            .lock()
-            .expect("runs lock poisoned");
+        let mut runs = state_clone.runs.lock().expect("runs lock poisoned");
         if let Some(managed_run) = runs.get_mut(&run_id_clone) {
             match result {
                 Ok(_) => {
@@ -330,11 +368,7 @@ async fn start_run(
         }
     });
 
-    (
-        StatusCode::CREATED,
-        Json(StartRunResponse { id: run_id }),
-    )
-        .into_response()
+    (StatusCode::CREATED, Json(StartRunResponse { id: run_id })).into_response()
 }
 
 async fn get_run_status(

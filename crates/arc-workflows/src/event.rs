@@ -298,9 +298,7 @@ impl WorkflowRunEvent {
             } => {
                 debug!(
                     branch_count,
-                    join_policy,
-                    error_policy,
-                    "Parallel execution started"
+                    join_policy, error_policy, "Parallel execution started"
                 );
             }
             Self::ParallelBranchStarted { branch, index } => {
@@ -314,10 +312,7 @@ impl WorkflowRunEvent {
             } => {
                 debug!(
                     branch,
-                    index,
-                    duration_ms,
-                    status,
-                    "Parallel branch completed"
+                    index, duration_ms, status, "Parallel branch completed"
                 );
             }
             Self::ParallelCompleted {
@@ -327,9 +322,7 @@ impl WorkflowRunEvent {
             } => {
                 debug!(
                     duration_ms,
-                    success_count,
-                    failure_count,
-                    "Parallel execution completed"
+                    success_count, failure_count, "Parallel execution completed"
                 );
             }
             Self::InterviewStarted {
@@ -371,10 +364,7 @@ impl WorkflowRunEvent {
                     "Edge selected"
                 );
             }
-            Self::LoopRestart {
-                from_node,
-                to_node,
-            } => {
+            Self::LoopRestart { from_node, to_node } => {
                 debug!(from_node, to_node, "Loop restart");
             }
             Self::Prompt { stage, text } => {
@@ -389,9 +379,7 @@ impl WorkflowRunEvent {
             } => {
                 warn!(
                     reason,
-                    completed_count,
-                    pending_count,
-                    "Parallel early termination"
+                    completed_count, pending_count, "Parallel early termination"
                 );
             }
             Self::SubgraphStarted {
@@ -408,10 +396,7 @@ impl WorkflowRunEvent {
             } => {
                 debug!(
                     node_id,
-                    steps_executed,
-                    status,
-                    duration_ms,
-                    "Subgraph completed"
+                    steps_executed, status, duration_ms, "Subgraph completed"
                 );
             }
             Self::SetupStarted { command_count } => {
@@ -428,10 +413,7 @@ impl WorkflowRunEvent {
             } => {
                 debug!(
                     command,
-                    index,
-                    exit_code,
-                    duration_ms,
-                    "Setup command completed"
+                    index, exit_code, duration_ms, "Setup command completed"
                 );
             }
             Self::SetupCompleted { duration_ms } => {
@@ -445,10 +427,7 @@ impl WorkflowRunEvent {
             } => {
                 error!(command, index, exit_code, "Setup command failed");
             }
-            Self::StallWatchdogTimeout {
-                node,
-                idle_seconds,
-            } => {
+            Self::StallWatchdogTimeout { node, idle_seconds } => {
                 warn!(node, idle_seconds, "Stall watchdog timeout");
             }
             Self::AssetsCaptured {
@@ -459,10 +438,7 @@ impl WorkflowRunEvent {
             } => {
                 debug!(
                     node_id,
-                    files_copied,
-                    total_bytes,
-                    files_skipped,
-                    "Assets captured"
+                    files_copied, total_bytes, files_skipped, "Assets captured"
                 );
             }
         }
@@ -510,7 +486,9 @@ fn flatten_agent(inner: serde_json::Value) -> (String, serde_json::Map<String, s
         return ("Agent".to_string(), serde_json::Map::new());
     };
     let stage = agent_fields.remove("stage");
-    let agent_event = agent_fields.remove("event").unwrap_or(serde_json::Value::Null);
+    let agent_event = agent_fields
+        .remove("event")
+        .unwrap_or(serde_json::Value::Null);
 
     match agent_event {
         serde_json::Value::Object(event_map) => {
@@ -591,7 +569,9 @@ fn flatten_sub_agent_event(
     // Extract the inner event name for dot notation, but keep full inner
     // event as `nested_event` JSON to avoid field collisions when sub-agents
     // are themselves nested (SubAgentEvent wrapping SubAgentEvent).
-    let nested_event = sub_fields.remove("event").unwrap_or(serde_json::Value::Null);
+    let nested_event = sub_fields
+        .remove("event")
+        .unwrap_or(serde_json::Value::Null);
     let inner_name = match &nested_event {
         serde_json::Value::Object(map) => map.keys().next().cloned(),
         serde_json::Value::String(name) => Some(name.clone()),
@@ -667,7 +647,9 @@ fn rename_fields(event_name: &str, fields: &mut serde_json::Map<String, serde_js
                     })
                     .or_else(|| {
                         // For newtype string variants: { "data": "..." }
-                        error_val.get("data").and_then(|d| d.as_str().map(String::from))
+                        error_val
+                            .get("data")
+                            .and_then(|d| d.as_str().map(String::from))
                     })
                     .unwrap_or_else(|| error_val.to_string());
                 fields.insert("error".to_string(), serde_json::Value::String(display));
@@ -948,7 +930,10 @@ mod tests {
             preferred_label: None,
             suggested_next_ids: vec![],
             usage: None,
-            failure: Some(FailureDetail::new("lint errors remain", FailureClass::Deterministic)),
+            failure: Some(FailureDetail::new(
+                "lint errors remain",
+                FailureClass::Deterministic,
+            )),
             notes: Some("fixed 3 of 5 issues".to_string()),
             files_touched: vec!["src/main.rs".to_string()],
             attempt: 2,

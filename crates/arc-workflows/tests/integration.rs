@@ -7,7 +7,7 @@ use arc_util::terminal::Styles;
 use arc_workflows::checkpoint::Checkpoint;
 use arc_workflows::cli::backend::AgentApiBackend;
 use arc_workflows::context::Context;
-use arc_workflows::engine::{WorkflowRunEngine, RunConfig};
+use arc_workflows::engine::{RunConfig, WorkflowRunEngine};
 use arc_workflows::error::ArcError;
 use arc_workflows::event::{EventEmitter, WorkflowRunEvent};
 use arc_workflows::graph::{AttrValue, Edge, Graph, Node};
@@ -492,7 +492,10 @@ impl Handler for AlwaysFailHandler {
         _logs_root: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, arc_workflows::error::ArcError> {
-        Ok(Outcome::fail_classify(format!("forced failure for {}", node.id)))
+        Ok(Outcome::fail_classify(format!(
+            "forced failure for {}",
+            node.id
+        )))
     }
 }
 
@@ -1249,10 +1252,7 @@ fn make_full_registry(interviewer: Arc<dyn Interviewer>) -> HandlerRegistry {
     registry.register("conditional", Box::new(ConditionalHandler));
     registry.register("script", Box::new(ScriptHandler));
     registry.register("wait.human", Box::new(WaitHumanHandler::new(interviewer)));
-    registry.register(
-        "stack.manager_loop",
-        Box::new(SubWorkflowHandler),
-    );
+    registry.register("stack.manager_loop", Box::new(SubWorkflowHandler));
     registry
 }
 
@@ -3383,10 +3383,9 @@ async fn manager_loop_context_flows_e2e() {
             outcome
                 .context_updates
                 .insert("review.result".to_string(), serde_json::json!("approved"));
-            outcome.context_updates.insert(
-                "review.echo".to_string(),
-                serde_json::json!(target),
-            );
+            outcome
+                .context_updates
+                .insert("review.echo".to_string(), serde_json::json!(target));
             Ok(outcome)
         }
     }
@@ -3406,18 +3405,18 @@ async fn manager_loop_context_flows_e2e() {
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             let mut outcome = Outcome::success();
-            outcome
-                .context_updates
-                .insert("review.target".to_string(), serde_json::json!("src/main.rs"));
+            outcome.context_updates.insert(
+                "review.target".to_string(),
+                serde_json::json!("src/main.rs"),
+            );
             Ok(outcome)
         }
     }
 
     let mut setter = Node::new("setter");
-    setter.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("setter".to_string()),
-    );
+    setter
+        .attrs
+        .insert("type".to_string(), AttrValue::String("setter".to_string()));
     graph.nodes.insert("setter".to_string(), setter);
 
     let mut supervisor = Node::new("supervisor");
@@ -4876,7 +4875,8 @@ async fn fidelity_summary_low_excludes_context_values_in_pipeline() {
             captures: captures_low.clone(),
         }),
     );
-    let engine_low = WorkflowRunEngine::new(registry_low, Arc::new(EventEmitter::new()), local_env());
+    let engine_low =
+        WorkflowRunEngine::new(registry_low, Arc::new(EventEmitter::new()), local_env());
     let config_low = RunConfig {
         logs_root: dir_low.path().to_path_buf(),
         cancel_token: None,
@@ -4940,7 +4940,8 @@ async fn fidelity_summary_low_excludes_context_values_in_pipeline() {
             captures: captures_med.clone(),
         }),
     );
-    let engine_med = WorkflowRunEngine::new(registry_med, Arc::new(EventEmitter::new()), local_env());
+    let engine_med =
+        WorkflowRunEngine::new(registry_med, Arc::new(EventEmitter::new()), local_env());
     let config_med = RunConfig {
         logs_root: dir_med.path().to_path_buf(),
         cancel_token: None,
@@ -5542,7 +5543,7 @@ mod real_llm {
 
     use super::local_env;
     use arc_workflows::checkpoint::Checkpoint;
-    use arc_workflows::engine::{WorkflowRunEngine, RunConfig};
+    use arc_workflows::engine::{RunConfig, WorkflowRunEngine};
     use arc_workflows::event::EventEmitter;
     use arc_workflows::graph::{AttrValue, Edge, Graph};
     use arc_workflows::handler::exit::ExitHandler;
@@ -7694,7 +7695,11 @@ impl arc_agent::Sandbox for RemoteMockEnv {
         Ok(())
     }
 
-    async fn download_file_to_local(&self, _: &str, _: &std::path::Path) -> std::result::Result<(), String> {
+    async fn download_file_to_local(
+        &self,
+        _: &str,
+        _: &std::path::Path,
+    ) -> std::result::Result<(), String> {
         Err("not implemented".to_string())
     }
 
@@ -7738,7 +7743,8 @@ async fn artifact_pointers_rewritten_for_remote_sandbox() {
     registry.register("exit", Box::new(ExitHandler));
 
     let remote_env = Arc::new(RemoteMockEnv::new("/sandbox"));
-    let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), remote_env.clone());
+    let engine =
+        WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), remote_env.clone());
     let config = RunConfig {
         logs_root: dir.path().to_path_buf(),
         cancel_token: None,
@@ -7922,7 +7928,7 @@ async fn node_dir_uses_visit_count_on_revisit() {
 // CLI Backend end-to-end tests
 // ---------------------------------------------------------------------------
 
-use arc_workflows::cli::cli_backend::{BackendRouter, AgentCliBackend};
+use arc_workflows::cli::cli_backend::{AgentCliBackend, BackendRouter};
 
 /// A mock sandbox for CLI backend e2e tests.
 /// Records all exec_command and write_file calls, and returns configurable
@@ -8355,8 +8361,7 @@ async fn cli_backend_run_fails_on_nonzero_exit() {
 
 #[tokio::test]
 async fn cli_backend_run_fails_on_unparseable_output() {
-    let env: Arc<dyn arc_agent::Sandbox> =
-        Arc::new(CliTestEnv::new("this is not json at all"));
+    let env: Arc<dyn arc_agent::Sandbox> = Arc::new(CliTestEnv::new("this is not json at all"));
     let backend = AgentCliBackend::new("claude-opus-4-6".into(), Provider::Anthropic);
 
     let node = Node::new("step");
@@ -9080,9 +9085,8 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
     let mut emitter = EventEmitter::new();
     let events = collect_events(&mut emitter);
 
-    let env: Arc<dyn arc_agent::Sandbox> = Arc::new(
-        arc_agent::LocalSandbox::new(worktree_path.clone()),
-    );
+    let env: Arc<dyn arc_agent::Sandbox> =
+        Arc::new(arc_agent::LocalSandbox::new(worktree_path.clone()));
     let mut registry = HandlerRegistry::new(Box::new(ContextSetterHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
@@ -9260,9 +9264,8 @@ async fn git_checkpoint_host_writes_shadow_branch() {
     std::fs::write(logs_dir.path().join("graph.dot"), "digraph {}").unwrap();
     let emitter = EventEmitter::new();
 
-    let env: Arc<dyn arc_agent::Sandbox> = Arc::new(
-        arc_agent::LocalSandbox::new(worktree_path.clone()),
-    );
+    let env: Arc<dyn arc_agent::Sandbox> =
+        Arc::new(arc_agent::LocalSandbox::new(worktree_path.clone()));
     let mut registry = HandlerRegistry::new(Box::new(ContextSetterHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
@@ -9447,9 +9450,8 @@ async fn parallel_git_branching_host_e2e() {
     let mut emitter = EventEmitter::new();
     let events = collect_events(&mut emitter);
 
-    let env: Arc<dyn arc_agent::Sandbox> = Arc::new(
-        arc_agent::LocalSandbox::new(worktree_path.clone()),
-    );
+    let env: Arc<dyn arc_agent::Sandbox> =
+        Arc::new(arc_agent::LocalSandbox::new(worktree_path.clone()));
 
     let mut registry = HandlerRegistry::new(Box::new(FileWriterHandler));
     registry.register("start", Box::new(StartHandler));
@@ -9700,8 +9702,10 @@ impl Handler for SignatureHintHandler {
         _logs_root: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
-        Ok(Outcome::fail_classify("error at line 42 in commit abc123def0")
-            .with_signature(Some("custom-grouping-key")))
+        Ok(
+            Outcome::fail_classify("error at line 42 in commit abc123def0")
+                .with_signature(Some("custom-grouping-key")),
+        )
     }
 }
 
@@ -10669,8 +10673,7 @@ impl Handler for ClassifiedFailHandler {
         if n >= self.succeed_on {
             return Ok(Outcome::success());
         }
-        let failure_class: arc_workflows::error::FailureClass =
-            self.failure_class.parse().unwrap();
+        let failure_class: arc_workflows::error::FailureClass = self.failure_class.parse().unwrap();
         let mut outcome = Outcome::fail_classify("classified failure");
         if let Some(ref mut f) = outcome.failure {
             f.failure_class = failure_class;
@@ -10706,7 +10709,10 @@ async fn e2e_loop_restart_blocked_for_deterministic_failure() {
     };
 
     let result = engine.run(&graph, &config).await;
-    assert!(result.is_err(), "deterministic failure should not loop_restart");
+    assert!(
+        result.is_err(),
+        "deterministic failure should not loop_restart"
+    );
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains("loop_restart blocked"),
@@ -10741,7 +10747,10 @@ async fn e2e_loop_restart_blocked_for_structural_failure() {
     };
 
     let result = engine.run(&graph, &config).await;
-    assert!(result.is_err(), "structural failure should not loop_restart");
+    assert!(
+        result.is_err(),
+        "structural failure should not loop_restart"
+    );
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains("loop_restart blocked"),
@@ -10776,7 +10785,10 @@ async fn e2e_loop_restart_blocked_for_budget_exhausted_failure() {
     };
 
     let result = engine.run(&graph, &config).await;
-    assert!(result.is_err(), "budget_exhausted failure should not loop_restart");
+    assert!(
+        result.is_err(),
+        "budget_exhausted failure should not loop_restart"
+    );
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains("loop_restart blocked"),
@@ -10846,7 +10858,10 @@ async fn e2e_loop_restart_blocked_for_compilation_loop_failure() {
     };
 
     let result = engine.run(&graph, &config).await;
-    assert!(result.is_err(), "compilation_loop failure should not loop_restart");
+    assert!(
+        result.is_err(),
+        "compilation_loop failure should not loop_restart"
+    );
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains("loop_restart blocked"),
@@ -10967,10 +10982,7 @@ async fn e2e_stall_watchdog_triggers_from_dot_parsed_pipeline() {
     let events_clone = events.clone();
     let mut emitter = EventEmitter::new();
     emitter.on_event(move |event| {
-        events_clone
-            .lock()
-            .unwrap()
-            .push(format!("{event:?}"));
+        events_clone.lock().unwrap().push(format!("{event:?}"));
     });
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), local_env());
@@ -11040,7 +11052,10 @@ async fn e2e_stall_watchdog_kept_alive_by_handler_events() {
         labels: std::collections::HashMap::new(),
     };
 
-    let outcome = engine.run(&graph, &config).await.expect("pipeline should succeed");
+    let outcome = engine
+        .run(&graph, &config)
+        .await
+        .expect("pipeline should succeed");
     assert_eq!(outcome.status, StageStatus::Success);
 }
 
@@ -11056,7 +11071,11 @@ async fn e2e_stall_watchdog_disabled_with_zero_timeout() {
         start -> work -> exit
     }"#;
     let graph = parse(dot).expect("parse should succeed");
-    assert_eq!(graph.stall_timeout(), None, "zero timeout should disable watchdog");
+    assert_eq!(
+        graph.stall_timeout(),
+        None,
+        "zero timeout should disable watchdog"
+    );
 
     let dir = tempfile::tempdir().unwrap();
     let mut registry = HandlerRegistry::new(Box::new(StartHandler));
@@ -11077,7 +11096,10 @@ async fn e2e_stall_watchdog_disabled_with_zero_timeout() {
         labels: std::collections::HashMap::new(),
     };
 
-    let outcome = engine.run(&graph, &config).await.expect("pipeline should succeed");
+    let outcome = engine
+        .run(&graph, &config)
+        .await
+        .expect("pipeline should succeed");
     assert_eq!(outcome.status, StageStatus::Success);
 }
 
@@ -11228,22 +11250,26 @@ async fn asset_collection_local_sandbox_success() {
     );
 
     let mut start = Node::new("start");
-    start
-        .attrs
-        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
     graph.nodes.insert("start".to_string(), start);
 
     let mut create_assets = Node::new("create_assets");
-    create_assets
-        .attrs
-        .insert("label".to_string(), AttrValue::String("Create Assets".to_string()));
+    create_assets.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Create Assets".to_string()),
+    );
     graph
         .nodes
         .insert("create_assets".to_string(), create_assets);
 
     let mut exit = Node::new("exit");
-    exit.attrs
-        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
     graph.nodes.insert("exit".to_string(), exit);
 
     graph.edges.push(Edge::new("start", "create_assets"));
@@ -11261,7 +11287,10 @@ async fn asset_collection_local_sandbox_success() {
         labels: std::collections::HashMap::new(),
     };
 
-    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    let outcome = engine
+        .run(&graph, &config)
+        .await
+        .expect("run should succeed");
     assert_eq!(outcome.status, StageStatus::Success);
 
     // Check that asset files were collected into the stage directory
@@ -11318,11 +11347,7 @@ async fn asset_collection_local_sandbox_on_failure() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunEngine::new(
-        registry,
-        Arc::new(EventEmitter::new()),
-        sandbox.clone(),
-    );
+    let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), sandbox.clone());
 
     let mut graph = Graph::new("AssetCollectionFailTest");
     graph.attrs.insert(
@@ -11331,22 +11356,26 @@ async fn asset_collection_local_sandbox_on_failure() {
     );
 
     let mut start = Node::new("start");
-    start
-        .attrs
-        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
     graph.nodes.insert("start".to_string(), start);
 
     let mut create_assets = Node::new("create_assets");
-    create_assets
-        .attrs
-        .insert("label".to_string(), AttrValue::String("Create Assets".to_string()));
+    create_assets.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Create Assets".to_string()),
+    );
     graph
         .nodes
         .insert("create_assets".to_string(), create_assets);
 
     let mut exit = Node::new("exit");
-    exit.attrs
-        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
     graph.nodes.insert("exit".to_string(), exit);
 
     graph.edges.push(Edge::new("start", "create_assets"));
@@ -11364,7 +11393,10 @@ async fn asset_collection_local_sandbox_on_failure() {
         labels: std::collections::HashMap::new(),
     };
 
-    let outcome = engine.run(&graph, &config).await.expect("run should succeed");
+    let outcome = engine
+        .run(&graph, &config)
+        .await
+        .expect("run should succeed");
     // The pipeline completes (handler returned Fail, not an error), but assets should still be collected
     assert_eq!(outcome.status, StageStatus::Fail);
 
@@ -11404,11 +11436,7 @@ async fn asset_collection_docker_sandbox() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunEngine::new(
-        registry,
-        Arc::new(EventEmitter::new()),
-        sandbox.clone(),
-    );
+    let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), sandbox.clone());
 
     let mut graph = Graph::new("DockerAssetTest");
     graph.attrs.insert(
@@ -11417,22 +11445,26 @@ async fn asset_collection_docker_sandbox() {
     );
 
     let mut start = Node::new("start");
-    start
-        .attrs
-        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
     graph.nodes.insert("start".to_string(), start);
 
     let mut create_assets = Node::new("create_assets");
-    create_assets
-        .attrs
-        .insert("label".to_string(), AttrValue::String("Create Assets".to_string()));
+    create_assets.attrs.insert(
+        "label".to_string(),
+        AttrValue::String("Create Assets".to_string()),
+    );
     graph
         .nodes
         .insert("create_assets".to_string(), create_assets);
 
     let mut exit = Node::new("exit");
-    exit.attrs
-        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
     graph.nodes.insert("exit".to_string(), exit);
 
     graph.edges.push(Edge::new("start", "create_assets"));

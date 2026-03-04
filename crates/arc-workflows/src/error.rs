@@ -1535,7 +1535,10 @@ mod tests {
             message: "connection refused".into(),
         });
         let outcome = err.to_fail_outcome();
-        assert!(outcome.failure_reason().unwrap().contains("connection refused"));
+        assert!(outcome
+            .failure_reason()
+            .unwrap()
+            .contains("connection refused"));
     }
 
     #[test]
@@ -1637,10 +1640,7 @@ mod tests {
     fn to_fail_outcome_preserves_class() {
         let err = ArcError::handler("timeout");
         let outcome = err.to_fail_outcome();
-        assert_eq!(
-            outcome.failure_class(),
-            Some(FailureClass::TransientInfra)
-        );
+        assert_eq!(outcome.failure_class(), Some(FailureClass::TransientInfra));
     }
 
     // --- E2E error pipeline tests ---
@@ -1709,7 +1709,10 @@ mod tests {
 
         // Verify wire format
         assert_eq!(v["type"], "handler");
-        assert!(v["data"]["message"].as_str().unwrap().contains("connection refused"));
+        assert!(v["data"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("connection refused"));
         assert_eq!(v["data"]["failure_class"], "transient_infra");
 
         // Round-trip

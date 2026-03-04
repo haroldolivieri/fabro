@@ -58,7 +58,8 @@ fn decode_pem_env(name: &str, value: &str) -> String {
     }
     let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, value)
         .unwrap_or_else(|e| panic!("{name} is not valid PEM or base64: {e}"));
-    String::from_utf8(bytes).unwrap_or_else(|e| panic!("{name} base64 decoded to invalid UTF-8: {e}"))
+    String::from_utf8(bytes)
+        .unwrap_or_else(|e| panic!("{name} base64 decoded to invalid UTF-8: {e}"))
 }
 
 /// Resolve the authentication mode from the API config section.
@@ -162,8 +163,8 @@ fn try_mtls(parts: &Parts) -> Result<(), StatusCode> {
 
     // Verify we can parse the leaf certificate and extract a CN
     let cert = &peer_certs[0];
-    let (_, parsed) = x509_parser::parse_x509_certificate(cert)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let (_, parsed) =
+        x509_parser::parse_x509_certificate(cert).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     parsed
         .subject()
@@ -322,8 +323,15 @@ mod tests {
         let ca_cert = {
             let mut child = Command::new("openssl")
                 .args([
-                    "req", "-new", "-x509", "-key", "/dev/stdin", "-days", "1",
-                    "-subj", "/CN=TestCA",
+                    "req",
+                    "-new",
+                    "-x509",
+                    "-key",
+                    "/dev/stdin",
+                    "-days",
+                    "1",
+                    "-subj",
+                    "/CN=TestCA",
                 ])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -344,9 +352,7 @@ mod tests {
         let subj = format!("/CN={cn}");
         let client_csr = {
             let mut child = Command::new("openssl")
-                .args([
-                    "req", "-new", "-key", "/dev/stdin", "-subj", &subj,
-                ])
+                .args(["req", "-new", "-key", "/dev/stdin", "-subj", &subj])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .spawn()
@@ -366,12 +372,17 @@ mod tests {
 
         let client_cert_pem = Command::new("openssl")
             .args([
-                "x509", "-req",
-                "-in", csr_path.to_str().unwrap(),
-                "-CA", ca_cert_path.to_str().unwrap(),
-                "-CAkey", ca_key_path.to_str().unwrap(),
+                "x509",
+                "-req",
+                "-in",
+                csr_path.to_str().unwrap(),
+                "-CA",
+                ca_cert_path.to_str().unwrap(),
+                "-CAkey",
+                ca_key_path.to_str().unwrap(),
                 "-CAcreateserial",
-                "-days", "1",
+                "-days",
+                "1",
             ])
             .output()
             .expect("openssl x509 failed")
@@ -425,12 +436,7 @@ mod tests {
         let (encoding, decoding) = generate_test_keypair();
         let app = test_router(jwt_mode(decoding, vec!["brynary"]));
 
-        let token = sign_token(
-            &encoding,
-            "arc-web",
-            60,
-            Some("https://github.com/brynary"),
-        );
+        let token = sign_token(&encoding, "arc-web", 60, Some("https://github.com/brynary"));
 
         let req = Request::builder()
             .uri("/test")
@@ -486,12 +492,7 @@ mod tests {
         let (encoding, decoding) = generate_test_keypair();
         let app = test_router(jwt_mode(decoding, vec![]));
 
-        let token = sign_token(
-            &encoding,
-            "arc-web",
-            60,
-            Some("https://github.com/brynary"),
-        );
+        let token = sign_token(&encoding, "arc-web", 60, Some("https://github.com/brynary"));
 
         let req = Request::builder()
             .uri("/test")
@@ -652,12 +653,7 @@ mod tests {
         ]);
         let app = test_router(mode);
 
-        let token = sign_token(
-            &encoding,
-            "arc-web",
-            60,
-            Some("https://github.com/brynary"),
-        );
+        let token = sign_token(&encoding, "arc-web", 60, Some("https://github.com/brynary"));
 
         // No peer certs, but valid JWT
         let mut req = Request::builder()

@@ -179,7 +179,9 @@ impl ArtifactStore {
     /// Returns `None` if no `base_dir` is configured.
     #[must_use]
     pub fn artifacts_dir(&self) -> Option<PathBuf> {
-        self.base_dir.as_ref().map(|b| b.join("artifacts").join("values"))
+        self.base_dir
+            .as_ref()
+            .map(|b| b.join("artifacts").join("values"))
     }
 
     /// Remove all artifacts. Also deletes file-backed data from disk.

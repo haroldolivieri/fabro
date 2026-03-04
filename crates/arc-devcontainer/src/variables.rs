@@ -146,20 +146,14 @@ mod tests {
     #[test]
     fn unknown_variable_left_as_is() {
         let ctx = test_ctx();
-        assert_eq!(
-            substitute("${unknownVariable}", &ctx),
-            "${unknownVariable}"
-        );
+        assert_eq!(substitute("${unknownVariable}", &ctx), "${unknownVariable}");
     }
 
     #[test]
     fn local_env_with_set_variable() {
         let ctx = test_ctx();
         std::env::set_var("ARC_TEST_VAR_SET", "hello");
-        assert_eq!(
-            substitute("${localEnv:ARC_TEST_VAR_SET}", &ctx),
-            "hello"
-        );
+        assert_eq!(substitute("${localEnv:ARC_TEST_VAR_SET}", &ctx), "hello");
         std::env::remove_var("ARC_TEST_VAR_SET");
     }
 
@@ -167,10 +161,7 @@ mod tests {
     fn local_env_unset_returns_empty() {
         let ctx = test_ctx();
         std::env::remove_var("ARC_TEST_VAR_UNSET_123");
-        assert_eq!(
-            substitute("${localEnv:ARC_TEST_VAR_UNSET_123}", &ctx),
-            ""
-        );
+        assert_eq!(substitute("${localEnv:ARC_TEST_VAR_UNSET_123}", &ctx), "");
     }
 
     #[test]
@@ -197,7 +188,10 @@ mod tests {
     #[test]
     fn no_closing_brace() {
         let ctx = test_ctx();
-        assert_eq!(substitute("${localWorkspaceFolder", &ctx), "${localWorkspaceFolder");
+        assert_eq!(
+            substitute("${localWorkspaceFolder", &ctx),
+            "${localWorkspaceFolder"
+        );
     }
 
     #[test]
@@ -216,7 +210,10 @@ mod tests {
     fn adjacent_variables() {
         let ctx = test_ctx();
         assert_eq!(
-            substitute("${localWorkspaceFolderBasename}${containerWorkspaceFolderBasename}", &ctx),
+            substitute(
+                "${localWorkspaceFolderBasename}${containerWorkspaceFolderBasename}",
+                &ctx
+            ),
             "projectproject"
         );
     }

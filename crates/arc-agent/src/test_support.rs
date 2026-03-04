@@ -1,7 +1,7 @@
 use crate::config::SessionConfig;
-use crate::sandbox::*;
 use crate::profiles::EnvContext;
 use crate::provider_profile::{ProfileCapabilities, ProviderProfile};
+use crate::sandbox::*;
 use crate::session::Session;
 use crate::skills::Skill;
 use crate::tool_registry::ToolRegistry;

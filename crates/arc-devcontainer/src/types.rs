@@ -262,9 +262,15 @@ mod tests {
             "postStartCommand": {"server": "python app.py"}
         }"#;
         let meta: FeatureMetadata = serde_json::from_str(json).unwrap();
-        assert!(matches!(meta.on_create_command, Some(LifecycleCommand::String(ref s)) if s == "pip install -r requirements.txt"));
-        assert!(matches!(meta.post_create_command, Some(LifecycleCommand::Array(ref arr)) if arr == &["python", "setup.py"]));
-        assert!(matches!(meta.post_start_command, Some(LifecycleCommand::Object(ref map)) if map.len() == 1));
+        assert!(
+            matches!(meta.on_create_command, Some(LifecycleCommand::String(ref s)) if s == "pip install -r requirements.txt")
+        );
+        assert!(
+            matches!(meta.post_create_command, Some(LifecycleCommand::Array(ref arr)) if arr == &["python", "setup.py"])
+        );
+        assert!(
+            matches!(meta.post_start_command, Some(LifecycleCommand::Object(ref map)) if map.len() == 1)
+        );
     }
 
     #[test]
@@ -278,7 +284,10 @@ mod tests {
         }"#;
         let meta: FeatureMetadata = serde_json::from_str(json).unwrap();
         assert_eq!(meta.container_env.len(), 2);
-        assert_eq!(meta.container_env.get("NODE_ENV").map(String::as_str), Some("development"));
+        assert_eq!(
+            meta.container_env.get("NODE_ENV").map(String::as_str),
+            Some("development")
+        );
     }
 
     #[test]
@@ -292,7 +301,9 @@ mod tests {
         }"#;
         let meta: FeatureMetadata = serde_json::from_str(json).unwrap();
         assert_eq!(meta.depends_on.len(), 2);
-        assert!(meta.depends_on.contains_key("ghcr.io/devcontainers/features/common-utils:1"));
+        assert!(meta
+            .depends_on
+            .contains_key("ghcr.io/devcontainers/features/common-utils:1"));
         assert_eq!(
             meta.depends_on.get("ghcr.io/devcontainers/features/node:1"),
             Some(&serde_json::json!({"version": "20"}))

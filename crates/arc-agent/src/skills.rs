@@ -543,8 +543,7 @@ name: trimmed
         let skills = Arc::new(test_skills());
         let tool = make_use_skill_tool(skills);
 
-        let env: Arc<dyn crate::sandbox::Sandbox> =
-            Arc::new(MockSandbox::default());
+        let env: Arc<dyn crate::sandbox::Sandbox> = Arc::new(MockSandbox::default());
         let args = serde_json::json!({"skill_name": "commit"});
         let ctx = crate::tool_registry::ToolContext {
             env,
@@ -562,8 +561,7 @@ name: trimmed
         let skills = Arc::new(test_skills());
         let tool = make_use_skill_tool(skills);
 
-        let env: Arc<dyn crate::sandbox::Sandbox> =
-            Arc::new(MockSandbox::default());
+        let env: Arc<dyn crate::sandbox::Sandbox> = Arc::new(MockSandbox::default());
         let args = serde_json::json!({"skill_name": "nonexistent"});
         let ctx = crate::tool_registry::ToolContext {
             env,
@@ -579,8 +577,7 @@ name: trimmed
         let skills = Arc::new(test_skills());
         let tool = make_use_skill_tool(skills);
 
-        let env: Arc<dyn crate::sandbox::Sandbox> =
-            Arc::new(MockSandbox::default());
+        let env: Arc<dyn crate::sandbox::Sandbox> = Arc::new(MockSandbox::default());
         let args = serde_json::json!({});
         let ctx = crate::tool_registry::ToolContext {
             env,

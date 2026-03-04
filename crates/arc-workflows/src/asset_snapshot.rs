@@ -52,11 +52,7 @@ const EXCLUDE_DIRS: &[&str] = &[
 ];
 
 /// Path segments that indicate excluded tool cache directories.
-const EXCLUDE_SEGMENTS: &[&str] = &[
-    ".cache/ms-playwright",
-    "playwright/.cache",
-    ".yarn/cache",
-];
+const EXCLUDE_SEGMENTS: &[&str] = &[".cache/ms-playwright", "playwright/.cache", ".yarn/cache"];
 
 /// Maximum size for a single file (10 MB).
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
@@ -197,8 +193,7 @@ pub fn is_asset_candidate(path: &str) -> bool {
         if let Some(pos) = path.find(segment) {
             let before_ok = pos == 0 || path.as_bytes()[pos - 1] == b'/';
             let after_pos = pos + segment.len();
-            let after_ok =
-                after_pos >= path.len() || path.as_bytes()[after_pos] == b'/';
+            let after_ok = after_pos >= path.len() || path.as_bytes()[after_pos] == b'/';
             if before_ok && after_ok {
                 return true;
             }
@@ -333,9 +328,7 @@ fn normalize_paths(discovered: Vec<DiscoveredFile>, root: &str) -> Vec<Discovere
 
 /// Take a snapshot of current asset files in the sandbox.
 /// Returns a fingerprint map of discovered files.
-pub async fn snapshot(
-    sandbox: &dyn Sandbox,
-) -> Result<HashMap<String, FileFingerprint>, String> {
+pub async fn snapshot(sandbox: &dyn Sandbox) -> Result<HashMap<String, FileFingerprint>, String> {
     let root = sandbox.working_directory();
     let platform = sandbox.platform();
     let cmd = build_find_command(root, platform);
@@ -454,11 +447,7 @@ mod tests {
     }
 
     impl AssetMockSandbox {
-        fn new(
-            files: HashMap<String, String>,
-            exec_stdout: &str,
-            platform: &'static str,
-        ) -> Self {
+        fn new(files: HashMap<String, String>, exec_stdout: &str, platform: &'static str) -> Self {
             Self {
                 files,
                 exec_result: ExecResult {
@@ -476,34 +465,85 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Sandbox for AssetMockSandbox {
-        async fn read_file(&self, _: &str, _: Option<usize>, _: Option<usize>) -> Result<String, String> {
+        async fn read_file(
+            &self,
+            _: &str,
+            _: Option<usize>,
+            _: Option<usize>,
+        ) -> Result<String, String> {
             Err("not implemented".into())
         }
-        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> { Ok(()) }
-        async fn delete_file(&self, _: &str) -> Result<(), String> { Ok(()) }
-        async fn file_exists(&self, _: &str) -> Result<bool, String> { Ok(false) }
-        async fn list_directory(&self, _: &str, _: Option<usize>) -> Result<Vec<arc_agent::sandbox::DirEntry>, String> { Ok(vec![]) }
-        async fn exec_command(&self, _: &str, _: u64, _: Option<&str>, _: Option<&std::collections::HashMap<String, String>>, _: Option<tokio_util::sync::CancellationToken>) -> Result<ExecResult, String> {
+        async fn write_file(&self, _: &str, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn delete_file(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn file_exists(&self, _: &str) -> Result<bool, String> {
+            Ok(false)
+        }
+        async fn list_directory(
+            &self,
+            _: &str,
+            _: Option<usize>,
+        ) -> Result<Vec<arc_agent::sandbox::DirEntry>, String> {
+            Ok(vec![])
+        }
+        async fn exec_command(
+            &self,
+            _: &str,
+            _: u64,
+            _: Option<&str>,
+            _: Option<&std::collections::HashMap<String, String>>,
+            _: Option<tokio_util::sync::CancellationToken>,
+        ) -> Result<ExecResult, String> {
             Ok(self.exec_result.clone())
         }
-        async fn grep(&self, _: &str, _: &str, _: &arc_agent::sandbox::GrepOptions) -> Result<Vec<String>, String> { Ok(vec![]) }
-        async fn glob(&self, _: &str, _: Option<&str>) -> Result<Vec<String>, String> { Ok(vec![]) }
-        async fn download_file_to_local(&self, remote_path: &str, local_path: &std::path::Path) -> Result<(), String> {
-            let content = self.files.get(remote_path)
+        async fn grep(
+            &self,
+            _: &str,
+            _: &str,
+            _: &arc_agent::sandbox::GrepOptions,
+        ) -> Result<Vec<String>, String> {
+            Ok(vec![])
+        }
+        async fn glob(&self, _: &str, _: Option<&str>) -> Result<Vec<String>, String> {
+            Ok(vec![])
+        }
+        async fn download_file_to_local(
+            &self,
+            remote_path: &str,
+            local_path: &std::path::Path,
+        ) -> Result<(), String> {
+            let content = self
+                .files
+                .get(remote_path)
                 .ok_or_else(|| format!("File not found: {remote_path}"))?;
             if let Some(parent) = local_path.parent() {
-                tokio::fs::create_dir_all(parent).await
+                tokio::fs::create_dir_all(parent)
+                    .await
                     .map_err(|e| format!("Failed to create dirs: {e}"))?;
             }
-            tokio::fs::write(local_path, content.as_bytes()).await
+            tokio::fs::write(local_path, content.as_bytes())
+                .await
                 .map_err(|e| format!("Failed to write: {e}"))?;
             Ok(())
         }
-        async fn initialize(&self) -> Result<(), String> { Ok(()) }
-        async fn cleanup(&self) -> Result<(), String> { Ok(()) }
-        fn working_directory(&self) -> &str { self.working_dir }
-        fn platform(&self) -> &str { self.platform_str }
-        fn os_version(&self) -> String { "Linux 6.1.0".into() }
+        async fn initialize(&self) -> Result<(), String> {
+            Ok(())
+        }
+        async fn cleanup(&self) -> Result<(), String> {
+            Ok(())
+        }
+        fn working_directory(&self) -> &str {
+            self.working_dir
+        }
+        fn platform(&self) -> &str {
+            self.platform_str
+        }
+        fn os_version(&self) -> String {
+            "Linux 6.1.0".into()
+        }
     }
 
     #[test]
@@ -530,7 +570,9 @@ mod tests {
 
     #[test]
     fn is_asset_candidate_rejects_excluded_paths() {
-        assert!(!is_asset_candidate(".cache/ms-playwright/chromium/file.txt"));
+        assert!(!is_asset_candidate(
+            ".cache/ms-playwright/chromium/file.txt"
+        ));
         assert!(!is_asset_candidate("playwright/.cache/some-file"));
         assert!(!is_asset_candidate(".yarn/cache/something.zip"));
     }
@@ -729,11 +771,7 @@ mod tests {
         let mut files = HashMap::new();
         files.insert("test-results/r.xml".to_string(), "<test/>".to_string());
 
-        let mock = AssetMockSandbox::new(
-            files,
-            "1024\t2000.0\ttest-results/r.xml\n",
-            "linux",
-        );
+        let mock = AssetMockSandbox::new(files, "1024\t2000.0\ttest-results/r.xml\n", "linux");
 
         let baseline = HashMap::new();
         let summary = collect_assets(&mock, stage_dir.path(), &baseline, 1000.0)
@@ -763,11 +801,7 @@ mod tests {
         let mut files = HashMap::new();
         files.insert("test-results/r.xml".to_string(), "<test/>".to_string());
 
-        let mock = AssetMockSandbox::new(
-            files,
-            "1024\t2000.0\ttest-results/r.xml\n",
-            "linux",
-        );
+        let mock = AssetMockSandbox::new(files, "1024\t2000.0\ttest-results/r.xml\n", "linux");
 
         // Provide a baseline with the same fingerprint
         let mut baseline = HashMap::new();

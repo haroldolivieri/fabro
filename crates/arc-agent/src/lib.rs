@@ -29,13 +29,9 @@ pub mod v4a_patch;
 pub use arc_mcp::config::McpServerConfig;
 pub use config::{SessionConfig, ToolApprovalFn};
 #[cfg(feature = "docker")]
-pub use docker_sandbox::{DockerSandboxConfig, DockerSandbox};
+pub use docker_sandbox::{DockerSandbox, DockerSandboxConfig};
 pub use error::AgentError;
 pub use event::EventEmitter;
-pub use sandbox::{
-    format_lines_numbered, DirEntry, SandboxEventCallback, ExecResult, SandboxEvent,
-    Sandbox, GrepOptions,
-};
 pub use history::History;
 pub use local_sandbox::LocalSandbox;
 pub use loop_detection::detect_loop;
@@ -43,6 +39,10 @@ pub use profiles::{AnthropicProfile, EnvContext, GeminiProfile, OpenAiProfile};
 pub use project_docs::discover_project_docs;
 pub use provider_profile::{ProfileCapabilities, ProviderProfile};
 pub use read_before_write_sandbox::ReadBeforeWriteSandbox;
+pub use sandbox::{
+    format_lines_numbered, DirEntry, ExecResult, GrepOptions, Sandbox, SandboxEvent,
+    SandboxEventCallback,
+};
 pub use session::Session;
 pub use skills::Skill;
 pub use subagent::{SubAgent, SubAgentEventCallback, SubAgentManager, SubAgentResult};

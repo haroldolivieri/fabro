@@ -138,10 +138,8 @@ impl DevcontainerResolver {
                 })?
                 .clone();
 
-            let compose_config =
-                compose::parse_compose_multi(&compose_paths, &service_name).map_err(|e| {
-                    DevcontainerError::Compose(e)
-                })?;
+            let compose_config = compose::parse_compose_multi(&compose_paths, &service_name)
+                .map_err(|e| DevcontainerError::Compose(e))?;
 
             let mut environment = HashMap::new();
             for (k, v) in compose_config.environment {
@@ -163,14 +161,15 @@ impl DevcontainerResolver {
                 let df_path = compose_base_dir
                     .join(&build.context)
                     .join(build.dockerfile.as_deref().unwrap_or("Dockerfile"));
-                std::fs::read_to_string(&df_path).map_err(|source| {
-                    DevcontainerError::ReadFile {
-                        path: df_path,
-                        source,
-                    }
+                std::fs::read_to_string(&df_path).map_err(|source| DevcontainerError::ReadFile {
+                    path: df_path,
+                    source,
                 })?
             } else {
-                format!("FROM {}", compose_config.image.as_deref().unwrap_or("ubuntu"))
+                format!(
+                    "FROM {}",
+                    compose_config.image.as_deref().unwrap_or("ubuntu")
+                )
             };
 
             return Ok(DevcontainerConfig {
@@ -178,11 +177,11 @@ impl DevcontainerResolver {
                 build_context: compose_base_dir.to_path_buf(),
                 build_args: HashMap::new(),
                 build_target: None,
-                initialize_commands: Self::collect_commands(&devcontainer.initialize_command, &vars),
-                on_create_commands: Self::collect_commands(
-                    &devcontainer.on_create_command,
+                initialize_commands: Self::collect_commands(
+                    &devcontainer.initialize_command,
                     &vars,
                 ),
+                on_create_commands: Self::collect_commands(&devcontainer.on_create_command, &vars),
                 post_create_commands: Self::collect_commands(
                     &devcontainer.post_create_command,
                     &vars,
@@ -193,10 +192,7 @@ impl DevcontainerResolver {
                 ),
                 environment,
                 container_env: Self::collect_container_env(&devcontainer.container_env, &vars),
-                remote_user: devcontainer
-                    .remote_user
-                    .clone()
-                    .or(compose_config.user),
+                remote_user: devcontainer.remote_user.clone().or(compose_config.user),
                 workspace_folder,
                 forwarded_ports: {
                     let mut ports = compose_config.ports;
@@ -213,45 +209,54 @@ impl DevcontainerResolver {
         }
 
         // Image or Dockerfile mode
-        let (base_dockerfile, build_context, build_args, build_target) = if let Some(build) =
-            &devcontainer.build
-        {
-            let context_dir = build
-                .context
-                .as_ref()
-                .map(|c| base_dir.join(variables::substitute(c, &vars)))
-                .unwrap_or_else(|| base_dir.to_path_buf());
-            let df_path = base_dir.join(variables::substitute(
-                build.dockerfile.as_deref().unwrap_or("Dockerfile"),
-                &vars,
-            ));
-            let content = std::fs::read_to_string(&df_path).map_err(|source| {
-                DevcontainerError::ReadFile {
-                    path: df_path,
-                    source,
-                }
-            })?;
-            let args: HashMap<String, String> = build
-                .args
-                .iter()
-                .map(|(k, v)| (k.clone(), variables::substitute(v, &vars)))
-                .collect();
-            let target = build
-                .target
-                .as_ref()
-                .map(|t| variables::substitute(t, &vars));
-            (content, context_dir, args, target)
-        } else {
-            let image = devcontainer
-                .image
-                .as_deref()
-                .unwrap_or("mcr.microsoft.com/devcontainers/base:ubuntu");
-            (format!("FROM {image}"), base_dir.to_path_buf(), HashMap::new(), None)
-        };
+        let (base_dockerfile, build_context, build_args, build_target) =
+            if let Some(build) = &devcontainer.build {
+                let context_dir = build
+                    .context
+                    .as_ref()
+                    .map(|c| base_dir.join(variables::substitute(c, &vars)))
+                    .unwrap_or_else(|| base_dir.to_path_buf());
+                let df_path = base_dir.join(variables::substitute(
+                    build.dockerfile.as_deref().unwrap_or("Dockerfile"),
+                    &vars,
+                ));
+                let content = std::fs::read_to_string(&df_path).map_err(|source| {
+                    DevcontainerError::ReadFile {
+                        path: df_path,
+                        source,
+                    }
+                })?;
+                let args: HashMap<String, String> = build
+                    .args
+                    .iter()
+                    .map(|(k, v)| (k.clone(), variables::substitute(v, &vars)))
+                    .collect();
+                let target = build
+                    .target
+                    .as_ref()
+                    .map(|t| variables::substitute(t, &vars));
+                (content, context_dir, args, target)
+            } else {
+                let image = devcontainer
+                    .image
+                    .as_deref()
+                    .unwrap_or("mcr.microsoft.com/devcontainers/base:ubuntu");
+                (
+                    format!("FROM {image}"),
+                    base_dir.to_path_buf(),
+                    HashMap::new(),
+                    None,
+                )
+            };
 
         // Features
         let resolved_features = if !devcontainer.features.is_empty() {
-            features::resolve_features(&devcontainer.features, base_dir, devcontainer.remote_user.as_deref()).await?
+            features::resolve_features(
+                &devcontainer.features,
+                base_dir,
+                devcontainer.remote_user.as_deref(),
+            )
+            .await?
         } else {
             features::ResolvedFeatures::default()
         };
@@ -283,8 +288,10 @@ impl DevcontainerResolver {
 
         // Collect devcontainer.json lifecycle commands, then append feature lifecycle commands
         let mut on_create_commands = Self::collect_commands(&devcontainer.on_create_command, &vars);
-        let mut post_create_commands = Self::collect_commands(&devcontainer.post_create_command, &vars);
-        let mut post_start_commands = Self::collect_commands(&devcontainer.post_start_command, &vars);
+        let mut post_create_commands =
+            Self::collect_commands(&devcontainer.post_create_command, &vars);
+        let mut post_start_commands =
+            Self::collect_commands(&devcontainer.post_start_command, &vars);
 
         for cmd in &resolved_features.on_create_commands {
             on_create_commands.push(Self::convert_lifecycle_command(cmd));
@@ -337,17 +344,12 @@ impl DevcontainerResolver {
         }
 
         // Check if path itself is a devcontainer.json
-        if path.is_file()
-            && path
-                .file_name()
-                .is_some_and(|n| n == "devcontainer.json")
-        {
-            let raw = std::fs::read_to_string(path).map_err(|source| {
-                DevcontainerError::ReadFile {
+        if path.is_file() && path.file_name().is_some_and(|n| n == "devcontainer.json") {
+            let raw =
+                std::fs::read_to_string(path).map_err(|source| DevcontainerError::ReadFile {
                     path: path.to_path_buf(),
                     source,
-                }
-            })?;
+                })?;
             let stripped = jsonc::strip_jsonc(&raw);
             let parsed: DevcontainerJson = serde_json::from_str(&stripped)?;
             return Ok((path.to_path_buf(), parsed));
@@ -441,9 +443,7 @@ impl DevcontainerResolver {
             }
             Some(types::LifecycleCommand::Array(arr)) => {
                 vec![Command::Args(
-                    arr.iter()
-                        .map(|s| variables::substitute(s, vars))
-                        .collect(),
+                    arr.iter().map(|s| variables::substitute(s, vars)).collect(),
                 )]
             }
             Some(types::LifecycleCommand::Object(map)) => {

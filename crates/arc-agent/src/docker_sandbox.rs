@@ -1,6 +1,6 @@
 use crate::sandbox::{
-    format_lines_numbered, DirEntry, SandboxEventCallback, ExecResult, SandboxEvent,
-    Sandbox, GrepOptions,
+    format_lines_numbered, DirEntry, ExecResult, GrepOptions, Sandbox, SandboxEvent,
+    SandboxEventCallback,
 };
 use async_trait::async_trait;
 use bollard::container::{
@@ -294,15 +294,13 @@ impl Sandbox for DockerSandbox {
                 .await
                 .map_err(|e| format!("Failed to create parent dirs: {e}"))?;
         }
-        tokio::fs::copy(&host_path, local_path)
-            .await
-            .map_err(|e| {
-                format!(
-                    "Failed to copy {} to {}: {e}",
-                    host_path.display(),
-                    local_path.display()
-                )
-            })?;
+        tokio::fs::copy(&host_path, local_path).await.map_err(|e| {
+            format!(
+                "Failed to copy {} to {}: {e}",
+                host_path.display(),
+                local_path.display()
+            )
+        })?;
         Ok(())
     }
 
@@ -773,8 +771,7 @@ mod tests {
         std::fs::create_dir_all(&host_dir).unwrap();
 
         let config = test_config(host_dir.to_str().unwrap());
-        let env: Arc<dyn Sandbox> =
-            Arc::new(DockerSandbox::new(config).unwrap());
+        let env: Arc<dyn Sandbox> = Arc::new(DockerSandbox::new(config).unwrap());
 
         // Initialize
         env.initialize().await.unwrap();

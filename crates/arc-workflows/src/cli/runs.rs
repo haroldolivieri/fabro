@@ -82,10 +82,7 @@ pub fn scan_runs(base: &Path) -> Result<Vec<RunInfo>> {
             continue;
         }
 
-        let dir_name = entry
-            .file_name()
-            .to_string_lossy()
-            .to_string();
+        let dir_name = entry.file_name().to_string_lossy().to_string();
 
         debug!(dir = %dir_name, "scanning run directory");
 
@@ -95,18 +92,12 @@ pub fn scan_runs(base: &Path) -> Result<Vec<RunInfo>> {
             debug!(dir = %dir_name, "reading manifest");
             let manifest: serde_json::Value = serde_json::from_str(&manifest_text)?;
 
-            let run_id = manifest["run_id"]
-                .as_str()
-                .unwrap_or(&dir_name)
-                .to_string();
+            let run_id = manifest["run_id"].as_str().unwrap_or(&dir_name).to_string();
             let workflow_name = manifest["workflow_name"]
                 .as_str()
                 .unwrap_or("unknown")
                 .to_string();
-            let start_time = manifest["start_time"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
+            let start_time = manifest["start_time"].as_str().unwrap_or("").to_string();
             let labels: HashMap<String, String> = manifest
                 .get("labels")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -308,10 +299,7 @@ pub fn prune_from(args: &RunsPruneArgs, base: &Path) -> Result<()> {
     } else {
         for run in &filtered {
             debug!(run_id = %run.run_id, "would delete run (dry-run)");
-            println!(
-                "would delete: {} ({})",
-                run.dir_name, run.workflow_name
-            );
+            println!("would delete: {} ({})", run.dir_name, run.workflow_name);
         }
         eprintln!(
             "\n{} run(s) would be deleted. Pass --yes to confirm.",
@@ -336,12 +324,18 @@ mod tests {
         let dir = base.join(dir_name);
         fs::create_dir_all(&dir).unwrap();
         if let Some(m) = manifest {
-            fs::write(dir.join("manifest.json"), serde_json::to_string_pretty(&m).unwrap())
-                .unwrap();
+            fs::write(
+                dir.join("manifest.json"),
+                serde_json::to_string_pretty(&m).unwrap(),
+            )
+            .unwrap();
         }
         if let Some(f) = final_json {
-            fs::write(dir.join("final.json"), serde_json::to_string_pretty(&f).unwrap())
-                .unwrap();
+            fs::write(
+                dir.join("final.json"),
+                serde_json::to_string_pretty(&f).unwrap(),
+            )
+            .unwrap();
         }
         if pid_file {
             fs::write(dir.join("run.pid"), "12345").unwrap();
@@ -599,7 +593,10 @@ mod tests {
 
         prune_from(&args, base).unwrap();
         assert!(!dir.exists(), "--yes should delete matching directory");
-        assert!(keep_dir.exists(), "non-matching directory should be preserved");
+        assert!(
+            keep_dir.exists(),
+            "non-matching directory should be preserved"
+        );
     }
 
     #[test]

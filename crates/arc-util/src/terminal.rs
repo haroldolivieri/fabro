@@ -84,27 +84,45 @@ mod tests {
     fn combined_styles_work() {
         let s = Styles::new(true);
         let output = format!("{}", s.bold_dim.apply_to("header"));
-        assert!(output.contains("\x1b["), "bold_dim should contain ANSI codes");
+        assert!(
+            output.contains("\x1b["),
+            "bold_dim should contain ANSI codes"
+        );
         assert!(output.contains("header"));
 
         let output = format!("{}", s.bold_cyan.apply_to("tool"));
-        assert!(output.contains("\x1b["), "bold_cyan should contain ANSI codes");
+        assert!(
+            output.contains("\x1b["),
+            "bold_cyan should contain ANSI codes"
+        );
         assert!(output.contains("tool"));
 
         let output = format!("{}", s.bold_green.apply_to("pass"));
-        assert!(output.contains("\x1b["), "bold_green should contain ANSI codes");
+        assert!(
+            output.contains("\x1b["),
+            "bold_green should contain ANSI codes"
+        );
         assert!(output.contains("pass"));
 
         let output = format!("{}", s.bold_red.apply_to("fail"));
-        assert!(output.contains("\x1b["), "bold_red should contain ANSI codes");
+        assert!(
+            output.contains("\x1b["),
+            "bold_red should contain ANSI codes"
+        );
         assert!(output.contains("fail"));
 
         let output = format!("{}", s.magenta.apply_to("medium"));
-        assert!(output.contains("\x1b["), "magenta should contain ANSI codes");
+        assert!(
+            output.contains("\x1b["),
+            "magenta should contain ANSI codes"
+        );
         assert!(output.contains("medium"));
 
         let output = format!("{}", s.underline.apply_to("path"));
-        assert!(output.contains("\x1b["), "underline should contain ANSI codes");
+        assert!(
+            output.contains("\x1b["),
+            "underline should contain ANSI codes"
+        );
         assert!(output.contains("path"));
     }
 

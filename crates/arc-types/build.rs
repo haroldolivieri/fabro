@@ -14,8 +14,8 @@ fn main() {
 
     let spec_text = fs::read_to_string(&spec_path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", spec_path.display()));
-    let spec: serde_json::Value = serde_yaml::from_str(&spec_text)
-        .unwrap_or_else(|e| panic!("failed to parse YAML: {e}"));
+    let spec: serde_json::Value =
+        serde_yaml::from_str(&spec_text).unwrap_or_else(|e| panic!("failed to parse YAML: {e}"));
 
     let schemas = spec["components"]["schemas"]
         .as_object()

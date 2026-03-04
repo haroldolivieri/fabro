@@ -280,9 +280,7 @@ impl AgentEvent {
             } => {
                 info!(
                     session_id,
-                    estimated_tokens,
-                    context_window_size,
-                    "Context compaction started"
+                    estimated_tokens, context_window_size, "Context compaction started"
                 );
             }
             Self::CompactionCompleted {
@@ -322,13 +320,7 @@ impl AgentEvent {
                 depth,
                 task,
             } => {
-                debug!(
-                    session_id,
-                    agent_id,
-                    depth,
-                    task,
-                    "Sub-agent spawned"
-                );
+                debug!(session_id, agent_id, depth, task, "Sub-agent spawned");
             }
             Self::SubAgentCompleted {
                 agent_id,
@@ -338,11 +330,7 @@ impl AgentEvent {
             } => {
                 debug!(
                     session_id,
-                    agent_id,
-                    depth,
-                    success,
-                    turns_used,
-                    "Sub-agent completed"
+                    agent_id, depth, success, turns_used, "Sub-agent completed"
                 );
             }
             Self::SubAgentFailed {

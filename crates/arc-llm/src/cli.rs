@@ -119,7 +119,8 @@ fn print_models_table(models: &[crate::types::ModelInfo], s: &Styles) {
             format_context_window(model.context_window),
             format_cost(model.input_cost_per_million),
             format_cost(model.output_cost_per_million),
-            s.cyan.apply_to(format!("{:>10}", format_speed(model.estimated_output_tps))),
+            s.cyan
+                .apply_to(format!("{:>10}", format_speed(model.estimated_output_tps))),
         );
     }
 }
@@ -431,7 +432,8 @@ async fn test_models(provider: Option<&str>, model: Option<&str>, s: &Styles) ->
             format_context_window(info.context_window),
             format_cost(info.input_cost_per_million),
             format_cost(info.output_cost_per_million),
-            s.cyan.apply_to(format!("{:>10}", format_speed(info.estimated_output_tps))),
+            s.cyan
+                .apply_to(format!("{:>10}", format_speed(info.estimated_output_tps))),
             status_color.apply_to(&status),
         );
     }
@@ -606,8 +608,7 @@ mod tests {
     #[test]
     fn apply_options_unknown_key_goes_to_provider_opts() {
         let params = GenerateParams::new("test-model");
-        let result =
-            apply_options(params, &[("custom_key".into(), "custom_val".into())]).unwrap();
+        let result = apply_options(params, &[("custom_key".into(), "custom_val".into())]).unwrap();
         let opts = result.provider_options.unwrap();
         assert_eq!(opts["custom_key"], "custom_val");
     }
@@ -615,9 +616,7 @@ mod tests {
     #[test]
     fn apply_options_invalid_temperature_errors() {
         let params = GenerateParams::new("test-model");
-        assert!(
-            apply_options(params, &[("temperature".into(), "not_a_number".into())]).is_err()
-        );
+        assert!(apply_options(params, &[("temperature".into(), "not_a_number".into())]).is_err());
     }
 
     #[test]

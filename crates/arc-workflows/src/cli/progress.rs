@@ -27,11 +27,20 @@ macro_rules! cached_style {
     };
 }
 
-cached_style!(style_header_running, "  {spinner:.dim} {wide_msg} {elapsed:.dim}");
+cached_style!(
+    style_header_running,
+    "  {spinner:.dim} {wide_msg} {elapsed:.dim}"
+);
 cached_style!(style_header_done, "  {wide_msg} {prefix:.dim}");
-cached_style!(style_stage_running, "  {spinner:.cyan} {wide_msg} {elapsed:.dim}");
+cached_style!(
+    style_stage_running,
+    "  {spinner:.cyan} {wide_msg} {elapsed:.dim}"
+);
 cached_style!(style_stage_done, "  {wide_msg} {prefix:.dim}");
-cached_style!(style_tool_running, "        {spinner:.dim} {wide_msg} {elapsed:.dim}");
+cached_style!(
+    style_tool_running,
+    "        {spinner:.dim} {wide_msg} {elapsed:.dim}"
+);
 cached_style!(style_tool_done, "        {wide_msg}");
 cached_style!(style_static_dim, "  {wide_msg:.dim}");
 cached_style!(style_empty, "");
@@ -210,9 +219,7 @@ impl ProgressUI {
                 };
                 self.finish_stage(node_id, name, glyph, &prefix);
             }
-            WorkflowRunEvent::StageFailed {
-                node_id, name, ..
-            } => {
+            WorkflowRunEvent::StageFailed { node_id, name, .. } => {
                 self.finish_stage(node_id, name, red_cross(), "");
             }
             WorkflowRunEvent::Agent { stage, event } => {
@@ -415,12 +422,7 @@ impl ProgressUI {
         }
     }
 
-    fn on_tool_call_completed(
-        &mut self,
-        stage_node_id: &str,
-        tool_call_id: &str,
-        is_error: bool,
-    ) {
+    fn on_tool_call_completed(&mut self, stage_node_id: &str, tool_call_id: &str, is_error: bool) {
         if let ProgressRenderer::Tty(_) = &self.renderer {
             if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
                 if let Some(entry) = stage

@@ -104,7 +104,11 @@ pub async fn generate_preview_url_stub(
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
 ) -> Response {
-    (StatusCode::OK, Json(serde_json::json!({"url": "https://google.com"}))).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"url": "https://google.com"})),
+    )
+        .into_response()
 }
 
 pub async fn get_run_status(
@@ -506,11 +510,7 @@ pub async fn send_message_stub(
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
 ) -> Response {
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({"accepted": true})),
-    )
-        .into_response()
+    (StatusCode::OK, Json(serde_json::json!({"accepted": true}))).into_response()
 }
 
 pub async fn session_events_stub(
@@ -619,150 +619,383 @@ mod runs {
     pub fn list_items() -> Vec<RunListItem> {
         vec![
             RunListItem {
-                id: "run-1".into(), repo: "api-server".into(),
+                id: "run-1".into(),
+                repo: "api-server".into(),
                 title: "Add rate limiting to auth endpoints".into(),
-                workflow: "implement".into(), status: RunListItemStatus::Working,
-                number: None, additions: None, deletions: None, checks: vec![],
-                elapsed_secs: Some(420.0), elapsed_warning: Some(false),
-                resources: Some("4 CPU / 8 GB".into()), comments: Some(0),
-                question: None, sandbox_id: Some("sb-a1b2c3d4".into()),
+                workflow: "implement".into(),
+                status: RunListItemStatus::Working,
+                number: None,
+                additions: None,
+                deletions: None,
+                checks: vec![],
+                elapsed_secs: Some(420.0),
+                elapsed_warning: Some(false),
+                resources: Some("4 CPU / 8 GB".into()),
+                comments: Some(0),
+                question: None,
+                sandbox_id: Some("sb-a1b2c3d4".into()),
             },
             RunListItem {
-                id: "run-2".into(), repo: "web-dashboard".into(),
+                id: "run-2".into(),
+                repo: "web-dashboard".into(),
                 title: "Migrate to React Router v7".into(),
-                workflow: "implement".into(), status: RunListItemStatus::Working,
-                number: None, additions: None, deletions: None, checks: vec![],
-                elapsed_secs: Some(8100.0), elapsed_warning: Some(false),
-                resources: Some("8 CPU / 16 GB".into()), comments: Some(0),
-                question: None, sandbox_id: Some("sb-e5f6g7h8".into()),
+                workflow: "implement".into(),
+                status: RunListItemStatus::Working,
+                number: None,
+                additions: None,
+                deletions: None,
+                checks: vec![],
+                elapsed_secs: Some(8100.0),
+                elapsed_warning: Some(false),
+                resources: Some("8 CPU / 16 GB".into()),
+                comments: Some(0),
+                question: None,
+                sandbox_id: Some("sb-e5f6g7h8".into()),
             },
             RunListItem {
-                id: "run-3".into(), repo: "cli-tools".into(),
+                id: "run-3".into(),
+                repo: "cli-tools".into(),
                 title: "Fix config parsing for nested values".into(),
-                workflow: "fix_build".into(), status: RunListItemStatus::Working,
-                number: None, additions: None, deletions: None, checks: vec![],
-                elapsed_secs: Some(2700.0), elapsed_warning: Some(false),
-                resources: Some("2 CPU / 4 GB".into()), comments: Some(0),
-                question: None, sandbox_id: Some("sb-i9j0k1l2".into()),
+                workflow: "fix_build".into(),
+                status: RunListItemStatus::Working,
+                number: None,
+                additions: None,
+                deletions: None,
+                checks: vec![],
+                elapsed_secs: Some(2700.0),
+                elapsed_warning: Some(false),
+                resources: Some("2 CPU / 4 GB".into()),
+                comments: Some(0),
+                question: None,
+                sandbox_id: Some("sb-i9j0k1l2".into()),
             },
             RunListItem {
-                id: "run-4".into(), repo: "api-server".into(),
+                id: "run-4".into(),
+                repo: "api-server".into(),
                 title: "Update OpenAPI spec for v3".into(),
-                workflow: "expand".into(), status: RunListItemStatus::Pending,
-                number: None, additions: Some(567), deletions: Some(234), checks: vec![],
-                elapsed_secs: Some(4320.0), elapsed_warning: Some(false),
-                resources: None, comments: Some(0),
+                workflow: "expand".into(),
+                status: RunListItemStatus::Pending,
+                number: None,
+                additions: Some(567),
+                deletions: Some(234),
+                checks: vec![],
+                elapsed_secs: Some(4320.0),
+                elapsed_warning: Some(false),
+                resources: None,
+                comments: Some(0),
                 question: Some("Accept or push for another round?".into()),
                 sandbox_id: Some("sb-q7r8s9t0".into()),
             },
             RunListItem {
-                id: "run-5".into(), repo: "shared-types".into(),
+                id: "run-5".into(),
+                repo: "shared-types".into(),
                 title: "Add pipeline event types".into(),
-                workflow: "implement".into(), status: RunListItemStatus::Pending,
-                number: None, additions: Some(145), deletions: Some(23), checks: vec![],
-                elapsed_secs: Some(1680.0), elapsed_warning: Some(false),
-                resources: None, comments: Some(0),
+                workflow: "implement".into(),
+                status: RunListItemStatus::Pending,
+                number: None,
+                additions: Some(145),
+                deletions: Some(23),
+                checks: vec![],
+                elapsed_secs: Some(1680.0),
+                elapsed_warning: Some(false),
+                resources: None,
+                comments: Some(0),
                 question: Some("Proceed from investigation to fix?".into()),
                 sandbox_id: Some("sb-u1v2w3x4".into()),
             },
             RunListItem {
-                id: "run-6".into(), repo: "web-dashboard".into(),
+                id: "run-6".into(),
+                repo: "web-dashboard".into(),
                 title: "Add dark mode toggle".into(),
-                workflow: "implement".into(), status: RunListItemStatus::Review,
-                number: Some(889), additions: Some(234), deletions: Some(67),
+                workflow: "implement".into(),
+                status: RunListItemStatus::Review,
+                number: Some(889),
+                additions: Some(234),
+                deletions: Some(67),
                 checks: vec![
-                    CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(23.0) },
-                    CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(72.0) },
-                    CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(154.0) },
-                    CheckRun { name: "integration-tests".into(), status: CheckRunStatus::Failure, duration_secs: Some(296.0) },
-                    CheckRun { name: "e2e / chrome".into(), status: CheckRunStatus::Failure, duration_secs: Some(182.0) },
-                    CheckRun { name: "build".into(), status: CheckRunStatus::Success, duration_secs: Some(105.0) },
-                    CheckRun { name: "coverage".into(), status: CheckRunStatus::Skipped, duration_secs: None },
+                    CheckRun {
+                        name: "lint".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(23.0),
+                    },
+                    CheckRun {
+                        name: "typecheck".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(72.0),
+                    },
+                    CheckRun {
+                        name: "unit-tests".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(154.0),
+                    },
+                    CheckRun {
+                        name: "integration-tests".into(),
+                        status: CheckRunStatus::Failure,
+                        duration_secs: Some(296.0),
+                    },
+                    CheckRun {
+                        name: "e2e / chrome".into(),
+                        status: CheckRunStatus::Failure,
+                        duration_secs: Some(182.0),
+                    },
+                    CheckRun {
+                        name: "build".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(105.0),
+                    },
+                    CheckRun {
+                        name: "coverage".into(),
+                        status: CheckRunStatus::Skipped,
+                        duration_secs: None,
+                    },
                 ],
-                elapsed_secs: Some(2100.0), elapsed_warning: Some(false),
-                resources: None, comments: Some(4),
-                question: None, sandbox_id: Some("sb-m3n4o5p6".into()),
+                elapsed_secs: Some(2100.0),
+                elapsed_warning: Some(false),
+                resources: None,
+                comments: Some(4),
+                question: None,
+                sandbox_id: Some("sb-m3n4o5p6".into()),
             },
             RunListItem {
-                id: "run-7".into(), repo: "infrastructure".into(),
+                id: "run-7".into(),
+                repo: "infrastructure".into(),
                 title: "Terraform module for Redis cluster".into(),
-                workflow: "implement".into(), status: RunListItemStatus::Review,
-                number: Some(156), additions: Some(412), deletions: Some(0),
+                workflow: "implement".into(),
+                status: RunListItemStatus::Review,
+                number: Some(156),
+                additions: Some(412),
+                deletions: Some(0),
                 checks: vec![
-                    CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(18.0) },
-                    CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(56.0) },
-                    CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Pending, duration_secs: None },
-                    CheckRun { name: "integration-tests".into(), status: CheckRunStatus::Queued, duration_secs: None },
-                    CheckRun { name: "build".into(), status: CheckRunStatus::Pending, duration_secs: None },
+                    CheckRun {
+                        name: "lint".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(18.0),
+                    },
+                    CheckRun {
+                        name: "typecheck".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(56.0),
+                    },
+                    CheckRun {
+                        name: "unit-tests".into(),
+                        status: CheckRunStatus::Pending,
+                        duration_secs: None,
+                    },
+                    CheckRun {
+                        name: "integration-tests".into(),
+                        status: CheckRunStatus::Queued,
+                        duration_secs: None,
+                    },
+                    CheckRun {
+                        name: "build".into(),
+                        status: CheckRunStatus::Pending,
+                        duration_secs: None,
+                    },
                 ],
-                elapsed_secs: Some(720.0), elapsed_warning: Some(false),
-                resources: None, comments: Some(1),
-                question: None, sandbox_id: Some("sb-y5z6a7b8".into()),
+                elapsed_secs: Some(720.0),
+                elapsed_warning: Some(false),
+                resources: None,
+                comments: Some(1),
+                question: None,
+                sandbox_id: Some("sb-y5z6a7b8".into()),
             },
             RunListItem {
-                id: "run-8".into(), repo: "api-server".into(),
+                id: "run-8".into(),
+                repo: "api-server".into(),
                 title: "Implement webhook retry logic".into(),
-                workflow: "implement".into(), status: RunListItemStatus::Merge,
-                number: Some(1249), additions: Some(189), deletions: Some(45),
+                workflow: "implement".into(),
+                status: RunListItemStatus::Merge,
+                number: Some(1249),
+                additions: Some(189),
+                deletions: Some(45),
                 checks: vec![
-                    CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(21.0) },
-                    CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(68.0) },
-                    CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(192.0) },
-                    CheckRun { name: "integration-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(334.0) },
-                    CheckRun { name: "e2e / chrome".into(), status: CheckRunStatus::Success, duration_secs: Some(262.0) },
-                    CheckRun { name: "e2e / firefox".into(), status: CheckRunStatus::Success, duration_secs: Some(285.0) },
-                    CheckRun { name: "build".into(), status: CheckRunStatus::Success, duration_secs: Some(121.0) },
-                    CheckRun { name: "deploy-preview".into(), status: CheckRunStatus::Success, duration_secs: Some(93.0) },
-                    CheckRun { name: "security-scan".into(), status: CheckRunStatus::Skipped, duration_secs: None },
-                    CheckRun { name: "performance".into(), status: CheckRunStatus::Success, duration_secs: Some(138.0) },
-                    CheckRun { name: "bundle-size".into(), status: CheckRunStatus::Success, duration_secs: Some(34.0) },
-                    CheckRun { name: "accessibility".into(), status: CheckRunStatus::Success, duration_secs: Some(72.0) },
+                    CheckRun {
+                        name: "lint".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(21.0),
+                    },
+                    CheckRun {
+                        name: "typecheck".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(68.0),
+                    },
+                    CheckRun {
+                        name: "unit-tests".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(192.0),
+                    },
+                    CheckRun {
+                        name: "integration-tests".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(334.0),
+                    },
+                    CheckRun {
+                        name: "e2e / chrome".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(262.0),
+                    },
+                    CheckRun {
+                        name: "e2e / firefox".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(285.0),
+                    },
+                    CheckRun {
+                        name: "build".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(121.0),
+                    },
+                    CheckRun {
+                        name: "deploy-preview".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(93.0),
+                    },
+                    CheckRun {
+                        name: "security-scan".into(),
+                        status: CheckRunStatus::Skipped,
+                        duration_secs: None,
+                    },
+                    CheckRun {
+                        name: "performance".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(138.0),
+                    },
+                    CheckRun {
+                        name: "bundle-size".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(34.0),
+                    },
+                    CheckRun {
+                        name: "accessibility".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(72.0),
+                    },
                 ],
-                elapsed_secs: Some(259200.0), elapsed_warning: Some(true),
-                resources: None, comments: Some(7),
-                question: None, sandbox_id: Some("sb-c9d0e1f2".into()),
+                elapsed_secs: Some(259200.0),
+                elapsed_warning: Some(true),
+                resources: None,
+                comments: Some(7),
+                question: None,
+                sandbox_id: Some("sb-c9d0e1f2".into()),
             },
             RunListItem {
-                id: "run-9".into(), repo: "cli-tools".into(),
+                id: "run-9".into(),
+                repo: "cli-tools".into(),
                 title: "Add --verbose flag to run command".into(),
-                workflow: "expand".into(), status: RunListItemStatus::Merge,
-                number: Some(430), additions: Some(56), deletions: Some(12),
+                workflow: "expand".into(),
+                status: RunListItemStatus::Merge,
+                number: Some(430),
+                additions: Some(56),
+                deletions: Some(12),
                 checks: vec![
-                    CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(15.0) },
-                    CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(48.0) },
-                    CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(116.0) },
-                    CheckRun { name: "build".into(), status: CheckRunStatus::Success, duration_secs: Some(82.0) },
-                    CheckRun { name: "coverage".into(), status: CheckRunStatus::Success, duration_secs: Some(124.0) },
-                    CheckRun { name: "bundle-size".into(), status: CheckRunStatus::Skipped, duration_secs: None },
+                    CheckRun {
+                        name: "lint".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(15.0),
+                    },
+                    CheckRun {
+                        name: "typecheck".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(48.0),
+                    },
+                    CheckRun {
+                        name: "unit-tests".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(116.0),
+                    },
+                    CheckRun {
+                        name: "build".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(82.0),
+                    },
+                    CheckRun {
+                        name: "coverage".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(124.0),
+                    },
+                    CheckRun {
+                        name: "bundle-size".into(),
+                        status: CheckRunStatus::Skipped,
+                        duration_secs: None,
+                    },
                 ],
-                elapsed_secs: Some(3900.0), elapsed_warning: Some(false),
-                resources: None, comments: Some(2),
-                question: None, sandbox_id: Some("sb-g3h4i5j6".into()),
+                elapsed_secs: Some(3900.0),
+                elapsed_warning: Some(false),
+                resources: None,
+                comments: Some(2),
+                question: None,
+                sandbox_id: Some("sb-g3h4i5j6".into()),
             },
             RunListItem {
-                id: "run-10".into(), repo: "shared-types".into(),
+                id: "run-10".into(),
+                repo: "shared-types".into(),
                 title: "Export utility type helpers".into(),
-                workflow: "sync_drift".into(), status: RunListItemStatus::Merge,
-                number: Some(76), additions: Some(34), deletions: Some(8),
+                workflow: "sync_drift".into(),
+                status: RunListItemStatus::Merge,
+                number: Some(76),
+                additions: Some(34),
+                deletions: Some(8),
                 checks: vec![
-                    CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(12.0) },
-                    CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(34.0) },
-                    CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(75.0) },
-                    CheckRun { name: "build".into(), status: CheckRunStatus::Success, duration_secs: Some(58.0) },
+                    CheckRun {
+                        name: "lint".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(12.0),
+                    },
+                    CheckRun {
+                        name: "typecheck".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(34.0),
+                    },
+                    CheckRun {
+                        name: "unit-tests".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(75.0),
+                    },
+                    CheckRun {
+                        name: "build".into(),
+                        status: CheckRunStatus::Success,
+                        duration_secs: Some(58.0),
+                    },
                 ],
-                elapsed_secs: Some(2880.0), elapsed_warning: Some(false),
-                resources: None, comments: Some(0),
-                question: None, sandbox_id: Some("sb-k7l8m9n0".into()),
+                elapsed_secs: Some(2880.0),
+                elapsed_warning: Some(false),
+                resources: None,
+                comments: Some(0),
+                question: None,
+                sandbox_id: Some("sb-k7l8m9n0".into()),
             },
         ]
     }
 
     pub fn stages() -> Vec<RunStage> {
         vec![
-            RunStage { id: "detect-drift".into(), name: "Detect Drift".into(), status: StageStatus::Completed, duration_secs: Some(72.0), dot_id: Some("detect".into()) },
-            RunStage { id: "propose-changes".into(), name: "Propose Changes".into(), status: StageStatus::Completed, duration_secs: Some(154.0), dot_id: Some("propose".into()) },
-            RunStage { id: "review-changes".into(), name: "Review Changes".into(), status: StageStatus::Completed, duration_secs: Some(45.0), dot_id: Some("review".into()) },
-            RunStage { id: "apply-changes".into(), name: "Apply Changes".into(), status: StageStatus::Running, duration_secs: Some(118.0), dot_id: Some("apply".into()) },
+            RunStage {
+                id: "detect-drift".into(),
+                name: "Detect Drift".into(),
+                status: StageStatus::Completed,
+                duration_secs: Some(72.0),
+                dot_id: Some("detect".into()),
+            },
+            RunStage {
+                id: "propose-changes".into(),
+                name: "Propose Changes".into(),
+                status: StageStatus::Completed,
+                duration_secs: Some(154.0),
+                dot_id: Some("propose".into()),
+            },
+            RunStage {
+                id: "review-changes".into(),
+                name: "Review Changes".into(),
+                status: StageStatus::Completed,
+                duration_secs: Some(45.0),
+                dot_id: Some("review".into()),
+            },
+            RunStage {
+                id: "apply-changes".into(),
+                name: "Apply Changes".into(),
+                status: StageStatus::Running,
+                duration_secs: Some(118.0),
+                dot_id: Some("apply".into()),
+            },
         ]
     }
 
@@ -811,16 +1044,67 @@ mod runs {
     pub fn usage() -> RunUsage {
         RunUsage {
             stages: vec![
-                UsageStage { stage: "Detect Drift".into(), model: "Opus 4.6".into(), input_tokens: 12480, output_tokens: 3210, runtime_secs: 72.0, cost: 0.48 },
-                UsageStage { stage: "Propose Changes".into(), model: "Gemini 3.1".into(), input_tokens: 28640, output_tokens: 8750, runtime_secs: 154.0, cost: 0.72 },
-                UsageStage { stage: "Review Changes".into(), model: "Codex 5.3".into(), input_tokens: 9120, output_tokens: 2640, runtime_secs: 45.0, cost: 0.19 },
-                UsageStage { stage: "Apply Changes".into(), model: "Opus 4.6".into(), input_tokens: 21300, output_tokens: 6480, runtime_secs: 118.0, cost: 0.87 },
+                UsageStage {
+                    stage: "Detect Drift".into(),
+                    model: "Opus 4.6".into(),
+                    input_tokens: 12480,
+                    output_tokens: 3210,
+                    runtime_secs: 72.0,
+                    cost: 0.48,
+                },
+                UsageStage {
+                    stage: "Propose Changes".into(),
+                    model: "Gemini 3.1".into(),
+                    input_tokens: 28640,
+                    output_tokens: 8750,
+                    runtime_secs: 154.0,
+                    cost: 0.72,
+                },
+                UsageStage {
+                    stage: "Review Changes".into(),
+                    model: "Codex 5.3".into(),
+                    input_tokens: 9120,
+                    output_tokens: 2640,
+                    runtime_secs: 45.0,
+                    cost: 0.19,
+                },
+                UsageStage {
+                    stage: "Apply Changes".into(),
+                    model: "Opus 4.6".into(),
+                    input_tokens: 21300,
+                    output_tokens: 6480,
+                    runtime_secs: 118.0,
+                    cost: 0.87,
+                },
             ],
-            totals: UsageTotals { runtime_secs: 389.0, input_tokens: 71540, output_tokens: 21080, cost: 2.26 },
+            totals: UsageTotals {
+                runtime_secs: 389.0,
+                input_tokens: 71540,
+                output_tokens: 21080,
+                cost: 2.26,
+            },
             by_model: vec![
-                UsageByModel { model: "Opus 4.6".into(), stages: 2, input_tokens: 33780, output_tokens: 9690, cost: 1.35 },
-                UsageByModel { model: "Gemini 3.1".into(), stages: 1, input_tokens: 28640, output_tokens: 8750, cost: 0.72 },
-                UsageByModel { model: "Codex 5.3".into(), stages: 1, input_tokens: 9120, output_tokens: 2640, cost: 0.19 },
+                UsageByModel {
+                    model: "Opus 4.6".into(),
+                    stages: 2,
+                    input_tokens: 33780,
+                    output_tokens: 9690,
+                    cost: 1.35,
+                },
+                UsageByModel {
+                    model: "Gemini 3.1".into(),
+                    stages: 1,
+                    input_tokens: 28640,
+                    output_tokens: 8750,
+                    cost: 0.72,
+                },
+                UsageByModel {
+                    model: "Codex 5.3".into(),
+                    stages: 1,
+                    input_tokens: 9120,
+                    output_tokens: 2640,
+                    cost: 0.19,
+                },
             ],
         }
     }
@@ -854,10 +1138,38 @@ mod workflows {
 
     pub fn list_items() -> Vec<WorkflowListItem> {
         vec![
-            WorkflowListItem { name: "Fix Build".into(), slug: "fix_build".into(), filename: "fix_build.dot".into(), last_run: Some("2 hours ago".into()), schedule: None, next_run: None },
-            WorkflowListItem { name: "Implement Feature".into(), slug: "implement".into(), filename: "implement.dot".into(), last_run: Some("4 days ago".into()), schedule: None, next_run: None },
-            WorkflowListItem { name: "Sync Drift".into(), slug: "sync_drift".into(), filename: "sync_drift.dot".into(), last_run: Some("1 day ago".into()), schedule: None, next_run: None },
-            WorkflowListItem { name: "Expand Product".into(), slug: "expand".into(), filename: "expand.dot".into(), last_run: Some("2 weeks ago".into()), schedule: None, next_run: None },
+            WorkflowListItem {
+                name: "Fix Build".into(),
+                slug: "fix_build".into(),
+                filename: "fix_build.dot".into(),
+                last_run: Some("2 hours ago".into()),
+                schedule: None,
+                next_run: None,
+            },
+            WorkflowListItem {
+                name: "Implement Feature".into(),
+                slug: "implement".into(),
+                filename: "implement.dot".into(),
+                last_run: Some("4 days ago".into()),
+                schedule: None,
+                next_run: None,
+            },
+            WorkflowListItem {
+                name: "Sync Drift".into(),
+                slug: "sync_drift".into(),
+                filename: "sync_drift.dot".into(),
+                last_run: Some("1 day ago".into()),
+                schedule: None,
+                next_run: None,
+            },
+            WorkflowListItem {
+                name: "Expand Product".into(),
+                slug: "expand".into(),
+                filename: "expand.dot".into(),
+                last_run: Some("2 weeks ago".into()),
+                schedule: None,
+                next_run: None,
+            },
         ]
     }
 
@@ -1134,35 +1446,155 @@ mod verifications {
     }
 
     const DEFAULT_RECENT_RESULTS: &[RecentResultDef] = &[
-        RecentResultDef { run_id: "run-047", run_title: "PR #312 \u{2014} Add OAuth2 PKCE flow", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "2h ago" },
-        RecentResultDef { run_id: "run-046", run_title: "PR #311 \u{2014} Update rate limiter config", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "5h ago" },
-        RecentResultDef { run_id: "run-044", run_title: "PR #309 \u{2014} Migrate to pnpm", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "1d ago" },
-        RecentResultDef { run_id: "run-042", run_title: "PR #307 \u{2014} Fix session timeout", workflow: "fix_build", result: VerificationStatus::Pass, timestamp: "2d ago" },
-        RecentResultDef { run_id: "run-040", run_title: "PR #305 \u{2014} Add webhook retries", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "3d ago" },
+        RecentResultDef {
+            run_id: "run-047",
+            run_title: "PR #312 \u{2014} Add OAuth2 PKCE flow",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "2h ago",
+        },
+        RecentResultDef {
+            run_id: "run-046",
+            run_title: "PR #311 \u{2014} Update rate limiter config",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "5h ago",
+        },
+        RecentResultDef {
+            run_id: "run-044",
+            run_title: "PR #309 \u{2014} Migrate to pnpm",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "1d ago",
+        },
+        RecentResultDef {
+            run_id: "run-042",
+            run_title: "PR #307 \u{2014} Fix session timeout",
+            workflow: "fix_build",
+            result: VerificationStatus::Pass,
+            timestamp: "2d ago",
+        },
+        RecentResultDef {
+            run_id: "run-040",
+            run_title: "PR #305 \u{2014} Add webhook retries",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "3d ago",
+        },
     ];
 
     const MOTIVATION_RESULTS: &[RecentResultDef] = &[
-        RecentResultDef { run_id: "run-047", run_title: "PR #312 \u{2014} Add OAuth2 PKCE flow", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "2h ago" },
-        RecentResultDef { run_id: "run-046", run_title: "PR #311 \u{2014} Update rate limiter config", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "5h ago" },
-        RecentResultDef { run_id: "run-044", run_title: "PR #309 \u{2014} Migrate to pnpm", workflow: "code_review", result: VerificationStatus::Fail, timestamp: "1d ago" },
-        RecentResultDef { run_id: "run-042", run_title: "PR #307 \u{2014} Fix session timeout", workflow: "fix_build", result: VerificationStatus::Pass, timestamp: "2d ago" },
-        RecentResultDef { run_id: "run-040", run_title: "PR #305 \u{2014} Add webhook retries", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "3d ago" },
+        RecentResultDef {
+            run_id: "run-047",
+            run_title: "PR #312 \u{2014} Add OAuth2 PKCE flow",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "2h ago",
+        },
+        RecentResultDef {
+            run_id: "run-046",
+            run_title: "PR #311 \u{2014} Update rate limiter config",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "5h ago",
+        },
+        RecentResultDef {
+            run_id: "run-044",
+            run_title: "PR #309 \u{2014} Migrate to pnpm",
+            workflow: "code_review",
+            result: VerificationStatus::Fail,
+            timestamp: "1d ago",
+        },
+        RecentResultDef {
+            run_id: "run-042",
+            run_title: "PR #307 \u{2014} Fix session timeout",
+            workflow: "fix_build",
+            result: VerificationStatus::Pass,
+            timestamp: "2d ago",
+        },
+        RecentResultDef {
+            run_id: "run-040",
+            run_title: "PR #305 \u{2014} Add webhook retries",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "3d ago",
+        },
     ];
 
     const DOCUMENTATION_RESULTS: &[RecentResultDef] = &[
-        RecentResultDef { run_id: "run-047", run_title: "PR #312 \u{2014} Add OAuth2 PKCE flow", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "2h ago" },
-        RecentResultDef { run_id: "run-046", run_title: "PR #311 \u{2014} Update rate limiter config", workflow: "code_review", result: VerificationStatus::Fail, timestamp: "5h ago" },
-        RecentResultDef { run_id: "run-044", run_title: "PR #309 \u{2014} Migrate to pnpm", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "1d ago" },
-        RecentResultDef { run_id: "run-042", run_title: "PR #307 \u{2014} Fix session timeout", workflow: "fix_build", result: VerificationStatus::Pass, timestamp: "2d ago" },
-        RecentResultDef { run_id: "run-040", run_title: "PR #305 \u{2014} Add webhook retries", workflow: "code_review", result: VerificationStatus::Fail, timestamp: "3d ago" },
+        RecentResultDef {
+            run_id: "run-047",
+            run_title: "PR #312 \u{2014} Add OAuth2 PKCE flow",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "2h ago",
+        },
+        RecentResultDef {
+            run_id: "run-046",
+            run_title: "PR #311 \u{2014} Update rate limiter config",
+            workflow: "code_review",
+            result: VerificationStatus::Fail,
+            timestamp: "5h ago",
+        },
+        RecentResultDef {
+            run_id: "run-044",
+            run_title: "PR #309 \u{2014} Migrate to pnpm",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "1d ago",
+        },
+        RecentResultDef {
+            run_id: "run-042",
+            run_title: "PR #307 \u{2014} Fix session timeout",
+            workflow: "fix_build",
+            result: VerificationStatus::Pass,
+            timestamp: "2d ago",
+        },
+        RecentResultDef {
+            run_id: "run-040",
+            run_title: "PR #305 \u{2014} Add webhook retries",
+            workflow: "code_review",
+            result: VerificationStatus::Fail,
+            timestamp: "3d ago",
+        },
     ];
 
     const ROLLOUT_ROLLBACK_RESULTS: &[RecentResultDef] = &[
-        RecentResultDef { run_id: "run-047", run_title: "PR #312 \u{2014} Add OAuth2 PKCE flow", workflow: "code_review", result: VerificationStatus::Fail, timestamp: "2h ago" },
-        RecentResultDef { run_id: "run-046", run_title: "PR #311 \u{2014} Update rate limiter config", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "5h ago" },
-        RecentResultDef { run_id: "run-044", run_title: "PR #309 \u{2014} Migrate to pnpm", workflow: "code_review", result: VerificationStatus::Fail, timestamp: "1d ago" },
-        RecentResultDef { run_id: "run-042", run_title: "PR #307 \u{2014} Fix session timeout", workflow: "fix_build", result: VerificationStatus::Fail, timestamp: "2d ago" },
-        RecentResultDef { run_id: "run-040", run_title: "PR #305 \u{2014} Add webhook retries", workflow: "code_review", result: VerificationStatus::Pass, timestamp: "3d ago" },
+        RecentResultDef {
+            run_id: "run-047",
+            run_title: "PR #312 \u{2014} Add OAuth2 PKCE flow",
+            workflow: "code_review",
+            result: VerificationStatus::Fail,
+            timestamp: "2h ago",
+        },
+        RecentResultDef {
+            run_id: "run-046",
+            run_title: "PR #311 \u{2014} Update rate limiter config",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "5h ago",
+        },
+        RecentResultDef {
+            run_id: "run-044",
+            run_title: "PR #309 \u{2014} Migrate to pnpm",
+            workflow: "code_review",
+            result: VerificationStatus::Fail,
+            timestamp: "1d ago",
+        },
+        RecentResultDef {
+            run_id: "run-042",
+            run_title: "PR #307 \u{2014} Fix session timeout",
+            workflow: "fix_build",
+            result: VerificationStatus::Fail,
+            timestamp: "2d ago",
+        },
+        RecentResultDef {
+            run_id: "run-040",
+            run_title: "PR #305 \u{2014} Add webhook retries",
+            workflow: "code_review",
+            result: VerificationStatus::Pass,
+            timestamp: "3d ago",
+        },
     ];
 
     use EvaluationResult::{Fail as F, Pass as P};
@@ -1624,19 +2056,29 @@ mod verifications {
     // ── Helpers ──────────────────────────────────────────────────────────
 
     fn recent_results_from_def(defs: &[RecentResultDef]) -> Vec<RecentControlResult> {
-        defs.iter().map(|r| RecentControlResult {
-            run_id: r.run_id.into(),
-            run_title: r.run_title.into(),
-            workflow: r.workflow.into(),
-            result: r.result,
-            timestamp: r.timestamp.into(),
-        }).collect()
+        defs.iter()
+            .map(|r| RecentControlResult {
+                run_id: r.run_id.into(),
+                run_title: r.run_title.into(),
+                workflow: r.workflow.into(),
+                result: r.result,
+                timestamp: r.timestamp.into(),
+            })
+            .collect()
     }
 
     fn category_run_status(cat: &CategoryDef) -> VerificationStatus {
-        if cat.controls.iter().any(|c| c.run_status == VerificationStatus::Fail) {
+        if cat
+            .controls
+            .iter()
+            .any(|c| c.run_status == VerificationStatus::Fail)
+        {
             VerificationStatus::Fail
-        } else if cat.controls.iter().all(|c| c.run_status == VerificationStatus::Na) {
+        } else if cat
+            .controls
+            .iter()
+            .all(|c| c.run_status == VerificationStatus::Na)
+        {
             VerificationStatus::Na
         } else {
             VerificationStatus::Pass
@@ -1646,29 +2088,36 @@ mod verifications {
     // ── Public API ──────────────────────────────────────────────────────
 
     pub fn categories() -> Vec<VerificationCategory> {
-        ALL_CATEGORIES.iter().map(|cat| {
-            VerificationCategory {
+        ALL_CATEGORIES
+            .iter()
+            .map(|cat| VerificationCategory {
                 name: cat.name.into(),
                 question: cat.question.into(),
-                controls: cat.controls.iter().map(|c| VerificationControl {
-                    name: c.name.into(),
-                    slug: c.slug.into(),
-                    description: c.description.into(),
-                    type_: c.type_,
-                    mode: Some(c.mode),
-                    f1: c.f1,
-                    pass_at_1: c.pass_at_1,
-                    evaluations: c.evaluations.to_vec(),
-                }).collect(),
-            }
-        }).collect()
+                controls: cat
+                    .controls
+                    .iter()
+                    .map(|c| VerificationControl {
+                        name: c.name.into(),
+                        slug: c.slug.into(),
+                        description: c.description.into(),
+                        type_: c.type_,
+                        mode: Some(c.mode),
+                        f1: c.f1,
+                        pass_at_1: c.pass_at_1,
+                        evaluations: c.evaluations.to_vec(),
+                    })
+                    .collect(),
+            })
+            .collect()
     }
 
     pub fn detail(slug: &str) -> Option<VerificationDetailResponse> {
         for cat in ALL_CATEGORIES {
             for (idx, ctrl) in cat.controls.iter().enumerate() {
                 if ctrl.slug == slug {
-                    let siblings: Vec<SiblingControl> = cat.controls.iter()
+                    let siblings: Vec<SiblingControl> = cat
+                        .controls
+                        .iter()
                         .enumerate()
                         .filter(|(i, _)| *i != idx)
                         .map(|(_, s)| SiblingControl {
@@ -1714,19 +2163,24 @@ mod verifications {
     }
 
     pub fn run_verifications() -> Vec<RunVerification> {
-        ALL_CATEGORIES.iter().map(|cat| {
-            RunVerification {
+        ALL_CATEGORIES
+            .iter()
+            .map(|cat| RunVerification {
                 name: cat.name.into(),
                 question: cat.question.into(),
                 status: category_run_status(cat),
-                controls: cat.controls.iter().map(|c| RunVerificationControl {
-                    name: c.name.into(),
-                    description: c.description.into(),
-                    type_: c.type_,
-                    status: c.run_status,
-                }).collect(),
-            }
-        }).collect()
+                controls: cat
+                    .controls
+                    .iter()
+                    .map(|c| RunVerificationControl {
+                        name: c.name.into(),
+                        description: c.description.into(),
+                        type_: c.type_,
+                        status: c.run_status,
+                    })
+                    .collect(),
+            })
+            .collect()
     }
 }
 
@@ -1736,43 +2190,110 @@ mod retros {
     pub fn list_items() -> Vec<RetroListItem> {
         vec![
             RetroListItem {
-                run_id: "run-1".into(), workflow_name: "implement".into(),
+                run_id: "run-1".into(),
+                workflow_name: "implement".into(),
                 goal: "Add rate limiting to auth endpoints".into(),
                 timestamp: "2026-02-28T14:32:00Z".into(),
                 smoothness: Some(SmoothnessRating::Smooth),
-                stats: RetroStats { total_duration_ms: 389000, total_cost: Some(2.78), total_retries: 0, files_touched: vec!["src/middleware/rate-limit.ts".into(), "src/routes/auth.ts".into(), "src/config.ts".into(), "tests/rate-limit.test.ts".into()], stages_completed: 4, stages_failed: 0 },
+                stats: RetroStats {
+                    total_duration_ms: 389000,
+                    total_cost: Some(2.78),
+                    total_retries: 0,
+                    files_touched: vec![
+                        "src/middleware/rate-limit.ts".into(),
+                        "src/routes/auth.ts".into(),
+                        "src/config.ts".into(),
+                        "tests/rate-limit.test.ts".into(),
+                    ],
+                    stages_completed: 4,
+                    stages_failed: 0,
+                },
                 friction_point_count: 0,
             },
             RetroListItem {
-                run_id: "run-2".into(), workflow_name: "implement".into(),
+                run_id: "run-2".into(),
+                workflow_name: "implement".into(),
                 goal: "Migrate to React Router v7".into(),
                 timestamp: "2026-02-28T10:15:00Z".into(),
                 smoothness: Some(SmoothnessRating::Bumpy),
-                stats: RetroStats { total_duration_ms: 975000, total_cost: Some(6.82), total_retries: 4, files_touched: vec!["package.json".into(), "src/routes.ts".into(), "src/app.tsx".into(), "src/routes/dashboard.tsx".into(), "src/routes/settings.tsx".into(), "src/routes/profile.tsx".into(), "tests/routes.test.tsx".into()], stages_completed: 4, stages_failed: 0 },
+                stats: RetroStats {
+                    total_duration_ms: 975000,
+                    total_cost: Some(6.82),
+                    total_retries: 4,
+                    files_touched: vec![
+                        "package.json".into(),
+                        "src/routes.ts".into(),
+                        "src/app.tsx".into(),
+                        "src/routes/dashboard.tsx".into(),
+                        "src/routes/settings.tsx".into(),
+                        "src/routes/profile.tsx".into(),
+                        "tests/routes.test.tsx".into(),
+                    ],
+                    stages_completed: 4,
+                    stages_failed: 0,
+                },
                 friction_point_count: 2,
             },
             RetroListItem {
-                run_id: "run-6".into(), workflow_name: "implement".into(),
+                run_id: "run-6".into(),
+                workflow_name: "implement".into(),
                 goal: "Add dark mode toggle".into(),
                 timestamp: "2026-02-27T16:45:00Z".into(),
                 smoothness: Some(SmoothnessRating::Effortless),
-                stats: RetroStats { total_duration_ms: 216000, total_cost: Some(1.51), total_retries: 0, files_touched: vec!["src/components/ThemeToggle.tsx".into(), "src/hooks/useTheme.ts".into(), "src/layouts/Header.tsx".into()], stages_completed: 3, stages_failed: 0 },
+                stats: RetroStats {
+                    total_duration_ms: 216000,
+                    total_cost: Some(1.51),
+                    total_retries: 0,
+                    files_touched: vec![
+                        "src/components/ThemeToggle.tsx".into(),
+                        "src/hooks/useTheme.ts".into(),
+                        "src/layouts/Header.tsx".into(),
+                    ],
+                    stages_completed: 3,
+                    stages_failed: 0,
+                },
                 friction_point_count: 0,
             },
             RetroListItem {
-                run_id: "run-3".into(), workflow_name: "fix_build".into(),
+                run_id: "run-3".into(),
+                workflow_name: "fix_build".into(),
                 goal: "Fix config parsing for nested values".into(),
                 timestamp: "2026-02-27T09:20:00Z".into(),
                 smoothness: Some(SmoothnessRating::Struggled),
-                stats: RetroStats { total_duration_ms: 830000, total_cost: Some(4.97), total_retries: 4, files_touched: vec!["src/config/parser.ts".into(), "src/config/defaults.ts".into(), "src/config/merge.ts".into(), "tests/config-parser.test.ts".into()], stages_completed: 4, stages_failed: 0 },
+                stats: RetroStats {
+                    total_duration_ms: 830000,
+                    total_cost: Some(4.97),
+                    total_retries: 4,
+                    files_touched: vec![
+                        "src/config/parser.ts".into(),
+                        "src/config/defaults.ts".into(),
+                        "src/config/merge.ts".into(),
+                        "tests/config-parser.test.ts".into(),
+                    ],
+                    stages_completed: 4,
+                    stages_failed: 0,
+                },
                 friction_point_count: 3,
             },
             RetroListItem {
-                run_id: "run-8".into(), workflow_name: "implement".into(),
+                run_id: "run-8".into(),
+                workflow_name: "implement".into(),
                 goal: "Implement webhook retry logic".into(),
                 timestamp: "2026-02-26T11:00:00Z".into(),
                 smoothness: Some(SmoothnessRating::Smooth),
-                stats: RetroStats { total_duration_ms: 440000, total_cost: Some(3.09), total_retries: 1, files_touched: vec!["src/webhooks/retry.ts".into(), "src/webhooks/dlq.ts".into(), "src/webhooks/dispatcher.ts".into(), "tests/webhook-retry.test.ts".into()], stages_completed: 4, stages_failed: 0 },
+                stats: RetroStats {
+                    total_duration_ms: 440000,
+                    total_cost: Some(3.09),
+                    total_retries: 1,
+                    files_touched: vec![
+                        "src/webhooks/retry.ts".into(),
+                        "src/webhooks/dlq.ts".into(),
+                        "src/webhooks/dispatcher.ts".into(),
+                        "tests/webhook-retry.test.ts".into(),
+                    ],
+                    stages_completed: 4,
+                    stages_failed: 0,
+                },
                 friction_point_count: 1,
             },
         ]
@@ -1787,24 +2308,64 @@ mod sessions {
             SessionGroup {
                 label: "Today".into(),
                 sessions: vec![
-                    SessionListItem { id: "s1".into(), title: "Add rate limiting to auth endpoints".into(), repo: "api-server".into(), time: "2h ago".into() },
-                    SessionListItem { id: "s2".into(), title: "Fix config parsing for nested values".into(), repo: "cli-tools".into(), time: "4h ago".into() },
+                    SessionListItem {
+                        id: "s1".into(),
+                        title: "Add rate limiting to auth endpoints".into(),
+                        repo: "api-server".into(),
+                        time: "2h ago".into(),
+                    },
+                    SessionListItem {
+                        id: "s2".into(),
+                        title: "Fix config parsing for nested values".into(),
+                        repo: "cli-tools".into(),
+                        time: "4h ago".into(),
+                    },
                 ],
             },
             SessionGroup {
                 label: "Yesterday".into(),
                 sessions: vec![
-                    SessionListItem { id: "s3".into(), title: "Migrate to React Router v7".into(), repo: "web-dashboard".into(), time: "1d ago".into() },
-                    SessionListItem { id: "s4".into(), title: "Add dark mode toggle".into(), repo: "web-dashboard".into(), time: "1d ago".into() },
-                    SessionListItem { id: "s5".into(), title: "Update OpenAPI spec for v3".into(), repo: "api-server".into(), time: "1d ago".into() },
+                    SessionListItem {
+                        id: "s3".into(),
+                        title: "Migrate to React Router v7".into(),
+                        repo: "web-dashboard".into(),
+                        time: "1d ago".into(),
+                    },
+                    SessionListItem {
+                        id: "s4".into(),
+                        title: "Add dark mode toggle".into(),
+                        repo: "web-dashboard".into(),
+                        time: "1d ago".into(),
+                    },
+                    SessionListItem {
+                        id: "s5".into(),
+                        title: "Update OpenAPI spec for v3".into(),
+                        repo: "api-server".into(),
+                        time: "1d ago".into(),
+                    },
                 ],
             },
             SessionGroup {
                 label: "Previous 7 days".into(),
                 sessions: vec![
-                    SessionListItem { id: "s6".into(), title: "Terraform module for Redis cluster".into(), repo: "infrastructure".into(), time: "3d ago".into() },
-                    SessionListItem { id: "s7".into(), title: "Add pipeline event types".into(), repo: "shared-types".into(), time: "5d ago".into() },
-                    SessionListItem { id: "s8".into(), title: "Implement webhook retry logic".into(), repo: "api-server".into(), time: "6d ago".into() },
+                    SessionListItem {
+                        id: "s6".into(),
+                        title: "Terraform module for Redis cluster".into(),
+                        repo: "infrastructure".into(),
+                        time: "3d ago".into(),
+                    },
+                    SessionListItem {
+                        id: "s7".into(),
+                        title: "Add pipeline event types".into(),
+                        repo: "shared-types".into(),
+                        time: "5d ago".into(),
+                    },
+                    SessionListItem {
+                        id: "s8".into(),
+                        title: "Implement webhook retry logic".into(),
+                        repo: "api-server".into(),
+                        time: "6d ago".into(),
+                    },
                 ],
             },
         ]
@@ -1877,9 +2438,28 @@ mod insights {
 
     pub fn history() -> Vec<HistoryEntry> {
         vec![
-            HistoryEntry { id: "h1".into(), sql: "SELECT workflow_name, COUNT(*) FROM runs GROUP BY 1".into(), timestamp: "2 min ago".into(), elapsed: 0.342, row_count: 6 },
-            HistoryEntry { id: "h2".into(), sql: "SELECT * FROM runs WHERE status = 'failed' LIMIT 100".into(), timestamp: "8 min ago".into(), elapsed: 0.127, row_count: 23 },
-            HistoryEntry { id: "h3".into(), sql: "SELECT date_trunc('day', created_at) as d, COUNT(*) FROM runs GROUP BY 1".into(), timestamp: "15 min ago".into(), elapsed: 0.531, row_count: 30 },
+            HistoryEntry {
+                id: "h1".into(),
+                sql: "SELECT workflow_name, COUNT(*) FROM runs GROUP BY 1".into(),
+                timestamp: "2 min ago".into(),
+                elapsed: 0.342,
+                row_count: 6,
+            },
+            HistoryEntry {
+                id: "h2".into(),
+                sql: "SELECT * FROM runs WHERE status = 'failed' LIMIT 100".into(),
+                timestamp: "8 min ago".into(),
+                elapsed: 0.127,
+                row_count: 23,
+            },
+            HistoryEntry {
+                id: "h3".into(),
+                sql: "SELECT date_trunc('day', created_at) as d, COUNT(*) FROM runs GROUP BY 1"
+                    .into(),
+                timestamp: "15 min ago".into(),
+                elapsed: 0.531,
+                row_count: 30,
+            },
         ]
     }
 }
@@ -1890,52 +2470,253 @@ mod settings {
     pub fn groups() -> Vec<SettingGroup> {
         vec![
             SettingGroup {
-                id: "general".into(), name: "General".into(), description: "Core platform settings and defaults.".into(),
+                id: "general".into(),
+                name: "General".into(),
+                description: "Core platform settings and defaults.".into(),
                 fields: vec![
-                    SettingField { key: "org_name".into(), label: "Organization name".into(), value: "Acme Corp".into(), type_: SettingFieldType::Text, options: vec![], description: None },
-                    SettingField { key: "default_branch".into(), label: "Default branch".into(), value: "main".into(), type_: SettingFieldType::Text, options: vec![], description: None },
-                    SettingField { key: "timezone".into(), label: "Timezone".into(), value: "America/New_York".into(), type_: SettingFieldType::Select, options: vec!["America/New_York".into(), "America/Chicago".into(), "America/Denver".into(), "America/Los_Angeles".into(), "UTC".into(), "Europe/London".into(), "Europe/Berlin".into(), "Asia/Tokyo".into()], description: None },
-                    SettingField { key: "auto_cancel".into(), label: "Auto-cancel superseded runs".into(), value: "true".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
+                    SettingField {
+                        key: "org_name".into(),
+                        label: "Organization name".into(),
+                        value: "Acme Corp".into(),
+                        type_: SettingFieldType::Text,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "default_branch".into(),
+                        label: "Default branch".into(),
+                        value: "main".into(),
+                        type_: SettingFieldType::Text,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "timezone".into(),
+                        label: "Timezone".into(),
+                        value: "America/New_York".into(),
+                        type_: SettingFieldType::Select,
+                        options: vec![
+                            "America/New_York".into(),
+                            "America/Chicago".into(),
+                            "America/Denver".into(),
+                            "America/Los_Angeles".into(),
+                            "UTC".into(),
+                            "Europe/London".into(),
+                            "Europe/Berlin".into(),
+                            "Asia/Tokyo".into(),
+                        ],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "auto_cancel".into(),
+                        label: "Auto-cancel superseded runs".into(),
+                        value: "true".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
                 ],
             },
             SettingGroup {
-                id: "git".into(), name: "Git & VCS".into(), description: "Version control integration and repository settings.".into(),
+                id: "git".into(),
+                name: "Git & VCS".into(),
+                description: "Version control integration and repository settings.".into(),
                 fields: vec![
-                    SettingField { key: "github_org".into(), label: "GitHub organization".into(), value: "acme-corp".into(), type_: SettingFieldType::Text, options: vec![], description: None },
-                    SettingField { key: "clone_protocol".into(), label: "Clone protocol".into(), value: "SSH".into(), type_: SettingFieldType::Select, options: vec!["SSH".into(), "HTTPS".into()], description: None },
-                    SettingField { key: "auto_merge".into(), label: "Auto-merge when checks pass".into(), value: "false".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
-                    SettingField { key: "delete_branch".into(), label: "Delete branch after merge".into(), value: "true".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
-                    SettingField { key: "commit_signing".into(), label: "Require commit signing".into(), value: "false".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
+                    SettingField {
+                        key: "github_org".into(),
+                        label: "GitHub organization".into(),
+                        value: "acme-corp".into(),
+                        type_: SettingFieldType::Text,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "clone_protocol".into(),
+                        label: "Clone protocol".into(),
+                        value: "SSH".into(),
+                        type_: SettingFieldType::Select,
+                        options: vec!["SSH".into(), "HTTPS".into()],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "auto_merge".into(),
+                        label: "Auto-merge when checks pass".into(),
+                        value: "false".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "delete_branch".into(),
+                        label: "Delete branch after merge".into(),
+                        value: "true".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "commit_signing".into(),
+                        label: "Require commit signing".into(),
+                        value: "false".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
                 ],
             },
             SettingGroup {
-                id: "compute".into(), name: "Compute".into(), description: "Resource allocation and execution environment.".into(),
+                id: "compute".into(),
+                name: "Compute".into(),
+                description: "Resource allocation and execution environment.".into(),
                 fields: vec![
-                    SettingField { key: "default_cpu".into(), label: "Default CPU".into(), value: "4".into(), type_: SettingFieldType::Select, options: vec!["2".into(), "4".into(), "8".into(), "16".into()], description: None },
-                    SettingField { key: "default_memory".into(), label: "Default memory".into(), value: "8 GB".into(), type_: SettingFieldType::Select, options: vec!["4 GB".into(), "8 GB".into(), "16 GB".into(), "32 GB".into()], description: None },
-                    SettingField { key: "max_parallel".into(), label: "Max parallel runs".into(), value: "10".into(), type_: SettingFieldType::Text, options: vec![], description: None },
-                    SettingField { key: "timeout_minutes".into(), label: "Run timeout (minutes)".into(), value: "120".into(), type_: SettingFieldType::Text, options: vec![], description: None },
-                    SettingField { key: "gpu_enabled".into(), label: "GPU acceleration".into(), value: "false".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
+                    SettingField {
+                        key: "default_cpu".into(),
+                        label: "Default CPU".into(),
+                        value: "4".into(),
+                        type_: SettingFieldType::Select,
+                        options: vec!["2".into(), "4".into(), "8".into(), "16".into()],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "default_memory".into(),
+                        label: "Default memory".into(),
+                        value: "8 GB".into(),
+                        type_: SettingFieldType::Select,
+                        options: vec!["4 GB".into(), "8 GB".into(), "16 GB".into(), "32 GB".into()],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "max_parallel".into(),
+                        label: "Max parallel runs".into(),
+                        value: "10".into(),
+                        type_: SettingFieldType::Text,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "timeout_minutes".into(),
+                        label: "Run timeout (minutes)".into(),
+                        value: "120".into(),
+                        type_: SettingFieldType::Text,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "gpu_enabled".into(),
+                        label: "GPU acceleration".into(),
+                        value: "false".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
                 ],
             },
             SettingGroup {
-                id: "notifications".into(), name: "Notifications".into(), description: "Alerts and notification delivery preferences.".into(),
+                id: "notifications".into(),
+                name: "Notifications".into(),
+                description: "Alerts and notification delivery preferences.".into(),
                 fields: vec![
-                    SettingField { key: "slack_webhook".into(), label: "Slack webhook URL".into(), value: "https://hooks.slack.com/services/T00/B00/xxxx".into(), type_: SettingFieldType::Text, options: vec![], description: None },
-                    SettingField { key: "notify_on_failure".into(), label: "Notify on failure".into(), value: "true".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
-                    SettingField { key: "notify_on_success".into(), label: "Notify on success".into(), value: "false".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
-                    SettingField { key: "notify_on_approval".into(), label: "Notify on approval needed".into(), value: "true".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
-                    SettingField { key: "email_digest".into(), label: "Daily email digest".into(), value: "false".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
+                    SettingField {
+                        key: "slack_webhook".into(),
+                        label: "Slack webhook URL".into(),
+                        value: "https://hooks.slack.com/services/T00/B00/xxxx".into(),
+                        type_: SettingFieldType::Text,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "notify_on_failure".into(),
+                        label: "Notify on failure".into(),
+                        value: "true".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "notify_on_success".into(),
+                        label: "Notify on success".into(),
+                        value: "false".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "notify_on_approval".into(),
+                        label: "Notify on approval needed".into(),
+                        value: "true".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "email_digest".into(),
+                        label: "Daily email digest".into(),
+                        value: "false".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
                 ],
             },
             SettingGroup {
-                id: "security".into(), name: "Security".into(), description: "Access control and security policies.".into(),
+                id: "security".into(),
+                name: "Security".into(),
+                description: "Access control and security policies.".into(),
                 fields: vec![
-                    SettingField { key: "sso_provider".into(), label: "SSO provider".into(), value: "Okta".into(), type_: SettingFieldType::Select, options: vec!["None".into(), "Okta".into(), "Azure AD".into(), "Google Workspace".into(), "OneLogin".into()], description: None },
-                    SettingField { key: "mfa_required".into(), label: "Require MFA".into(), value: "true".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
-                    SettingField { key: "session_timeout".into(), label: "Session timeout".into(), value: "8 hours".into(), type_: SettingFieldType::Select, options: vec!["1 hour".into(), "4 hours".into(), "8 hours".into(), "24 hours".into(), "7 days".into()], description: None },
-                    SettingField { key: "audit_log".into(), label: "Audit logging".into(), value: "true".into(), type_: SettingFieldType::Toggle, options: vec![], description: None },
-                    SettingField { key: "ip_allowlist".into(), label: "IP allowlist".into(), value: "".into(), type_: SettingFieldType::Text, options: vec![], description: Some("Comma-separated CIDRs. Leave empty to allow all.".into()) },
+                    SettingField {
+                        key: "sso_provider".into(),
+                        label: "SSO provider".into(),
+                        value: "Okta".into(),
+                        type_: SettingFieldType::Select,
+                        options: vec![
+                            "None".into(),
+                            "Okta".into(),
+                            "Azure AD".into(),
+                            "Google Workspace".into(),
+                            "OneLogin".into(),
+                        ],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "mfa_required".into(),
+                        label: "Require MFA".into(),
+                        value: "true".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "session_timeout".into(),
+                        label: "Session timeout".into(),
+                        value: "8 hours".into(),
+                        type_: SettingFieldType::Select,
+                        options: vec![
+                            "1 hour".into(),
+                            "4 hours".into(),
+                            "8 hours".into(),
+                            "24 hours".into(),
+                            "7 days".into(),
+                        ],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "audit_log".into(),
+                        label: "Audit logging".into(),
+                        value: "true".into(),
+                        type_: SettingFieldType::Toggle,
+                        options: vec![],
+                        description: None,
+                    },
+                    SettingField {
+                        key: "ip_allowlist".into(),
+                        label: "IP allowlist".into(),
+                        value: "".into(),
+                        type_: SettingFieldType::Text,
+                        options: vec![],
+                        description: Some(
+                            "Comma-separated CIDRs. Leave empty to allow all.".into(),
+                        ),
+                    },
                 ],
             },
         ]
@@ -1947,17 +2728,35 @@ mod projects {
 
     pub fn list_items() -> Vec<Project> {
         vec![
-            Project { id: "arc-web".into(), name: "arc-web".into() },
-            Project { id: "arc-workflows".into(), name: "arc-workflows".into() },
-            Project { id: "arc-cli".into(), name: "arc-cli".into() },
+            Project {
+                id: "arc-web".into(),
+                name: "arc-web".into(),
+            },
+            Project {
+                id: "arc-workflows".into(),
+                name: "arc-workflows".into(),
+            },
+            Project {
+                id: "arc-cli".into(),
+                name: "arc-cli".into(),
+            },
         ]
     }
 
     pub fn branches() -> Vec<Branch> {
         vec![
-            Branch { id: "main".into(), name: "main".into() },
-            Branch { id: "develop".into(), name: "develop".into() },
-            Branch { id: "feature/start-page".into(), name: "feature/start-page".into() },
+            Branch {
+                id: "main".into(),
+                name: "main".into(),
+            },
+            Branch {
+                id: "develop".into(),
+                name: "develop".into(),
+            },
+            Branch {
+                id: "feature/start-page".into(),
+                name: "feature/start-page".into(),
+            },
         ]
     }
 }

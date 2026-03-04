@@ -1,13 +1,13 @@
 use crate::config::SessionConfig;
 use crate::error::AgentError;
 use crate::event::EventEmitter;
-use crate::sandbox::Sandbox;
 use crate::file_tracker::FileTracker;
 use crate::history::History;
 use crate::loop_detection::detect_loop;
 use crate::profiles::EnvContext;
 use crate::project_docs::discover_project_docs;
 use crate::provider_profile::ProviderProfile;
+use crate::sandbox::Sandbox;
 use crate::skills::{
     default_skill_dirs, discover_skills, expand_skill, make_use_skill_tool, Skill,
 };
@@ -567,7 +567,9 @@ impl Session {
                     self.event_emitter.emit(
                         self.id.clone(),
                         AgentEvent::Error {
-                            error: AgentError::InvalidState(format!("Context compaction failed: {e}")),
+                            error: AgentError::InvalidState(format!(
+                                "Context compaction failed: {e}"
+                            )),
                         },
                     );
                 }
@@ -1978,8 +1980,7 @@ mod tests {
         let client = make_client(provider).await;
         let profile: Arc<dyn crate::provider_profile::ProviderProfile> =
             Arc::new(TestProfile::new());
-        let env: Arc<dyn crate::sandbox::Sandbox> =
-            Arc::new(MockSandbox::default());
+        let env: Arc<dyn crate::sandbox::Sandbox> = Arc::new(MockSandbox::default());
         let mut session = Session::new(client, profile, env, config);
 
         // Subscribe to events before initialize

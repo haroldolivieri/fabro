@@ -5,27 +5,25 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::bail;
-use arc_agent::{
-    DockerSandboxConfig, DockerSandbox, Sandbox, LocalSandbox,
-};
+use arc_agent::{DockerSandbox, DockerSandboxConfig, LocalSandbox, Sandbox};
 use arc_util::terminal::Styles;
 use chrono::{Local, Utc};
 
 use crate::checkpoint::Checkpoint;
-use crate::engine::{GitCheckpointMode, WorkflowRunEngine, RunConfig};
+use crate::engine::{GitCheckpointMode, RunConfig, WorkflowRunEngine};
 use crate::event::EventEmitter;
 use crate::handler::default_registry;
 use crate::interviewer::auto_approve::AutoApproveInterviewer;
 use crate::interviewer::console::ConsoleInterviewer;
 use crate::interviewer::Interviewer;
 use crate::outcome::StageStatus;
-use crate::workflow::WorkflowBuilder;
 use crate::validation::Severity;
+use crate::workflow::WorkflowBuilder;
 
 use arc_llm::provider::Provider;
 
 use super::backend::AgentApiBackend;
-use super::cli_backend::{BackendRouter, AgentCliBackend};
+use super::cli_backend::{AgentCliBackend, BackendRouter};
 use super::progress;
 use super::run_config;
 use super::run_config::{RunDefaults, WorkflowRunConfig};
@@ -33,9 +31,8 @@ use indicatif::HumanDuration;
 use std::time::Duration;
 
 use super::{
-    compute_stage_cost, format_cost,
-    format_event_summary, format_tokens_human, print_diagnostics, read_dot_file,
-    SandboxProvider, RunArgs,
+    compute_stage_cost, format_cost, format_event_summary, format_tokens_human, print_diagnostics,
+    read_dot_file, RunArgs, SandboxProvider,
 };
 
 /// Return the default model string for a given provider.
@@ -67,10 +64,7 @@ fn resolve_model_provider(
     let toml_provider = run_cfg
         .and_then(|c| c.llm.as_ref())
         .and_then(|l| l.provider.as_deref());
-    let defaults_model = run_defaults
-        .llm
-        .as_ref()
-        .and_then(|l| l.model.as_deref());
+    let defaults_model = run_defaults.llm.as_ref().and_then(|l| l.model.as_deref());
     let defaults_provider = run_defaults
         .llm
         .as_ref()
@@ -80,23 +74,13 @@ fn resolve_model_provider(
     let provider = cli_provider
         .or(toml_provider)
         .or(defaults_provider)
-        .or_else(|| {
-            graph
-                .attrs
-                .get("default_provider")
-                .and_then(|v| v.as_str())
-        })
+        .or_else(|| graph.attrs.get("default_provider").and_then(|v| v.as_str()))
         .map(String::from);
 
     let model = cli_model
         .or(toml_model)
         .or(defaults_model)
-        .or_else(|| {
-            graph
-                .attrs
-                .get("default_model")
-                .and_then(|v| v.as_str())
-        })
+        .or_else(|| graph.attrs.get("default_model").and_then(|v| v.as_str()))
         .map(String::from)
         .unwrap_or_else(|| {
             let provider_enum = provider
@@ -226,7 +210,11 @@ pub async fn run_command(
         "{} {} ({})",
         styles.bold.apply_to("Parsed workflow:"),
         graph.name,
-        styles.dim.apply_to(format!("{} nodes, {} edges", graph.nodes.len(), graph.edges.len())),
+        styles.dim.apply_to(format!(
+            "{} nodes, {} edges",
+            graph.nodes.len(),
+            graph.edges.len()
+        )),
     );
 
     let goal = graph.goal();
@@ -252,7 +240,16 @@ pub async fn run_command(
     };
 
     if args.preflight {
-        return run_preflight(&graph, &run_cfg, &args, &run_defaults, git_clean, sandbox_provider, styles).await;
+        return run_preflight(
+            &graph,
+            &run_cfg,
+            &args,
+            &run_defaults,
+            git_clean,
+            sandbox_provider,
+            styles,
+        )
+        .await;
     }
 
     // 3. Create logs directory
@@ -283,7 +280,10 @@ pub async fn run_command(
             styles.underline.apply_to(logs_dir.display()),
         );
     } else {
-        progress_ui.lock().expect("progress lock poisoned").show_logs_dir(&logs_dir);
+        progress_ui
+            .lock()
+            .expect("progress lock poisoned")
+            .show_logs_dir(&logs_dir);
     }
 
     // 3. Build event emitter
@@ -333,18 +333,14 @@ pub async fn run_command(
             envelope.insert(
                 "ts".to_string(),
                 serde_json::Value::String(
-                    Utc::now()
-                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                    Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
                 ),
             );
             envelope.insert(
                 "run_id".to_string(),
                 serde_json::Value::String(run_id_clone.lock().unwrap().clone()),
             );
-            envelope.insert(
-                "event".to_string(),
-                serde_json::Value::String(event_name),
-            );
+            envelope.insert("event".to_string(), serde_json::Value::String(event_name));
             for (k, v) in event_fields {
                 if k != "ts" && k != "run_id" && k != "event" {
                     envelope.insert(k, v);
@@ -400,9 +396,9 @@ pub async fn run_command(
                 }
                 Err(e) => {
                     eprintln!(
-                    "{} Git worktree setup failed ({e}), running without worktree.",
-                    styles.yellow.apply_to("Warning:"),
-                );
+                        "{} Git worktree setup failed ({e}), running without worktree.",
+                        styles.yellow.apply_to("Warning:"),
+                    );
                     (None, None, None, None, None)
                 }
             }
@@ -435,8 +431,7 @@ pub async fn run_command(
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to create Daytona client: {e}"))?;
             let config = daytona_config.clone().unwrap_or_default();
-            let mut env =
-                crate::daytona_sandbox::DaytonaSandbox::new(daytona_client, config);
+            let mut env = crate::daytona_sandbox::DaytonaSandbox::new(daytona_client, config);
             let emitter_cb = Arc::clone(&emitter);
             env.set_event_callback(Arc::new(move |event| {
                 emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
@@ -475,22 +470,21 @@ pub async fn run_command(
     });
 
     // Set up git inside Daytona sandbox (if applicable)
-    let (daytona_run_id, daytona_base_sha, daytona_branch) = if sandbox_provider
-        == SandboxProvider::Daytona
-    {
-        match setup_daytona_git(&*sandbox).await {
-            Ok((rid, base, branch)) => (Some(rid), Some(base), Some(branch)),
-            Err(e) => {
-                eprintln!(
-                    "{} Daytona git setup failed ({e}), running without git checkpoints.",
-                    styles.yellow.apply_to("Warning:"),
-                );
-                (None, None, None)
+    let (daytona_run_id, daytona_base_sha, daytona_branch) =
+        if sandbox_provider == SandboxProvider::Daytona {
+            match setup_daytona_git(&*sandbox).await {
+                Ok((rid, base, branch)) => (Some(rid), Some(base), Some(branch)),
+                Err(e) => {
+                    eprintln!(
+                        "{} Daytona git setup failed ({e}), running without git checkpoints.",
+                        styles.yellow.apply_to("Warning:"),
+                    );
+                    (None, None, None)
+                }
             }
-        }
-    } else {
-        (None, None, None)
-    };
+        } else {
+            (None, None, None)
+        };
 
     // Run setup commands inside the sandbox (once, not per-stage)
     if !setup_commands.is_empty() {
@@ -664,7 +658,10 @@ pub async fn run_command(
     // Auto-derive retro (always, cheap) and optionally run retro agent
     {
         let (failed, failure_reason) = match &engine_result {
-            Ok(o) => (o.status == StageStatus::Fail, o.failure_reason().map(String::from)),
+            Ok(o) => (
+                o.status == StageStatus::Fail,
+                o.failure_reason().map(String::from),
+            ),
             Err(e) => (true, Some(e.to_string())),
         };
         generate_retro(
@@ -693,21 +690,18 @@ pub async fn run_command(
     }
 
     // 8. Print result
-    eprintln!(
-        "\n{}",
-        styles.bold.apply_to("=== Run Result ==="),
-    );
+    eprintln!("\n{}", styles.bold.apply_to("=== Run Result ==="),);
 
     let status_str = outcome.status.to_string().to_uppercase();
     let status_color = match outcome.status {
         StageStatus::Success | StageStatus::PartialSuccess => &styles.bold_green,
         _ => &styles.bold_red,
     };
+    eprintln!("Status: {}", status_color.apply_to(&status_str),);
     eprintln!(
-        "Status: {}",
-        status_color.apply_to(&status_str),
+        "Duration: {}",
+        HumanDuration(Duration::from_millis(run_duration_ms))
     );
-    eprintln!("Duration: {}", HumanDuration(Duration::from_millis(run_duration_ms)));
 
     let acc = accumulator.lock().unwrap();
     let total_tokens = acc.total_input_tokens + acc.total_output_tokens;
@@ -747,10 +741,7 @@ pub async fn run_command(
         eprintln!("Notes: {notes}");
     }
     if let Some(failure) = outcome.failure_reason() {
-        eprintln!(
-            "{}",
-            styles.red.apply_to(format!("Failure: {failure}")),
-        );
+        eprintln!("{}", styles.red.apply_to(format!("Failure: {failure}")),);
     }
     eprintln!(
         "{} {}",
@@ -988,7 +979,10 @@ async fn run_from_branch(
     // Auto-derive retro
     {
         let (failed, failure_reason) = match &engine_result {
-            Ok(o) => (o.status == StageStatus::Fail, o.failure_reason().map(String::from)),
+            Ok(o) => (
+                o.status == StageStatus::Fail,
+                o.failure_reason().map(String::from),
+            ),
             Err(e) => (true, Some(e.to_string())),
         };
 
@@ -1018,19 +1012,13 @@ async fn run_from_branch(
 
     let outcome = engine_result?;
 
-    eprintln!(
-        "\n{}",
-        styles.bold.apply_to("=== Run Result ==="),
-    );
+    eprintln!("\n{}", styles.bold.apply_to("=== Run Result ==="),);
     let status_str = outcome.status.to_string().to_uppercase();
     let status_color = match outcome.status {
         StageStatus::Success | StageStatus::PartialSuccess => &styles.bold_green,
         _ => &styles.bold_red,
     };
-    eprintln!(
-        "Status: {}",
-        status_color.apply_to(&status_str),
-    );
+    eprintln!("Status: {}", status_color.apply_to(&status_str),);
     eprintln!(
         "Duration: {}",
         HumanDuration(Duration::from_millis(run_duration_ms))
@@ -1077,16 +1065,14 @@ async fn run_preflight(
                 .map(|env| Arc::new(env) as Arc<dyn Sandbox>)
                 .map_err(|e| format!("Docker sandbox creation failed: {e}"))
         }
-        SandboxProvider::Daytona => {
-            match daytona_sdk::Client::new().await {
-                Ok(daytona_client) => {
-                    let config = daytona_config.unwrap_or_default();
-                    let env = crate::daytona_sandbox::DaytonaSandbox::new(daytona_client, config);
-                    Ok(Arc::new(env) as Arc<dyn Sandbox>)
-                }
-                Err(e) => Err(format!("Daytona client creation failed: {e}")),
+        SandboxProvider::Daytona => match daytona_sdk::Client::new().await {
+            Ok(daytona_client) => {
+                let config = daytona_config.unwrap_or_default();
+                let env = crate::daytona_sandbox::DaytonaSandbox::new(daytona_client, config);
+                Ok(Arc::new(env) as Arc<dyn Sandbox>)
             }
-        }
+            Err(e) => Err(format!("Daytona client creation failed: {e}")),
+        },
         SandboxProvider::Local => {
             Ok(Arc::new(LocalSandbox::new(original_cwd.clone())) as Arc<dyn Sandbox>)
         }
@@ -1113,7 +1099,11 @@ async fn run_preflight(
     // 2. LLM client check
     let (llm_available, llm_providers) = match arc_llm::client::Client::from_env().await {
         Ok(c) => {
-            let names = c.provider_names().iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let names = c
+                .provider_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
             if names.is_empty() {
                 errors.push("No LLM providers configured (no API keys found)".to_string());
                 (false, names)
@@ -1172,25 +1162,16 @@ async fn run_preflight(
 
     // 7. Print warnings/errors to stderr
     for err in &errors {
-        eprintln!(
-            "{}: {err}",
-            styles.red.apply_to("error"),
-        );
+        eprintln!("{}: {err}", styles.red.apply_to("error"),);
     }
 
     // 8. Final verdict
     let ok = sandbox_ready && llm_available && provider_valid;
     if ok {
-        eprintln!(
-            "\n{}",
-            styles.bold_green.apply_to("Preflight: OK"),
-        );
+        eprintln!("\n{}", styles.bold_green.apply_to("Preflight: OK"),);
         Ok(())
     } else {
-        eprintln!(
-            "\n{}",
-            styles.bold_red.apply_to("Preflight: FAIL"),
-        );
+        eprintln!("\n{}", styles.bold_red.apply_to("Preflight: FAIL"),);
         std::process::exit(1);
     }
 }
@@ -1252,8 +1233,7 @@ async fn generate_retro(
     let narrative_result = if dry_run_mode {
         Ok(crate::retro_agent::dry_run_narrative())
     } else if let Some(client) = llm_client {
-        crate::retro_agent::run_retro_agent(sandbox, logs_dir, client, provider_enum, model)
-            .await
+        crate::retro_agent::run_retro_agent(sandbox, logs_dir, client, provider_enum, model).await
     } else {
         Err(anyhow::anyhow!("No LLM client available"))
     };
@@ -1266,7 +1246,9 @@ async fn generate_retro(
                     eprintln!(
                         "{} {}",
                         styles.dim.apply_to("Retro saved to"),
-                        styles.underline.apply_to(format!("{}/retro.json", logs_dir.display())),
+                        styles
+                            .underline
+                            .apply_to(format!("{}/retro.json", logs_dir.display())),
                     );
                 }
                 Err(e) => {
@@ -1292,7 +1274,10 @@ mod tests {
 
     #[test]
     fn default_model_for_anthropic() {
-        assert_eq!(default_model_for_provider(Provider::Anthropic), "claude-opus-4-6");
+        assert_eq!(
+            default_model_for_provider(Provider::Anthropic),
+            "claude-opus-4-6"
+        );
     }
 
     #[test]
@@ -1302,7 +1287,10 @@ mod tests {
 
     #[test]
     fn default_model_for_gemini() {
-        assert_eq!(default_model_for_provider(Provider::Gemini), "gemini-3.1-pro-preview");
+        assert_eq!(
+            default_model_for_provider(Provider::Gemini),
+            "gemini-3.1-pro-preview"
+        );
     }
 
     #[test]
@@ -1317,7 +1305,10 @@ mod tests {
 
     #[test]
     fn default_model_for_minimax() {
-        assert_eq!(default_model_for_provider(Provider::Minimax), "minimax-m2.5");
+        assert_eq!(
+            default_model_for_provider(Provider::Minimax),
+            "minimax-m2.5"
+        );
     }
 
     #[test]
@@ -1367,8 +1358,14 @@ mod tests {
     fn resolve_model_provider_toml_overrides_graph() {
         use crate::graph::types::AttrValue;
         let mut graph = crate::graph::types::Graph::new("test");
-        graph.attrs.insert("default_model".to_string(), AttrValue::String("graph-model".to_string()));
-        graph.attrs.insert("default_provider".to_string(), AttrValue::String("gemini".to_string()));
+        graph.attrs.insert(
+            "default_model".to_string(),
+            AttrValue::String("graph-model".to_string()),
+        );
+        graph.attrs.insert(
+            "default_provider".to_string(),
+            AttrValue::String("gemini".to_string()),
+        );
 
         let defaults = RunDefaults::default();
         let cfg = run_config::WorkflowRunConfig {
@@ -1393,8 +1390,14 @@ mod tests {
     fn resolve_model_provider_graph_attrs_used_as_fallback() {
         use crate::graph::types::AttrValue;
         let mut graph = crate::graph::types::Graph::new("test");
-        graph.attrs.insert("default_model".to_string(), AttrValue::String("gpt-5.2".to_string()));
-        graph.attrs.insert("default_provider".to_string(), AttrValue::String("openai".to_string()));
+        graph.attrs.insert(
+            "default_model".to_string(),
+            AttrValue::String("gpt-5.2".to_string()),
+        );
+        graph.attrs.insert(
+            "default_provider".to_string(),
+            AttrValue::String("openai".to_string()),
+        );
 
         let defaults = RunDefaults::default();
         let (model, provider) = resolve_model_provider(None, None, None, &defaults, &graph);

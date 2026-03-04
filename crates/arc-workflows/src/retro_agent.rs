@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use arc_agent::{
-    AnthropicProfile, Sandbox, GeminiProfile, OpenAiProfile, ProviderProfile, Session,
+    AnthropicProfile, GeminiProfile, OpenAiProfile, ProviderProfile, Sandbox, Session,
     SessionConfig,
 };
 use arc_llm::client::Client;
@@ -161,12 +161,7 @@ pub async fn run_retro_agent(
         ..SessionConfig::default()
     };
 
-    let mut session = Session::new(
-        llm_client.clone(),
-        profile,
-        Arc::clone(sandbox),
-        config,
-    );
+    let mut session = Session::new(llm_client.clone(), profile, Arc::clone(sandbox), config);
 
     session.initialize().await;
 

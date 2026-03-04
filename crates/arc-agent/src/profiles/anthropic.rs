@@ -1,8 +1,8 @@
 use crate::config::SessionConfig;
-use crate::sandbox::Sandbox;
 use crate::profiles::assemble_system_prompt;
 use crate::profiles::BaseProfile;
 use crate::provider_profile::{ProfileCapabilities, ProviderProfile};
+use crate::sandbox::Sandbox;
 use crate::skills::Skill;
 use crate::tool_registry::ToolRegistry;
 use crate::tools::{make_edit_file_tool, register_core_tools, WebFetchSummarizer};

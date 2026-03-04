@@ -528,7 +528,6 @@ fn doctor_no_color_when_no_color_set() {
         .stdout(predicate::str::contains("\x1b[").not());
 }
 
-
 #[test]
 fn doctor_live_flag_accepted() {
     arc()
@@ -570,10 +569,7 @@ fn dry_run_writes_jsonl_and_live_json() {
 
     // Every line must be valid JSON with ts, run_id, and event keys
     let first_line: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
-    assert!(
-        first_line.get("ts").is_some(),
-        "line should have ts"
-    );
+    assert!(first_line.get("ts").is_some(), "line should have ts");
     assert!(
         first_line.get("run_id").is_some(),
         "line should have run_id"
@@ -585,10 +581,7 @@ fn dry_run_writes_jsonl_and_live_json() {
         let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
         parsed["event"].as_str() == Some("WorkflowRunStarted")
     });
-    assert!(
-        has_run_started,
-        "events should contain WorkflowRunStarted"
-    );
+    assert!(has_run_started, "events should contain WorkflowRunStarted");
 
     // run_id should be non-empty after WorkflowRunStarted
     let last_line: serde_json::Value = serde_json::from_str(lines[lines.len() - 1]).unwrap();

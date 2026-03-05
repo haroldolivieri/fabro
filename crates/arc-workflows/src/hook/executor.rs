@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -11,7 +11,19 @@ use arc_agent::Sandbox;
 use super::config::{HookDefinition, HookType, TlsMode};
 use super::types::{HookContext, HookDecision, HookResult, PromptHookResponse};
 
-const HOOK_EVALUATOR_SYSTEM_PROMPT: &str = "You are a hook evaluator for a workflow engine. Given context about a workflow event, evaluate the condition and respond with JSON: {\"ok\": true} or {\"ok\": false, \"reason\": \"...\"}. Respond ONLY with valid JSON.";
+const HOOK_EVALUATOR_SYSTEM_PROMPT: &str = "You are a hook evaluator for a workflow engine. Given context about a workflow event, evaluate the condition.";
+
+static HOOK_RESPONSE_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "ok": { "type": "boolean" },
+            "reason": { "type": "string" }
+        },
+        "required": ["ok"],
+        "additionalProperties": false
+    })
+});
 
 /// Trait for executing hooks via different transports.
 #[async_trait]
@@ -252,8 +264,23 @@ impl HookExecutorImpl {
                 .prompt(user_msg)
                 .max_tokens(1024);
 
-            match arc_llm::generate::generate(params).await {
-                Ok(result) => Self::parse_prompt_response(&result.response.text()),
+            match arc_llm::generate::generate_object(params, HOOK_RESPONSE_SCHEMA.clone()).await {
+                Ok(result) => match result.output {
+                    Some(obj) => match serde_json::from_value::<PromptHookResponse>(obj) {
+                        Ok(resp) if resp.ok => HookDecision::Proceed,
+                        Ok(resp) => HookDecision::Block {
+                            reason: resp.reason,
+                        },
+                        Err(e) => {
+                            tracing::warn!(error = %e, "prompt hook response deserialize failed, proceeding");
+                            HookDecision::Proceed
+                        }
+                    },
+                    None => {
+                        tracing::warn!("prompt hook returned no structured output, proceeding");
+                        HookDecision::Proceed
+                    }
+                },
                 Err(e) => {
                     tracing::warn!(error = %e, "prompt hook LLM call failed, proceeding");
                     HookDecision::Proceed

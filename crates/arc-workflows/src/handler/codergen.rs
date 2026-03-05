@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -69,9 +70,7 @@ impl CodergenHandler {
 /// `$identifier` not in the map produces an error, catching typos like
 /// `$gaol` at runtime.
 fn expand_variables(text: &str, graph: &Graph) -> Result<String, ArcError> {
-    let mut vars = std::collections::HashMap::new();
-    vars.insert("goal".to_string(), graph.goal().to_string());
-
+    let vars = HashMap::from([("goal".to_string(), graph.goal().to_string())]);
     crate::cli::run_config::expand_vars(text, &vars).map_err(|e| ArcError::Validation(e.to_string()))
 }
 

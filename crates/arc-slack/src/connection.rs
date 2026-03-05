@@ -1,0 +1,363 @@
+use std::sync::Arc;
+
+use arc_workflows::interviewer::web::WebInterviewer;
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message;
+use tracing::{debug, error, info, warn};
+
+use crate::client::{parse_wss_url, SlackApiError, SlackClient};
+use crate::dispatch::{dispatch, DispatchAction};
+use crate::socket::{SocketAck, SocketEnvelope};
+use crate::threads::ThreadRegistry;
+
+#[derive(Debug)]
+pub enum ConnectionError {
+    WebSocket(String),
+    Protocol(String),
+    Api(SlackApiError),
+}
+
+impl std::fmt::Display for ConnectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WebSocket(e) => write!(f, "WebSocket error: {e}"),
+            Self::Protocol(e) => write!(f, "Protocol error: {e}"),
+            Self::Api(e) => write!(f, "API error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ConnectionError {}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ProcessOutcome {
+    Continue,
+    Reconnect,
+    Closed,
+}
+
+/// Process a single raw WebSocket text message: parse, ack, dispatch.
+pub fn process_message(
+    text: &str,
+    thread_registry: &ThreadRegistry,
+) -> (Option<String>, ProcessOutcome, DispatchAction) {
+    let envelope: SocketEnvelope = match serde_json::from_str(text) {
+        Ok(e) => e,
+        Err(_) => {
+            warn!("Failed to parse WebSocket message as envelope");
+            return (None, ProcessOutcome::Continue, DispatchAction::Ignored);
+        }
+    };
+
+    let ack_json = envelope
+        .envelope_id
+        .as_deref()
+        .map(|id| serde_json::to_string(&SocketAck::new(id)).expect("ack serialization"));
+
+    let action = dispatch(&envelope, thread_registry);
+
+    let outcome = match &action {
+        DispatchAction::Reconnect => ProcessOutcome::Reconnect,
+        _ => ProcessOutcome::Continue,
+    };
+
+    (ack_json, outcome, action)
+}
+
+/// Fetch a WebSocket URL from Slack's `apps.connections.open` endpoint.
+pub async fn open_socket_url(app_token: &str) -> Result<String, ConnectionError> {
+    let http = reqwest::Client::new();
+    let resp = http
+        .post("https://slack.com/api/apps.connections.open")
+        .bearer_auth(app_token)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .send()
+        .await
+        .map_err(|e| ConnectionError::WebSocket(e.to_string()))?;
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| ConnectionError::WebSocket(e.to_string()))?;
+
+    parse_wss_url(&json).map_err(ConnectionError::Api)
+}
+
+/// Run the Socket Mode event loop. Connects, reads messages, acks, dispatches.
+/// On disconnect, returns so the caller can reconnect.
+pub async fn run_event_loop(
+    wss_url: &str,
+    interviewer: &Arc<WebInterviewer>,
+    thread_registry: &ThreadRegistry,
+    _slack_client: &SlackClient,
+    _default_channel: Option<&str>,
+) -> Result<(), ConnectionError> {
+    let (ws_stream, _) = tokio_tungstenite::connect_async(wss_url)
+        .await
+        .map_err(|e| ConnectionError::WebSocket(e.to_string()))?;
+
+    let (mut write, mut read) = ws_stream.split();
+    info!("Socket Mode WebSocket connected");
+
+    while let Some(msg) = read.next().await {
+        let msg = match msg {
+            Ok(m) => m,
+            Err(e) => {
+                error!("WebSocket read error: {e}");
+                return Err(ConnectionError::WebSocket(e.to_string()));
+            }
+        };
+
+        let text = match msg {
+            Message::Text(t) => t,
+            Message::Close(_) => {
+                info!("WebSocket closed by server");
+                return Ok(());
+            }
+            Message::Ping(data) => {
+                let _ = write.send(Message::Pong(data)).await;
+                continue;
+            }
+            _ => continue,
+        };
+
+        let (ack_json, outcome, action) = process_message(&text, thread_registry);
+
+        // Send ack immediately (Slack requires within 3 seconds)
+        if let Some(ack) = ack_json {
+            if let Err(e) = write.send(Message::Text(ack.into())).await {
+                error!("Failed to send ack: {e}");
+            }
+        }
+
+        // Handle dispatch action
+        match action {
+            DispatchAction::SubmitAnswer {
+                question_id,
+                answer,
+            } => {
+                debug!(question_id, "Submitting answer from Slack");
+                let _ = interviewer.submit_answer(&question_id, answer);
+            }
+            DispatchAction::Connected => {
+                info!("Socket Mode handshake complete");
+            }
+            DispatchAction::Reconnect | DispatchAction::Ignored => {}
+        }
+
+        if outcome == ProcessOutcome::Reconnect {
+            info!("Server requested disconnect, will reconnect");
+            return Ok(());
+        }
+    }
+
+    info!("WebSocket stream ended");
+    Ok(())
+}
+
+/// Top-level runner: connects, runs the event loop, and reconnects on disconnect.
+pub async fn run(
+    app_token: &str,
+    interviewer: Arc<WebInterviewer>,
+    thread_registry: &ThreadRegistry,
+    slack_client: &SlackClient,
+    default_channel: Option<&str>,
+) {
+    let mut backoff = std::time::Duration::from_secs(1);
+    let max_backoff = std::time::Duration::from_secs(30);
+
+    loop {
+        let wss_url = match open_socket_url(app_token).await {
+            Ok(url) => {
+                backoff = std::time::Duration::from_secs(1);
+                url
+            }
+            Err(e) => {
+                error!("Failed to open Socket Mode connection: {e}");
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(max_backoff);
+                continue;
+            }
+        };
+
+        match run_event_loop(
+            &wss_url,
+            &interviewer,
+            thread_registry,
+            slack_client,
+            default_channel,
+        )
+        .await
+        {
+            Ok(()) => {
+                info!("Event loop ended, reconnecting...");
+                backoff = std::time::Duration::from_secs(1);
+            }
+            Err(e) => {
+                error!("Event loop error: {e}, reconnecting...");
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(max_backoff);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arc_workflows::interviewer::AnswerValue;
+
+    fn registry() -> ThreadRegistry {
+        ThreadRegistry::new()
+    }
+
+    #[test]
+    fn process_hello_message() {
+        let text = r#"{"type":"hello","num_connections":1}"#;
+        let (ack, outcome, action) = process_message(text, &registry());
+        assert!(ack.is_none());
+        assert_eq!(outcome, ProcessOutcome::Continue);
+        assert_eq!(action, DispatchAction::Connected);
+    }
+
+    #[test]
+    fn process_interactive_message_acks_and_dispatches() {
+        let text = r#"{
+            "type": "interactive",
+            "envelope_id": "env-1",
+            "payload": {
+                "type": "block_actions",
+                "actions": [{
+                    "action_id": "q-1:yes",
+                    "type": "button",
+                    "value": "yes"
+                }]
+            }
+        }"#;
+        let (ack, outcome, action) = process_message(text, &registry());
+        assert!(ack.is_some());
+        assert!(ack.unwrap().contains("env-1"));
+        assert_eq!(outcome, ProcessOutcome::Continue);
+        match action {
+            DispatchAction::SubmitAnswer {
+                question_id,
+                answer,
+            } => {
+                assert_eq!(question_id, "q-1");
+                assert_eq!(answer.value, AnswerValue::Yes);
+            }
+            other => panic!("expected SubmitAnswer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn process_disconnect_signals_reconnect() {
+        let text = r#"{"type":"disconnect","reason":"link_disabled"}"#;
+        let (ack, outcome, action) = process_message(text, &registry());
+        assert!(ack.is_none());
+        assert_eq!(outcome, ProcessOutcome::Reconnect);
+        assert_eq!(action, DispatchAction::Reconnect);
+    }
+
+    #[test]
+    fn process_invalid_json_is_ignored() {
+        let text = "not valid json {{{";
+        let (ack, outcome, action) = process_message(text, &registry());
+        assert!(ack.is_none());
+        assert_eq!(outcome, ProcessOutcome::Continue);
+        assert_eq!(action, DispatchAction::Ignored);
+    }
+
+    #[test]
+    fn process_events_api_acks_but_ignores() {
+        let text = r#"{
+            "type": "events_api",
+            "envelope_id": "env-99",
+            "payload": {
+                "event": { "type": "app_mention", "text": "hi" }
+            }
+        }"#;
+        let (ack, outcome, action) = process_message(text, &registry());
+        assert!(ack.is_some());
+        assert!(ack.unwrap().contains("env-99"));
+        assert_eq!(outcome, ProcessOutcome::Continue);
+        assert_eq!(action, DispatchAction::Ignored);
+    }
+
+    #[test]
+    fn process_thread_reply_with_registered_question() {
+        let reg = registry();
+        reg.register("1234.5678", "q-10");
+        let text = serde_json::json!({
+            "type": "events_api",
+            "envelope_id": "env-50",
+            "payload": {
+                "event": {
+                    "type": "message",
+                    "text": "my answer",
+                    "thread_ts": "1234.5678",
+                    "user": "U123"
+                }
+            }
+        })
+        .to_string();
+        let (ack, outcome, action) = process_message(&text, &reg);
+        assert!(ack.is_some());
+        assert_eq!(outcome, ProcessOutcome::Continue);
+        match action {
+            DispatchAction::SubmitAnswer {
+                question_id,
+                answer,
+            } => {
+                assert_eq!(question_id, "q-10");
+                assert_eq!(answer.value, AnswerValue::Text("my answer".to_string()));
+            }
+            other => panic!("expected SubmitAnswer, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn submit_answer_reaches_web_interviewer() {
+        let interviewer = Arc::new(WebInterviewer::new());
+        let i_clone = Arc::clone(&interviewer);
+
+        let handle = tokio::spawn(async move {
+            use arc_workflows::interviewer::{Interviewer, Question, QuestionType};
+            let q = Question::new("approve?", QuestionType::YesNo);
+            i_clone.ask(q).await
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let pending = interviewer.pending_questions();
+        assert_eq!(pending.len(), 1);
+
+        let question_id = pending[0].id.clone();
+        let text = serde_json::json!({
+            "type": "interactive",
+            "envelope_id": "e1",
+            "payload": {
+                "type": "block_actions",
+                "actions": [{
+                    "action_id": format!("{question_id}:yes"),
+                    "type": "button",
+                    "value": "yes"
+                }]
+            }
+        })
+        .to_string();
+        let (_, _, action) = process_message(&text, &registry());
+        match action {
+            DispatchAction::SubmitAnswer {
+                question_id: qid,
+                answer,
+            } => {
+                assert!(interviewer.submit_answer(&qid, answer));
+            }
+            other => panic!("expected SubmitAnswer, got {other:?}"),
+        }
+
+        let answer = handle.await.unwrap();
+        assert_eq!(answer.value, AnswerValue::Yes);
+    }
+}

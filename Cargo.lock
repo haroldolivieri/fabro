@@ -287,6 +287,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-slack"
+version = "0.1.0"
+dependencies = [
+ "arc-workflows",
+ "futures-util",
+ "reqwest 0.12.28",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "arc-types"
 version = "0.1.0"
 dependencies = [

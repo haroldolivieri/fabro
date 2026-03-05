@@ -46,6 +46,8 @@ indicatif = "0.18"
 termimad = "0.34"
 toml = "0.8"
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
 daytona-sdk = { git = "https://github.com/brynary/daytona-sdk-rust", package = "daytona-sdk" }
 daytona-api-client = { git = "https://github.com/brynary/daytona-sdk-rust", package = "daytona-api-client" }
 

@@ -79,7 +79,7 @@ function loadAppConfig(): AppConfig {
         : { ...AUTH_DEFAULTS, ...rawWebAuth },
     },
     api: demo
-      ? { ...API_DEFAULTS, authentication_strategy: "insecure_disabled" }
+      ? { ...API_DEFAULTS, ...rawApi, authentication_strategy: "insecure_disabled" }
       : { ...API_DEFAULTS, ...rawApi },
     git: { ...GIT_DEFAULTS, ...rawGit },
   };

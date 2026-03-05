@@ -3,3 +3,83 @@ title: "Agents"
 description: "Core agent concepts in Arc"
 ---
 
+An agent in Arc is an LLM session with access to tools. When a workflow reaches an agent node, Arc creates a session, sends the prompt and prior context to the model, and lets the agent work autonomously — reading files, running commands, editing code, spawning sub-agents — until it decides the task is complete.
+
+## The agent loop
+
+Each agent turn follows the same cycle:
+
+1. **Send** — Arc sends the conversation history (system prompt, prior messages, tool results) to the LLM
+2. **Receive** — The model responds with text, tool calls, or both
+3. **Execute** — Arc executes any tool calls in the sandbox and appends the results to the conversation
+4. **Repeat** — If the model made tool calls, go back to step 1. If it responded with only text, the agent is done.
+
+This loop continues until the model stops calling tools, indicating it considers the task complete. Arc also enforces guardrails: token budgets, turn limits, and loop detection to prevent runaway agents.
+
+## Tools
+
+Agents have access to a set of built-in tools for interacting with the codebase and environment:
+
+| Tool | Description |
+|---|---|
+| `shell` | Run shell commands (bash) |
+| `read_file` | Read file contents with optional offset and limit |
+| `write_file` | Create or overwrite a file |
+| `edit_file` | Make targeted edits to an existing file |
+| `grep` | Search file contents with regex patterns |
+| `glob` | Find files by name pattern |
+| `web_search` | Search the web |
+| `web_fetch` | Fetch and summarize a URL |
+
+Additional tools can be added via [MCP servers](/agents/mcp) for integrations like databases, APIs, or custom services.
+
+See [Tools](/agents/tools) for the full reference.
+
+## Prompts
+
+The agent's behavior is shaped by its prompt — the task instructions set in the `prompt` attribute of the workflow node. Prompts can be inline strings or references to external Markdown files:
+
+```dot
+// Inline prompt
+plan [label="Plan", prompt="Analyze the codebase and write a step-by-step plan."]
+
+// External file reference
+simplify [label="Simplify", prompt="@prompts/simplify.md"]
+```
+
+Arc also injects a system prompt with context about the workflow goal, prior stage outputs, available tools, and the agent's role. See [Prompts](/agents/prompts) for details.
+
+## Sub-agents
+
+An agent can spawn **sub-agents** to delegate subtasks. Sub-agents run in their own session with their own tool access, and return results to the parent. This is useful for parallelizing research, isolating risky operations, or breaking complex tasks into manageable pieces.
+
+See [Sub-agents](/agents/subagents) for details.
+
+## Skills
+
+Skills are reusable prompt templates that extend an agent's capabilities for common tasks — code review, test writing, refactoring, and more. They're discovered automatically from the project and can be invoked by the agent during its session.
+
+See [Skills](/agents/skills) for details.
+
+## Hooks
+
+Hooks are shell commands that run in response to agent lifecycle events (e.g. before a tool executes, after a stage completes). They enable custom validation, notifications, and guardrails without modifying the workflow graph.
+
+See [Hooks](/agents/hooks) for details.
+
+## Further reading
+
+<Columns cols={2}>
+  <Card title="Prompts" icon="message" href="/agents/prompts">
+    How prompts are constructed and injected.
+  </Card>
+  <Card title="Tools" icon="wrench" href="/agents/tools">
+    Built-in tools and custom tool registration.
+  </Card>
+  <Card title="MCP" icon="plug" href="/agents/mcp">
+    Extend agents with Model Context Protocol servers.
+  </Card>
+  <Card title="Sub-agents" icon="users" href="/agents/subagents">
+    Delegate subtasks to child agent sessions.
+  </Card>
+</Columns>

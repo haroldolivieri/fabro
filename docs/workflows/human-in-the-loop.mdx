@@ -3,3 +3,87 @@ title: "Human-in-the-Loop"
 description: "Adding human review and intervention to workflows"
 ---
 
+Not every decision should be made by an LLM. Arc provides several mechanisms for humans to participate in workflows — approving plans, choosing between options, providing free-form input, and steering agents while they run.
+
+## Human gates
+
+A human gate is a node with shape `hexagon` that pauses the workflow and presents the user with a choice. The options are derived from the outgoing edge labels:
+
+```dot
+approve [shape=hexagon, label="Approve Plan"]
+
+approve -> implement [label="[A] Approve"]
+approve -> plan      [label="[R] Revise"]
+approve -> skip      [label="[S] Skip"]
+```
+
+When execution reaches the gate, the user sees the node's label ("Approve Plan") and the available options. In the CLI, this appears as an interactive menu. In the web UI, it appears as a set of buttons.
+
+### Keyboard accelerators
+
+The prefixes `[A]`, `[R]`, `[S]` in edge labels serve as keyboard accelerators. Arc supports three formats:
+
+| Format | Example |
+|---|---|
+| `[K] Label` | `[A] Approve` |
+| `K) Label` | `A) Approve` |
+| `K - Label` | `A - Approve` |
+
+When matching the user's selection to an edge, Arc strips the accelerator prefix so typing `A` matches `[A] Approve`.
+
+### Freeform input
+
+In addition to fixed choices, a human gate can accept freeform text input. Add an edge with `freeform=true`:
+
+```dot
+review [shape=hexagon, label="Review Changes"]
+
+review -> implement [label="[A] Approve"]
+review -> plan      [label="[R] Revise"]
+review -> custom    [freeform=true]
+```
+
+If the user types something that doesn't match any fixed option, their input routes to the freeform edge. The text is available to downstream nodes as `human.gate.text` in the run context.
+
+### Default choice on timeout
+
+If a human gate has a timeout configured, you can specify a default choice using the `human.default_choice` attribute:
+
+```dot
+approve [shape=hexagon, label="Approve?", human.default_choice="approve"]
+```
+
+If the timeout elapses without a response, the workflow continues to the default target rather than failing.
+
+### Auto-approve
+
+For testing or fully automated runs, pass `--auto-approve` to skip all human gates:
+
+```bash
+arc run start workflow.dot --auto-approve
+```
+
+Auto-approve selects `Yes` for yes/no gates and the first option for multiple-choice gates.
+
+## Where to place human gates
+
+Human gates are most valuable at high-leverage decision points:
+
+- **Before implementation** — Approve a plan before the agent writes code
+- **After review** — Confirm that a code review's findings are worth fixing
+- **At branch points** — Choose a strategy when multiple approaches are viable
+- **Before external actions** — Approve before deploying, merging, or sending notifications
+
+A workflow can have multiple human gates. Place them where the cost of a wrong decision is high relative to the cost of a brief pause.
+
+## Context set by human gates
+
+When a user makes a selection, the human gate sets several context values for downstream use:
+
+| Context key | Value |
+|---|---|
+| `human.gate.selected` | The accelerator key (e.g. `"A"`) or `"freeform"` |
+| `human.gate.label` | The full label of the selected edge |
+| `human.gate.text` | The user's freeform text (if applicable) |
+
+These can be read in edge conditions or referenced by downstream agents.

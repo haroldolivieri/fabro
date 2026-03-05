@@ -99,18 +99,6 @@ quality     -> merge
 merge -> report -> exit
 ```
 
-## Model stylesheets
-
-Assign models to nodes using CSS-like selectors with increasing specificity:
-
-```
-*            { llm_model: claude-haiku-4-5; }     /* all nodes */
-.coding      { llm_model: claude-sonnet-4-5; }    /* nodes with class="coding" */
-#review      { llm_model: gemini-3.1-pro-preview; } /* node with id "review" */
-```
-
-Selectors cascade by specificity: `*` (0) < `shape` (1) < `.class` (2) < `#id` (3). Explicit node attributes always override stylesheets. See [Model Stylesheets](/workflows/stylesheets) for details.
-
 ## Goal gates
 
 Mark critical nodes with `goal_gate=true`. The workflow fails if any goal gate doesn't succeed — even if execution reaches the exit node:

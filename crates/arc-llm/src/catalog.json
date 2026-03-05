@@ -126,6 +126,20 @@
     "aliases": ["gemini-flash"]
   },
   {
+    "id": "gemini-3.1-flash-lite-preview",
+    "provider": "gemini",
+    "display_name": "Gemini 3.1 Flash Lite (Preview)",
+    "context_window": 1048576,
+    "max_output": 65536,
+    "supports_tools": true,
+    "supports_vision": true,
+    "supports_reasoning": true,
+    "input_cost_per_million": 0.25,
+    "output_cost_per_million": 1.5,
+    "estimated_output_tps": 200,
+    "aliases": ["gemini-flash-lite"]
+  },
+  {
     "id": "kimi-k2.5",
     "provider": "kimi",
     "display_name": "Kimi K2.5",

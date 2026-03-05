@@ -114,10 +114,32 @@ mod tests {
         assert_eq!(openai.len(), 4);
 
         let gemini = list_models(Some("gemini"));
-        assert_eq!(gemini.len(), 2);
+        assert_eq!(gemini.len(), 3);
 
         let unknown = list_models(Some("unknown"));
         assert!(unknown.is_empty());
+    }
+
+    #[test]
+    fn gemini_3_1_flash_lite_in_catalog() {
+        let m = get_model_info("gemini-3.1-flash-lite-preview").unwrap();
+        assert_eq!(m.provider, "gemini");
+        assert_eq!(m.display_name, "Gemini 3.1 Flash Lite (Preview)");
+        assert_eq!(m.context_window, 1048576);
+        assert_eq!(m.max_output, Some(65536));
+        assert!(m.supports_tools);
+        assert!(m.supports_vision);
+        assert!(m.supports_reasoning);
+        assert_eq!(m.input_cost_per_million, Some(0.25));
+        assert_eq!(m.output_cost_per_million, Some(1.5));
+    }
+
+    #[test]
+    fn gemini_flash_lite_alias() {
+        assert_eq!(
+            get_model_info("gemini-flash-lite").unwrap().id,
+            "gemini-3.1-flash-lite-preview"
+        );
     }
 
     #[test]

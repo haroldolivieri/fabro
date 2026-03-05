@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -9,6 +10,8 @@ use arc_agent::Sandbox;
 
 use super::config::{HookDefinition, HookType, TlsMode};
 use super::types::{HookContext, HookDecision, HookResult, PromptHookResponse};
+
+const HOOK_EVALUATOR_SYSTEM_PROMPT: &str = "You are a hook evaluator for a workflow engine. Given context about a workflow event, evaluate the condition and respond with JSON: {\"ok\": true} or {\"ok\": false, \"reason\": \"...\"}. Respond ONLY with valid JSON.";
 
 /// Trait for executing hooks via different transports.
 #[async_trait]
@@ -130,7 +133,7 @@ impl HookExecutorImpl {
                 },
             }
         } else {
-            let mut cmd = std::process::Command::new("sh");
+            let mut cmd = tokio::process::Command::new("sh");
             cmd.arg("-c").arg(command);
             if let Some(wd) = work_dir {
                 cmd.current_dir(wd);
@@ -145,10 +148,10 @@ impl HookExecutorImpl {
             match cmd.spawn() {
                 Ok(mut child) => {
                     if let Some(mut stdin) = child.stdin.take() {
-                        use std::io::Write;
-                        let _ = stdin.write_all(context_json.as_bytes());
+                        use tokio::io::AsyncWriteExt;
+                        let _ = stdin.write_all(context_json.as_bytes()).await;
                     }
-                    match child.wait_with_output() {
+                    match child.wait_with_output().await {
                         Ok(output) => {
                             let exit_code = output.status.code().unwrap_or(1);
                             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -198,6 +201,41 @@ impl HookExecutorImpl {
         }
     }
 
+    /// Resolve a model alias (e.g. "haiku") to a concrete model ID.
+    fn resolve_model(model: &Option<String>) -> String {
+        let model_id = model.as_deref().unwrap_or("haiku");
+        let model_info = arc_llm::catalog::get_model_info(model_id);
+        model_info
+            .as_ref()
+            .map_or(model_id, |m| m.id.as_str())
+            .to_string()
+    }
+
+    /// Build the user message for prompt/agent hooks.
+    fn build_hook_user_message(prompt: &str, context: &HookContext) -> String {
+        let context_json = serde_json::to_string(context).unwrap_or_default();
+        format!("Hook prompt: {prompt}\n\nEvent context:\n{context_json}")
+    }
+
+    /// Execute an LLM hook with a timeout, failing open on error or timeout.
+    async fn execute_llm_with_timeout<F, Fut>(
+        timeout: std::time::Duration,
+        hook_kind: &str,
+        f: F,
+    ) -> HookDecision
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = HookDecision>,
+    {
+        match tokio::time::timeout(timeout, f()).await {
+            Ok(decision) => decision,
+            Err(_) => {
+                tracing::warn!("{hook_kind} hook timed out, proceeding");
+                HookDecision::Proceed
+            }
+        }
+    }
+
     /// Execute a prompt hook: single-turn LLM call returning ok/block.
     async fn execute_prompt(
         prompt: &str,
@@ -205,17 +243,12 @@ impl HookExecutorImpl {
         context: &HookContext,
         timeout: std::time::Duration,
     ) -> HookDecision {
-        let result = tokio::time::timeout(timeout, async {
-            let model_id = model.as_deref().unwrap_or("haiku");
-            let model_info = arc_llm::catalog::get_model_info(model_id);
-            let resolved_model = model_info.as_ref().map_or(model_id, |m| m.id.as_str());
+        let resolved_model = Self::resolve_model(model);
+        let user_msg = Self::build_hook_user_message(prompt, context);
 
-            let context_json = serde_json::to_string(context).unwrap_or_default();
-            let system = "You are a hook evaluator for a workflow engine. Given context about a workflow event, evaluate the condition and respond with JSON: {\"ok\": true} or {\"ok\": false, \"reason\": \"...\"}. Respond ONLY with valid JSON.";
-            let user_msg = format!("Hook prompt: {prompt}\n\nEvent context:\n{context_json}");
-
-            let params = arc_llm::generate::GenerateParams::new(resolved_model)
-                .system(system)
+        Self::execute_llm_with_timeout(timeout, "prompt", || async move {
+            let params = arc_llm::generate::GenerateParams::new(&resolved_model)
+                .system(HOOK_EVALUATOR_SYSTEM_PROMPT)
                 .prompt(user_msg)
                 .max_tokens(1024);
 
@@ -227,15 +260,7 @@ impl HookExecutorImpl {
                 }
             }
         })
-        .await;
-
-        match result {
-            Ok(decision) => decision,
-            Err(_) => {
-                tracing::warn!("prompt hook timed out, proceeding");
-                HookDecision::Proceed
-            }
-        }
+        .await
     }
 
     /// Execute an agent hook: multi-turn LLM call with sandbox tool access.
@@ -251,11 +276,10 @@ impl HookExecutorImpl {
         sandbox: Arc<dyn Sandbox>,
         timeout: std::time::Duration,
     ) -> HookDecision {
-        let result = tokio::time::timeout(timeout, async {
-            let model_id = model.as_deref().unwrap_or("haiku");
-            let model_info = arc_llm::catalog::get_model_info(model_id);
-            let resolved_model = model_info.as_ref().map_or(model_id, |m| m.id.as_str());
+        let resolved_model = Self::resolve_model(model);
+        let user_msg = Self::build_hook_user_message(prompt, context);
 
+        Self::execute_llm_with_timeout(timeout, "agent", || async move {
             let client = match arc_llm::client::Client::from_env().await {
                 Ok(c) => c,
                 Err(e) => {
@@ -264,18 +288,13 @@ impl HookExecutorImpl {
                 }
             };
 
-            let context_json = serde_json::to_string(context).unwrap_or_default();
-            let system = "You are a hook evaluator for a workflow engine. Given context about a workflow event, evaluate the condition and respond with JSON: {\"ok\": true} or {\"ok\": false, \"reason\": \"...\"}. Respond ONLY with valid JSON.";
-            let user_msg = format!("Hook prompt: {prompt}\n\nEvent context:\n{context_json}");
-
-            // Reuse the same tool registry as normal agent sessions.
             let config = arc_agent::SessionConfig::default();
             let mut registry = arc_agent::ToolRegistry::new();
             arc_agent::register_core_tools(&mut registry, &config, None);
             let tool_defs = registry.definitions();
 
             let mut messages = vec![
-                arc_llm::types::Message::system(system),
+                arc_llm::types::Message::system(HOOK_EVALUATOR_SYSTEM_PROMPT),
                 arc_llm::types::Message::user(user_msg),
             ];
 
@@ -284,7 +303,7 @@ impl HookExecutorImpl {
 
             for _ in 0..rounds {
                 let request = arc_llm::types::Request {
-                    model: resolved_model.to_string(),
+                    model: resolved_model.clone(),
                     messages: messages.clone(),
                     provider: None,
                     tools: Some(tool_defs.clone()),
@@ -312,10 +331,8 @@ impl HookExecutorImpl {
                     return Self::parse_prompt_response(&response.text());
                 }
 
-                // Append assistant message with tool calls
                 messages.push(response.message.clone());
 
-                // Execute each tool call via the shared registry
                 for tc in &tool_calls {
                     let tool = registry.get(&tc.name).cloned();
                     let ctx = arc_agent::tool_registry::ToolContext {
@@ -346,20 +363,22 @@ impl HookExecutorImpl {
             tracing::warn!("agent hook exhausted max tool rounds, proceeding");
             HookDecision::Proceed
         })
-        .await;
+        .await
+    }
 
-        match result {
-            Ok(decision) => decision,
-            Err(_) => {
-                tracing::warn!("agent hook timed out, proceeding");
-                HookDecision::Proceed
-            }
-        }
+    /// Build a reqwest client for the given TLS mode.
+    fn build_http_client(tls: &TlsMode) -> reqwest::Client {
+        let accept_invalid = matches!(tls, TlsMode::NoVerify | TlsMode::Off);
+        reqwest::Client::builder()
+            .danger_accept_invalid_certs(accept_invalid)
+            .build()
+            .unwrap_or_default()
     }
 
     /// Execute an HTTP hook: POST context JSON and parse the response.
     /// Fail-open: non-2xx and connection errors return `Proceed`.
     async fn execute_http(
+        client: &reqwest::Client,
         url: &str,
         headers: &Option<HashMap<String, String>>,
         allowed_env_vars: &[String],
@@ -381,14 +400,7 @@ impl HookExecutorImpl {
             TlsMode::Off => {}
         }
 
-        let accept_invalid = matches!(tls, TlsMode::NoVerify | TlsMode::Off);
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            .danger_accept_invalid_certs(accept_invalid)
-            .build()
-            .unwrap_or_default();
-
-        let mut request = client.post(url).json(context);
+        let mut request = client.post(url).timeout(timeout).json(context);
 
         if let Some(hdrs) = headers {
             for (key, value) in hdrs {
@@ -436,6 +448,37 @@ impl HookExecutorImpl {
     }
 }
 
+/// Cached HTTP clients keyed by TLS mode.
+struct HttpClientCache {
+    verify: reqwest::Client,
+    no_verify: reqwest::Client,
+    off: reqwest::Client,
+}
+
+impl HttpClientCache {
+    fn new() -> Self {
+        Self {
+            verify: HookExecutorImpl::build_http_client(&TlsMode::Verify),
+            no_verify: HookExecutorImpl::build_http_client(&TlsMode::NoVerify),
+            off: HookExecutorImpl::build_http_client(&TlsMode::Off),
+        }
+    }
+
+    fn get(&self, tls: &TlsMode) -> &reqwest::Client {
+        match tls {
+            TlsMode::Verify => &self.verify,
+            TlsMode::NoVerify => &self.no_verify,
+            TlsMode::Off => &self.off,
+        }
+    }
+}
+
+impl Default for HttpClientCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl HookExecutor for HookExecutorImpl {
     async fn execute(
@@ -445,32 +488,60 @@ impl HookExecutor for HookExecutorImpl {
         sandbox: Arc<dyn Sandbox>,
         work_dir: Option<&Path>,
     ) -> HookResult {
+        use std::sync::OnceLock;
+        static HTTP_CLIENTS: OnceLock<HttpClientCache> = OnceLock::new();
+
         let start = Instant::now();
 
         let decision = match definition.resolved_hook_type() {
-            Some(HookType::Command { ref command }) => {
+            Some(Cow::Borrowed(HookType::Command { ref command })
+                | Cow::Owned(HookType::Command { ref command })) => {
                 Self::execute_command(definition, command, context, &sandbox, work_dir).await
             }
-            Some(HookType::Http {
+            Some(Cow::Borrowed(HookType::Http {
                 ref url,
                 ref headers,
                 ref allowed_env_vars,
                 ref tls,
-            }) => {
-                Self::execute_http(url, headers, allowed_env_vars, tls, context, definition.timeout())
-                    .await
+            })
+            | Cow::Owned(HookType::Http {
+                ref url,
+                ref headers,
+                ref allowed_env_vars,
+                ref tls,
+            })) => {
+                let clients = HTTP_CLIENTS.get_or_init(HttpClientCache::new);
+                Self::execute_http(
+                    clients.get(tls),
+                    url,
+                    headers,
+                    allowed_env_vars,
+                    tls,
+                    context,
+                    definition.timeout(),
+                )
+                .await
             }
-            Some(HookType::Prompt {
+            Some(Cow::Borrowed(HookType::Prompt {
                 ref prompt,
                 ref model,
-            }) => {
+            })
+            | Cow::Owned(HookType::Prompt {
+                ref prompt,
+                ref model,
+            })) => {
                 Self::execute_prompt(prompt, model, context, definition.timeout()).await
             }
-            Some(HookType::Agent {
+            Some(Cow::Borrowed(HookType::Agent {
                 ref prompt,
                 ref model,
                 ref max_tool_rounds,
-            }) => {
+            })
+            | Cow::Owned(HookType::Agent {
+                ref prompt,
+                ref model,
+                ref max_tool_rounds,
+            })) => {
                 Self::execute_agent(
                     prompt,
                     model,
@@ -508,6 +579,10 @@ mod tests {
 
     fn make_sandbox() -> Arc<dyn Sandbox> {
         Arc::new(arc_agent::LocalSandbox::new(std::env::current_dir().unwrap()))
+    }
+
+    fn test_http_client() -> reqwest::Client {
+        HookExecutorImpl::build_http_client(&TlsMode::Off)
     }
 
     fn make_definition(command: &str) -> HookDefinition {
@@ -801,7 +876,9 @@ mod tests {
             .create_async()
             .await;
 
+        let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(
+            &client,
             &format!("{}/hook", server.url()),
             &None,
             &[],
@@ -830,7 +907,9 @@ mod tests {
             .create_async()
             .await;
 
+        let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(
+            &client,
             &format!("{}/hook", server.url()),
             &None,
             &[],
@@ -854,7 +933,9 @@ mod tests {
             .create_async()
             .await;
 
+        let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(
+            &client,
             &format!("{}/hook", server.url()),
             &None,
             &[],
@@ -870,7 +951,9 @@ mod tests {
 
     #[tokio::test]
     async fn http_hook_connection_failure_returns_proceed() {
+        let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(
+            &client,
             "http://127.0.0.1:1",
             &None,
             &[],
@@ -900,7 +983,9 @@ mod tests {
             ("Authorization".to_string(), "Bearer $ARC_TEST_TOKEN".to_string()),
         ]);
 
+        let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(
+            &client,
             &format!("{}/hook", server.url()),
             &Some(headers),
             &["ARC_TEST_TOKEN".to_string()],
@@ -919,7 +1004,9 @@ mod tests {
 
     #[tokio::test]
     async fn http_hook_rejects_http_url_when_tls_verify() {
+        let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(
+            &client,
             "http://example.com/hook",
             &None,
             &[],
@@ -934,7 +1021,9 @@ mod tests {
 
     #[tokio::test]
     async fn http_hook_rejects_http_url_when_tls_no_verify() {
+        let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(
+            &client,
             "http://example.com/hook",
             &None,
             &[],
@@ -957,7 +1046,9 @@ mod tests {
             .create_async()
             .await;
 
+        let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(
+            &client,
             &format!("{}/hook", server.url()),
             &None,
             &[],

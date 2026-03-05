@@ -7683,20 +7683,20 @@ timeout_ms = 120000
     // Prompt hook
     assert_eq!(cfg.hooks[0].event, arc_workflows::hook::HookEvent::StageStart);
     assert!(matches!(
-        cfg.hooks[0].resolved_hook_type(),
+        cfg.hooks[0].resolved_hook_type().as_deref(),
         Some(arc_workflows::hook::HookType::Prompt { prompt, model })
-            if prompt == "Should this stage proceed?" && model == Some("haiku".into())
+            if prompt == "Should this stage proceed?" && *model == Some("haiku".into())
     ));
     assert_eq!(cfg.hooks[0].timeout(), std::time::Duration::from_millis(30000));
 
     // Agent hook
     assert_eq!(cfg.hooks[1].event, arc_workflows::hook::HookEvent::RunComplete);
     assert!(matches!(
-        cfg.hooks[1].resolved_hook_type(),
+        cfg.hooks[1].resolved_hook_type().as_deref(),
         Some(arc_workflows::hook::HookType::Agent { prompt, model, max_tool_rounds })
             if prompt == "Verify all tests pass."
-            && model == Some("sonnet".into())
-            && max_tool_rounds == Some(10)
+            && *model == Some("sonnet".into())
+            && *max_tool_rounds == Some(10)
     ));
     assert_eq!(cfg.hooks[1].timeout(), std::time::Duration::from_millis(120000));
 }

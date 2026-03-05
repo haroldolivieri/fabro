@@ -11,7 +11,7 @@ use super::types::{HookContext, HookDecision};
 /// Central orchestrator: filters matching hooks, executes them, merges decisions.
 pub struct HookRunner {
     config: HookConfig,
-    command_executor: Arc<dyn HookExecutor>,
+    executor: Arc<dyn HookExecutor>,
     /// Pre-compiled regexes keyed by matcher pattern string.
     compiled_matchers: HashMap<String, regex::Regex>,
 }
@@ -22,7 +22,7 @@ impl HookRunner {
         let compiled_matchers = Self::compile_matchers(&config);
         Self {
             config,
-            command_executor: Arc::new(HookExecutorImpl),
+            executor: Arc::new(HookExecutorImpl),
             compiled_matchers,
         }
     }
@@ -33,7 +33,7 @@ impl HookRunner {
         let compiled_matchers = Self::compile_matchers(&config);
         Self {
             config,
-            command_executor: executor,
+            executor: executor,
             compiled_matchers,
         }
     }
@@ -136,7 +136,7 @@ impl HookRunner {
                 "Executing hook"
             );
             let result = self
-                .command_executor
+                .executor
                 .execute(hook, context, sandbox.clone(), work_dir)
                 .await;
             tracing::debug!(
@@ -184,7 +184,7 @@ impl HookRunner {
                 "Executing hook"
             );
             let result = self
-                .command_executor
+                .executor
                 .execute(hook, context, sandbox.clone(), work_dir)
                 .await;
             tracing::debug!(
@@ -398,7 +398,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn command_executor_integration_success() {
+    async fn executor_integration_success() {
         let config = HookConfig {
             hooks: vec![{
                 let mut h = make_hook(HookEvent::RunStart, "echo-hook");
@@ -414,7 +414,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn command_executor_integration_block() {
+    async fn executor_integration_block() {
         let config = HookConfig {
             hooks: vec![{
                 let mut h = make_hook(HookEvent::RunStart, "fail-hook");

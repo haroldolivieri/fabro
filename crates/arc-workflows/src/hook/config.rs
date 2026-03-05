@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde::Deserialize;
 
 use super::types::HookEvent;
@@ -64,13 +66,13 @@ pub struct HookDefinition {
 impl HookDefinition {
     /// Resolve the effective hook type: explicit `hook_type` wins, then `command`
     /// shorthand, then error.
-    pub fn resolved_hook_type(&self) -> Option<HookType> {
+    pub fn resolved_hook_type(&self) -> Option<Cow<'_, HookType>> {
         if let Some(ref ht) = self.hook_type {
-            return Some(ht.clone());
+            return Some(Cow::Borrowed(ht));
         }
         self.command
             .as_ref()
-            .map(|cmd| HookType::Command { command: cmd.clone() })
+            .map(|cmd| Cow::Owned(HookType::Command { command: cmd.clone() }))
     }
 
     /// Whether this hook is blocking for its event.
@@ -87,7 +89,7 @@ impl HookDefinition {
         if let Some(ms) = self.timeout_ms {
             return std::time::Duration::from_millis(ms);
         }
-        let default_ms = match self.resolved_hook_type() {
+        let default_ms = match self.resolved_hook_type().as_deref() {
             Some(HookType::Prompt { .. }) => 30_000,
             _ => 60_000,
         };
@@ -107,7 +109,7 @@ impl HookDefinition {
             return n.clone();
         }
         let event_str = self.event.to_string();
-        match self.resolved_hook_type() {
+        match self.resolved_hook_type().as_deref() {
             Some(HookType::Command { ref command }) => {
                 let short = &command[..arc_agent::floor_char_boundary(command, 20)];
                 format!("{event_str}:{short}")
@@ -178,7 +180,7 @@ command = "./scripts/pre-check.sh"
         assert_eq!(hook.event, HookEvent::StageStart);
         assert_eq!(hook.command.as_deref(), Some("./scripts/pre-check.sh"));
         let resolved = hook.resolved_hook_type().unwrap();
-        assert!(matches!(resolved, HookType::Command { command } if command == "./scripts/pre-check.sh"));
+        assert!(matches!(&*resolved, HookType::Command { command } if command == "./scripts/pre-check.sh"));
     }
 
     #[test]
@@ -207,7 +209,7 @@ url = "https://hooks.example.com/done"
         let config: HookConfig = toml::from_str(toml).unwrap();
         let hook = &config.hooks[0];
         assert!(matches!(
-            hook.resolved_hook_type(),
+            hook.resolved_hook_type().as_deref(),
             Some(HookType::Http { url, .. }) if url == "https://hooks.example.com/done"
         ));
     }
@@ -226,7 +228,7 @@ Authorization = "Bearer $API_KEY"
 "#;
         let config: HookConfig = toml::from_str(toml).unwrap();
         let hook = &config.hooks[0];
-        match hook.resolved_hook_type().unwrap() {
+        match &*hook.resolved_hook_type().unwrap() {
             HookType::Http {
                 url,
                 headers,
@@ -234,9 +236,9 @@ Authorization = "Bearer $API_KEY"
                 ..
             } => {
                 assert_eq!(url, "https://hooks.example.com/start");
-                assert_eq!(allowed_env_vars, vec!["API_KEY", "SECRET"]);
+                assert_eq!(allowed_env_vars, &["API_KEY", "SECRET"]);
                 assert_eq!(
-                    headers.unwrap().get("Authorization").unwrap(),
+                    headers.as_ref().unwrap().get("Authorization").unwrap(),
                     "Bearer $API_KEY"
                 );
             }
@@ -254,7 +256,7 @@ url = "https://hooks.example.com/done"
 "#;
         let config: HookConfig = toml::from_str(toml).unwrap();
         let hook = &config.hooks[0];
-        match hook.resolved_hook_type().unwrap() {
+        match &*hook.resolved_hook_type().unwrap() {
             HookType::Http {
                 allowed_env_vars, ..
             } => {
@@ -455,8 +457,8 @@ url = "https://hooks.example.com/done"
 "#;
         let config: HookConfig = toml::from_str(toml).unwrap();
         let hook = &config.hooks[0];
-        match hook.resolved_hook_type().unwrap() {
-            HookType::Http { tls, .. } => assert_eq!(tls, TlsMode::Verify),
+        match &*hook.resolved_hook_type().unwrap() {
+            HookType::Http { tls, .. } => assert_eq!(*tls, TlsMode::Verify),
             _ => panic!("expected Http hook type"),
         }
     }
@@ -472,8 +474,8 @@ tls = "no_verify"
 "#;
         let config: HookConfig = toml::from_str(toml).unwrap();
         let hook = &config.hooks[0];
-        match hook.resolved_hook_type().unwrap() {
-            HookType::Http { tls, .. } => assert_eq!(tls, TlsMode::NoVerify),
+        match &*hook.resolved_hook_type().unwrap() {
+            HookType::Http { tls, .. } => assert_eq!(*tls, TlsMode::NoVerify),
             _ => panic!("expected Http hook type"),
         }
     }
@@ -489,8 +491,8 @@ tls = "off"
 "#;
         let config: HookConfig = toml::from_str(toml).unwrap();
         let hook = &config.hooks[0];
-        match hook.resolved_hook_type().unwrap() {
-            HookType::Http { tls, .. } => assert_eq!(tls, TlsMode::Off),
+        match &*hook.resolved_hook_type().unwrap() {
+            HookType::Http { tls, .. } => assert_eq!(*tls, TlsMode::Off),
             _ => panic!("expected Http hook type"),
         }
     }
@@ -507,9 +509,9 @@ model = "haiku"
         let config: HookConfig = toml::from_str(toml).unwrap();
         let hook = &config.hooks[0];
         assert!(matches!(
-            hook.resolved_hook_type(),
+            hook.resolved_hook_type().as_deref(),
             Some(HookType::Prompt { prompt, model })
-                if prompt == "Should this stage proceed?" && model == Some("haiku".into())
+                if prompt == "Should this stage proceed?" && *model == Some("haiku".into())
         ));
     }
 
@@ -526,11 +528,11 @@ max_tool_rounds = 10
         let config: HookConfig = toml::from_str(toml).unwrap();
         let hook = &config.hooks[0];
         assert!(matches!(
-            hook.resolved_hook_type(),
+            hook.resolved_hook_type().as_deref(),
             Some(HookType::Agent { prompt, model, max_tool_rounds })
                 if prompt == "Verify tests pass."
-                && model == Some("sonnet".into())
-                && max_tool_rounds == Some(10)
+                && *model == Some("sonnet".into())
+                && *max_tool_rounds == Some(10)
         ));
     }
 

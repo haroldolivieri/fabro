@@ -890,7 +890,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
 
     let brave_key_set = std::env::var("BRAVE_SEARCH_API_KEY").is_ok();
 
-    let server_config = arc_api::server_config::load_server_config().unwrap_or_default();
+    let server_config = arc_api::server_config::load_server_config(None).unwrap_or_default();
 
     let api_status = ApiStatus {
         base_url: server_config.api.base_url.clone(),

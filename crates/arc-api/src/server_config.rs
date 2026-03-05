@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use arc_workflows::cli::run_config::RunDefaults;
 use serde::Deserialize;
+use tracing::debug;
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -106,13 +107,22 @@ pub struct ServerConfig {
     pub run_defaults: RunDefaults,
 }
 
-/// Load server config from `~/.arc/server.toml`, returning defaults if the file doesn't exist.
-pub fn load_server_config() -> anyhow::Result<ServerConfig> {
+/// Load server config from an explicit path or `~/.arc/server.toml`, returning defaults if the
+/// default file doesn't exist. An explicit path that doesn't exist is an error.
+pub fn load_server_config(path: Option<&Path>) -> anyhow::Result<ServerConfig> {
+    if let Some(explicit) = path {
+        debug!(path = %explicit.display(), "Loading server config from explicit path");
+        let contents = std::fs::read_to_string(explicit)?;
+        return Ok(toml::from_str(&contents)?);
+    }
+
     let Some(home) = dirs::home_dir() else {
+        debug!("No home directory found, using default server config");
         return Ok(ServerConfig::default());
     };
-    let path = home.join(".arc").join("server.toml");
-    match std::fs::read_to_string(&path) {
+    let default_path = home.join(".arc").join("server.toml");
+    debug!(path = %default_path.display(), "Loading server config");
+    match std::fs::read_to_string(&default_path) {
         Ok(contents) => Ok(toml::from_str(&contents)?),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ServerConfig::default()),
         Err(e) => Err(e.into()),
@@ -353,5 +363,22 @@ authentication_strategies = ["jwt"]
             vec![ApiAuthStrategy::Jwt]
         );
         assert!(config.api.tls.is_none());
+    }
+
+    #[test]
+    fn load_server_config_from_explicit_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("custom.toml");
+        std::fs::write(&path, r#"max_concurrent_runs = 42"#).unwrap();
+        let config = load_server_config(Some(&path)).unwrap();
+        assert_eq!(config.max_concurrent_runs, Some(42));
+    }
+
+    #[test]
+    fn load_server_config_explicit_path_missing_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nonexistent.toml");
+        let result = load_server_config(Some(&path));
+        assert!(result.is_err());
     }
 }

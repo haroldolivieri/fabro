@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -50,6 +51,10 @@ pub struct ServeArgs {
     /// Maximum number of concurrent run executions
     #[arg(long)]
     pub max_concurrent_runs: Option<usize>,
+
+    /// Path to server config file (default: ~/.arc/server.toml)
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 /// Start the HTTP API server.
@@ -82,7 +87,8 @@ pub async fn serve_command(args: ServeArgs, styles: &'static Styles) -> anyhow::
     };
 
     // Initialize data directory and SQLite database
-    let server_config = crate::server_config::load_server_config()?;
+    let config_path = args.config;
+    let server_config = crate::server_config::load_server_config(config_path.as_deref())?;
     let data_dir = crate::server_config::resolve_data_dir(&server_config);
 
     // Shared config for live reloading
@@ -160,12 +166,13 @@ pub async fn serve_command(args: ServeArgs, styles: &'static Styles) -> anyhow::
     // Spawn config polling task (skip in demo mode)
     if !args.demo {
         let config_for_poll = Arc::clone(&shared_config);
+        let config_path_for_poll = config_path.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             interval.tick().await; // skip first immediate tick
             loop {
                 interval.tick().await;
-                match crate::server_config::load_server_config() {
+                match crate::server_config::load_server_config(config_path_for_poll.as_deref()) {
                     Ok(new_config) => {
                         let changed = {
                             let cfg = config_for_poll.read().expect("config lock poisoned");

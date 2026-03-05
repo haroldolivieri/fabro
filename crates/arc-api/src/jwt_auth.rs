@@ -322,7 +322,7 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthenticatedUser {
 mod tests {
     use super::*;
     use axum::body::Body;
-    use axum::http::Request;
+    use axum::http::{Request, StatusCode};
     use axum::response::IntoResponse;
     use axum::routing::get;
     use axum::Router;

@@ -1,3 +1,4 @@
+export * from './aggregate-usage';
 export * from './api-question';
 export * from './api-question-option';
 export * from './branch';

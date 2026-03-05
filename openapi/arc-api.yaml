@@ -955,6 +955,22 @@ paths:
                 items:
                   $ref: "#/components/schemas/HistoryEntry"
 
+  # ── Usage ────────────────────────────────────────────────────────────
+
+  /usage:
+    get:
+      operationId: getAggregateUsage
+      tags: [Usage]
+      summary: Aggregate Usage
+      description: Returns aggregate token/cost usage across all completed runs since server start.
+      responses:
+        "200":
+          description: Aggregate usage data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AggregateUsage"
+
   # ── Settings ──────────────────────────────────────────────────────────
 
   /settings:
@@ -1407,6 +1423,31 @@ components:
             $ref: "#/components/schemas/UsageStage"
         totals:
           $ref: "#/components/schemas/UsageTotals"
+        by_model:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageByModel"
+
+    AggregateUsage:
+      type: object
+      required:
+        - total_runs
+        - total_input_tokens
+        - total_output_tokens
+        - total_cost
+        - total_runtime_secs
+        - by_model
+      properties:
+        total_runs:
+          type: integer
+        total_input_tokens:
+          type: integer
+        total_output_tokens:
+          type: integer
+        total_cost:
+          type: number
+        total_runtime_secs:
+          type: number
         by_model:
           type: array
           items:

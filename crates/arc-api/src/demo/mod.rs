@@ -604,6 +604,15 @@ pub async fn list_branches(
     (StatusCode::OK, Json(projects::branches())).into_response()
 }
 
+// ── Usage ──────────────────────────────────────────────────────────────
+
+pub async fn get_aggregate_usage(
+    _auth: AuthenticatedService,
+    State(_state): State<Arc<AppState>>,
+) -> Response {
+    (StatusCode::OK, Json(usage::aggregate())).into_response()
+}
+
 // ── Data modules ───────────────────────────────────────────────────────
 
 mod runs {
@@ -1123,6 +1132,43 @@ enabled = true
 categories = ["traceability", "readability", "reliability", "coverage"]
 "#
         .to_string()
+    }
+}
+
+mod usage {
+    use arc_types::*;
+
+    pub fn aggregate() -> AggregateUsage {
+        AggregateUsage {
+            total_runs: 9,
+            total_input_tokens: 643_860,
+            total_output_tokens: 189_720,
+            total_cost: 20.34,
+            total_runtime_secs: 3_501.0,
+            by_model: vec![
+                UsageByModel {
+                    model: "Opus 4.6".into(),
+                    stages: 18,
+                    input_tokens: 304_020,
+                    output_tokens: 87_210,
+                    cost: 12.15,
+                },
+                UsageByModel {
+                    model: "Gemini 3.1".into(),
+                    stages: 9,
+                    input_tokens: 257_760,
+                    output_tokens: 78_750,
+                    cost: 6.48,
+                },
+                UsageByModel {
+                    model: "Codex 5.3".into(),
+                    stages: 9,
+                    input_tokens: 82_080,
+                    output_tokens: 23_760,
+                    cost: 1.71,
+                },
+            ],
+        }
     }
 }
 

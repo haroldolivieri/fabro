@@ -22,24 +22,20 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
-import type { RunUsage } from '../models';
+import type { AggregateUsage } from '../models';
 /**
  * UsageApi - axios parameter creator
  */
 export const UsageApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
-         * @summary Retrieve Run Usage
-         * @param {string} id 
+         * Returns aggregate token/cost usage across all completed runs since server start.
+         * @summary Aggregate Usage
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRunUsage: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('retrieveRunUsage', 'id', id)
-            const localVarPath = `/runs/{id}/usage`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+        getAggregateUsage: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/usage`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -72,16 +68,15 @@ export const UsageApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = UsageApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
-         * @summary Retrieve Run Usage
-         * @param {string} id 
+         * Returns aggregate token/cost usage across all completed runs since server start.
+         * @summary Aggregate Usage
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveRunUsage(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunUsage>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunUsage(id, options);
+        async getAggregateUsage(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AggregateUsage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getAggregateUsage(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['UsageApi.retrieveRunUsage']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['UsageApi.getAggregateUsage']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
@@ -94,14 +89,13 @@ export const UsageApiFactory = function (configuration?: Configuration, basePath
     const localVarFp = UsageApiFp(configuration)
     return {
         /**
-         * 
-         * @summary Retrieve Run Usage
-         * @param {string} id 
+         * Returns aggregate token/cost usage across all completed runs since server start.
+         * @summary Aggregate Usage
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRunUsage(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunUsage> {
-            return localVarFp.retrieveRunUsage(id, options).then((request) => request(axios, basePath));
+        getAggregateUsage(options?: RawAxiosRequestConfig): AxiosPromise<AggregateUsage> {
+            return localVarFp.getAggregateUsage(options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -111,14 +105,13 @@ export const UsageApiFactory = function (configuration?: Configuration, basePath
  */
 export class UsageApi extends BaseAPI {
     /**
-     * 
-     * @summary Retrieve Run Usage
-     * @param {string} id 
+     * Returns aggregate token/cost usage across all completed runs since server start.
+     * @summary Aggregate Usage
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public retrieveRunUsage(id: string, options?: RawAxiosRequestConfig) {
-        return UsageApiFp(this.configuration).retrieveRunUsage(id, options).then((request) => request(this.axios, this.basePath));
+    public getAggregateUsage(options?: RawAxiosRequestConfig) {
+        return UsageApiFp(this.configuration).getAggregateUsage(options).then((request) => request(this.axios, this.basePath));
     }
 }
 

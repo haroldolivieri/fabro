@@ -45,9 +45,22 @@ struct ManagedRun {
     logs_root: Option<std::path::PathBuf>,
 }
 
+/// In-memory aggregate usage counters, reset on server restart.
+#[derive(Default)]
+struct AggregateUsageTotals {
+    total_runs: i64,
+    total_input_tokens: i64,
+    total_output_tokens: i64,
+    total_cost: f64,
+    total_runtime_secs: f64,
+    /// model -> (stages, input_tokens, output_tokens, cost)
+    by_model: HashMap<String, (i64, i64, i64, f64)>,
+}
+
 /// Shared application state for the server.
 pub struct AppState {
     runs: Mutex<HashMap<String, ManagedRun>>,
+    aggregate_usage: Mutex<AggregateUsageTotals>,
     registry_factory: Box<dyn Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync>,
     dry_run: bool,
     pub is_demo: bool,
@@ -139,7 +152,8 @@ pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
             .route("/insights/history", get(crate::demo::list_query_history))
             .route("/settings", get(crate::demo::get_settings))
             .route("/projects", get(crate::demo::list_projects))
-            .route("/projects/{id}/branches", get(crate::demo::list_branches));
+            .route("/projects/{id}/branches", get(crate::demo::list_branches))
+            .route("/usage", get(crate::demo::get_aggregate_usage));
     } else {
         router = router
             .route("/runs", get(list_runs).post(start_run))
@@ -185,7 +199,8 @@ pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
             .route("/insights/history", get(not_implemented))
             .route("/settings", get(not_implemented))
             .route("/projects", get(not_implemented))
-            .route("/projects/{id}/branches", get(not_implemented));
+            .route("/projects/{id}/branches", get(not_implemented))
+            .route("/usage", get(get_aggregate_usage));
     }
 
     router.layer(axum::Extension(auth_mode)).with_state(state)
@@ -220,6 +235,33 @@ async fn get_user(user: AuthenticatedUser) -> Response {
     Json(serde_json::json!({"login": user.login})).into_response()
 }
 
+async fn get_aggregate_usage(
+    _auth: AuthenticatedService,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    let agg = state.aggregate_usage.lock().expect("aggregate_usage lock poisoned");
+    let by_model: Vec<arc_types::UsageByModel> = agg
+        .by_model
+        .iter()
+        .map(|(model, (stages, input, output, cost))| arc_types::UsageByModel {
+            model: model.clone(),
+            stages: *stages,
+            input_tokens: *input,
+            output_tokens: *output,
+            cost: *cost,
+        })
+        .collect();
+    let response = arc_types::AggregateUsage {
+        total_runs: agg.total_runs,
+        total_input_tokens: agg.total_input_tokens,
+        total_output_tokens: agg.total_output_tokens,
+        total_cost: agg.total_cost,
+        total_runtime_secs: agg.total_runtime_secs,
+        by_model,
+    };
+    (StatusCode::OK, Json(response)).into_response()
+}
+
 /// Create an `AppState` with the given registry factory and database pool.
 ///
 /// The factory receives the run's `WebInterviewer` so it can wire it
@@ -240,6 +282,7 @@ pub fn create_app_state_with_options(
 ) -> Arc<AppState> {
     Arc::new(AppState {
         runs: Mutex::new(HashMap::new()),
+        aggregate_usage: Mutex::new(AggregateUsageTotals::default()),
         registry_factory: Box::new(registry_factory),
         dry_run,
         is_demo,
@@ -351,7 +394,7 @@ async fn start_run(
         // Save final checkpoint
         let checkpoint = Checkpoint::load(&config.logs_root.join("checkpoint.json")).ok();
 
-        // Auto-derive retro
+        // Auto-derive retro and accumulate aggregate usage
         if let Some(ref cp) = checkpoint {
             let (failed, failure_reason) = match &result {
                 Ok(_) => (false, None),
@@ -369,6 +412,28 @@ async fn start_run(
                 &stage_durations,
             );
             let _ = retro.save(&config.logs_root);
+
+            // Accumulate aggregate usage
+            let mut agg = state_clone.aggregate_usage.lock().expect("aggregate_usage lock poisoned");
+            agg.total_runs += 1;
+            let mut run_runtime: f64 = 0.0;
+            for (node_id, outcome) in &cp.node_outcomes {
+                if let Some(usage) = &outcome.usage {
+                    agg.total_input_tokens += usage.input_tokens;
+                    agg.total_output_tokens += usage.output_tokens;
+                    if let Some(cost) = usage.cost {
+                        agg.total_cost += cost;
+                    }
+                    let entry = agg.by_model.entry(usage.model.clone()).or_insert((0, 0, 0, 0.0));
+                    entry.0 += 1;
+                    entry.1 += usage.input_tokens;
+                    entry.2 += usage.output_tokens;
+                    entry.3 += usage.cost.unwrap_or(0.0);
+                }
+                let duration_ms = stage_durations.get(node_id).copied().unwrap_or(0);
+                run_runtime += duration_ms as f64 / 1000.0;
+            }
+            agg.total_runtime_secs += run_runtime;
         }
 
         let mut runs = state_clone.runs.lock().expect("runs lock poisoned");
@@ -1144,5 +1209,79 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["id"].as_str().unwrap(), run_id);
         assert!(items[0]["status"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn get_aggregate_usage_returns_zeros_initially() {
+        let state = create_app_state(test_db().await, test_registry);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/usage")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_json(response.into_body()).await;
+        assert_eq!(body["total_runs"].as_i64().unwrap(), 0);
+        assert_eq!(body["total_input_tokens"].as_i64().unwrap(), 0);
+        assert_eq!(body["total_output_tokens"].as_i64().unwrap(), 0);
+        assert_eq!(body["total_cost"].as_f64().unwrap(), 0.0);
+        assert_eq!(body["total_runtime_secs"].as_f64().unwrap(), 0.0);
+        assert!(body["by_model"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn aggregate_usage_increments_after_run_completes() {
+        let state = create_app_state(test_db().await, test_registry);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+
+        // Start a run
+        let req = Request::builder()
+            .method("POST")
+            .uri("/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_string(&serde_json::json!({"dot_source": MINIMAL_DOT})).unwrap(),
+            ))
+            .unwrap();
+
+        let response = app.clone().oneshot(req).await.unwrap();
+        let body = body_json(response.into_body()).await;
+        let run_id = body["id"].as_str().unwrap().to_string();
+
+        // Poll until run completes
+        let mut status = String::new();
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            let req = Request::builder()
+                .method("GET")
+                .uri(format!("/runs/{run_id}"))
+                .body(Body::empty())
+                .unwrap();
+            let response = app.clone().oneshot(req).await.unwrap();
+            let body = body_json(response.into_body()).await;
+            status = body["status"].as_str().unwrap().to_string();
+            if status == "completed" || status == "failed" {
+                break;
+            }
+        }
+        assert_eq!(status, "completed");
+
+        // Check aggregate usage
+        let req = Request::builder()
+            .method("GET")
+            .uri("/usage")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_json(response.into_body()).await;
+        assert_eq!(body["total_runs"].as_i64().unwrap(), 1);
     }
 }

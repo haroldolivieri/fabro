@@ -13,18 +13,14 @@ use crate::error::ApiError;
 use crate::jwt_auth::AuthenticatedService;
 use crate::server::{AppState, PaginationParams};
 
-fn default_page_limit() -> u32 {
-    20
-}
-
 #[derive(serde::Deserialize)]
 pub struct RetroListParams {
-    #[serde(rename = "page[limit]", default = "default_page_limit")]
+    #[serde(rename = "page[limit]", default = "crate::server::default_page_limit")]
     limit: u32,
     #[serde(rename = "page[offset]", default)]
     offset: u32,
     workflow: Option<String>,
-    smoothness: Option<String>,
+    smoothness: Option<arc_types::SmoothnessRating>,
 }
 
 fn paginated_response<T: serde::Serialize>(items: Vec<T>, pagination: &PaginationParams) -> Response {
@@ -248,7 +244,7 @@ pub async fn get_run_retro(
     Path(id): Path<String>,
 ) -> Response {
     match retros::detail(&id) {
-        Some(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
+        Some(detail) => (StatusCode::OK, Json(detail)).into_response(),
         None => (StatusCode::OK, Json(json!(null))).into_response(),
     }
 }
@@ -330,11 +326,7 @@ pub async fn list_retros(
     let items: Vec<_> = retros::list_items()
         .into_iter()
         .filter(|r| params.workflow.as_ref().map_or(true, |w| &r.workflow.slug == w))
-        .filter(|r| {
-            params.smoothness.as_ref().map_or(true, |s| {
-                r.smoothness.as_ref().map_or(false, |rs| rs.to_string() == *s)
-            })
-        })
+        .filter(|r| params.smoothness.as_ref().map_or(true, |s| r.smoothness.as_ref() == Some(s)))
         .collect();
     paginated_response(items, &PaginationParams { limit: params.limit, offset: params.offset })
 }

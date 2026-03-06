@@ -33,7 +33,7 @@ pub use arc_types::{
     SubmitAnswerRequest,
 };
 
-fn default_page_limit() -> u32 {
+pub fn default_page_limit() -> u32 {
     20
 }
 

@@ -1,0 +1,64 @@
+---
+title: "Client SDKs"
+description: "Language-specific clients generated from the Arc OpenAPI spec"
+---
+
+The Arc API is defined by an OpenAPI 3.1 specification (`openapi/arc-api.yaml` in the repository) that serves as the single source of truth for all endpoints, request/response schemas, and parameter definitions. The spec is also available at runtime from the server at `GET /openapi.json`. Both client SDKs below are generated directly from this spec.
+
+## TypeScript (Axios)
+
+The `@qltysh/arc-api-client` package is a fully typed HTTP client generated with the [OpenAPI Generator](https://openapi-generator.tech/) using the `typescript-axios` template. It produces typed API classes (one per tag) and model interfaces for every schema.
+
+### Regenerating
+
+From the repository root:
+
+```bash
+cd packages/arc-api-client
+bun run generate
+```
+
+This runs `openapi-generator-cli` against `openapi/arc-api.yaml` and writes the generated source into `packages/arc-api-client/src/`.
+
+### Usage
+
+```typescript
+import { RunsApi, Configuration } from "@qltysh/arc-api-client";
+
+const config = new Configuration({ basePath: "http://localhost:3000" });
+const runs = new RunsApi(config);
+
+const { data } = await runs.listRuns();
+console.log(data);
+```
+
+The generated client includes a typed API class for each endpoint group: `RunsApi`, `WorkflowsApi`, `SessionsApi`, `VerificationsApi`, `InsightsApi`, and others.
+
+## Rust (Types Only)
+
+The `arc-types` crate generates Rust structs and enums from the OpenAPI component schemas at compile time using [typify](https://github.com/oxidecomputer/typify). This provides type-safe representations of all API models but does not include an HTTP client.
+
+### How It Works
+
+A `build.rs` script reads `openapi/arc-api.yaml`, extracts `components/schemas`, and feeds them to typify. The generated code is written to `OUT_DIR` and included via:
+
+```rust
+// crates/arc-types/src/lib.rs
+include!(concat!(env!("OUT_DIR"), "/openapi_types.rs"));
+```
+
+### Regenerating
+
+The types are regenerated automatically on every `cargo build` when the OpenAPI spec changes:
+
+```bash
+cargo build -p arc-types
+```
+
+### Usage
+
+```rust
+use arc_types::RunListItem;
+```
+
+All generated types derive `serde::Deserialize` and `serde::Serialize`, so they work directly with any Rust HTTP client for request and response parsing.

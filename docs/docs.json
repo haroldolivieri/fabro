@@ -116,6 +116,26 @@
         "openapi": "api-reference/arc-api.yaml",
         "groups": [
           {
+            "group": "Using the API",
+            "icon": "code",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/demo-mode",
+              "api-reference/client-sdks"
+            ]
+          },
+          {
+            "group": "Sessions",
+            "icon": "comments",
+            "pages": [
+              "GET /sessions",
+              "POST /sessions",
+              "GET /sessions/{id}",
+              "POST /sessions/{id}/messages",
+              "GET /sessions/{id}/events"
+            ]
+          },
+          {
             "group": "Runs",
             "icon": "play",
             "pages": [
@@ -143,18 +163,18 @@
             "pages": [
               "GET /runs/{id}/compare",
               "GET /runs/{id}/usage",
-              "GET /runs/{id}/verifications"
-            ]
-          },
-          {
-            "group": "Run Internals",
-            "icon": "microchip",
-            "pages": [
-              "GET /runs/{id}/checkpoint",
-              "GET /runs/{id}/context",
-              "GET /runs/{id}/stages",
-              "GET /runs/{id}/stages/{stageId}/turns",
-              "GET /runs/{id}/configuration"
+              "GET /runs/{id}/verifications",
+              {
+                "group": "Run Internals",
+                "icon": "microchip",
+                "pages": [
+                  "GET /runs/{id}/checkpoint",
+                  "GET /runs/{id}/context",
+                  "GET /runs/{id}/stages",
+                  "GET /runs/{id}/stages/{stageId}/turns",
+                  "GET /runs/{id}/configuration"
+                ]
+              }
             ]
           },
           {
@@ -185,17 +205,6 @@
               "DELETE /insights/queries/{id}",
               "POST /insights/execute",
               "GET /insights/history"
-            ]
-          },
-          {
-            "group": "Sessions",
-            "icon": "comments",
-            "pages": [
-              "GET /sessions",
-              "POST /sessions",
-              "GET /sessions/{id}",
-              "POST /sessions/{id}/messages",
-              "GET /sessions/{id}/events"
             ]
           },
           {

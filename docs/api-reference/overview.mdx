@@ -1,0 +1,145 @@
+---
+title: "API Overview"
+description: "Introduction to the Arc REST API"
+---
+
+The Arc API is a REST API for managing workflow runs, interactive sessions, and related resources. All requests and responses use JSON.
+
+## Base URL
+
+The API is served by `arc serve`, which defaults to:
+
+```
+http://localhost:3000
+```
+
+The base URL is configurable via `server.toml`:
+
+```toml
+[api]
+base_url = "https://arc.example.com"
+```
+
+## Authentication
+
+The API supports two authentication strategies, configured in `server.toml`:
+
+```toml
+[api]
+authentication_strategies = ["jwt"]
+```
+
+### JWT (Bearer Token)
+
+Send an Ed25519-signed JWT in the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+The token must include these claims:
+
+| Claim | Description |
+|-------|-------------|
+| `iss` | Issuer — must be `arc-web` |
+| `iat` | Issued-at timestamp (Unix seconds) |
+| `exp` | Expiration timestamp (Unix seconds) |
+| `sub` | Subject — a URL identifying the user (e.g. `https://github.com/username`) |
+
+The username is extracted from the last path segment of the `sub` claim and checked against the `allowed_usernames` list in the web auth config.
+
+Set the verification key via the `ARC_JWT_PUBLIC_KEY` environment variable (PEM format or base64-encoded PEM).
+
+### mTLS (Mutual TLS)
+
+With mTLS, the client authenticates using a TLS client certificate. Configure both the strategy and TLS paths:
+
+```toml
+[api]
+authentication_strategies = ["mtls"]
+
+[api.tls]
+cert = "~/.arc/certs/server.crt"
+key = "~/.arc/certs/server.key"
+ca = "~/.arc/certs/ca.crt"
+```
+
+The Common Name (CN) from the client certificate identifies the user.
+
+### Multiple Strategies
+
+You can configure both strategies. They are tried in order — the first successful match wins:
+
+```toml
+[api]
+authentication_strategies = ["jwt", "mtls"]
+```
+
+## Errors
+
+### Error Shape
+
+All error responses share a consistent JSON structure:
+
+```json
+{
+  "errors": [
+    {
+      "status": "404",
+      "title": "Not Found",
+      "detail": "Run abc123 not found."
+    }
+  ]
+}
+```
+
+Each entry in the `errors` array contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `string` | The HTTP status code as a string |
+| `title` | `string` | The canonical reason phrase for the status code |
+| `detail` | `string` | A human-readable explanation of the error |
+
+### HTTP Status Codes
+
+| Status | Meaning | When It Occurs |
+|--------|---------|----------------|
+| `400 Bad Request` | The request body or parameters are invalid | Missing required fields, malformed JSON |
+| `401 Unauthorized` | Authentication is missing or invalid | No token, expired token, invalid certificate |
+| `403 Forbidden` | The authenticated user lacks access | Username not in the allowed list |
+| `404 Not Found` | The requested resource does not exist | Unknown run ID, unknown workflow name |
+| `409 Conflict` | The resource is in a conflicting state | Answering a question on a run that isn't running yet |
+| `410 Gone` | The resource is no longer available | SSE event stream has closed |
+| `501 Not Implemented` | The endpoint exists but is not yet implemented | Placeholder routes |
+| `502 Bad Gateway` | An upstream dependency failed | Graphviz `dot` not installed or returned an error |
+
+## Pagination
+
+List endpoints that return large collections use offset-based pagination. Pass pagination parameters as query strings:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page[limit]` | `integer` | `20` | Maximum number of items to return (clamped to 1–100) |
+| `page[offset]` | `integer` | `0` | Number of items to skip |
+
+Paginated responses include a `meta` object alongside the `data` array:
+
+```json
+{
+  "data": [...],
+  "meta": {
+    "has_more": true
+  }
+}
+```
+
+When `has_more` is `true`, increment the offset by the limit to fetch the next page.
+
+## Versioning
+
+The Arc API does not currently use versioning. All endpoints reflect the latest behavior of the running server. Breaking changes will be communicated in the [changelog](/changelog/2026-03-06).
+
+## Discovery
+
+The root endpoint (`GET /`) returns discovery URLs. The health endpoint (`GET /health`) can be used for liveness checks. The OpenAPI spec is available at `GET /openapi.json`.

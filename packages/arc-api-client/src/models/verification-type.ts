@@ -14,6 +14,9 @@
 
 
 
+/**
+ * The evaluation method used by a verification control.
+ */
 
 export const VerificationType = {
     AI: 'ai',

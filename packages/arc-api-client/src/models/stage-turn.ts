@@ -15,20 +15,21 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AssistantStageTurn } from './assistant-stage-turn';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { SystemStageTurn } from './system-stage-turn';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ToolStageTurn } from './tool-stage-turn';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { ToolUse } from './tool-use';
 
-export interface StageTurn {
-    'kind': StageTurnKindEnum;
-    'content'?: string;
-    'tools'?: Array<ToolUse>;
-}
-
-export const StageTurnKindEnum = {
-    SYSTEM: 'system',
-    ASSISTANT: 'assistant',
-    TOOL: 'tool'
-} as const;
-
-export type StageTurnKindEnum = typeof StageTurnKindEnum[keyof typeof StageTurnKindEnum];
+/**
+ * @type StageTurn
+ * A single turn in a stage conversation — a system prompt, assistant response, or tool invocation block.
+ */
+export type StageTurn = { kind: 'assistant' } & AssistantStageTurn | { kind: 'system' } & SystemStageTurn | { kind: 'tool' } & ToolStageTurn;
 
 

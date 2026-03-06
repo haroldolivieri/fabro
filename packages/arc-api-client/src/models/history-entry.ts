@@ -14,11 +14,29 @@
 
 
 
+/**
+ * A previously executed query in the history log.
+ */
 export interface HistoryEntry {
+    /**
+     * Unique history entry identifier.
+     */
     'id': string;
+    /**
+     * SQL query that was executed.
+     */
     'sql': string;
+    /**
+     * Human-readable relative timestamp of execution.
+     */
     'timestamp': string;
+    /**
+     * Query execution time in seconds.
+     */
     'elapsed': number;
+    /**
+     * Number of rows returned.
+     */
     'row_count': number;
 }
 

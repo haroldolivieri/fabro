@@ -17,7 +17,13 @@
 // @ts-ignore
 import type { ErrorResponseEntry } from './error-response-entry';
 
+/**
+ * Standard error response containing one or more error entries.
+ */
 export interface ErrorResponse {
+    /**
+     * List of error entries.
+     */
     'errors': Array<ErrorResponseEntry>;
 }
 

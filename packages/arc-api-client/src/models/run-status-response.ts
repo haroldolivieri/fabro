@@ -17,11 +17,27 @@
 // @ts-ignore
 import type { RunStatus } from './run-status';
 
+/**
+ * Current status of a run with optional error and queue position.
+ */
 export interface RunStatusResponse {
+    /**
+     * Unique run identifier (ULID).
+     */
     'id': string;
     'status': RunStatus;
+    /**
+     * Error message if the run failed.
+     */
     'error'?: string;
+    /**
+     * Position in the queue (1-based). Only present when status is `queued`.
+     */
     'queue_position'?: number;
+    /**
+     * Timestamp when the run was created.
+     */
+    'created_at': string;
 }
 
 

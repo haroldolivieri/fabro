@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Execution status of a workflow stage.
+ */
 
 export const StageStatus = {
     COMPLETED: 'completed',

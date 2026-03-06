@@ -22,7 +22,7 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
-import type { CancelRun200Response } from '../models';
+import type { CancelRunResponse } from '../models';
 // @ts-ignore
 import type { ErrorResponse } from '../models';
 // @ts-ignore
@@ -39,9 +39,9 @@ import type { StartRunResponse } from '../models';
 export const RunsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Cancels a running or queued run. Returns 409 if the run has already completed or been cancelled.
          * @summary Cancel Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -80,10 +80,10 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * 
+         * Returns a paginated list of runs for the board view, ordered by recency.
          * @summary List Runs
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -127,9 +127,9 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * 
+         * Returns the current status of a run, including error details and queue position if applicable.
          * @summary Retrieve Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -168,9 +168,9 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * 
+         * Renders the workflow graph as an SVG image using Graphviz.
          * @summary Render SVG
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -209,7 +209,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * 
+         * Queues a new workflow run from a DOT graph source. The run is created in `queued` status and will be picked up by the scheduler.
          * @summary Start Run
          * @param {StartRunRequest} startRunRequest 
          * @param {*} [options] Override http request option.
@@ -251,9 +251,9 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * 
+         * Opens a server-sent event (SSE) stream for real-time run updates. Returns 410 if the stream has been closed.
          * @summary Stream Run Events
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -301,23 +301,23 @@ export const RunsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = RunsApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Cancels a running or queued run. Returns 409 if the run has already completed or been cancelled.
          * @summary Cancel Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async cancelRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CancelRun200Response>> {
+        async cancelRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CancelRunResponse>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.cancelRun(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.cancelRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns a paginated list of runs for the board view, ordered by recency.
          * @summary List Runs
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -328,9 +328,9 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns the current status of a run, including error details and queue position if applicable.
          * @summary Retrieve Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -341,9 +341,9 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Renders the workflow graph as an SVG image using Graphviz.
          * @summary Render SVG
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -354,7 +354,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Queues a new workflow run from a DOT graph source. The run is created in `queued` status and will be picked up by the scheduler.
          * @summary Start Run
          * @param {StartRunRequest} startRunRequest 
          * @param {*} [options] Override http request option.
@@ -367,9 +367,9 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Opens a server-sent event (SSE) stream for real-time run updates. Returns 410 if the stream has been closed.
          * @summary Stream Run Events
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -389,20 +389,20 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
     const localVarFp = RunsApiFp(configuration)
     return {
         /**
-         * 
+         * Cancels a running or queued run. Returns 409 if the run has already completed or been cancelled.
          * @summary Cancel Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        cancelRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<CancelRun200Response> {
+        cancelRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<CancelRunResponse> {
             return localVarFp.cancelRun(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns a paginated list of runs for the board view, ordered by recency.
          * @summary List Runs
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -410,9 +410,9 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.listRuns(pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns the current status of a run, including error details and queue position if applicable.
          * @summary Retrieve Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -420,9 +420,9 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.retrieveRun(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Renders the workflow graph as an SVG image using Graphviz.
          * @summary Render SVG
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -430,7 +430,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.retrieveRunSvg(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Queues a new workflow run from a DOT graph source. The run is created in `queued` status and will be picked up by the scheduler.
          * @summary Start Run
          * @param {StartRunRequest} startRunRequest 
          * @param {*} [options] Override http request option.
@@ -440,9 +440,9 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.startRun(startRunRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Opens a server-sent event (SSE) stream for real-time run updates. Returns 410 if the stream has been closed.
          * @summary Stream Run Events
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -457,9 +457,9 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
  */
 export class RunsApi extends BaseAPI {
     /**
-     * 
+     * Cancels a running or queued run. Returns 409 if the run has already completed or been cancelled.
      * @summary Cancel Run
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -468,10 +468,10 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns a paginated list of runs for the board view, ordered by recency.
      * @summary List Runs
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -480,9 +480,9 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns the current status of a run, including error details and queue position if applicable.
      * @summary Retrieve Run
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -491,9 +491,9 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Renders the workflow graph as an SVG image using Graphviz.
      * @summary Render SVG
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -502,7 +502,7 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Queues a new workflow run from a DOT graph source. The run is created in `queued` status and will be picked up by the scheduler.
      * @summary Start Run
      * @param {StartRunRequest} startRunRequest 
      * @param {*} [options] Override http request option.
@@ -513,9 +513,9 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Opens a server-sent event (SSE) stream for real-time run updates. Returns 410 if the stream has been closed.
      * @summary Stream Run Events
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

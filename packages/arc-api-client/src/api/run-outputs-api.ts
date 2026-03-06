@@ -35,10 +35,10 @@ import type { RunUsage } from '../models';
 export const RunOutputsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
          * @summary List Run Compare
-         * @param {string} id 
-         * @param {string} [checkpoint] 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [checkpoint] Filter file diffs to a specific checkpoint. Defaults to all changes.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -81,9 +81,9 @@ export const RunOutputsApiAxiosParamCreator = function (configuration?: Configur
             };
         },
         /**
-         * 
+         * Returns verification results for a run, organized by category with individual control statuses.
          * @summary List Run Verifications
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -122,9 +122,9 @@ export const RunOutputsApiAxiosParamCreator = function (configuration?: Configur
             };
         },
         /**
-         * 
+         * Returns token and cost usage broken down by stage and model for a specific run.
          * @summary Retrieve Run Usage
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -172,10 +172,10 @@ export const RunOutputsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = RunOutputsApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
          * @summary List Run Compare
-         * @param {string} id 
-         * @param {string} [checkpoint] 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [checkpoint] Filter file diffs to a specific checkpoint. Defaults to all changes.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -186,9 +186,9 @@ export const RunOutputsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns verification results for a run, organized by category with individual control statuses.
          * @summary List Run Verifications
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -199,9 +199,9 @@ export const RunOutputsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns token and cost usage broken down by stage and model for a specific run.
          * @summary Retrieve Run Usage
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -221,10 +221,10 @@ export const RunOutputsApiFactory = function (configuration?: Configuration, bas
     const localVarFp = RunOutputsApiFp(configuration)
     return {
         /**
-         * 
+         * Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
          * @summary List Run Compare
-         * @param {string} id 
-         * @param {string} [checkpoint] 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [checkpoint] Filter file diffs to a specific checkpoint. Defaults to all changes.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -232,9 +232,9 @@ export const RunOutputsApiFactory = function (configuration?: Configuration, bas
             return localVarFp.listRunCompare(id, checkpoint, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns verification results for a run, organized by category with individual control statuses.
          * @summary List Run Verifications
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -242,9 +242,9 @@ export const RunOutputsApiFactory = function (configuration?: Configuration, bas
             return localVarFp.listRunVerifications(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns token and cost usage broken down by stage and model for a specific run.
          * @summary Retrieve Run Usage
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -259,10 +259,10 @@ export const RunOutputsApiFactory = function (configuration?: Configuration, bas
  */
 export class RunOutputsApi extends BaseAPI {
     /**
-     * 
+     * Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
      * @summary List Run Compare
-     * @param {string} id 
-     * @param {string} [checkpoint] 
+     * @param {string} id Unique run identifier (ULID).
+     * @param {string} [checkpoint] Filter file diffs to a specific checkpoint. Defaults to all changes.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -271,9 +271,9 @@ export class RunOutputsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns verification results for a run, organized by category with individual control statuses.
      * @summary List Run Verifications
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -282,9 +282,9 @@ export class RunOutputsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns token and cost usage broken down by stage and model for a specific run.
      * @summary Retrieve Run Usage
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

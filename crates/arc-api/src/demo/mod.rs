@@ -42,7 +42,7 @@ pub async fn start_run_stub(
 ) -> Response {
     (
         StatusCode::CREATED,
-        Json(serde_json::json!({"id": "demo-run-new"})),
+        Json(serde_json::json!({"id": "demo-run-new", "status": "queued", "created_at": "2026-03-06T14:30:00Z"})),
     )
         .into_response()
 }
@@ -113,7 +113,7 @@ pub async fn steer_run_stub(
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
 ) -> Response {
-    (StatusCode::OK, Json(serde_json::json!({"accepted": true}))).into_response()
+    (StatusCode::ACCEPTED, Json(serde_json::json!({"accepted": true}))).into_response()
 }
 
 pub async fn generate_preview_url_stub(
@@ -134,13 +134,14 @@ pub async fn get_run_status(
     Path(id): Path<String>,
 ) -> Response {
     match runs::list_items().into_iter().find(|r| r.id == id) {
-        Some(_) => (
+        Some(item) => (
             StatusCode::OK,
             Json(arc_types::RunStatusResponse {
                 id: id.clone(),
                 status: arc_types::RunStatus::Running,
                 error: None,
                 queue_position: None,
+                created_at: item.created_at,
             }),
         )
             .into_response(),
@@ -452,7 +453,7 @@ pub async fn trigger_workflow_run_stub(
 ) -> Response {
     (
         StatusCode::CREATED,
-        Json(serde_json::json!({"id": "demo-workflow-run"})),
+        Json(serde_json::json!({"id": "demo-workflow-run", "status": "queued", "created_at": "2026-03-06T14:30:00Z"})),
     )
         .into_response()
 }
@@ -597,7 +598,7 @@ pub async fn save_query_stub(
 ) -> Response {
     (
         StatusCode::CREATED,
-        Json(serde_json::json!({"id": "new-q", "name": "New Query", "sql": "SELECT 1"})),
+        Json(serde_json::json!({"id": "new-q", "name": "New Query", "sql": "SELECT 1", "created_at": "2026-03-06T16:00:00Z"})),
     )
         .into_response()
 }
@@ -609,7 +610,7 @@ pub async fn update_query_stub(
 ) -> Response {
     (
         StatusCode::OK,
-        Json(serde_json::json!({"id": "1", "name": "Updated", "sql": "SELECT 1"})),
+        Json(serde_json::json!({"id": "1", "name": "Updated", "sql": "SELECT 1", "created_at": "2026-03-01T10:00:00Z", "updated_at": "2026-03-06T16:00:00Z"})),
     )
         .into_response()
 }
@@ -687,6 +688,11 @@ pub async fn get_aggregate_usage(
 
 mod runs {
     use arc_types::*;
+    use chrono::{DateTime, Utc};
+
+    fn ts(s: &str) -> DateTime<Utc> {
+        s.parse().unwrap()
+    }
 
     pub fn list_items() -> Vec<RunListItem> {
         vec![
@@ -706,6 +712,7 @@ mod runs {
                 comments: Some(0),
                 question: None,
                 sandbox_id: Some("sb-a1b2c3d4".into()),
+                created_at: ts("2026-03-06T14:30:00Z"),
             },
             RunListItem {
                 id: "run-2".into(),
@@ -723,6 +730,7 @@ mod runs {
                 comments: Some(0),
                 question: None,
                 sandbox_id: Some("sb-e5f6g7h8".into()),
+                created_at: ts("2026-03-06T12:00:00Z"),
             },
             RunListItem {
                 id: "run-3".into(),
@@ -740,6 +748,7 @@ mod runs {
                 comments: Some(0),
                 question: None,
                 sandbox_id: Some("sb-i9j0k1l2".into()),
+                created_at: ts("2026-03-05T09:20:00Z"),
             },
             RunListItem {
                 id: "run-4".into(),
@@ -757,6 +766,7 @@ mod runs {
                 comments: Some(0),
                 question: Some("Accept or push for another round?".into()),
                 sandbox_id: Some("sb-q7r8s9t0".into()),
+                created_at: ts("2026-03-04T15:00:00Z"),
             },
             RunListItem {
                 id: "run-5".into(),
@@ -774,6 +784,7 @@ mod runs {
                 comments: Some(0),
                 question: Some("Proceed from investigation to fix?".into()),
                 sandbox_id: Some("sb-u1v2w3x4".into()),
+                created_at: ts("2026-03-04T10:00:00Z"),
             },
             RunListItem {
                 id: "run-6".into(),
@@ -827,6 +838,7 @@ mod runs {
                 comments: Some(4),
                 question: None,
                 sandbox_id: Some("sb-m3n4o5p6".into()),
+                created_at: ts("2026-03-03T16:45:00Z"),
             },
             RunListItem {
                 id: "run-7".into(),
@@ -870,6 +882,7 @@ mod runs {
                 comments: Some(1),
                 question: None,
                 sandbox_id: Some("sb-y5z6a7b8".into()),
+                created_at: ts("2026-03-03T11:00:00Z"),
             },
             RunListItem {
                 id: "run-8".into(),
@@ -948,6 +961,7 @@ mod runs {
                 comments: Some(7),
                 question: None,
                 sandbox_id: Some("sb-c9d0e1f2".into()),
+                created_at: ts("2026-02-28T14:00:00Z"),
             },
             RunListItem {
                 id: "run-9".into(),
@@ -996,6 +1010,7 @@ mod runs {
                 comments: Some(2),
                 question: None,
                 sandbox_id: Some("sb-g3h4i5j6".into()),
+                created_at: ts("2026-02-27T09:00:00Z"),
             },
             RunListItem {
                 id: "run-10".into(),
@@ -1034,6 +1049,7 @@ mod runs {
                 comments: Some(0),
                 question: None,
                 sandbox_id: Some("sb-k7l8m9n0".into()),
+                created_at: ts("2026-02-26T08:00:00Z"),
             },
         ]
     }
@@ -1073,16 +1089,16 @@ mod runs {
 
     pub fn turns() -> Vec<StageTurn> {
         vec![
-            StageTurn { kind: StageTurnKind::System, content: Some("You are a drift detection agent. Compare the production and staging environments and identify any configuration or code drift.".into()), tools: vec![] },
-            StageTurn { kind: StageTurnKind::Assistant, content: Some("I'll start by loading the environment configurations for both production and staging to compare them.".into()), tools: vec![] },
-            StageTurn {
-                kind: StageTurnKind::Tool, content: None,
+            StageTurn::SystemStageTurn(SystemStageTurn { kind: SystemStageTurnKind::System, content: "You are a drift detection agent. Compare the production and staging environments and identify any configuration or code drift.".into(), tools: vec![] }),
+            StageTurn::AssistantStageTurn(AssistantStageTurn { kind: AssistantStageTurnKind::Assistant, content: "I'll start by loading the environment configurations for both production and staging to compare them.".into(), tools: vec![] }),
+            StageTurn::ToolStageTurn(ToolStageTurn {
+                kind: ToolStageTurnKind::Tool, content: None,
                 tools: vec![
                     ToolUse { id: "toolu_01".into(), tool_name: "read_file".into(), input: r#"{ "path": "environments/production/config.toml" }"#.into(), result: "[redis]\nhost = \"redis-prod.internal\"\nport = 6379".into(), is_error: false, duration_ms: Some(45) },
                     ToolUse { id: "toolu_02".into(), tool_name: "read_file".into(), input: r#"{ "path": "environments/staging/config.toml" }"#.into(), result: "[redis]\nhost = \"redis-staging.internal\"\nport = 6379".into(), is_error: false, duration_ms: Some(38) },
                 ],
-            },
-            StageTurn { kind: StageTurnKind::Assistant, content: Some("I've detected drift in 3 resources between production and staging:\n\n1. **redis.max_connections** — production has 200, staging has 100\n2. **redis.tls** — enabled in production, disabled in staging\n3. **iam.session_duration** — production uses 3600s, staging uses 1800s".into()), tools: vec![] },
+            }),
+            StageTurn::AssistantStageTurn(AssistantStageTurn { kind: AssistantStageTurnKind::Assistant, content: "I've detected drift in 3 resources between production and staging:\n\n1. **redis.max_connections** — production has 200, staging has 100\n2. **redis.tls** — enabled in production, disabled in staging\n3. **iam.session_duration** — production uses 3600s, staging uses 1800s".into(), tools: vec![] }),
         ]
     }
 
@@ -2295,6 +2311,11 @@ mod verifications {
 
 mod retros {
     use arc_types::*;
+    use chrono::{DateTime, Utc};
+
+    fn ts(s: &str) -> DateTime<Utc> {
+        s.parse().unwrap()
+    }
 
     pub fn list_items() -> Vec<RetroListItem> {
         vec![
@@ -2302,7 +2323,7 @@ mod retros {
                 run_id: "run-1".into(),
                 workflow_name: "implement".into(),
                 goal: "Add rate limiting to auth endpoints".into(),
-                timestamp: "2026-02-28T14:32:00Z".into(),
+                timestamp: ts("2026-02-28T14:32:00Z"),
                 smoothness: Some(SmoothnessRating::Smooth),
                 stats: RetroStats {
                     total_duration_ms: 389000,
@@ -2323,7 +2344,7 @@ mod retros {
                 run_id: "run-2".into(),
                 workflow_name: "implement".into(),
                 goal: "Migrate to React Router v7".into(),
-                timestamp: "2026-02-28T10:15:00Z".into(),
+                timestamp: ts("2026-02-28T10:15:00Z"),
                 smoothness: Some(SmoothnessRating::Bumpy),
                 stats: RetroStats {
                     total_duration_ms: 975000,
@@ -2347,7 +2368,7 @@ mod retros {
                 run_id: "run-6".into(),
                 workflow_name: "implement".into(),
                 goal: "Add dark mode toggle".into(),
-                timestamp: "2026-02-27T16:45:00Z".into(),
+                timestamp: ts("2026-02-27T16:45:00Z"),
                 smoothness: Some(SmoothnessRating::Effortless),
                 stats: RetroStats {
                     total_duration_ms: 216000,
@@ -2367,7 +2388,7 @@ mod retros {
                 run_id: "run-3".into(),
                 workflow_name: "fix_build".into(),
                 goal: "Fix config parsing for nested values".into(),
-                timestamp: "2026-02-27T09:20:00Z".into(),
+                timestamp: ts("2026-02-27T09:20:00Z"),
                 smoothness: Some(SmoothnessRating::Struggled),
                 stats: RetroStats {
                     total_duration_ms: 830000,
@@ -2388,7 +2409,7 @@ mod retros {
                 run_id: "run-8".into(),
                 workflow_name: "implement".into(),
                 goal: "Implement webhook retry logic".into(),
-                timestamp: "2026-02-26T11:00:00Z".into(),
+                timestamp: ts("2026-02-26T11:00:00Z"),
                 smoothness: Some(SmoothnessRating::Smooth),
                 stats: RetroStats {
                     total_duration_ms: 440000,
@@ -2557,12 +2578,17 @@ mod sessions {
 
 mod insights {
     use arc_types::*;
+    use chrono::{DateTime, Utc};
+
+    fn ts(s: &str) -> DateTime<Utc> {
+        s.parse().unwrap()
+    }
 
     pub fn saved_queries() -> Vec<SavedQuery> {
         vec![
-            SavedQuery { id: "1".into(), name: "Run duration by workflow".into(), sql: "SELECT workflow_name, AVG(duration_seconds) as avg_duration,\n       COUNT(*) as run_count\nFROM runs\nGROUP BY workflow_name\nORDER BY avg_duration DESC\nLIMIT 20".into() },
-            SavedQuery { id: "2".into(), name: "Daily failure rate".into(), sql: "SELECT date_trunc('day', created_at) as day,\n       COUNT(*) FILTER (WHERE status = 'failed') as failures,\n       COUNT(*) as total\nFROM runs\nGROUP BY 1\nORDER BY 1 DESC\nLIMIT 30".into() },
-            SavedQuery { id: "3".into(), name: "Top repos by activity".into(), sql: "SELECT repo, COUNT(*) as runs\nFROM runs\nGROUP BY repo\nORDER BY runs DESC".into() },
+            SavedQuery { id: "1".into(), name: "Run duration by workflow".into(), sql: "SELECT workflow_name, AVG(duration_seconds) as avg_duration,\n       COUNT(*) as run_count\nFROM runs\nGROUP BY workflow_name\nORDER BY avg_duration DESC\nLIMIT 20".into(), created_at: ts("2026-03-01T10:00:00Z"), updated_at: Some(ts("2026-03-05T14:30:00Z")) },
+            SavedQuery { id: "2".into(), name: "Daily failure rate".into(), sql: "SELECT date_trunc('day', created_at) as day,\n       COUNT(*) FILTER (WHERE status = 'failed') as failures,\n       COUNT(*) as total\nFROM runs\nGROUP BY 1\nORDER BY 1 DESC\nLIMIT 30".into(), created_at: ts("2026-03-02T09:00:00Z"), updated_at: None },
+            SavedQuery { id: "3".into(), name: "Top repos by activity".into(), sql: "SELECT repo, COUNT(*) as runs\nFROM runs\nGROUP BY repo\nORDER BY runs DESC".into(), created_at: ts("2026-03-03T11:00:00Z"), updated_at: None },
         ]
     }
 

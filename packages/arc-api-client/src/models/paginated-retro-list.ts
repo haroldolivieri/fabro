@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { RetroListItem } from './retro-list-item';
 
+/**
+ * Paginated list of run retrospectives.
+ */
 export interface PaginatedRetroList {
     'data': Array<RetroListItem>;
     'meta': PaginationMeta;

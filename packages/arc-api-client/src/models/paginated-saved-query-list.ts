@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { SavedQuery } from './saved-query';
 
+/**
+ * Paginated list of saved queries.
+ */
 export interface PaginatedSavedQueryList {
     'data': Array<SavedQuery>;
     'meta': PaginationMeta;

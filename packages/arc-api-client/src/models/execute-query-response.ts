@@ -14,10 +14,25 @@
 
 
 
+/**
+ * Columnar result set from an executed query.
+ */
 export interface ExecuteQueryResponse {
+    /**
+     * Column names in the result set.
+     */
     'columns': Array<string>;
+    /**
+     * Result rows, each an array of values matching the column order.
+     */
     'rows': Array<Array<any>>;
+    /**
+     * Query execution time in seconds.
+     */
     'elapsed': number;
+    /**
+     * Number of rows returned.
+     */
     'row_count': number;
 }
 

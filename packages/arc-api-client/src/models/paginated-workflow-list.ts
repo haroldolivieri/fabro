@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { WorkflowListItem } from './workflow-list-item';
 
+/**
+ * Paginated list of workflows.
+ */
 export interface PaginatedWorkflowList {
     'data': Array<WorkflowListItem>;
     'meta': PaginationMeta;

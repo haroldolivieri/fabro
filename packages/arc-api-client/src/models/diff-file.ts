@@ -14,8 +14,17 @@
 
 
 
+/**
+ * A file\'s contents at one side of a diff.
+ */
 export interface DiffFile {
+    /**
+     * File path relative to the repository root.
+     */
     'name': string;
+    /**
+     * Full file contents. Empty string for newly created or deleted files.
+     */
     'contents': string;
 }
 

@@ -33,11 +33,11 @@ import type { PaginatedProjectList } from '../models';
 export const ProjectsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Returns a paginated list of branches for a specific project.
          * @summary List Branches
-         * @param {string} id 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} id Unique identifier of a project (repository).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -84,10 +84,10 @@ export const ProjectsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         * 
+         * Returns a paginated list of registered projects (repositories).
          * @summary List Projects
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -140,11 +140,11 @@ export const ProjectsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = ProjectsApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Returns a paginated list of branches for a specific project.
          * @summary List Branches
-         * @param {string} id 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} id Unique identifier of a project (repository).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -155,10 +155,10 @@ export const ProjectsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns a paginated list of registered projects (repositories).
          * @summary List Projects
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -178,11 +178,11 @@ export const ProjectsApiFactory = function (configuration?: Configuration, baseP
     const localVarFp = ProjectsApiFp(configuration)
     return {
         /**
-         * 
+         * Returns a paginated list of branches for a specific project.
          * @summary List Branches
-         * @param {string} id 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} id Unique identifier of a project (repository).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -190,10 +190,10 @@ export const ProjectsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.listBranches(id, pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns a paginated list of registered projects (repositories).
          * @summary List Projects
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -208,11 +208,11 @@ export const ProjectsApiFactory = function (configuration?: Configuration, baseP
  */
 export class ProjectsApi extends BaseAPI {
     /**
-     * 
+     * Returns a paginated list of branches for a specific project.
      * @summary List Branches
-     * @param {string} id 
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {string} id Unique identifier of a project (repository).
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -221,10 +221,10 @@ export class ProjectsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns a paginated list of registered projects (repositories).
      * @summary List Projects
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

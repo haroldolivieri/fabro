@@ -153,17 +153,7 @@ ARC_LOG=debug arc run start workflow.dot
 
 ### API: Server-Sent Events
 
-When running workflows through the API server, subscribe to a live event stream:
-
-```
-GET /runs/{id}/events
-```
-
-This returns a Server-Sent Events (SSE) stream. Each event is a JSON-serialized `WorkflowRunEvent`. The stream stays open until the run completes, at which point the connection closes. If the run has already finished, the endpoint returns `410 Gone`.
-
-```bash
-curl -N http://localhost:3000/runs/01JKXYZ.../events
-```
+When running workflows through the API server, subscribe to a live event stream via the [run events endpoint](/api-reference/runs#get-events). Each event is a JSON-serialized `WorkflowRunEvent`. The stream stays open until the run completes.
 
 ### Web UI
 
@@ -204,34 +194,13 @@ Each run's logs directory contains a standard set of files:
 
 ### Inspecting stages and turns
 
-The API provides endpoints for drilling into individual stages and the agent turns within them:
-
-```
-GET /runs/{id}/stages
-```
-
-Returns per-stage metadata: node ID, status, duration, cost, files touched.
-
-```
-GET /runs/{id}/stages/{stageId}/turns
-```
-
-Returns the conversation turns within an agent stage — each user prompt, assistant response, and tool call with its result.
+The API provides endpoints for drilling into individual stages and the agent turns within them. See the [stages](/api-reference/run-internals#get-stages) and [turns](/api-reference/run-internals#get-stage-turns) API reference for details.
 
 ## Insights (SQL analytics)
 
 The Insights feature lets you run SQL queries across your run data using DuckDB. This is useful for aggregate analysis — finding slow workflows, tracking failure rates, comparing model costs, and spotting trends.
 
-### API endpoints
-
-| Endpoint | Description |
-|---|---|
-| `GET /insights/queries` | List saved queries |
-| `POST /insights/queries` | Save a new query |
-| `PUT /insights/queries/{id}` | Update a saved query |
-| `DELETE /insights/queries/{id}` | Delete a saved query |
-| `POST /insights/execute` | Execute a SQL query |
-| `GET /insights/history` | View recent query executions |
+Insights is managed through the [Insights API endpoints](/api-reference/insights). You can save, update, and execute queries programmatically.
 
 ### Example queries
 
@@ -269,13 +238,7 @@ ORDER BY runs DESC
 
 ## Aggregate usage
 
-The API server tracks aggregate usage counters across all runs. These are available at:
-
-```
-GET /usage
-```
-
-This returns total run count, total runtime, and per-model breakdowns of token usage and cost. Counters reset on server restart.
+The API server tracks aggregate usage counters across all runs — total run count, total runtime, and per-model breakdowns of token usage and cost. See the [usage endpoint](/api-reference/run-outputs#get-usage) in the API reference. Counters reset on server restart.
 
 ## Credential redaction
 

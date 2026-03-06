@@ -17,9 +17,21 @@
 // @ts-ignore
 import type { VerificationControl } from './verification-control';
 
+/**
+ * A group of related verification controls.
+ */
 export interface VerificationCategory {
+    /**
+     * Category name.
+     */
     'name': string;
+    /**
+     * Guiding question for the category.
+     */
     'question': string;
+    /**
+     * Verification controls in this category.
+     */
     'controls': Array<VerificationControl>;
 }
 

@@ -19,9 +19,10 @@ index.ts
 models/aggregate-usage.ts
 models/api-question-option.ts
 models/api-question.ts
+models/assistant-stage-turn.ts
 models/assistant-turn.ts
 models/branch.ts
-models/cancel-run200-response.ts
+models/cancel-run-response.ts
 models/check-run-status.ts
 models/check-run.ts
 models/control-detail.ts
@@ -90,9 +91,11 @@ models/stage-turn.ts
 models/start-run-request.ts
 models/start-run-response.ts
 models/steer-request.ts
-models/steer-run200-response.ts
+models/steer-run-response.ts
 models/submit-answer-request.ts
 models/submit-answer-response.ts
+models/system-stage-turn.ts
+models/tool-stage-turn.ts
 models/tool-turn.ts
 models/tool-use.ts
 models/usage-by-model.ts

@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { RunStage } from './run-stage';
 
+/**
+ * Paginated list of run stages.
+ */
 export interface PaginatedRunStageList {
     'data': Array<RunStage>;
     'meta': PaginationMeta;

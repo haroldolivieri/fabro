@@ -20,6 +20,9 @@ import type { ApiQuestion } from './api-question';
 // @ts-ignore
 import type { PaginationMeta } from './pagination-meta';
 
+/**
+ * Paginated list of pending questions.
+ */
 export interface PaginatedApiQuestionList {
     'data': Array<ApiQuestion>;
     'meta': PaginationMeta;

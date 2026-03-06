@@ -14,11 +14,29 @@
 
 
 
+/**
+ * Usage statistics grouped by model.
+ */
 export interface UsageByModel {
+    /**
+     * Model slug.
+     */
     'model': string;
+    /**
+     * Number of stages that used this model.
+     */
     'stages': number;
+    /**
+     * Total input tokens for this model.
+     */
     'input_tokens': number;
+    /**
+     * Total output tokens for this model.
+     */
     'output_tokens': number;
+    /**
+     * Total cost in USD for this model.
+     */
     'cost': number;
 }
 

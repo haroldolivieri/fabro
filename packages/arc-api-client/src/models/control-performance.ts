@@ -20,10 +20,22 @@ import type { EvaluationResult } from './evaluation-result';
 // @ts-ignore
 import type { VerificationMode } from './verification-mode';
 
+/**
+ * Performance metrics for a verification control.
+ */
 export interface ControlPerformance {
     'mode': VerificationMode;
+    /**
+     * F1 score of the control\'s AI evaluator.
+     */
     'f1'?: number;
+    /**
+     * Pass@1 rate.
+     */
     'pass_at_1'?: number;
+    /**
+     * Recent evaluation results (newest first).
+     */
     'evaluations': Array<EvaluationResult>;
 }
 

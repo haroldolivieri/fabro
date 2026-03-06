@@ -37,11 +37,11 @@ import type { WorkflowDetail } from '../models';
 export const WorkflowsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Returns a paginated list of runs filtered to a specific workflow.
          * @summary List Workflow Runs
-         * @param {string} name 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} name URL-safe slug identifying a workflow definition.
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -88,10 +88,10 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
             };
         },
         /**
-         * 
+         * Returns a paginated list of workflow definitions available for execution.
          * @summary List Workflows
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -135,9 +135,9 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
             };
         },
         /**
-         * 
+         * Returns the full detail of a workflow including its DOT graph, TOML config, and description.
          * @summary Retrieve Workflow
-         * @param {string} name 
+         * @param {string} name URL-safe slug identifying a workflow definition.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -176,9 +176,9 @@ export const WorkflowsApiAxiosParamCreator = function (configuration?: Configura
             };
         },
         /**
-         * 
+         * Queues a new run of the specified workflow using its stored DOT graph.
          * @summary Start Workflow Run
-         * @param {string} name 
+         * @param {string} name URL-safe slug identifying a workflow definition.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -226,11 +226,11 @@ export const WorkflowsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = WorkflowsApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Returns a paginated list of runs filtered to a specific workflow.
          * @summary List Workflow Runs
-         * @param {string} name 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} name URL-safe slug identifying a workflow definition.
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -241,10 +241,10 @@ export const WorkflowsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns a paginated list of workflow definitions available for execution.
          * @summary List Workflows
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -255,9 +255,9 @@ export const WorkflowsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns the full detail of a workflow including its DOT graph, TOML config, and description.
          * @summary Retrieve Workflow
-         * @param {string} name 
+         * @param {string} name URL-safe slug identifying a workflow definition.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -268,9 +268,9 @@ export const WorkflowsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Queues a new run of the specified workflow using its stored DOT graph.
          * @summary Start Workflow Run
-         * @param {string} name 
+         * @param {string} name URL-safe slug identifying a workflow definition.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -290,11 +290,11 @@ export const WorkflowsApiFactory = function (configuration?: Configuration, base
     const localVarFp = WorkflowsApiFp(configuration)
     return {
         /**
-         * 
+         * Returns a paginated list of runs filtered to a specific workflow.
          * @summary List Workflow Runs
-         * @param {string} name 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} name URL-safe slug identifying a workflow definition.
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -302,10 +302,10 @@ export const WorkflowsApiFactory = function (configuration?: Configuration, base
             return localVarFp.listWorkflowRuns(name, pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns a paginated list of workflow definitions available for execution.
          * @summary List Workflows
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -313,9 +313,9 @@ export const WorkflowsApiFactory = function (configuration?: Configuration, base
             return localVarFp.listWorkflows(pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns the full detail of a workflow including its DOT graph, TOML config, and description.
          * @summary Retrieve Workflow
-         * @param {string} name 
+         * @param {string} name URL-safe slug identifying a workflow definition.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -323,9 +323,9 @@ export const WorkflowsApiFactory = function (configuration?: Configuration, base
             return localVarFp.retrieveWorkflow(name, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Queues a new run of the specified workflow using its stored DOT graph.
          * @summary Start Workflow Run
-         * @param {string} name 
+         * @param {string} name URL-safe slug identifying a workflow definition.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -340,11 +340,11 @@ export const WorkflowsApiFactory = function (configuration?: Configuration, base
  */
 export class WorkflowsApi extends BaseAPI {
     /**
-     * 
+     * Returns a paginated list of runs filtered to a specific workflow.
      * @summary List Workflow Runs
-     * @param {string} name 
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {string} name URL-safe slug identifying a workflow definition.
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -353,10 +353,10 @@ export class WorkflowsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns a paginated list of workflow definitions available for execution.
      * @summary List Workflows
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -365,9 +365,9 @@ export class WorkflowsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns the full detail of a workflow including its DOT graph, TOML config, and description.
      * @summary Retrieve Workflow
-     * @param {string} name 
+     * @param {string} name URL-safe slug identifying a workflow definition.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -376,9 +376,9 @@ export class WorkflowsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Queues a new run of the specified workflow using its stored DOT graph.
      * @summary Start Workflow Run
-     * @param {string} name 
+     * @param {string} name URL-safe slug identifying a workflow definition.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

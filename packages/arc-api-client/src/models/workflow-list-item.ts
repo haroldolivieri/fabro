@@ -14,12 +14,33 @@
 
 
 
+/**
+ * Summary of a workflow shown in list views.
+ */
 export interface WorkflowListItem {
+    /**
+     * Human-readable workflow name.
+     */
     'name': string;
+    /**
+     * URL-safe slug used in API paths.
+     */
     'slug': string;
+    /**
+     * DOT graph filename.
+     */
     'filename': string;
+    /**
+     * Human-readable relative timestamp of the last run.
+     */
     'last_run'?: string;
+    /**
+     * Cron-like schedule expression, if the workflow runs on a schedule.
+     */
     'schedule'?: string;
+    /**
+     * Human-readable relative timestamp of the next scheduled run.
+     */
     'next_run'?: string;
 }
 

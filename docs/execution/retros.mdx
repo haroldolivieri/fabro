@@ -116,71 +116,8 @@ arc run start workflow.dot --no-retro
 
 ### API
 
-Retrieve the retro for a specific run:
-
-```
-GET /runs/{id}/retro
-```
-
-Returns the full retro JSON, or `null` if no retro is available yet.
-
-List retros across all runs (paginated):
-
-```
-GET /retros
-```
-
-Returns a summary for each retro including `run_id`, `workflow_name`, `goal`, `timestamp`, `smoothness`, aggregate stats, and a count of friction points.
+Retros are also available via the REST API. See the [Retros API reference](/api-reference/retros) for endpoints to retrieve a single run's retro or list retros across all runs.
 
 ## Storage
 
 Retros are stored as `retro.json` in the run's logs directory alongside `checkpoint.json` and `progress.jsonl`. They are plain JSON files — easy to parse, query, or pipe into other tools.
-
-```json
-{
-  "run_id": "01JKXYZ...",
-  "workflow_name": "PlanImplement",
-  "goal": "Fix the authentication bug",
-  "timestamp": "2026-03-05T14:30:00Z",
-  "smoothness": "smooth",
-  "stages": [
-    {
-      "stage_id": "plan",
-      "stage_label": "Plan",
-      "status": "success",
-      "duration_ms": 5000,
-      "retries": 0,
-      "cost": 0.05,
-      "files_touched": ["plan.md"]
-    },
-    {
-      "stage_id": "implement",
-      "stage_label": "Implement",
-      "status": "success",
-      "duration_ms": 15000,
-      "retries": 1,
-      "cost": 0.10,
-      "files_touched": ["src/auth.rs", "src/auth_test.rs"]
-    }
-  ],
-  "stats": {
-    "total_duration_ms": 20000,
-    "total_cost": 0.15,
-    "total_retries": 1,
-    "files_touched": ["plan.md", "src/auth.rs", "src/auth_test.rs"],
-    "stages_completed": 2,
-    "stages_failed": 0
-  },
-  "intent": "Fix the authentication bug causing login failures",
-  "outcome": "Successfully fixed the token refresh logic",
-  "learnings": [
-    { "category": "code", "text": "Token refresh was in the wrong module" }
-  ],
-  "friction_points": [
-    { "kind": "retry", "description": "First implementation attempt had an incorrect import", "stage_id": "implement" }
-  ],
-  "open_items": [
-    { "kind": "test_gap", "description": "No integration test for token refresh flow" }
-  ]
-}
-```

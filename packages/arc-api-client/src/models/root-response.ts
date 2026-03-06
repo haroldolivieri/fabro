@@ -17,6 +17,9 @@
 // @ts-ignore
 import type { RootResponseUrls } from './root-response-urls';
 
+/**
+ * API discovery response with navigation URLs.
+ */
 export interface RootResponse {
     'urls': RootResponseUrls;
 }

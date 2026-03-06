@@ -20,8 +20,17 @@ import type { VerificationMode } from './verification-mode';
 // @ts-ignore
 import type { VerificationType } from './verification-type';
 
+/**
+ * Summary of a sibling verification control in the same category.
+ */
 export interface SiblingControl {
+    /**
+     * Human-readable control name.
+     */
     'name': string;
+    /**
+     * URL-safe slug.
+     */
     'slug': string;
     'type'?: VerificationType;
     'mode'?: VerificationMode;

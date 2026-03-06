@@ -20,10 +20,22 @@ import type { RunVerificationControl } from './run-verification-control';
 // @ts-ignore
 import type { VerificationStatus } from './verification-status';
 
+/**
+ * Verification results for a category within a run.
+ */
 export interface RunVerification {
+    /**
+     * Category name.
+     */
     'name': string;
+    /**
+     * The guiding question for this verification category.
+     */
     'question': string;
     'status': VerificationStatus;
+    /**
+     * Individual control results within this category.
+     */
     'controls': Array<RunVerificationControl>;
 }
 

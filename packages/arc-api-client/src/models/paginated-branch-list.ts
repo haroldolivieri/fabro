@@ -20,6 +20,9 @@ import type { Branch } from './branch';
 // @ts-ignore
 import type { PaginationMeta } from './pagination-meta';
 
+/**
+ * Paginated list of branches.
+ */
 export interface PaginatedBranchList {
     'data': Array<Branch>;
     'meta': PaginationMeta;

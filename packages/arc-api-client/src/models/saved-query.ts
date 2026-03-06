@@ -14,9 +14,29 @@
 
 
 
+/**
+ * A saved SQL query for the insights editor.
+ */
 export interface SavedQuery {
+    /**
+     * Unique query identifier.
+     */
     'id': string;
+    /**
+     * Human-readable query name.
+     */
     'name': string;
+    /**
+     * SQL query text.
+     */
     'sql': string;
+    /**
+     * Timestamp when the query was saved.
+     */
+    'created_at': string;
+    /**
+     * Timestamp when the query was last modified.
+     */
+    'updated_at'?: string;
 }
 

@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Qualitative assessment of how smoothly a run executed.
+ */
 
 export const SmoothnessRating = {
     EFFORTLESS: 'effortless',

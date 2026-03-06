@@ -20,22 +20,71 @@ import type { CheckRun } from './check-run';
 // @ts-ignore
 import type { RunListItemStatus } from './run-list-item-status';
 
+/**
+ * Summary of a run shown in the board view.
+ */
 export interface RunListItem {
+    /**
+     * Unique run identifier (ULID).
+     */
     'id': string;
+    /**
+     * Repository name.
+     */
     'repo': string;
+    /**
+     * Human-readable title describing the run\'s goal.
+     */
     'title': string;
+    /**
+     * Slug of the workflow that produced this run.
+     */
     'workflow': string;
     'status': RunListItemStatus;
+    /**
+     * Pull request number, if the run has opened a PR.
+     */
     'number'?: number;
+    /**
+     * Lines added in the run\'s diff.
+     */
     'additions'?: number;
+    /**
+     * Lines deleted in the run\'s diff.
+     */
     'deletions'?: number;
+    /**
+     * CI check run results for the run\'s PR.
+     */
     'checks'?: Array<CheckRun>;
+    /**
+     * Wall-clock time elapsed since the run started, in seconds.
+     */
     'elapsed_secs'?: number;
+    /**
+     * Whether the elapsed time exceeds the expected threshold.
+     */
     'elapsed_warning'?: boolean;
+    /**
+     * Compute resources allocated to the run.
+     */
     'resources'?: string;
+    /**
+     * Number of review comments on the run\'s PR.
+     */
     'comments'?: number;
+    /**
+     * Text of a pending human-in-the-loop question, if any.
+     */
     'question'?: string;
+    /**
+     * Identifier of the sandbox environment running this run.
+     */
     'sandbox_id'?: string;
+    /**
+     * Timestamp when the run was created.
+     */
+    'created_at': string;
 }
 
 

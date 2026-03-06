@@ -23,8 +23,17 @@ import type { FileCheckpoint } from './file-checkpoint';
 // @ts-ignore
 import type { FileDiff } from './file-diff';
 
+/**
+ * File-level diff output for a run, with checkpoint filtering support.
+ */
 export interface RunCompare {
+    /**
+     * Available checkpoints for filtering.
+     */
     'checkpoints': Array<FileCheckpoint>;
+    /**
+     * File diffs, optionally filtered by checkpoint.
+     */
     'files': Array<FileDiff>;
     'stats': DiffStats;
 }

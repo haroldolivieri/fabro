@@ -13,18 +13,14 @@
  */
 
 
-// May contain unused imports in some cases
-// @ts-ignore
-import type { PaginationMeta } from './pagination-meta';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { RunListItem } from './run-list-item';
 
 /**
- * Paginated list of runs.
+ * Response returned after cancelling a run.
  */
-export interface PaginatedRunList {
-    'data': Array<RunListItem>;
-    'meta': PaginationMeta;
+export interface CancelRunResponse {
+    /**
+     * Whether the cancellation was successful.
+     */
+    'cancelled': boolean;
 }
 

@@ -14,12 +14,33 @@
 
 
 
+/**
+ * Token and cost usage for a single stage within a run.
+ */
 export interface UsageStage {
+    /**
+     * Human-readable stage name.
+     */
     'stage': string;
+    /**
+     * Model slug used for this stage.
+     */
     'model': string;
+    /**
+     * Number of input tokens consumed.
+     */
     'input_tokens': number;
+    /**
+     * Number of output tokens generated.
+     */
     'output_tokens': number;
+    /**
+     * Wall-clock runtime in seconds.
+     */
     'runtime_secs': number;
+    /**
+     * Cost in USD for this stage.
+     */
     'cost': number;
 }
 

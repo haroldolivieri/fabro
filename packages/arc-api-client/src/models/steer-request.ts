@@ -14,9 +14,21 @@
 
 
 
+/**
+ * Request body for sending inline steering guidance to a running agent.
+ */
 export interface SteerRequest {
+    /**
+     * File path to target with the guidance.
+     */
     'file': string;
+    /**
+     * Line number in the file to annotate.
+     */
     'line': number;
+    /**
+     * Guidance text for the agent.
+     */
     'guidance': string;
 }
 

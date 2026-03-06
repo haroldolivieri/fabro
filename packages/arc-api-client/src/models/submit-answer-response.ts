@@ -14,7 +14,13 @@
 
 
 
+/**
+ * Response indicating whether the submitted answer was accepted.
+ */
 export interface SubmitAnswerResponse {
+    /**
+     * Whether the answer was accepted. Returns false if the question no longer exists.
+     */
     'accepted': boolean;
 }
 

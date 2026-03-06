@@ -85,8 +85,8 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
         /**
          * Returns sessions ordered by recency (newest first).
          * @summary List Sessions
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -286,8 +286,8 @@ export const SessionsApiFp = function(configuration?: Configuration) {
         /**
          * Returns sessions ordered by recency (newest first).
          * @summary List Sessions
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -360,8 +360,8 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
         /**
          * Returns sessions ordered by recency (newest first).
          * @summary List Sessions
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -421,8 +421,8 @@ export class SessionsApi extends BaseAPI {
     /**
      * Returns sessions ordered by recency (newest first).
      * @summary List Sessions
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

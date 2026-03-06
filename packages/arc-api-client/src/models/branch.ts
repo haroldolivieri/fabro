@@ -14,8 +14,17 @@
 
 
 
+/**
+ * A branch within a project.
+ */
 export interface Branch {
+    /**
+     * Branch identifier.
+     */
     'id': string;
+    /**
+     * Branch name.
+     */
     'name': string;
 }
 

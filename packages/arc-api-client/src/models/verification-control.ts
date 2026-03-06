@@ -23,14 +23,35 @@ import type { VerificationMode } from './verification-mode';
 // @ts-ignore
 import type { VerificationType } from './verification-type';
 
+/**
+ * A verification control within a category, with performance metrics.
+ */
 export interface VerificationControl {
+    /**
+     * Human-readable control name.
+     */
     'name': string;
+    /**
+     * URL-safe slug for API lookups.
+     */
     'slug': string;
+    /**
+     * Short description of what the control verifies.
+     */
     'description': string;
     'type'?: VerificationType;
     'mode'?: VerificationMode;
+    /**
+     * F1 score of the control\'s AI evaluator.
+     */
     'f1'?: number;
+    /**
+     * Pass@1 rate — probability of passing on the first evaluation.
+     */
     'pass_at_1'?: number;
+    /**
+     * Recent evaluation results (newest first).
+     */
     'evaluations'?: Array<EvaluationResult>;
 }
 

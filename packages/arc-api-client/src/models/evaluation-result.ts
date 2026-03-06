@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Outcome of a single verification evaluation.
+ */
 
 export const EvaluationResult = {
     PASS: 'pass',

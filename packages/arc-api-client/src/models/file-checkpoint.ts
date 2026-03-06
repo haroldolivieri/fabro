@@ -14,8 +14,17 @@
 
 
 
+/**
+ * A named checkpoint within a run, used to filter file diffs.
+ */
 export interface FileCheckpoint {
+    /**
+     * Checkpoint identifier.
+     */
     'id': string;
+    /**
+     * Human-readable label for the checkpoint.
+     */
     'label': string;
 }
 

@@ -17,12 +17,30 @@
 // @ts-ignore
 import type { SettingFieldType } from './setting-field-type';
 
+/**
+ * A single configurable setting within a group.
+ */
 export interface SettingField {
+    /**
+     * Machine-readable setting key.
+     */
     'key': string;
+    /**
+     * Human-readable label displayed in the UI.
+     */
     'label': string;
+    /**
+     * Current value of the setting.
+     */
     'value': string;
     'type': SettingFieldType;
+    /**
+     * Available options for select-type fields.
+     */
     'options'?: Array<string>;
+    /**
+     * Additional help text for the setting.
+     */
     'description'?: string;
 }
 

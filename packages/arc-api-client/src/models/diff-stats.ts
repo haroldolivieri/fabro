@@ -14,8 +14,17 @@
 
 
 
+/**
+ * Aggregate line-change statistics for a diff.
+ */
 export interface DiffStats {
+    /**
+     * Total lines added.
+     */
     'additions': number;
+    /**
+     * Total lines deleted.
+     */
     'deletions': number;
 }
 

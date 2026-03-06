@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Status of a CI check run.
+ */
 
 export const CheckRunStatus = {
     SUCCESS: 'success',

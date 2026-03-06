@@ -14,8 +14,17 @@
 
 
 
+/**
+ * A registered project (repository).
+ */
 export interface Project {
+    /**
+     * Unique project identifier.
+     */
     'id': string;
+    /**
+     * Human-readable project name.
+     */
     'name': string;
 }
 

@@ -14,8 +14,17 @@
 
 
 
+/**
+ * Request body for generating a preview URL from a sandbox port.
+ */
 export interface PreviewUrlRequest {
+    /**
+     * Port number exposed by the sandbox.
+     */
     'port': number;
+    /**
+     * Time-to-live for the preview URL in seconds.
+     */
     'expires_in_secs': number;
 }
 

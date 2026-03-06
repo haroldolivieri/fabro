@@ -20,8 +20,17 @@ import type { VerificationStatus } from './verification-status';
 // @ts-ignore
 import type { VerificationType } from './verification-type';
 
+/**
+ * A verification control result within a run.
+ */
 export interface RunVerificationControl {
+    /**
+     * Human-readable control name.
+     */
     'name': string;
+    /**
+     * Short description of what the control verifies.
+     */
     'description': string;
     'type'?: VerificationType;
     'status': VerificationStatus;

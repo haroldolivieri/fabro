@@ -20,13 +20,31 @@ import type { RetroStats } from './retro-stats';
 // @ts-ignore
 import type { SmoothnessRating } from './smoothness-rating';
 
+/**
+ * Summary of a run retrospective shown in list views.
+ */
 export interface RetroListItem {
+    /**
+     * Identifier of the run this retro belongs to.
+     */
     'run_id': string;
+    /**
+     * Name of the workflow that produced the run.
+     */
     'workflow_name': string;
+    /**
+     * The run\'s goal.
+     */
     'goal': string;
+    /**
+     * Timestamp when the retro was generated.
+     */
     'timestamp': string;
     'smoothness'?: SmoothnessRating;
     'stats': RetroStats;
+    /**
+     * Number of friction points identified in the retro.
+     */
     'friction_point_count': number;
 }
 

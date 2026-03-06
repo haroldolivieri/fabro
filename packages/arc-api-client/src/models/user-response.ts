@@ -14,7 +14,13 @@
 
 
 
+/**
+ * Information about the authenticated user.
+ */
 export interface UserResponse {
+    /**
+     * User\'s login identifier (e.g. GitHub username).
+     */
     'login': string;
 }
 

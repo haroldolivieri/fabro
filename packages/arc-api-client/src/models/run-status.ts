@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Lifecycle status of a run.
+ */
 
 export const RunStatus = {
     QUEUED: 'queued',

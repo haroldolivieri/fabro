@@ -41,7 +41,7 @@ import type { SavedQuery } from '../models';
 export const InsightsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Saves a new named SQL query for later reuse.
          * @summary Create Saved Query
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
@@ -83,9 +83,9 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         * 
+         * Permanently removes a saved query.
          * @summary Delete Saved Query
-         * @param {string} id 
+         * @param {string} id Unique identifier of a saved query.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -124,7 +124,7 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         * 
+         * Executes an ad-hoc SQL query against the analytics database and returns columnar results.
          * @summary Execute Query
          * @param {ExecuteQueryRequest} executeQueryRequest 
          * @param {*} [options] Override http request option.
@@ -166,10 +166,10 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         * 
+         * Returns a paginated history of recently executed queries with timing and row counts.
          * @summary List Query History
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -213,10 +213,10 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         * 
+         * Returns a paginated list of saved SQL queries for the insights editor.
          * @summary List Saved Queries
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -260,9 +260,9 @@ export const InsightsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         * 
+         * Replaces the name and SQL of an existing saved query.
          * @summary Update Saved Query
-         * @param {string} id 
+         * @param {string} id Unique identifier of a saved query.
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -315,7 +315,7 @@ export const InsightsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = InsightsApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Saves a new named SQL query for later reuse.
          * @summary Create Saved Query
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
@@ -328,9 +328,9 @@ export const InsightsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Permanently removes a saved query.
          * @summary Delete Saved Query
-         * @param {string} id 
+         * @param {string} id Unique identifier of a saved query.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -341,7 +341,7 @@ export const InsightsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Executes an ad-hoc SQL query against the analytics database and returns columnar results.
          * @summary Execute Query
          * @param {ExecuteQueryRequest} executeQueryRequest 
          * @param {*} [options] Override http request option.
@@ -354,10 +354,10 @@ export const InsightsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns a paginated history of recently executed queries with timing and row counts.
          * @summary List Query History
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -368,10 +368,10 @@ export const InsightsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns a paginated list of saved SQL queries for the insights editor.
          * @summary List Saved Queries
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -382,9 +382,9 @@ export const InsightsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Replaces the name and SQL of an existing saved query.
          * @summary Update Saved Query
-         * @param {string} id 
+         * @param {string} id Unique identifier of a saved query.
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -405,7 +405,7 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
     const localVarFp = InsightsApiFp(configuration)
     return {
         /**
-         * 
+         * Saves a new named SQL query for later reuse.
          * @summary Create Saved Query
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
@@ -415,9 +415,9 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.createSavedQuery(saveQueryRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Permanently removes a saved query.
          * @summary Delete Saved Query
-         * @param {string} id 
+         * @param {string} id Unique identifier of a saved query.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -425,7 +425,7 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.deleteSavedQuery(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Executes an ad-hoc SQL query against the analytics database and returns columnar results.
          * @summary Execute Query
          * @param {ExecuteQueryRequest} executeQueryRequest 
          * @param {*} [options] Override http request option.
@@ -435,10 +435,10 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.executeQuery(executeQueryRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns a paginated history of recently executed queries with timing and row counts.
          * @summary List Query History
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -446,10 +446,10 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.listQueryHistory(pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns a paginated list of saved SQL queries for the insights editor.
          * @summary List Saved Queries
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -457,9 +457,9 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.listSavedQueries(pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Replaces the name and SQL of an existing saved query.
          * @summary Update Saved Query
-         * @param {string} id 
+         * @param {string} id Unique identifier of a saved query.
          * @param {SaveQueryRequest} saveQueryRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -475,7 +475,7 @@ export const InsightsApiFactory = function (configuration?: Configuration, baseP
  */
 export class InsightsApi extends BaseAPI {
     /**
-     * 
+     * Saves a new named SQL query for later reuse.
      * @summary Create Saved Query
      * @param {SaveQueryRequest} saveQueryRequest 
      * @param {*} [options] Override http request option.
@@ -486,9 +486,9 @@ export class InsightsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Permanently removes a saved query.
      * @summary Delete Saved Query
-     * @param {string} id 
+     * @param {string} id Unique identifier of a saved query.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -497,7 +497,7 @@ export class InsightsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Executes an ad-hoc SQL query against the analytics database and returns columnar results.
      * @summary Execute Query
      * @param {ExecuteQueryRequest} executeQueryRequest 
      * @param {*} [options] Override http request option.
@@ -508,10 +508,10 @@ export class InsightsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns a paginated history of recently executed queries with timing and row counts.
      * @summary List Query History
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -520,10 +520,10 @@ export class InsightsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns a paginated list of saved SQL queries for the insights editor.
      * @summary List Saved Queries
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -532,9 +532,9 @@ export class InsightsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Replaces the name and SQL of an existing saved query.
      * @summary Update Saved Query
-     * @param {string} id 
+     * @param {string} id Unique identifier of a saved query.
      * @param {SaveQueryRequest} saveQueryRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}

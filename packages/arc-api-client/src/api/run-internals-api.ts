@@ -33,9 +33,9 @@ import type { PaginatedStageTurnList } from '../models';
 export const RunInternalsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing.
          * @summary List Run Stages
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -74,12 +74,12 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
-         * 
+         * Returns a paginated list of conversation turns within a specific stage, including system prompts, assistant responses, and tool invocations.
          * @summary List Stage Turns
-         * @param {string} id 
-         * @param {string} stageId 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph.
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -129,9 +129,9 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
-         * 
+         * Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
          * @summary Retrieve Run Checkpoint
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -170,9 +170,9 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
-         * 
+         * Returns the TOML configuration file content used to launch this run.
          * @summary Retrieve Run Configuration
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -211,9 +211,9 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
-         * 
+         * Returns the key-value context map accumulated during the run. Empty if the run has not started.
          * @summary Retrieve Run Context
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -261,9 +261,9 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = RunInternalsApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing.
          * @summary List Run Stages
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -274,12 +274,12 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns a paginated list of conversation turns within a specific stage, including system prompts, assistant responses, and tool invocations.
          * @summary List Stage Turns
-         * @param {string} id 
-         * @param {string} stageId 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph.
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -290,9 +290,9 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
          * @summary Retrieve Run Checkpoint
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -303,9 +303,9 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns the TOML configuration file content used to launch this run.
          * @summary Retrieve Run Configuration
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -316,9 +316,9 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns the key-value context map accumulated during the run. Empty if the run has not started.
          * @summary Retrieve Run Context
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -338,9 +338,9 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
     const localVarFp = RunInternalsApiFp(configuration)
     return {
         /**
-         * 
+         * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing.
          * @summary List Run Stages
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -348,12 +348,12 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
             return localVarFp.listRunStages(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns a paginated list of conversation turns within a specific stage, including system prompts, assistant responses, and tool invocations.
          * @summary List Stage Turns
-         * @param {string} id 
-         * @param {string} stageId 
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph.
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -361,9 +361,9 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
             return localVarFp.listStageTurns(id, stageId, pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
          * @summary Retrieve Run Checkpoint
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -371,9 +371,9 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
             return localVarFp.retrieveRunCheckpoint(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns the TOML configuration file content used to launch this run.
          * @summary Retrieve Run Configuration
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -381,9 +381,9 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
             return localVarFp.retrieveRunConfiguration(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns the key-value context map accumulated during the run. Empty if the run has not started.
          * @summary Retrieve Run Context
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -398,9 +398,9 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
  */
 export class RunInternalsApi extends BaseAPI {
     /**
-     * 
+     * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing.
      * @summary List Run Stages
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -409,12 +409,12 @@ export class RunInternalsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns a paginated list of conversation turns within a specific stage, including system prompts, assistant responses, and tool invocations.
      * @summary List Stage Turns
-     * @param {string} id 
-     * @param {string} stageId 
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {string} id Unique run identifier (ULID).
+     * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph.
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -423,9 +423,9 @@ export class RunInternalsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
      * @summary Retrieve Run Checkpoint
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -434,9 +434,9 @@ export class RunInternalsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns the TOML configuration file content used to launch this run.
      * @summary Retrieve Run Configuration
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -445,9 +445,9 @@ export class RunInternalsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns the key-value context map accumulated during the run. Empty if the run has not started.
      * @summary Retrieve Run Context
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

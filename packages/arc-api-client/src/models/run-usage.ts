@@ -23,9 +23,18 @@ import type { UsageStage } from './usage-stage';
 // @ts-ignore
 import type { UsageTotals } from './usage-totals';
 
+/**
+ * Complete usage breakdown for a single run.
+ */
 export interface RunUsage {
+    /**
+     * Per-stage usage breakdown.
+     */
     'stages': Array<UsageStage>;
     'totals': UsageTotals;
+    /**
+     * Usage grouped by model.
+     */
     'by_model': Array<UsageByModel>;
 }
 

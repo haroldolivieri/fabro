@@ -14,7 +14,13 @@
 
 
 
+/**
+ * Pagination metadata included in every paginated response.
+ */
 export interface PaginationMeta {
+    /**
+     * Whether additional pages of results are available.
+     */
     'has_more': boolean;
 }
 

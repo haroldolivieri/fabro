@@ -31,10 +31,10 @@ import type { PaginatedRetroList } from '../models';
 export const RetrosApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
          * @summary List Retros
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -78,9 +78,9 @@ export const RetrosApiAxiosParamCreator = function (configuration?: Configuratio
             };
         },
         /**
-         * 
+         * Returns the retrospective analysis for a completed run, or null if the retro has not been generated yet.
          * @summary Retrieve Retro
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -128,10 +128,10 @@ export const RetrosApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = RetrosApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
          * @summary List Retros
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -142,9 +142,9 @@ export const RetrosApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns the retrospective analysis for a completed run, or null if the retro has not been generated yet.
          * @summary Retrieve Retro
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -164,10 +164,10 @@ export const RetrosApiFactory = function (configuration?: Configuration, basePat
     const localVarFp = RetrosApiFp(configuration)
     return {
         /**
-         * 
+         * Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
          * @summary List Retros
-         * @param {number} [pageLimit] 
-         * @param {number} [pageOffset] 
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -175,9 +175,9 @@ export const RetrosApiFactory = function (configuration?: Configuration, basePat
             return localVarFp.listRetros(pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns the retrospective analysis for a completed run, or null if the retro has not been generated yet.
          * @summary Retrieve Retro
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -192,10 +192,10 @@ export const RetrosApiFactory = function (configuration?: Configuration, basePat
  */
 export class RetrosApi extends BaseAPI {
     /**
-     * 
+     * Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
      * @summary List Retros
-     * @param {number} [pageLimit] 
-     * @param {number} [pageOffset] 
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -204,9 +204,9 @@ export class RetrosApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns the retrospective analysis for a completed run, or null if the retro has not been generated yet.
      * @summary Retrieve Retro
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

@@ -35,7 +35,7 @@ import type { UserResponse } from '../models';
 export const DiscoveryApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Returns service health status. Used by load balancers and monitoring.
          * @summary Health Check
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -171,7 +171,7 @@ export const DiscoveryApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = DiscoveryApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Returns service health status. Used by load balancers and monitoring.
          * @summary Health Check
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -228,7 +228,7 @@ export const DiscoveryApiFactory = function (configuration?: Configuration, base
     const localVarFp = DiscoveryApiFp(configuration)
     return {
         /**
-         * 
+         * Returns service health status. Used by load balancers and monitoring.
          * @summary Health Check
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -271,7 +271,7 @@ export const DiscoveryApiFactory = function (configuration?: Configuration, base
  */
 export class DiscoveryApi extends BaseAPI {
     /**
-     * 
+     * Returns service health status. Used by load balancers and monitoring.
      * @summary Health Check
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}

@@ -29,11 +29,20 @@ import type { RecentControlResult } from './recent-control-result';
 // @ts-ignore
 import type { SiblingControl } from './sibling-control';
 
+/**
+ * Complete detail view of a verification control with performance, examples, and recent results.
+ */
 export interface VerificationDetailResponse {
     'control': ControlInfo;
     'performance': ControlPerformance;
     'control_detail': ControlDetail;
+    /**
+     * Recent evaluation results across runs.
+     */
     'recent_results': Array<RecentControlResult>;
+    /**
+     * Other controls in the same category.
+     */
     'siblings': Array<SiblingControl>;
 }
 

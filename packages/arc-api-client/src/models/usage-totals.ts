@@ -14,10 +14,25 @@
 
 
 
+/**
+ * Aggregate usage totals across all stages of a run.
+ */
 export interface UsageTotals {
+    /**
+     * Total wall-clock runtime in seconds.
+     */
     'runtime_secs': number;
+    /**
+     * Total input tokens consumed.
+     */
     'input_tokens': number;
+    /**
+     * Total output tokens generated.
+     */
     'output_tokens': number;
+    /**
+     * Total cost in USD.
+     */
     'cost': number;
 }
 

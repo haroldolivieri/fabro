@@ -14,12 +14,33 @@
 
 
 
+/**
+ * Summary statistics for a run retrospective.
+ */
 export interface RetroStats {
+    /**
+     * Total run duration in milliseconds.
+     */
     'total_duration_ms': number;
+    /**
+     * Total cost in USD.
+     */
     'total_cost'?: number;
+    /**
+     * Total number of retries across all stages.
+     */
     'total_retries': number;
+    /**
+     * List of files modified during the run.
+     */
     'files_touched': Array<string>;
+    /**
+     * Number of stages that completed successfully.
+     */
     'stages_completed': number;
+    /**
+     * Number of stages that failed.
+     */
     'stages_failed': number;
 }
 

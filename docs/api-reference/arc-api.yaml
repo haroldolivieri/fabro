@@ -59,6 +59,7 @@ paths:
       operationId: getHealth
       tags: [Discovery]
       summary: Health Check
+      description: Returns service health status. Used by load balancers and monitoring.
       security: []
       responses:
         "200":
@@ -110,6 +111,7 @@ paths:
       operationId: listRuns
       tags: [Runs]
       summary: List Runs
+      description: Returns a paginated list of runs for the board view, ordered by recency.
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -124,6 +126,7 @@ paths:
       operationId: startRun
       tags: [Runs]
       summary: Start Run
+      description: Queues a new workflow run from a DOT graph source. The run is created in `queued` status and will be picked up by the scheduler.
       requestBody:
         required: true
         content:
@@ -149,6 +152,7 @@ paths:
       operationId: retrieveRun
       tags: [Runs]
       summary: Retrieve Run
+      description: Returns the current status of a run, including error details and queue position if applicable.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -170,6 +174,7 @@ paths:
       operationId: cancelRun
       tags: [Runs]
       summary: Cancel Run
+      description: Cancels a running or queued run. Returns 409 if the run has already completed or been cancelled.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -178,12 +183,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  cancelled:
-                    type: boolean
-                required:
-                  - cancelled
+                $ref: "#/components/schemas/CancelRunResponse"
         "404":
           description: Run not found
           content:
@@ -202,6 +202,7 @@ paths:
       operationId: retrieveRunSvg
       tags: [Runs]
       summary: Render SVG
+      description: Renders the workflow graph as an SVG image using Graphviz.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -229,6 +230,7 @@ paths:
       operationId: retrieveRunCheckpoint
       tags: [Run Internals]
       summary: Retrieve Run Checkpoint
+      description: Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -249,6 +251,7 @@ paths:
       operationId: retrieveRunContext
       tags: [Run Internals]
       summary: Retrieve Run Context
+      description: Returns the key-value context map accumulated during the run. Empty if the run has not started.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -270,6 +273,7 @@ paths:
       operationId: streamRunEvents
       tags: [Runs]
       summary: Stream Run Events
+      description: Opens a server-sent event (SSE) stream for real-time run updates. Returns 410 if the stream has been closed.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -297,6 +301,7 @@ paths:
       operationId: listRunQuestions
       tags: [Human-in-the-Loop]
       summary: List Run Questions
+      description: Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -318,13 +323,10 @@ paths:
       operationId: submitRunAnswer
       tags: [Human-in-the-Loop]
       summary: Submit Run Answer
+      description: Submits an answer to a pending question. The answer can be freeform text or a selected option key, depending on the question type.
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - name: qid
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/QuestionId"
       requestBody:
         required: true
         content:
@@ -356,6 +358,7 @@ paths:
       operationId: retrieveRetro
       tags: [Retros]
       summary: Retrieve Retro
+      description: Returns the retrospective analysis for a completed run, or null if the retro has not been generated yet.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -376,6 +379,7 @@ paths:
       operationId: listRunStages
       tags: [Run Internals]
       summary: List Run Stages
+      description: Returns the ordered list of stages in a run's workflow graph with their current status and timing.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -397,13 +401,10 @@ paths:
       operationId: listStageTurns
       tags: [Run Internals]
       summary: List Stage Turns
+      description: Returns a paginated list of conversation turns within a specific stage, including system prompts, assistant responses, and tool invocations.
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - name: stageId
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/StageId"
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
       responses:
@@ -425,13 +426,10 @@ paths:
       operationId: listRunCompare
       tags: [Run Outputs]
       summary: List Run Compare
+      description: Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - name: checkpoint
-          in: query
-          schema:
-            type: string
-            default: "all"
+        - $ref: "#/components/parameters/CheckpointFilter"
       responses:
         "200":
           description: File changes with checkpoint metadata
@@ -451,6 +449,7 @@ paths:
       operationId: retrieveRunUsage
       tags: [Run Outputs]
       summary: Retrieve Run Usage
+      description: Returns token and cost usage broken down by stage and model for a specific run.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -472,6 +471,7 @@ paths:
       operationId: listRunVerifications
       tags: [Run Outputs]
       summary: List Run Verifications
+      description: Returns verification results for a run, organized by category with individual control statuses.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -493,6 +493,7 @@ paths:
       operationId: retrieveRunConfiguration
       tags: [Run Internals]
       summary: Retrieve Run Configuration
+      description: Returns the TOML configuration file content used to launch this run.
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -514,6 +515,7 @@ paths:
       operationId: steerRun
       tags: [Human-in-the-Loop]
       summary: Steer Run
+      description: Sends inline guidance to a running agent, targeting a specific file and line. The guidance is delivered asynchronously.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -523,17 +525,12 @@ paths:
             schema:
               $ref: "#/components/schemas/SteerRequest"
       responses:
-        "200":
-          description: Steering accepted
+        "202":
+          description: Steering accepted for processing
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  accepted:
-                    type: boolean
-                required:
-                  - accepted
+                $ref: "#/components/schemas/SteerRunResponse"
         "404":
           description: Run not found
           content:
@@ -546,6 +543,7 @@ paths:
       operationId: generatePreviewUrl
       tags: [Human-in-the-Loop]
       summary: Preview URL
+      description: Generates a time-limited preview URL for a port exposed by the run's sandbox environment.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -575,6 +573,7 @@ paths:
       operationId: listWorkflows
       tags: [Workflows]
       summary: List Workflows
+      description: Returns a paginated list of workflow definitions available for execution.
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -591,12 +590,9 @@ paths:
       operationId: retrieveWorkflow
       tags: [Workflows]
       summary: Retrieve Workflow
+      description: Returns the full detail of a workflow including its DOT graph, TOML config, and description.
       parameters:
-        - name: name
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/WorkflowName"
       responses:
         "200":
           description: Workflow detail
@@ -616,12 +612,9 @@ paths:
       operationId: listWorkflowRuns
       tags: [Workflows]
       summary: List Workflow Runs
+      description: Returns a paginated list of runs filtered to a specific workflow.
       parameters:
-        - name: name
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/WorkflowName"
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
       responses:
@@ -641,12 +634,9 @@ paths:
       operationId: startWorkflowRun
       tags: [Workflows]
       summary: Start Workflow Run
+      description: Queues a new run of the specified workflow using its stored DOT graph.
       parameters:
-        - name: name
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/WorkflowName"
       responses:
         "201":
           description: Run created
@@ -668,6 +658,7 @@ paths:
       operationId: listVerifications
       tags: [Verifications]
       summary: List Verifications
+      description: Returns all verification categories with their controls and performance metrics.
       responses:
         "200":
           description: Array of verification categories
@@ -681,12 +672,9 @@ paths:
       operationId: retrieveVerification
       tags: [Verifications]
       summary: Retrieve Verification
+      description: Returns detailed information about a specific verification control, including performance data, recent results, and sibling controls in the same category.
       parameters:
-        - name: slug
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/VerificationSlug"
       responses:
         "200":
           description: Verification control detail
@@ -708,6 +696,7 @@ paths:
       operationId: listRetros
       tags: [Retros]
       summary: List Retros
+      description: Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -858,6 +847,7 @@ paths:
       operationId: listSavedQueries
       tags: [Insights]
       summary: List Saved Queries
+      description: Returns a paginated list of saved SQL queries for the insights editor.
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -872,6 +862,7 @@ paths:
       operationId: createSavedQuery
       tags: [Insights]
       summary: Create Saved Query
+      description: Saves a new named SQL query for later reuse.
       requestBody:
         required: true
         content:
@@ -891,12 +882,9 @@ paths:
       operationId: updateSavedQuery
       tags: [Insights]
       summary: Update Saved Query
+      description: Replaces the name and SQL of an existing saved query.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/InsightQueryId"
       requestBody:
         required: true
         content:
@@ -920,12 +908,9 @@ paths:
       operationId: deleteSavedQuery
       tags: [Insights]
       summary: Delete Saved Query
+      description: Permanently removes a saved query.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/InsightQueryId"
       responses:
         "204":
           description: Query deleted
@@ -941,6 +926,7 @@ paths:
       operationId: executeQuery
       tags: [Insights]
       summary: Execute Query
+      description: Executes an ad-hoc SQL query against the analytics database and returns columnar results.
       requestBody:
         required: true
         content:
@@ -960,6 +946,7 @@ paths:
       operationId: listQueryHistory
       tags: [Insights]
       summary: List Query History
+      description: Returns a paginated history of recently executed queries with timing and row counts.
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -994,6 +981,7 @@ paths:
       operationId: retrieveServerSettings
       tags: [Settings]
       summary: Retrieve Server Settings
+      description: Returns all server settings organized into groups. Each group contains fields with their current values and input types.
       responses:
         "200":
           description: Array of setting groups
@@ -1011,6 +999,7 @@ paths:
       operationId: listProjects
       tags: [Projects]
       summary: List Projects
+      description: Returns a paginated list of registered projects (repositories).
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -1027,12 +1016,9 @@ paths:
       operationId: listBranches
       tags: [Projects]
       summary: List Branches
+      description: Returns a paginated list of branches for a specific project.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
       responses:
@@ -1075,8 +1061,10 @@ components:
       name: id
       in: path
       required: true
+      description: Unique run identifier (ULID).
       schema:
         type: string
+      example: 01JNQVR7M0EJ5GKAT2SC4ERS1Z
 
     SessionId:
       name: id
@@ -1088,35 +1076,109 @@ components:
         format: uuid
       example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
+    StageId:
+      name: stageId
+      in: path
+      required: true
+      description: Identifier of a stage within a run's workflow graph.
+      schema:
+        type: string
+      example: propose-changes
+
+    QuestionId:
+      name: qid
+      in: path
+      required: true
+      description: Unique identifier of a pending question.
+      schema:
+        type: string
+      example: q-001
+
+    WorkflowName:
+      name: name
+      in: path
+      required: true
+      description: URL-safe slug identifying a workflow definition.
+      schema:
+        type: string
+      example: fix_build
+
+    VerificationSlug:
+      name: slug
+      in: path
+      required: true
+      description: URL-safe slug identifying a verification control.
+      schema:
+        type: string
+      example: motivation
+
+    InsightQueryId:
+      name: id
+      in: path
+      required: true
+      description: Unique identifier of a saved query.
+      schema:
+        type: string
+      example: "1"
+
+    ProjectId:
+      name: id
+      in: path
+      required: true
+      description: Unique identifier of a project (repository).
+      schema:
+        type: string
+      example: arc-web
+
+    CheckpointFilter:
+      name: checkpoint
+      in: query
+      required: false
+      description: Filter file diffs to a specific checkpoint. Defaults to all changes.
+      schema:
+        type: string
+        default: "all"
+      example: cp-3
+
     PageLimit:
       name: page[limit]
       in: query
       required: false
+      description: Maximum number of items to return per page.
       schema:
         type: integer
         minimum: 1
         maximum: 100
         default: 20
+      example: 20
 
     PageOffset:
       name: page[offset]
       in: query
       required: false
+      description: Number of items to skip before returning results.
       schema:
         type: integer
         minimum: 0
         default: 0
+      example: 0
 
   schemas:
+    # ── Pagination ───────────────────────────────────────────────────────
+
     PaginationMeta:
+      description: Pagination metadata included in every paginated response.
       type: object
       required:
         - has_more
       properties:
         has_more:
           type: boolean
+          description: Whether additional pages of results are available.
+          example: true
 
     PaginatedRunList:
+      description: Paginated list of runs.
       type: object
       required:
         - data
@@ -1130,6 +1192,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedWorkflowList:
+      description: Paginated list of workflows.
       type: object
       required:
         - data
@@ -1143,6 +1206,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedRetroList:
+      description: Paginated list of run retrospectives.
       type: object
       required:
         - data
@@ -1156,6 +1220,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedSessionList:
+      description: Paginated list of sessions.
       type: object
       required:
         - data
@@ -1169,6 +1234,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedProjectList:
+      description: Paginated list of projects.
       type: object
       required:
         - data
@@ -1182,6 +1248,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedBranchList:
+      description: Paginated list of branches.
       type: object
       required:
         - data
@@ -1195,6 +1262,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedSavedQueryList:
+      description: Paginated list of saved queries.
       type: object
       required:
         - data
@@ -1208,6 +1276,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedHistoryEntryList:
+      description: Paginated list of query history entries.
       type: object
       required:
         - data
@@ -1221,6 +1290,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedStageTurnList:
+      description: Paginated list of stage turns.
       type: object
       required:
         - data
@@ -1234,6 +1304,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedApiQuestionList:
+      description: Paginated list of pending questions.
       type: object
       required:
         - data
@@ -1247,6 +1318,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedRunStageList:
+      description: Paginated list of run stages.
       type: object
       required:
         - data
@@ -1260,6 +1332,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedRunVerificationList:
+      description: Paginated list of run verification categories.
       type: object
       required:
         - data
@@ -1273,6 +1346,7 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     PaginatedVerificationCategoryList:
+      description: Paginated list of verification categories.
       type: object
       required:
         - data
@@ -1285,9 +1359,10 @@ components:
         meta:
           $ref: "#/components/schemas/PaginationMeta"
 
-    # ── Existing Run Schemas ────────────────────────────────────────────
+    # ── Run Schemas ──────────────────────────────────────────────────────
 
     RunStatus:
+      description: Lifecycle status of a run.
       type: string
       enum:
         - queued
@@ -1298,37 +1373,88 @@ components:
         - cancelled
 
     StartRunRequest:
+      description: Request body for starting a new run from a DOT graph source.
       type: object
       required:
         - dot_source
       properties:
         dot_source:
           type: string
+          description: DOT language source defining the workflow graph.
+          example: 'digraph { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit }'
 
     StartRunResponse:
-      type: object
-      required:
-        - id
-      properties:
-        id:
-          type: string
-
-    RunStatusResponse:
+      description: Response returned after successfully queuing a new run.
       type: object
       required:
         - id
         - status
+        - created_at
       properties:
         id:
           type: string
+          description: Unique run identifier (ULID).
+          example: 01JNQVR7M0EJ5GKAT2SC4ERS1Z
+        status:
+          $ref: "#/components/schemas/RunStatus"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the run was created.
+          example: "2026-03-06T14:30:00Z"
+
+    RunStatusResponse:
+      description: Current status of a run with optional error and queue position.
+      type: object
+      required:
+        - id
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique run identifier (ULID).
+          example: 01JNQVR7M0EJ5GKAT2SC4ERS1Z
         status:
           $ref: "#/components/schemas/RunStatus"
         error:
           type: string
+          description: Error message if the run failed.
+          example: "Stage 'apply-changes' exceeded maximum retries."
         queue_position:
           type: integer
+          description: Position in the queue (1-based). Only present when status is `queued`.
+          example: 3
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the run was created.
+          example: "2026-03-06T14:30:00Z"
+
+    CancelRunResponse:
+      description: Response returned after cancelling a run.
+      type: object
+      required:
+        - cancelled
+      properties:
+        cancelled:
+          type: boolean
+          description: Whether the cancellation was successful.
+          example: true
+
+    SteerRunResponse:
+      description: Acknowledgement that the steering guidance was accepted for delivery.
+      type: object
+      required:
+        - accepted
+      properties:
+        accepted:
+          type: boolean
+          description: Whether the steering guidance was accepted.
+          example: true
 
     ApiQuestionOption:
+      description: A selectable option for a multiple-choice or multi-select question.
       type: object
       required:
         - key
@@ -1336,10 +1462,15 @@ components:
       properties:
         key:
           type: string
+          description: Machine-readable option key used when submitting an answer.
+          example: option_a
         label:
           type: string
+          description: Human-readable label displayed to the user.
+          example: Accept changes
 
     ApiQuestion:
+      description: A pending human-in-the-loop question generated by a workflow stage.
       type: object
       required:
         - id
@@ -1350,18 +1481,26 @@ components:
       properties:
         id:
           type: string
+          description: Unique question identifier.
+          example: q-001
         text:
           type: string
+          description: The question text displayed to the user.
+          example: Should we proceed with the proposed changes?
         question_type:
           $ref: "#/components/schemas/QuestionType"
         options:
           type: array
+          description: Available options for selection-based questions. Empty for freeform questions.
           items:
             $ref: "#/components/schemas/ApiQuestionOption"
         allow_freeform:
           type: boolean
+          description: Whether the user may provide freeform text in addition to selecting options.
+          example: true
 
     QuestionType:
+      description: The interaction type of a human-in-the-loop question.
       type: string
       enum:
         - yes_no
@@ -1371,24 +1510,33 @@ components:
         - confirmation
 
     SubmitAnswerRequest:
+      description: Request body for submitting an answer to a pending question.
       type: object
       required:
         - value
       properties:
         value:
           type: string
+          description: Freeform answer text.
+          example: "Yes, proceed with the changes."
         selected_option_key:
           type: string
+          description: Key of the selected option (for multiple-choice questions).
+          example: option_a
 
     SubmitAnswerResponse:
+      description: Response indicating whether the submitted answer was accepted.
       type: object
       required:
         - accepted
       properties:
         accepted:
           type: boolean
+          description: Whether the answer was accepted. Returns false if the question no longer exists.
+          example: true
 
     ErrorResponseEntry:
+      description: A single error entry in an error response.
       type: object
       required:
         - status
@@ -1397,24 +1545,33 @@ components:
       properties:
         status:
           type: string
+          description: HTTP status code as a string.
+          example: "404"
         title:
           type: string
+          description: Short error classification.
+          example: Not Found
         detail:
           type: string
+          description: Human-readable error description.
+          example: Run not found.
 
     ErrorResponse:
+      description: Standard error response containing one or more error entries.
       type: object
       required:
         - errors
       properties:
         errors:
           type: array
+          description: List of error entries.
           items:
             $ref: "#/components/schemas/ErrorResponseEntry"
 
-    # ── New Run Schemas ─────────────────────────────────────────────────
+    # ── Run Board Schemas ────────────────────────────────────────────────
 
     RunListItemStatus:
+      description: Board column status for a run in the list view.
       type: string
       enum:
         - working
@@ -1423,6 +1580,7 @@ components:
         - merge
 
     CheckRunStatus:
+      description: Status of a CI check run.
       type: string
       enum:
         - success
@@ -1432,6 +1590,7 @@ components:
         - queued
 
     CheckRun:
+      description: A CI check run result associated with a run's pull request.
       type: object
       required:
         - name
@@ -1439,12 +1598,17 @@ components:
       properties:
         name:
           type: string
+          description: Name of the CI check.
+          example: unit-tests
         status:
           $ref: "#/components/schemas/CheckRunStatus"
         duration_secs:
           type: number
+          description: Duration of the check run in seconds.
+          example: 154.0
 
     RunListItem:
+      description: Summary of a run shown in the board view.
       type: object
       required:
         - id
@@ -1452,41 +1616,77 @@ components:
         - title
         - workflow
         - status
+        - created_at
       properties:
         id:
           type: string
+          description: Unique run identifier (ULID).
+          example: 01JNQVR7M0EJ5GKAT2SC4ERS1Z
         repo:
           type: string
+          description: Repository name.
+          example: api-server
         title:
           type: string
+          description: Human-readable title describing the run's goal.
+          example: Add rate limiting to auth endpoints
         workflow:
           type: string
+          description: Slug of the workflow that produced this run.
+          example: implement
         status:
           $ref: "#/components/schemas/RunListItemStatus"
         number:
           type: integer
+          description: Pull request number, if the run has opened a PR.
+          example: 889
         additions:
           type: integer
+          description: Lines added in the run's diff.
+          example: 234
         deletions:
           type: integer
+          description: Lines deleted in the run's diff.
+          example: 67
         checks:
           type: array
+          description: CI check run results for the run's PR.
           items:
             $ref: "#/components/schemas/CheckRun"
         elapsed_secs:
           type: number
+          description: Wall-clock time elapsed since the run started, in seconds.
+          example: 420.0
         elapsed_warning:
           type: boolean
+          description: Whether the elapsed time exceeds the expected threshold.
+          example: false
         resources:
           type: string
+          description: Compute resources allocated to the run.
+          example: 4 CPU / 8 GB
         comments:
           type: integer
+          description: Number of review comments on the run's PR.
+          example: 4
         question:
           type: string
+          description: Text of a pending human-in-the-loop question, if any.
+          example: Accept or push for another round?
         sandbox_id:
           type: string
+          description: Identifier of the sandbox environment running this run.
+          example: sb-a1b2c3d4
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the run was created.
+          example: "2026-03-06T14:30:00Z"
+
+    # ── Stage / Turn Schemas ─────────────────────────────────────────────
 
     StageStatus:
+      description: Execution status of a workflow stage.
       type: string
       enum:
         - completed
@@ -1495,6 +1695,7 @@ components:
         - failed
 
     RunStage:
+      description: A single stage in a run's workflow graph.
       type: object
       required:
         - id
@@ -1503,14 +1704,22 @@ components:
       properties:
         id:
           type: string
+          description: Unique stage identifier within the run.
+          example: propose-changes
         name:
           type: string
+          description: Human-readable stage name.
+          example: Propose Changes
         status:
           $ref: "#/components/schemas/StageStatus"
         duration_secs:
           type: number
+          description: Time spent in this stage, in seconds.
+          example: 154.0
         dot_id:
           type: string
+          description: Node identifier in the DOT graph source.
+          example: propose
 
     ToolUse:
       description: A single tool invocation with its input, result, and execution metadata.
@@ -1548,24 +1757,81 @@ components:
           example: 142
 
     StageTurn:
+      description: A single turn in a stage conversation — a system prompt, assistant response, or tool invocation block.
+      discriminator:
+        propertyName: kind
+        mapping:
+          system: "#/components/schemas/SystemStageTurn"
+          assistant: "#/components/schemas/AssistantStageTurn"
+          tool: "#/components/schemas/ToolStageTurn"
+      oneOf:
+        - $ref: "#/components/schemas/SystemStageTurn"
+        - $ref: "#/components/schemas/AssistantStageTurn"
+        - $ref: "#/components/schemas/ToolStageTurn"
+
+    SystemStageTurn:
+      description: A system prompt turn that sets the stage's instructions.
       type: object
       required:
         - kind
+        - content
       properties:
         kind:
           type: string
-          enum:
-            - system
-            - assistant
-            - tool
+          enum: [system]
         content:
           type: string
+          description: System prompt text.
+          example: You are a drift detection agent. Compare the production and staging environments.
         tools:
           type: array
+          description: Tool invocations (always empty for system turns).
           items:
             $ref: "#/components/schemas/ToolUse"
 
+    AssistantStageTurn:
+      description: An assistant response turn within a stage.
+      type: object
+      required:
+        - kind
+        - content
+      properties:
+        kind:
+          type: string
+          enum: [assistant]
+        content:
+          type: string
+          description: Assistant response text.
+          example: I'll start by loading the environment configurations for both production and staging.
+        tools:
+          type: array
+          description: Tool invocations (always empty for assistant turns).
+          items:
+            $ref: "#/components/schemas/ToolUse"
+
+    ToolStageTurn:
+      description: A tool invocation turn containing one or more tool calls.
+      type: object
+      required:
+        - kind
+        - tools
+      properties:
+        kind:
+          type: string
+          enum: [tool]
+        content:
+          type: string
+          description: Optional text content (usually null for tool turns).
+        tools:
+          type: array
+          description: Tool invocations executed in this turn.
+          items:
+            $ref: "#/components/schemas/ToolUse"
+
+    # ── Compare / Diff Schemas ───────────────────────────────────────────
+
     FileCheckpoint:
+      description: A named checkpoint within a run, used to filter file diffs.
       type: object
       required:
         - id
@@ -1573,10 +1839,15 @@ components:
       properties:
         id:
           type: string
+          description: Checkpoint identifier.
+          example: cp-3
         label:
           type: string
+          description: Human-readable label for the checkpoint.
+          example: "Checkpoint 3 — Review Changes"
 
     DiffFile:
+      description: A file's contents at one side of a diff.
       type: object
       required:
         - name
@@ -1584,10 +1855,15 @@ components:
       properties:
         name:
           type: string
+          description: File path relative to the repository root.
+          example: src/commands/run.ts
         contents:
           type: string
+          description: Full file contents. Empty string for newly created or deleted files.
+          example: 'import { parseArgs } from "node:util";'
 
     FileDiff:
+      description: A before/after pair showing changes to a single file.
       type: object
       required:
         - old_file
@@ -1599,6 +1875,7 @@ components:
           $ref: "#/components/schemas/DiffFile"
 
     DiffStats:
+      description: Aggregate line-change statistics for a diff.
       type: object
       required:
         - additions
@@ -1606,10 +1883,15 @@ components:
       properties:
         additions:
           type: integer
+          description: Total lines added.
+          example: 567
         deletions:
           type: integer
+          description: Total lines deleted.
+          example: 234
 
     RunCompare:
+      description: File-level diff output for a run, with checkpoint filtering support.
       type: object
       required:
         - checkpoints
@@ -1618,16 +1900,21 @@ components:
       properties:
         checkpoints:
           type: array
+          description: Available checkpoints for filtering.
           items:
             $ref: "#/components/schemas/FileCheckpoint"
         files:
           type: array
+          description: File diffs, optionally filtered by checkpoint.
           items:
             $ref: "#/components/schemas/FileDiff"
         stats:
           $ref: "#/components/schemas/DiffStats"
 
+    # ── Usage Schemas ────────────────────────────────────────────────────
+
     UsageStage:
+      description: Token and cost usage for a single stage within a run.
       type: object
       required:
         - stage
@@ -1639,18 +1926,31 @@ components:
       properties:
         stage:
           type: string
+          description: Human-readable stage name.
+          example: Propose Changes
         model:
           type: string
+          description: Model slug used for this stage.
+          example: claude-opus-4-6
         input_tokens:
           type: integer
+          description: Number of input tokens consumed.
+          example: 28640
         output_tokens:
           type: integer
+          description: Number of output tokens generated.
+          example: 8750
         runtime_secs:
           type: number
+          description: Wall-clock runtime in seconds.
+          example: 154.0
         cost:
           type: number
+          description: Cost in USD for this stage.
+          example: 0.72
 
     UsageTotals:
+      description: Aggregate usage totals across all stages of a run.
       type: object
       required:
         - runtime_secs
@@ -1660,14 +1960,23 @@ components:
       properties:
         runtime_secs:
           type: number
+          description: Total wall-clock runtime in seconds.
+          example: 389.0
         input_tokens:
           type: integer
+          description: Total input tokens consumed.
+          example: 71540
         output_tokens:
           type: integer
+          description: Total output tokens generated.
+          example: 21080
         cost:
           type: number
+          description: Total cost in USD.
+          example: 2.26
 
     UsageByModel:
+      description: Usage statistics grouped by model.
       type: object
       required:
         - model
@@ -1678,16 +1987,27 @@ components:
       properties:
         model:
           type: string
+          description: Model slug.
+          example: claude-opus-4-6
         stages:
           type: integer
+          description: Number of stages that used this model.
+          example: 2
         input_tokens:
           type: integer
+          description: Total input tokens for this model.
+          example: 33780
         output_tokens:
           type: integer
+          description: Total output tokens for this model.
+          example: 9690
         cost:
           type: number
+          description: Total cost in USD for this model.
+          example: 1.35
 
     RunUsage:
+      description: Complete usage breakdown for a single run.
       type: object
       required:
         - stages
@@ -1696,16 +2016,19 @@ components:
       properties:
         stages:
           type: array
+          description: Per-stage usage breakdown.
           items:
             $ref: "#/components/schemas/UsageStage"
         totals:
           $ref: "#/components/schemas/UsageTotals"
         by_model:
           type: array
+          description: Usage grouped by model.
           items:
             $ref: "#/components/schemas/UsageByModel"
 
     AggregateUsage:
+      description: Aggregate token and cost usage across all runs since server start.
       type: object
       required:
         - total_runs
@@ -1717,20 +2040,34 @@ components:
       properties:
         total_runs:
           type: integer
+          description: Total number of completed runs.
+          example: 9
         total_input_tokens:
           type: integer
+          description: Total input tokens across all runs.
+          example: 643860
         total_output_tokens:
           type: integer
+          description: Total output tokens across all runs.
+          example: 189720
         total_cost:
           type: number
+          description: Total cost in USD across all runs.
+          example: 20.34
         total_runtime_secs:
           type: number
+          description: Total wall-clock runtime in seconds.
+          example: 3501.0
         by_model:
           type: array
+          description: Usage grouped by model.
           items:
             $ref: "#/components/schemas/UsageByModel"
 
+    # ── Verification Schemas ─────────────────────────────────────────────
+
     VerificationStatus:
+      description: Result status of a verification control evaluation.
       type: string
       enum:
         - pass
@@ -1738,6 +2075,7 @@ components:
         - na
 
     VerificationType:
+      description: The evaluation method used by a verification control.
       type: string
       enum:
         - ai
@@ -1746,6 +2084,7 @@ components:
         - ai-analysis
 
     RunVerificationControl:
+      description: A verification control result within a run.
       type: object
       required:
         - name
@@ -1754,14 +2093,19 @@ components:
       properties:
         name:
           type: string
+          description: Human-readable control name.
+          example: Motivation
         description:
           type: string
+          description: Short description of what the control verifies.
+          example: Origin of proposal identified
         type:
           $ref: "#/components/schemas/VerificationType"
         status:
           $ref: "#/components/schemas/VerificationStatus"
 
     RunVerification:
+      description: Verification results for a category within a run.
       type: object
       required:
         - name
@@ -1771,16 +2115,22 @@ components:
       properties:
         name:
           type: string
+          description: Category name.
+          example: Traceability
         question:
           type: string
+          description: The guiding question for this verification category.
+          example: Do we understand what this change is and why we're making it?
         status:
           $ref: "#/components/schemas/VerificationStatus"
         controls:
           type: array
+          description: Individual control results within this category.
           items:
             $ref: "#/components/schemas/RunVerificationControl"
 
     SteerRequest:
+      description: Request body for sending inline steering guidance to a running agent.
       type: object
       required:
         - file
@@ -1789,12 +2139,19 @@ components:
       properties:
         file:
           type: string
+          description: File path to target with the guidance.
+          example: src/middleware/rate-limit.ts
         line:
           type: integer
+          description: Line number in the file to annotate.
+          example: 42
         guidance:
           type: string
+          description: Guidance text for the agent.
+          example: Use a sliding window algorithm instead of fixed window.
 
     PreviewUrlRequest:
+      description: Request body for generating a preview URL from a sandbox port.
       type: object
       required:
         - port
@@ -1802,20 +2159,28 @@ components:
       properties:
         port:
           type: integer
+          description: Port number exposed by the sandbox.
+          example: 3000
         expires_in_secs:
           type: integer
+          description: Time-to-live for the preview URL in seconds.
+          example: 3600
 
     PreviewUrlResponse:
+      description: Response containing the generated preview URL.
       type: object
       required:
         - url
       properties:
         url:
           type: string
+          description: Time-limited preview URL.
+          example: "https://preview.example.com/sb-a1b2c3d4/3000"
 
     # ── Workflow Schemas ─────────────────────────────────────────────────
 
     WorkflowListItem:
+      description: Summary of a workflow shown in list views.
       type: object
       required:
         - name
@@ -1824,18 +2189,31 @@ components:
       properties:
         name:
           type: string
+          description: Human-readable workflow name.
+          example: Fix Build
         slug:
           type: string
+          description: URL-safe slug used in API paths.
+          example: fix_build
         filename:
           type: string
+          description: DOT graph filename.
+          example: fix_build.dot
         last_run:
           type: string
+          description: Human-readable relative timestamp of the last run.
+          example: 2 hours ago
         schedule:
           type: string
+          description: Cron-like schedule expression, if the workflow runs on a schedule.
+          example: "0 */6 * * *"
         next_run:
           type: string
+          description: Human-readable relative timestamp of the next scheduled run.
+          example: in 4 hours
 
     WorkflowDetail:
+      description: Full detail of a workflow definition including graph and configuration.
       type: object
       required:
         - title
@@ -1847,20 +2225,33 @@ components:
       properties:
         title:
           type: string
+          description: Human-readable workflow title.
+          example: Fix Build
         slug:
           type: string
+          description: URL-safe slug used in API paths.
+          example: fix_build
         filename:
           type: string
+          description: DOT graph filename.
+          example: fix_build.dot
         description:
           type: string
+          description: Prose description of what the workflow does.
+          example: Automatically diagnoses and fixes CI build failures.
         config:
           type: string
+          description: TOML configuration content for the workflow.
+          example: "version = 1\ngoal = \"Fix CI build failures\""
         graph:
           type: string
+          description: DOT language source defining the workflow graph.
+          example: "digraph fix_build { rankdir=LR; start -> diagnose -> fix -> validate }"
 
-    # ── Verification Schemas ────────────────────────────────────────────
+    # ── Verification Detail Schemas ──────────────────────────────────────
 
     EvaluationResult:
+      description: Outcome of a single verification evaluation.
       type: string
       enum:
         - pass
@@ -1868,6 +2259,7 @@ components:
         - skip
 
     VerificationMode:
+      description: Operational mode of a verification control.
       type: string
       enum:
         - active
@@ -1875,6 +2267,7 @@ components:
         - disabled
 
     VerificationControl:
+      description: A verification control within a category, with performance metrics.
       type: object
       required:
         - name
@@ -1883,24 +2276,36 @@ components:
       properties:
         name:
           type: string
+          description: Human-readable control name.
+          example: Motivation
         slug:
           type: string
+          description: URL-safe slug for API lookups.
+          example: motivation
         description:
           type: string
+          description: Short description of what the control verifies.
+          example: Origin of proposal identified
         type:
           $ref: "#/components/schemas/VerificationType"
         mode:
           $ref: "#/components/schemas/VerificationMode"
         f1:
           type: number
+          description: F1 score of the control's AI evaluator.
+          example: 0.87
         pass_at_1:
           type: number
+          description: Pass@1 rate — probability of passing on the first evaluation.
+          example: 0.82
         evaluations:
           type: array
+          description: Recent evaluation results (newest first).
           items:
             $ref: "#/components/schemas/EvaluationResult"
 
     VerificationCategory:
+      description: A group of related verification controls.
       type: object
       required:
         - name
@@ -1909,14 +2314,20 @@ components:
       properties:
         name:
           type: string
+          description: Category name.
+          example: Traceability
         question:
           type: string
+          description: Guiding question for the category.
+          example: Do we understand what this change is and why we're making it?
         controls:
           type: array
+          description: Verification controls in this category.
           items:
             $ref: "#/components/schemas/VerificationControl"
 
     ControlInfo:
+      description: Core metadata about a verification control.
       type: object
       required:
         - name
@@ -1926,16 +2337,25 @@ components:
       properties:
         name:
           type: string
+          description: Human-readable control name.
+          example: Motivation
         slug:
           type: string
+          description: URL-safe slug.
+          example: motivation
         description:
           type: string
+          description: Short description of what the control verifies.
+          example: Origin of proposal identified
         type:
           $ref: "#/components/schemas/VerificationType"
         category:
           type: string
+          description: Name of the category this control belongs to.
+          example: Traceability
 
     ControlPerformance:
+      description: Performance metrics for a verification control.
       type: object
       required:
         - mode
@@ -1945,14 +2365,20 @@ components:
           $ref: "#/components/schemas/VerificationMode"
         f1:
           type: number
+          description: F1 score of the control's AI evaluator.
+          example: 0.87
         pass_at_1:
           type: number
+          description: Pass@1 rate.
+          example: 0.82
         evaluations:
           type: array
+          description: Recent evaluation results (newest first).
           items:
             $ref: "#/components/schemas/EvaluationResult"
 
     ControlDetail:
+      description: Detailed information about a verification control including checks and examples.
       type: object
       required:
         - description
@@ -1962,16 +2388,25 @@ components:
       properties:
         description:
           type: string
+          description: Detailed prose description of the control's purpose and rationale.
+          example: Verifies that every change traces back to a clear origin.
         checks:
           type: array
+          description: Specific checks performed by this control.
           items:
             type: string
+          example: ["PR body explains why the change is needed", "Commit messages reference a ticket"]
         pass_example:
           type: string
+          description: Example scenario where the control passes.
+          example: PR links to JIRA-1234 and explains the user-facing pain point.
         fail_example:
           type: string
+          description: Example scenario where the control fails.
+          example: PR description is empty or says only 'fix stuff'.
 
     RecentControlResult:
+      description: Result of a recent verification control evaluation for a specific run.
       type: object
       required:
         - run_id
@@ -1982,16 +2417,25 @@ components:
       properties:
         run_id:
           type: string
+          description: Identifier of the run that was evaluated.
+          example: run-047
         run_title:
           type: string
+          description: Title of the evaluated run.
+          example: "PR #312 — Add OAuth2 PKCE flow"
         workflow:
           type: string
+          description: Workflow that produced the run.
+          example: code_review
         result:
           $ref: "#/components/schemas/VerificationStatus"
         timestamp:
           type: string
+          description: Human-readable relative timestamp of the evaluation.
+          example: 2h ago
 
     SiblingControl:
+      description: Summary of a sibling verification control in the same category.
       type: object
       required:
         - name
@@ -1999,14 +2443,19 @@ components:
       properties:
         name:
           type: string
+          description: Human-readable control name.
+          example: Specifications
         slug:
           type: string
+          description: URL-safe slug.
+          example: specifications
         type:
           $ref: "#/components/schemas/VerificationType"
         mode:
           $ref: "#/components/schemas/VerificationMode"
 
     VerificationDetailResponse:
+      description: Complete detail view of a verification control with performance, examples, and recent results.
       type: object
       required:
         - control
@@ -2023,16 +2472,19 @@ components:
           $ref: "#/components/schemas/ControlDetail"
         recent_results:
           type: array
+          description: Recent evaluation results across runs.
           items:
             $ref: "#/components/schemas/RecentControlResult"
         siblings:
           type: array
+          description: Other controls in the same category.
           items:
             $ref: "#/components/schemas/SiblingControl"
 
-    # ── Retro Schemas ───────────────────────────────────────────────────
+    # ── Retro Schemas ────────────────────────────────────────────────────
 
     SmoothnessRating:
+      description: Qualitative assessment of how smoothly a run executed.
       type: string
       enum:
         - effortless
@@ -2042,6 +2494,7 @@ components:
         - failed
 
     RetroStats:
+      description: Summary statistics for a run retrospective.
       type: object
       required:
         - total_duration_ms
@@ -2052,20 +2505,33 @@ components:
       properties:
         total_duration_ms:
           type: integer
+          description: Total run duration in milliseconds.
+          example: 389000
         total_cost:
           type: number
+          description: Total cost in USD.
+          example: 2.78
         total_retries:
           type: integer
+          description: Total number of retries across all stages.
+          example: 0
         files_touched:
           type: array
+          description: List of files modified during the run.
           items:
             type: string
+          example: ["src/middleware/rate-limit.ts", "src/routes/auth.ts"]
         stages_completed:
           type: integer
+          description: Number of stages that completed successfully.
+          example: 4
         stages_failed:
           type: integer
+          description: Number of stages that failed.
+          example: 0
 
     RetroListItem:
+      description: Summary of a run retrospective shown in list views.
       type: object
       required:
         - run_id
@@ -2077,20 +2543,31 @@ components:
       properties:
         run_id:
           type: string
+          description: Identifier of the run this retro belongs to.
+          example: run-1
         workflow_name:
           type: string
+          description: Name of the workflow that produced the run.
+          example: implement
         goal:
           type: string
+          description: The run's goal.
+          example: Add rate limiting to auth endpoints
         timestamp:
           type: string
+          format: date-time
+          description: Timestamp when the retro was generated.
+          example: "2026-02-28T14:32:00Z"
         smoothness:
           $ref: "#/components/schemas/SmoothnessRating"
         stats:
           $ref: "#/components/schemas/RetroStats"
         friction_point_count:
           type: integer
+          description: Number of friction points identified in the retro.
+          example: 0
 
-    # ── Session Schemas ─────────────────────────────────────────────────
+    # ── Session Schemas ──────────────────────────────────────────────────
 
     SessionListItem:
       description: Summary of a session shown in list views.
@@ -2320,23 +2797,42 @@ components:
           description: Whether the message was accepted for processing.
           example: true
 
-    # ── Insights Schemas ────────────────────────────────────────────────
+    # ── Insights Schemas ─────────────────────────────────────────────────
 
     SavedQuery:
+      description: A saved SQL query for the insights editor.
       type: object
       required:
         - id
         - name
         - sql
+        - created_at
       properties:
         id:
           type: string
+          description: Unique query identifier.
+          example: "1"
         name:
           type: string
+          description: Human-readable query name.
+          example: Run duration by workflow
         sql:
           type: string
+          description: SQL query text.
+          example: "SELECT workflow_name, AVG(duration_seconds) FROM runs GROUP BY 1"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the query was saved.
+          example: "2026-03-01T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the query was last modified.
+          example: "2026-03-05T14:30:00Z"
 
     SaveQueryRequest:
+      description: Request body for creating or updating a saved query.
       type: object
       required:
         - name
@@ -2344,18 +2840,26 @@ components:
       properties:
         name:
           type: string
+          description: Human-readable query name.
+          example: Run duration by workflow
         sql:
           type: string
+          description: SQL query text.
+          example: "SELECT workflow_name, AVG(duration_seconds) FROM runs GROUP BY 1"
 
     ExecuteQueryRequest:
+      description: Request body for executing an ad-hoc SQL query.
       type: object
       required:
         - sql
       properties:
         sql:
           type: string
+          description: SQL query to execute.
+          example: "SELECT workflow_name, COUNT(*) FROM runs GROUP BY 1"
 
     ExecuteQueryResponse:
+      description: Columnar result set from an executed query.
       type: object
       required:
         - columns
@@ -2365,19 +2869,27 @@ components:
       properties:
         columns:
           type: array
+          description: Column names in the result set.
           items:
             type: string
+          example: ["workflow_name", "count"]
         rows:
           type: array
+          description: Result rows, each an array of values matching the column order.
           items:
             type: array
             items: {}
         elapsed:
           type: number
+          description: Query execution time in seconds.
+          example: 0.342
         row_count:
           type: integer
+          description: Number of rows returned.
+          example: 3
 
     HistoryEntry:
+      description: A previously executed query in the history log.
       type: object
       required:
         - id
@@ -2388,18 +2900,29 @@ components:
       properties:
         id:
           type: string
+          description: Unique history entry identifier.
+          example: h1
         sql:
           type: string
+          description: SQL query that was executed.
+          example: "SELECT workflow_name, COUNT(*) FROM runs GROUP BY 1"
         timestamp:
           type: string
+          description: Human-readable relative timestamp of execution.
+          example: 2 min ago
         elapsed:
           type: number
+          description: Query execution time in seconds.
+          example: 0.342
         row_count:
           type: integer
+          description: Number of rows returned.
+          example: 6
 
-    # ── Settings Schemas ────────────────────────────────────────────────
+    # ── Settings Schemas ─────────────────────────────────────────────────
 
     SettingFieldType:
+      description: Input type for a setting field.
       type: string
       enum:
         - text
@@ -2407,6 +2930,7 @@ components:
         - toggle
 
     SettingField:
+      description: A single configurable setting within a group.
       type: object
       required:
         - key
@@ -2416,20 +2940,31 @@ components:
       properties:
         key:
           type: string
+          description: Machine-readable setting key.
+          example: org_name
         label:
           type: string
+          description: Human-readable label displayed in the UI.
+          example: Organization name
         value:
           type: string
+          description: Current value of the setting.
+          example: Acme Corp
         type:
           $ref: "#/components/schemas/SettingFieldType"
         options:
           type: array
+          description: Available options for select-type fields.
           items:
             type: string
+          example: ["America/New_York", "UTC", "Europe/London"]
         description:
           type: string
+          description: Additional help text for the setting.
+          example: Comma-separated CIDRs. Leave empty to allow all.
 
     SettingGroup:
+      description: A logical group of related settings.
       type: object
       required:
         - id
@@ -2439,18 +2974,26 @@ components:
       properties:
         id:
           type: string
+          description: Machine-readable group identifier.
+          example: general
         name:
           type: string
+          description: Human-readable group name.
+          example: General
         description:
           type: string
+          description: Prose description of the settings group.
+          example: Core platform settings and defaults.
         fields:
           type: array
+          description: Settings within this group.
           items:
             $ref: "#/components/schemas/SettingField"
 
-    # ── Project Schemas ─────────────────────────────────────────────────
+    # ── Project Schemas ──────────────────────────────────────────────────
 
     Project:
+      description: A registered project (repository).
       type: object
       required:
         - id
@@ -2458,10 +3001,15 @@ components:
       properties:
         id:
           type: string
+          description: Unique project identifier.
+          example: arc-web
         name:
           type: string
+          description: Human-readable project name.
+          example: arc-web
 
     Branch:
+      description: A branch within a project.
       type: object
       required:
         - id
@@ -2469,12 +3017,17 @@ components:
       properties:
         id:
           type: string
+          description: Branch identifier.
+          example: main
         name:
           type: string
+          description: Branch name.
+          example: main
 
-    # ── Discovery Schemas ──────────────────────────────────────────────
+    # ── Discovery Schemas ────────────────────────────────────────────────
 
     RootResponseUrls:
+      description: Collection of API discovery URLs.
       type: object
       required:
         - openapi_url
@@ -2483,12 +3036,19 @@ components:
       properties:
         openapi_url:
           type: string
+          description: URL of the OpenAPI JSON specification.
+          example: /openapi.json
         current_user_url:
           type: string
+          description: URL of the current user endpoint.
+          example: /user
         health_url:
           type: string
+          description: URL of the health check endpoint.
+          example: /health
 
     RootResponse:
+      description: API discovery response with navigation URLs.
       type: object
       required:
         - urls
@@ -2497,17 +3057,23 @@ components:
           $ref: "#/components/schemas/RootResponseUrls"
 
     HealthResponse:
+      description: Service health check response.
       type: object
       required:
         - status
       properties:
         status:
           type: string
+          description: Health status indicator.
+          example: ok
 
     UserResponse:
+      description: Information about the authenticated user.
       type: object
       required:
         - login
       properties:
         login:
           type: string
+          description: User's login identifier (e.g. GitHub username).
+          example: octocat

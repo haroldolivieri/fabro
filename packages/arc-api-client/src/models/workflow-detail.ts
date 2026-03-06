@@ -14,12 +14,33 @@
 
 
 
+/**
+ * Full detail of a workflow definition including graph and configuration.
+ */
 export interface WorkflowDetail {
+    /**
+     * Human-readable workflow title.
+     */
     'title': string;
+    /**
+     * URL-safe slug used in API paths.
+     */
     'slug': string;
+    /**
+     * DOT graph filename.
+     */
     'filename': string;
+    /**
+     * Prose description of what the workflow does.
+     */
     'description': string;
+    /**
+     * TOML configuration content for the workflow.
+     */
     'config': string;
+    /**
+     * DOT language source defining the workflow graph.
+     */
     'graph': string;
 }
 

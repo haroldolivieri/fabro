@@ -14,7 +14,13 @@
 
 
 
+/**
+ * Request body for starting a new run from a DOT graph source.
+ */
 export interface StartRunRequest {
+    /**
+     * DOT language source defining the workflow graph.
+     */
     'dot_source': string;
 }
 

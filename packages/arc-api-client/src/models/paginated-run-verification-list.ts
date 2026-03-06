@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { RunVerification } from './run-verification';
 
+/**
+ * Paginated list of run verification categories.
+ */
 export interface PaginatedRunVerificationList {
     'data': Array<RunVerification>;
     'meta': PaginationMeta;

@@ -14,9 +14,21 @@
 
 
 
+/**
+ * Collection of API discovery URLs.
+ */
 export interface RootResponseUrls {
+    /**
+     * URL of the OpenAPI JSON specification.
+     */
     'openapi_url': string;
+    /**
+     * URL of the current user endpoint.
+     */
     'current_user_url': string;
+    /**
+     * URL of the health check endpoint.
+     */
     'health_url': string;
 }
 

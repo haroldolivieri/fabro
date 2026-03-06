@@ -29,7 +29,7 @@ import type { SettingGroup } from '../models';
 export const SettingsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Returns all server settings organized into groups. Each group contains fields with their current values and input types.
          * @summary Retrieve Server Settings
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -75,7 +75,7 @@ export const SettingsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = SettingsApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Returns all server settings organized into groups. Each group contains fields with their current values and input types.
          * @summary Retrieve Server Settings
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -96,7 +96,7 @@ export const SettingsApiFactory = function (configuration?: Configuration, baseP
     const localVarFp = SettingsApiFp(configuration)
     return {
         /**
-         * 
+         * Returns all server settings organized into groups. Each group contains fields with their current values and input types.
          * @summary Retrieve Server Settings
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -112,7 +112,7 @@ export const SettingsApiFactory = function (configuration?: Configuration, baseP
  */
 export class SettingsApi extends BaseAPI {
     /**
-     * 
+     * Returns all server settings organized into groups. Each group contains fields with their current values and input types.
      * @summary Retrieve Server Settings
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}

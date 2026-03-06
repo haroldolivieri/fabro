@@ -17,6 +17,9 @@
 // @ts-ignore
 import type { DiffFile } from './diff-file';
 
+/**
+ * A before/after pair showing changes to a single file.
+ */
 export interface FileDiff {
     'old_file': DiffFile;
     'new_file': DiffFile;

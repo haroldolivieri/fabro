@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Board column status for a run in the list view.
+ */
 
 export const RunListItemStatus = {
     WORKING: 'working',

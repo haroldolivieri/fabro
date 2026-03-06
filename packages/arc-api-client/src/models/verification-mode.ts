@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Operational mode of a verification control.
+ */
 
 export const VerificationMode = {
     ACTIVE: 'active',

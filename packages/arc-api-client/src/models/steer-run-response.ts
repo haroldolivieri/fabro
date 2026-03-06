@@ -13,18 +13,14 @@
  */
 
 
-// May contain unused imports in some cases
-// @ts-ignore
-import type { PaginationMeta } from './pagination-meta';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { RunListItem } from './run-list-item';
 
 /**
- * Paginated list of runs.
+ * Acknowledgement that the steering guidance was accepted for delivery.
  */
-export interface PaginatedRunList {
-    'data': Array<RunListItem>;
-    'meta': PaginationMeta;
+export interface SteerRunResponse {
+    /**
+     * Whether the steering guidance was accepted.
+     */
+    'accepted': boolean;
 }
 

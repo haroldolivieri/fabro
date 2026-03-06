@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { SessionListItem } from './session-list-item';
 
+/**
+ * Paginated list of sessions.
+ */
 export interface PaginatedSessionList {
     'data': Array<SessionListItem>;
     'meta': PaginationMeta;

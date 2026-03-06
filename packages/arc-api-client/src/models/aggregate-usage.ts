@@ -17,12 +17,33 @@
 // @ts-ignore
 import type { UsageByModel } from './usage-by-model';
 
+/**
+ * Aggregate token and cost usage across all runs since server start.
+ */
 export interface AggregateUsage {
+    /**
+     * Total number of completed runs.
+     */
     'total_runs': number;
+    /**
+     * Total input tokens across all runs.
+     */
     'total_input_tokens': number;
+    /**
+     * Total output tokens across all runs.
+     */
     'total_output_tokens': number;
+    /**
+     * Total cost in USD across all runs.
+     */
     'total_cost': number;
+    /**
+     * Total wall-clock runtime in seconds.
+     */
     'total_runtime_secs': number;
+    /**
+     * Usage grouped by model.
+     */
     'by_model': Array<UsageByModel>;
 }
 

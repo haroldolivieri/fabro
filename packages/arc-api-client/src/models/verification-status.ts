@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Result status of a verification control evaluation.
+ */
 
 export const VerificationStatus = {
     PASS: 'pass',

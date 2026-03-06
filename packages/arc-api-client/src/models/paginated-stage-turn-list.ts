@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { StageTurn } from './stage-turn';
 
+/**
+ * Paginated list of stage turns.
+ */
 export interface PaginatedStageTurnList {
     'data': Array<StageTurn>;
     'meta': PaginationMeta;

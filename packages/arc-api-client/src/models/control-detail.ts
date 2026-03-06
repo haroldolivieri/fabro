@@ -14,10 +14,25 @@
 
 
 
+/**
+ * Detailed information about a verification control including checks and examples.
+ */
 export interface ControlDetail {
+    /**
+     * Detailed prose description of the control\'s purpose and rationale.
+     */
     'description': string;
+    /**
+     * Specific checks performed by this control.
+     */
     'checks': Array<string>;
+    /**
+     * Example scenario where the control passes.
+     */
     'pass_example': string;
+    /**
+     * Example scenario where the control fails.
+     */
     'fail_example': string;
 }
 

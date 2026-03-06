@@ -17,9 +17,18 @@
 // @ts-ignore
 import type { CheckRunStatus } from './check-run-status';
 
+/**
+ * A CI check run result associated with a run\'s pull request.
+ */
 export interface CheckRun {
+    /**
+     * Name of the CI check.
+     */
     'name': string;
     'status': CheckRunStatus;
+    /**
+     * Duration of the check run in seconds.
+     */
     'duration_secs'?: number;
 }
 

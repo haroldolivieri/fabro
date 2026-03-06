@@ -14,8 +14,17 @@
 
 
 
+/**
+ * Request body for submitting an answer to a pending question.
+ */
 export interface SubmitAnswerRequest {
+    /**
+     * Freeform answer text.
+     */
     'value': string;
+    /**
+     * Key of the selected option (for multiple-choice questions).
+     */
     'selected_option_key'?: string;
 }
 

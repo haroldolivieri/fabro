@@ -14,8 +14,17 @@
 
 
 
+/**
+ * A selectable option for a multiple-choice or multi-select question.
+ */
 export interface ApiQuestionOption {
+    /**
+     * Machine-readable option key used when submitting an answer.
+     */
     'key': string;
+    /**
+     * Human-readable label displayed to the user.
+     */
     'label': string;
 }
 

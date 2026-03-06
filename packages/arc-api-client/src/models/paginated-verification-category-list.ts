@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { VerificationCategory } from './verification-category';
 
+/**
+ * Paginated list of verification categories.
+ */
 export interface PaginatedVerificationCategoryList {
     'data': Array<VerificationCategory>;
     'meta': PaginationMeta;

@@ -32,7 +32,7 @@ import type { PreviewUrlResponse } from '../models';
 // @ts-ignore
 import type { SteerRequest } from '../models';
 // @ts-ignore
-import type { SteerRun200Response } from '../models';
+import type { SteerRunResponse } from '../models';
 // @ts-ignore
 import type { SubmitAnswerRequest } from '../models';
 // @ts-ignore
@@ -43,9 +43,9 @@ import type { SubmitAnswerResponse } from '../models';
 export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Generates a time-limited preview URL for a port exposed by the run\'s sandbox environment.
          * @summary Preview URL
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {PreviewUrlRequest} previewUrlRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -89,9 +89,9 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
-         * 
+         * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
          * @summary List Run Questions
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -130,9 +130,9 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
-         * 
+         * Sends inline guidance to a running agent, targeting a specific file and line. The guidance is delivered asynchronously.
          * @summary Steer Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {SteerRequest} steerRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -176,10 +176,10 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
-         * 
+         * Submits an answer to a pending question. The answer can be freeform text or a selected option key, depending on the question type.
          * @summary Submit Run Answer
-         * @param {string} id 
-         * @param {string} qid 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} qid Unique identifier of a pending question.
          * @param {SubmitAnswerRequest} submitAnswerRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -235,9 +235,9 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = HumanInTheLoopApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Generates a time-limited preview URL for a port exposed by the run\'s sandbox environment.
          * @summary Preview URL
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {PreviewUrlRequest} previewUrlRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -249,9 +249,9 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
          * @summary List Run Questions
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -262,24 +262,24 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Sends inline guidance to a running agent, targeting a specific file and line. The guidance is delivered asynchronously.
          * @summary Steer Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {SteerRequest} steerRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async steerRun(id: string, steerRequest: SteerRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SteerRun200Response>> {
+        async steerRun(id: string, steerRequest: SteerRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SteerRunResponse>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.steerRun(id, steerRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.steerRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Submits an answer to a pending question. The answer can be freeform text or a selected option key, depending on the question type.
          * @summary Submit Run Answer
-         * @param {string} id 
-         * @param {string} qid 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} qid Unique identifier of a pending question.
          * @param {SubmitAnswerRequest} submitAnswerRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -300,9 +300,9 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
     const localVarFp = HumanInTheLoopApiFp(configuration)
     return {
         /**
-         * 
+         * Generates a time-limited preview URL for a port exposed by the run\'s sandbox environment.
          * @summary Preview URL
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {PreviewUrlRequest} previewUrlRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -311,9 +311,9 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
             return localVarFp.generatePreviewUrl(id, previewUrlRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
          * @summary List Run Questions
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -321,21 +321,21 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
             return localVarFp.listRunQuestions(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Sends inline guidance to a running agent, targeting a specific file and line. The guidance is delivered asynchronously.
          * @summary Steer Run
-         * @param {string} id 
+         * @param {string} id Unique run identifier (ULID).
          * @param {SteerRequest} steerRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        steerRun(id: string, steerRequest: SteerRequest, options?: RawAxiosRequestConfig): AxiosPromise<SteerRun200Response> {
+        steerRun(id: string, steerRequest: SteerRequest, options?: RawAxiosRequestConfig): AxiosPromise<SteerRunResponse> {
             return localVarFp.steerRun(id, steerRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Submits an answer to a pending question. The answer can be freeform text or a selected option key, depending on the question type.
          * @summary Submit Run Answer
-         * @param {string} id 
-         * @param {string} qid 
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} qid Unique identifier of a pending question.
          * @param {SubmitAnswerRequest} submitAnswerRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -351,9 +351,9 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
  */
 export class HumanInTheLoopApi extends BaseAPI {
     /**
-     * 
+     * Generates a time-limited preview URL for a port exposed by the run\'s sandbox environment.
      * @summary Preview URL
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {PreviewUrlRequest} previewUrlRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -363,9 +363,9 @@ export class HumanInTheLoopApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
      * @summary List Run Questions
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -374,9 +374,9 @@ export class HumanInTheLoopApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Sends inline guidance to a running agent, targeting a specific file and line. The guidance is delivered asynchronously.
      * @summary Steer Run
-     * @param {string} id 
+     * @param {string} id Unique run identifier (ULID).
      * @param {SteerRequest} steerRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -386,10 +386,10 @@ export class HumanInTheLoopApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Submits an answer to a pending question. The answer can be freeform text or a selected option key, depending on the question type.
      * @summary Submit Run Answer
-     * @param {string} id 
-     * @param {string} qid 
+     * @param {string} id Unique run identifier (ULID).
+     * @param {string} qid Unique identifier of a pending question.
      * @param {SubmitAnswerRequest} submitAnswerRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}

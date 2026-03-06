@@ -33,7 +33,7 @@ import type { VerificationDetailResponse } from '../models';
 export const VerificationsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         * Returns all verification categories with their controls and performance metrics.
          * @summary List Verifications
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -70,9 +70,9 @@ export const VerificationsApiAxiosParamCreator = function (configuration?: Confi
             };
         },
         /**
-         * 
+         * Returns detailed information about a specific verification control, including performance data, recent results, and sibling controls in the same category.
          * @summary Retrieve Verification
-         * @param {string} slug 
+         * @param {string} slug URL-safe slug identifying a verification control.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -120,7 +120,7 @@ export const VerificationsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = VerificationsApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         * Returns all verification categories with their controls and performance metrics.
          * @summary List Verifications
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -132,9 +132,9 @@ export const VerificationsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Returns detailed information about a specific verification control, including performance data, recent results, and sibling controls in the same category.
          * @summary Retrieve Verification
-         * @param {string} slug 
+         * @param {string} slug URL-safe slug identifying a verification control.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -154,7 +154,7 @@ export const VerificationsApiFactory = function (configuration?: Configuration, 
     const localVarFp = VerificationsApiFp(configuration)
     return {
         /**
-         * 
+         * Returns all verification categories with their controls and performance metrics.
          * @summary List Verifications
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -163,9 +163,9 @@ export const VerificationsApiFactory = function (configuration?: Configuration, 
             return localVarFp.listVerifications(options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Returns detailed information about a specific verification control, including performance data, recent results, and sibling controls in the same category.
          * @summary Retrieve Verification
-         * @param {string} slug 
+         * @param {string} slug URL-safe slug identifying a verification control.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -180,7 +180,7 @@ export const VerificationsApiFactory = function (configuration?: Configuration, 
  */
 export class VerificationsApi extends BaseAPI {
     /**
-     * 
+     * Returns all verification categories with their controls and performance metrics.
      * @summary List Verifications
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -190,9 +190,9 @@ export class VerificationsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Returns detailed information about a specific verification control, including performance data, recent results, and sibling controls in the same category.
      * @summary Retrieve Verification
-     * @param {string} slug 
+     * @param {string} slug URL-safe slug identifying a verification control.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */

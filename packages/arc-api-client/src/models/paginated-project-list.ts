@@ -20,6 +20,9 @@ import type { PaginationMeta } from './pagination-meta';
 // @ts-ignore
 import type { Project } from './project';
 
+/**
+ * Paginated list of projects.
+ */
 export interface PaginatedProjectList {
     'data': Array<Project>;
     'meta': PaginationMeta;

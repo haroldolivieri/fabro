@@ -17,10 +17,25 @@
 // @ts-ignore
 import type { SettingField } from './setting-field';
 
+/**
+ * A logical group of related settings.
+ */
 export interface SettingGroup {
+    /**
+     * Machine-readable group identifier.
+     */
     'id': string;
+    /**
+     * Human-readable group name.
+     */
     'name': string;
+    /**
+     * Prose description of the settings group.
+     */
     'description': string;
+    /**
+     * Settings within this group.
+     */
     'fields': Array<SettingField>;
 }
 

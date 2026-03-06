@@ -17,11 +17,26 @@
 // @ts-ignore
 import type { StageStatus } from './stage-status';
 
+/**
+ * A single stage in a run\'s workflow graph.
+ */
 export interface RunStage {
+    /**
+     * Unique stage identifier within the run.
+     */
     'id': string;
+    /**
+     * Human-readable stage name.
+     */
     'name': string;
     'status': StageStatus;
+    /**
+     * Time spent in this stage, in seconds.
+     */
     'duration_secs'?: number;
+    /**
+     * Node identifier in the DOT graph source.
+     */
     'dot_id'?: string;
 }
 

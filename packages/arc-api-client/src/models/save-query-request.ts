@@ -14,8 +14,17 @@
 
 
 
+/**
+ * Request body for creating or updating a saved query.
+ */
 export interface SaveQueryRequest {
+    /**
+     * Human-readable query name.
+     */
     'name': string;
+    /**
+     * SQL query text.
+     */
     'sql': string;
 }
 

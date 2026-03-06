@@ -17,11 +17,26 @@
 // @ts-ignore
 import type { VerificationType } from './verification-type';
 
+/**
+ * Core metadata about a verification control.
+ */
 export interface ControlInfo {
+    /**
+     * Human-readable control name.
+     */
     'name': string;
+    /**
+     * URL-safe slug.
+     */
     'slug': string;
+    /**
+     * Short description of what the control verifies.
+     */
     'description': string;
     'type'?: VerificationType;
+    /**
+     * Name of the category this control belongs to.
+     */
     'category': string;
 }
 

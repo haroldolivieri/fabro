@@ -14,7 +14,13 @@
 
 
 
+/**
+ * Request body for executing an ad-hoc SQL query.
+ */
 export interface ExecuteQueryRequest {
+    /**
+     * SQL query to execute.
+     */
     'sql': string;
 }
 

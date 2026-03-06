@@ -14,7 +14,13 @@
 
 
 
+/**
+ * Service health check response.
+ */
 export interface HealthResponse {
+    /**
+     * Health status indicator.
+     */
     'status': string;
 }
 

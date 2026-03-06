@@ -20,6 +20,9 @@ import type { HistoryEntry } from './history-entry';
 // @ts-ignore
 import type { PaginationMeta } from './pagination-meta';
 
+/**
+ * Paginated list of query history entries.
+ */
 export interface PaginatedHistoryEntryList {
     'data': Array<HistoryEntry>;
     'meta': PaginationMeta;

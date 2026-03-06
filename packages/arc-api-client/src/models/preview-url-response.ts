@@ -14,7 +14,13 @@
 
 
 
+/**
+ * Response containing the generated preview URL.
+ */
 export interface PreviewUrlResponse {
+    /**
+     * Time-limited preview URL.
+     */
     'url': string;
 }
 

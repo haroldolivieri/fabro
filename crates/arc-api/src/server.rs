@@ -67,7 +67,7 @@ struct ManagedRun {
     graph: arc_workflows::graph::Graph,
     status: RunStatus,
     error: Option<String>,
-    created_at: std::time::Instant,
+    created_at: chrono::DateTime<chrono::Utc>,
     // Populated when running:
     interviewer: Option<Arc<WebInterviewer>>,
     event_tx: Option<broadcast::Sender<WorkflowRunEvent>>,
@@ -379,6 +379,7 @@ async fn list_runs(
             status: managed_run.status,
             error: managed_run.error.clone(),
             queue_position: queue_positions.get(id).copied(),
+            created_at: managed_run.created_at,
         })
         .collect();
     let page: Vec<_> = all_items.into_iter().skip(offset).take(limit + 1).collect();
@@ -432,7 +433,7 @@ async fn start_run(
                 graph,
                 status: RunStatus::Queued,
                 error: None,
-                created_at: std::time::Instant::now(),
+                created_at: chrono::Utc::now(),
                 interviewer: None,
                 event_tx: None,
                 context: None,
@@ -446,7 +447,15 @@ async fn start_run(
 
     state.scheduler_notify.notify_one();
 
-    (StatusCode::CREATED, Json(StartRunResponse { id: run_id })).into_response()
+    (
+        StatusCode::CREATED,
+        Json(StartRunResponse {
+            id: run_id,
+            status: RunStatus::Queued,
+            created_at: chrono::Utc::now(),
+        }),
+    )
+        .into_response()
 }
 
 /// Execute a single run: transitions queued → starting → running → completed/failed/cancelled.
@@ -678,6 +687,7 @@ async fn get_run_status(
                     id: id.clone(),
                     status: managed_run.status,
                     error: managed_run.error.clone(),
+                    created_at: managed_run.created_at,
                     queue_position,
                 }),
             )

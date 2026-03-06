@@ -14,9 +14,21 @@
 
 
 
+/**
+ * A single error entry in an error response.
+ */
 export interface ErrorResponseEntry {
+    /**
+     * HTTP status code as a string.
+     */
     'status': string;
+    /**
+     * Short error classification.
+     */
     'title': string;
+    /**
+     * Human-readable error description.
+     */
     'detail': string;
 }
 

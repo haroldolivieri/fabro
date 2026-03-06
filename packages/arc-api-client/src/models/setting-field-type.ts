@@ -14,6 +14,9 @@
 
 
 
+/**
+ * Input type for a setting field.
+ */
 
 export const SettingFieldType = {
     TEXT: 'text',

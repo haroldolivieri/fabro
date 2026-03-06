@@ -17,11 +17,26 @@
 // @ts-ignore
 import type { VerificationStatus } from './verification-status';
 
+/**
+ * Result of a recent verification control evaluation for a specific run.
+ */
 export interface RecentControlResult {
+    /**
+     * Identifier of the run that was evaluated.
+     */
     'run_id': string;
+    /**
+     * Title of the evaluated run.
+     */
     'run_title': string;
+    /**
+     * Workflow that produced the run.
+     */
     'workflow': string;
     'result': VerificationStatus;
+    /**
+     * Human-readable relative timestamp of the evaluation.
+     */
     'timestamp': string;
 }
 

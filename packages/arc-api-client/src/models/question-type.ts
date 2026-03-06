@@ -14,6 +14,9 @@
 
 
 
+/**
+ * The interaction type of a human-in-the-loop question.
+ */
 
 export const QuestionType = {
     YES_NO: 'yes_no',

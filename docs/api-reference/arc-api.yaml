@@ -2102,7 +2102,7 @@ components:
         model:
           type: string
           description: The LLM model used for this session.
-          example: Opus 4.6
+          example: claude-opus-4-6
         last_message_preview:
           type: string
           description: Truncated snippet of the most recent turn's content.
@@ -2219,7 +2219,7 @@ components:
         model:
           type: string
           description: The LLM model used for this session.
-          example: Opus 4.6
+          example: claude-opus-4-6
         created_at:
           type: string
           format: date-time
@@ -2249,7 +2249,7 @@ components:
         model:
           type: string
           description: LLM model to use. If omitted, the server default is used.
-          example: Opus 4.6
+          example: claude-opus-4-6
 
     CreateSessionResponse:
       description: Response returned after successfully creating a session.
@@ -2273,7 +2273,7 @@ components:
         model:
           type: string
           description: The resolved LLM model for this session (may be the server default).
-          example: Opus 4.6
+          example: claude-opus-4-6
         created_at:
           type: string
           format: date-time

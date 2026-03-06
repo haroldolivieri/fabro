@@ -1871,7 +1871,9 @@ impl WorkflowRunEngine {
                         }
                     };
                     if let Some(patch) = diff_result {
-                        let _ = std::fs::write(&diff_dest, patch);
+                        if !patch.is_empty() {
+                            let _ = std::fs::write(&diff_dest, patch);
+                        }
                     } else {
                         context.append_log("git diff failed".to_string());
                     }
@@ -2011,7 +2013,9 @@ impl WorkflowRunEngine {
                 }
             };
             if let Some(patch) = patch {
-                let _ = std::fs::write(config.logs_root.join("final.patch"), patch);
+                if !patch.is_empty() {
+                    let _ = std::fs::write(config.logs_root.join("final.patch"), patch);
+                }
             }
         }
 

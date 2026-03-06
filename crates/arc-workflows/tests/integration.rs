@@ -9839,13 +9839,16 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
         "all SHAs should be 40-char hex, got: {git_events:?}"
     );
 
-    // 7. Assert diff.patch was written for the "work" node
-    let work_diff = logs_dir
+    // 7. Assert diff.patch was written for the "start" node (where hello.txt is committed)
+    let start_diff = logs_dir
         .path()
         .join("nodes")
-        .join("work")
+        .join("start")
         .join("diff.patch");
-    assert!(work_diff.exists(), "diff.patch should exist for work node");
+    assert!(
+        start_diff.exists(),
+        "diff.patch should exist for start node (hello.txt committed there)"
+    );
 
     // 8. Verify checkpoint.json has git_commit_sha
     let checkpoint =
@@ -10328,6 +10331,133 @@ async fn parallel_git_branching_host_e2e() {
         parallel_completed.len(),
         1,
         "should have exactly one ParallelCompleted event"
+    );
+
+    // Cleanup
+    let _ = std::process::Command::new("git")
+        .args(["worktree", "remove", "--force"])
+        .arg(&worktree_path)
+        .current_dir(repo.path())
+        .output();
+}
+
+/// When a node produces no file changes, `diff.patch` should NOT be written.
+#[tokio::test]
+async fn git_checkpoint_host_skips_empty_diff_patch() {
+    let repo = tempfile::tempdir().unwrap();
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@test",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "init",
+        ])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+
+    let base_sha = {
+        let out = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo.path())
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    std::process::Command::new("git")
+        .args(["branch", "arc/run/empty-diff", "HEAD"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    let worktree_path = repo.path().join("worktree");
+    std::process::Command::new("git")
+        .args(["worktree", "add"])
+        .arg(&worktree_path)
+        .arg("arc/run/empty-diff")
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+
+    // No files written — handler is a no-op
+
+    let mut graph = Graph::new("EmptyDiff");
+    graph.attrs.insert(
+        "goal".to_string(),
+        AttrValue::String("Test empty diff skip".to_string()),
+    );
+    let mut start = Node::new("start");
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
+    graph.nodes.insert("start".to_string(), start);
+    let mut exit = Node::new("exit");
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
+    graph.nodes.insert("exit".to_string(), exit);
+    let mut work = Node::new("work");
+    work.attrs
+        .insert("label".to_string(), AttrValue::String("Work".to_string()));
+    graph.nodes.insert("work".to_string(), work);
+    graph.edges.push(Edge::new("start", "work"));
+    graph.edges.push(Edge::new("work", "exit"));
+
+    let logs_dir = tempfile::tempdir().unwrap();
+    let mut emitter = EventEmitter::new();
+    let _events = collect_events(&mut emitter);
+
+    let env: Arc<dyn arc_agent::Sandbox> =
+        Arc::new(arc_agent::LocalSandbox::new(worktree_path.clone()));
+    let mut registry = HandlerRegistry::new(Box::new(ContextSetterHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), env);
+
+    let config = RunConfig {
+        logs_root: logs_dir.path().to_path_buf(),
+        cancel_token: None,
+        dry_run: false,
+        run_id: "empty-diff".into(),
+        git_checkpoint: Some(GitCheckpointMode::Host(worktree_path.clone())),
+        base_sha: Some(base_sha.clone()),
+        run_branch: Some("arc/run/empty-diff".to_string()),
+        meta_branch: None,
+        labels: std::collections::HashMap::new(),
+    };
+
+    let outcome = engine
+        .run(&graph, &config)
+        .await
+        .expect("pipeline should succeed");
+    assert_eq!(outcome.status, StageStatus::Success);
+
+    // diff.patch should NOT exist for the "work" node (no file changes)
+    let work_diff = logs_dir
+        .path()
+        .join("nodes")
+        .join("work")
+        .join("diff.patch");
+    assert!(
+        !work_diff.exists(),
+        "diff.patch should not exist when there are no changes"
+    );
+
+    // final.patch should NOT exist either
+    let final_patch = logs_dir.path().join("final.patch");
+    assert!(
+        !final_patch.exists(),
+        "final.patch should not exist when there are no changes"
     );
 
     // Cleanup

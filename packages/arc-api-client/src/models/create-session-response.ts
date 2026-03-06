@@ -34,5 +34,9 @@ export interface CreateSessionResponse {
      * Timestamp when the session was created.
      */
     'created_at': string;
+    /**
+     * Timestamp when the session was last updated (equal to created_at at creation time).
+     */
+    'updated_at': string;
 }
 

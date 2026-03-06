@@ -501,9 +501,11 @@ pub async fn create_session_stub(
     _auth: AuthenticatedService,
     State(_state): State<Arc<AppState>>,
 ) -> Response {
+    let id = uuid::Uuid::new_v4();
+    let now = "2026-03-06T16:00:00Z";
     (
         StatusCode::CREATED,
-        Json(serde_json::json!({"id": "demo-session-new", "title": "New session", "model": "Opus 4.6", "created_at": "2026-03-06T16:00:00Z"})),
+        Json(serde_json::json!({"id": id, "title": "New session", "model": "Opus 4.6", "created_at": now, "updated_at": now})),
     )
         .into_response()
 }
@@ -2367,15 +2369,29 @@ mod retros {
 mod sessions {
     use arc_types::*;
     use chrono::{DateTime, Utc};
+    use uuid::Uuid;
 
     fn ts(s: &str) -> DateTime<Utc> {
         s.parse().unwrap()
     }
 
+    fn uid(n: u128) -> Uuid {
+        Uuid::from_u128(n)
+    }
+
+    const S1: u128 = 0x10000000_0000_4000_8000_000000000001;
+    const S2: u128 = 0x10000000_0000_4000_8000_000000000002;
+    const S3: u128 = 0x10000000_0000_4000_8000_000000000003;
+    const S4: u128 = 0x10000000_0000_4000_8000_000000000004;
+    const S5: u128 = 0x10000000_0000_4000_8000_000000000005;
+    const S6: u128 = 0x10000000_0000_4000_8000_000000000006;
+    const S7: u128 = 0x10000000_0000_4000_8000_000000000007;
+    const S8: u128 = 0x10000000_0000_4000_8000_000000000008;
+
     pub fn list_items() -> Vec<SessionListItem> {
         vec![
             SessionListItem {
-                id: "s1".into(),
+                id: uid(S1),
                 title: "Add rate limiting to auth endpoints".into(),
                 model: "Opus 4.6".into(),
                 last_message_preview: "Done. I've created the rate limiter and wired it up...".into(),
@@ -2383,7 +2399,7 @@ mod sessions {
                 updated_at: ts("2026-03-06T15:45:00Z"),
             },
             SessionListItem {
-                id: "s2".into(),
+                id: uid(S2),
                 title: "Fix config parsing for nested values".into(),
                 model: "Sonnet 4.6".into(),
                 last_message_preview: "Fixed. The parser now tracks the current section header...".into(),
@@ -2391,7 +2407,7 @@ mod sessions {
                 updated_at: ts("2026-03-06T13:15:00Z"),
             },
             SessionListItem {
-                id: "s3".into(),
+                id: uid(S3),
                 title: "Migrate to React Router v7".into(),
                 model: "Opus 4.6".into(),
                 last_message_preview: "You're on React Router 6.22. The migration to v7 involves...".into(),
@@ -2399,7 +2415,7 @@ mod sessions {
                 updated_at: ts("2026-03-05T11:30:00Z"),
             },
             SessionListItem {
-                id: "s4".into(),
+                id: uid(S4),
                 title: "Add dark mode toggle".into(),
                 model: "Sonnet 4.6".into(),
                 last_message_preview: "Added a dark mode toggle to the settings panel with system preference detection.".into(),
@@ -2407,7 +2423,7 @@ mod sessions {
                 updated_at: ts("2026-03-05T09:45:00Z"),
             },
             SessionListItem {
-                id: "s5".into(),
+                id: uid(S5),
                 title: "Update OpenAPI spec for v3".into(),
                 model: "Opus 4.6".into(),
                 last_message_preview: "Updated all endpoint schemas to v3 format with discriminated unions.".into(),
@@ -2415,7 +2431,7 @@ mod sessions {
                 updated_at: ts("2026-03-05T08:30:00Z"),
             },
             SessionListItem {
-                id: "s6".into(),
+                id: uid(S6),
                 title: "Terraform module for Redis cluster".into(),
                 model: "Opus 4.6".into(),
                 last_message_preview: "Created the module with 3-node cluster, automatic failover, and encryption at rest.".into(),
@@ -2423,7 +2439,7 @@ mod sessions {
                 updated_at: ts("2026-03-03T16:00:00Z"),
             },
             SessionListItem {
-                id: "s7".into(),
+                id: uid(S7),
                 title: "Add pipeline event types".into(),
                 model: "Sonnet 4.6".into(),
                 last_message_preview: "Added PipelineStarted, StageCompleted, and PipelineFailed event types.".into(),
@@ -2431,7 +2447,7 @@ mod sessions {
                 updated_at: ts("2026-03-01T12:00:00Z"),
             },
             SessionListItem {
-                id: "s8".into(),
+                id: uid(S8),
                 title: "Implement webhook retry logic".into(),
                 model: "Opus 4.6".into(),
                 last_message_preview: "Implemented exponential backoff with jitter, max 5 retries over 24 hours.".into(),
@@ -2442,9 +2458,10 @@ mod sessions {
     }
 
     pub fn detail(id: &str) -> Option<SessionDetail> {
-        match id {
-            "s1" => Some(SessionDetail {
-                id: "s1".into(), title: "Add rate limiting to auth endpoints".into(), model: "Opus 4.6".into(), created_at: ts("2026-03-06T14:30:00Z"), updated_at: ts("2026-03-06T15:45:00Z"),
+        let parsed = id.parse::<Uuid>().ok()?;
+        match parsed.as_u128() {
+            S1 => Some(SessionDetail {
+                id: uid(S1), title: "Add rate limiting to auth endpoints".into(), model: "Opus 4.6".into(), created_at: ts("2026-03-06T14:30:00Z"), updated_at: ts("2026-03-06T15:45:00Z"),
                 turns: vec![
                     SessionTurn::UserTurn(UserTurn { kind: UserTurnKind::User, content: "Add rate limiting to the auth endpoints. We're getting hit with brute force attempts on /api/auth/login and /api/auth/register. Use a sliding window approach with Redis, 10 requests per minute per IP.".into(), created_at: ts("2026-02-28T10:00:00Z") }),
                     SessionTurn::AssistantTurn(AssistantTurn { kind: AssistantTurnKind::Assistant, content: "I'll implement sliding window rate limiting using Redis. Let me first look at the existing auth routes and middleware setup.".into(), created_at: ts("2026-02-28T10:00:15Z") }),
@@ -2462,8 +2479,8 @@ mod sessions {
                     SessionTurn::AssistantTurn(AssistantTurn { kind: AssistantTurnKind::Assistant, content: "Done. I've created the rate limiter and wired it up:\n\n- **`src/middleware/rate-limit.ts`** \u{2014} Sliding window rate limiter using Redis sorted sets. Each request adds a timestamped entry, expired entries are pruned, and the count is checked against the limit.\n- **`src/routes/auth.ts`** \u{2014} Applied `rateLimit({ windowMs: 60_000, max: 10 })` to both `/login` and `/register`.\n- **`src/middleware/index.ts`** \u{2014} Re-exported the new middleware.\n\nWhen the limit is exceeded, clients get a `429` response with a `Retry-After` header indicating seconds until the window resets.".into(), created_at: ts("2026-02-28T10:01:00Z") }),
                 ],
             }),
-            "s2" => Some(SessionDetail {
-                id: "s2".into(), title: "Fix config parsing for nested values".into(), model: "Sonnet 4.6".into(), created_at: ts("2026-03-06T12:30:00Z"), updated_at: ts("2026-03-06T13:15:00Z"),
+            S2 => Some(SessionDetail {
+                id: uid(S2), title: "Fix config parsing for nested values".into(), model: "Sonnet 4.6".into(), created_at: ts("2026-03-06T12:30:00Z"), updated_at: ts("2026-03-06T13:15:00Z"),
                 turns: vec![
                     SessionTurn::UserTurn(UserTurn { kind: UserTurnKind::User, content: "The CLI crashes when parsing nested TOML config values like [database.connection]. Can you debug and fix this?".into(), created_at: ts("2026-02-28T10:00:00Z") }),
                     SessionTurn::AssistantTurn(AssistantTurn { kind: AssistantTurnKind::Assistant, content: "Let me look at the config parser to understand how nested keys are handled.".into(), created_at: ts("2026-02-28T10:00:12Z") }),
@@ -2478,8 +2495,8 @@ mod sessions {
                     SessionTurn::AssistantTurn(AssistantTurn { kind: AssistantTurnKind::Assistant, content: "Fixed. The parser now:\n\n1. Tracks the current section header (e.g. `[database.connection]`)\n2. Constructs nested objects from dotted paths\n3. Handles both `key = value` within sections and bare `dotted.key = value` syntax\n\nAll 4 tests pass, including the new nested section case.".into(), created_at: ts("2026-02-28T10:01:00Z") }),
                 ],
             }),
-            "s3" => Some(SessionDetail {
-                id: "s3".into(), title: "Migrate to React Router v7".into(), model: "Opus 4.6".into(), created_at: ts("2026-03-05T10:00:00Z"), updated_at: ts("2026-03-05T11:30:00Z"),
+            S3 => Some(SessionDetail {
+                id: uid(S3), title: "Migrate to React Router v7".into(), model: "Opus 4.6".into(), created_at: ts("2026-03-05T10:00:00Z"), updated_at: ts("2026-03-05T11:30:00Z"),
                 turns: vec![
                     SessionTurn::UserTurn(UserTurn { kind: UserTurnKind::User, content: "Help me migrate our app from React Router v6 to v7. We're using createBrowserRouter with data loaders.".into(), created_at: ts("2026-02-26T10:00:00Z") }),
                     SessionTurn::AssistantTurn(AssistantTurn { kind: AssistantTurnKind::Assistant, content: "I'll audit your current router setup and identify what needs to change for v7. Let me scan the codebase.".into(), created_at: ts("2026-02-26T10:00:10Z") }),

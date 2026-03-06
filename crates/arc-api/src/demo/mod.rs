@@ -51,8 +51,9 @@ pub async fn get_run_stages(
     _auth: AuthenticatedService,
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
+    Query(pagination): Query<PaginationParams>,
 ) -> Response {
-    list_response(runs::stages())
+    paginated_response(runs::stages(), &pagination)
 }
 
 pub async fn get_stage_turns(
@@ -91,8 +92,9 @@ pub async fn get_run_verifications(
     _auth: AuthenticatedService,
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
+    Query(pagination): Query<PaginationParams>,
 ) -> Response {
-    list_response(runs::verifications())
+    paginated_response(runs::verifications(), &pagination)
 }
 
 pub async fn get_run_configuration(
@@ -113,7 +115,7 @@ pub async fn steer_run_stub(
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
 ) -> Response {
-    (StatusCode::ACCEPTED, Json(serde_json::json!({"accepted": true}))).into_response()
+    StatusCode::ACCEPTED.into_response()
 }
 
 pub async fn generate_preview_url_stub(
@@ -122,7 +124,7 @@ pub async fn generate_preview_url_stub(
     Path(_id): Path<String>,
 ) -> Response {
     (
-        StatusCode::OK,
+        StatusCode::CREATED,
         Json(serde_json::json!({"url": "https://google.com"})),
     )
         .into_response()
@@ -153,9 +155,9 @@ pub async fn get_questions_stub(
     _auth: AuthenticatedService,
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
+    Query(pagination): Query<PaginationParams>,
 ) -> Response {
-    let empty: Vec<arc_types::ApiQuestion> = vec![];
-    list_response(empty)
+    paginated_response(runs::questions(), &pagination)
 }
 
 pub async fn answer_stub(
@@ -163,7 +165,7 @@ pub async fn answer_stub(
     State(_state): State<Arc<AppState>>,
     Path((_id, _qid)): Path<(String, String)>,
 ) -> Response {
-    (StatusCode::OK, Json(serde_json::json!({"accepted": true}))).into_response()
+    StatusCode::NO_CONTENT.into_response()
 }
 
 pub async fn run_events_stub(
@@ -195,7 +197,7 @@ pub async fn cancel_stub(
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
 ) -> Response {
-    (StatusCode::OK, Json(serde_json::json!({"cancelled": true}))).into_response()
+    (StatusCode::OK, Json(serde_json::json!({"id": _id, "status": "cancelled", "created_at": "2026-03-06T14:30:00Z"}))).into_response()
 }
 
 pub async fn get_run_graph(
@@ -703,7 +705,7 @@ mod runs {
                 repo: "api-server".into(),
                 title: "Add rate limiting to auth endpoints".into(),
                 workflow: "implement".into(),
-                status: RunListItemStatus::Working,
+                status: BoardColumn::Working,
                 number: None,
                 additions: None,
                 deletions: None,
@@ -721,7 +723,7 @@ mod runs {
                 repo: "web-dashboard".into(),
                 title: "Migrate to React Router v7".into(),
                 workflow: "implement".into(),
-                status: RunListItemStatus::Working,
+                status: BoardColumn::Working,
                 number: None,
                 additions: None,
                 deletions: None,
@@ -739,7 +741,7 @@ mod runs {
                 repo: "cli-tools".into(),
                 title: "Fix config parsing for nested values".into(),
                 workflow: "fix_build".into(),
-                status: RunListItemStatus::Working,
+                status: BoardColumn::Working,
                 number: None,
                 additions: None,
                 deletions: None,
@@ -757,7 +759,7 @@ mod runs {
                 repo: "api-server".into(),
                 title: "Update OpenAPI spec for v3".into(),
                 workflow: "expand".into(),
-                status: RunListItemStatus::Pending,
+                status: BoardColumn::Pending,
                 number: None,
                 additions: Some(567),
                 deletions: Some(234),
@@ -775,7 +777,7 @@ mod runs {
                 repo: "shared-types".into(),
                 title: "Add pipeline event types".into(),
                 workflow: "implement".into(),
-                status: RunListItemStatus::Pending,
+                status: BoardColumn::Pending,
                 number: None,
                 additions: Some(145),
                 deletions: Some(23),
@@ -793,7 +795,7 @@ mod runs {
                 repo: "web-dashboard".into(),
                 title: "Add dark mode toggle".into(),
                 workflow: "implement".into(),
-                status: RunListItemStatus::Review,
+                status: BoardColumn::Review,
                 number: Some(889),
                 additions: Some(234),
                 deletions: Some(67),
@@ -847,7 +849,7 @@ mod runs {
                 repo: "infrastructure".into(),
                 title: "Terraform module for Redis cluster".into(),
                 workflow: "implement".into(),
-                status: RunListItemStatus::Review,
+                status: BoardColumn::Review,
                 number: Some(156),
                 additions: Some(412),
                 deletions: Some(0),
@@ -891,7 +893,7 @@ mod runs {
                 repo: "api-server".into(),
                 title: "Implement webhook retry logic".into(),
                 workflow: "implement".into(),
-                status: RunListItemStatus::Merge,
+                status: BoardColumn::Merge,
                 number: Some(1249),
                 additions: Some(189),
                 deletions: Some(45),
@@ -970,7 +972,7 @@ mod runs {
                 repo: "cli-tools".into(),
                 title: "Add --verbose flag to run command".into(),
                 workflow: "expand".into(),
-                status: RunListItemStatus::Merge,
+                status: BoardColumn::Merge,
                 number: Some(430),
                 additions: Some(56),
                 deletions: Some(12),
@@ -1019,7 +1021,7 @@ mod runs {
                 repo: "shared-types".into(),
                 title: "Export utility type helpers".into(),
                 workflow: "sync_drift".into(),
-                status: RunListItemStatus::Merge,
+                status: BoardColumn::Merge,
                 number: Some(76),
                 additions: Some(34),
                 deletions: Some(8),
@@ -1201,6 +1203,31 @@ mod runs {
 
     pub fn verifications() -> Vec<arc_types::RunVerification> {
         super::verifications::run_verifications()
+    }
+
+    pub fn questions() -> Vec<ApiQuestion> {
+        vec![
+            ApiQuestion {
+                id: "q-001".into(),
+                text: "Should we proceed with the proposed changes?".into(),
+                question_type: QuestionType::YesNo,
+                options: vec![
+                    ApiQuestionOption { key: "yes".into(), label: "Yes".into() },
+                    ApiQuestionOption { key: "no".into(), label: "No".into() },
+                ],
+                allow_freeform: false,
+            },
+            ApiQuestion {
+                id: "q-002".into(),
+                text: "Which approach do you prefer for the migration?".into(),
+                question_type: QuestionType::MultipleChoice,
+                options: vec![
+                    ApiQuestionOption { key: "incremental".into(), label: "Incremental migration".into() },
+                    ApiQuestionOption { key: "big_bang".into(), label: "Big-bang rewrite".into() },
+                ],
+                allow_freeform: true,
+            },
+        ]
     }
 
     pub fn configuration() -> String {

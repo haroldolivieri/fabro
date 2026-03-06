@@ -22,8 +22,6 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
-import type { CancelRunResponse } from '../models';
-// @ts-ignore
 import type { ErrorResponse } from '../models';
 // @ts-ignore
 import type { PaginatedRunList } from '../models';
@@ -31,8 +29,6 @@ import type { PaginatedRunList } from '../models';
 import type { RunStatusResponse } from '../models';
 // @ts-ignore
 import type { StartRunRequest } from '../models';
-// @ts-ignore
-import type { StartRunResponse } from '../models';
 /**
  * RunsApi - axios parameter creator
  */
@@ -174,9 +170,9 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRunSvg: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        retrieveRunGraph: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
-            assertParamExists('retrieveRunSvg', 'id', id)
+            assertParamExists('retrieveRunGraph', 'id', id)
             const localVarPath = `/runs/{id}/graph`
                 .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
@@ -307,7 +303,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async cancelRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CancelRunResponse>> {
+        async cancelRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunStatusResponse>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.cancelRun(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.cancelRun']?.[localVarOperationServerIndex]?.url;
@@ -347,10 +343,10 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveRunSvg(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<string>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunSvg(id, options);
+        async retrieveRunGraph(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<string>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunGraph(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunsApi.retrieveRunSvg']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.retrieveRunGraph']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -360,7 +356,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async startRun(startRunRequest: StartRunRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<StartRunResponse>> {
+        async startRun(startRunRequest: StartRunRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunStatusResponse>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.startRun(startRunRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.startRun']?.[localVarOperationServerIndex]?.url;
@@ -395,7 +391,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        cancelRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<CancelRunResponse> {
+        cancelRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunStatusResponse> {
             return localVarFp.cancelRun(id, options).then((request) => request(axios, basePath));
         },
         /**
@@ -426,8 +422,8 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRunSvg(id: string, options?: RawAxiosRequestConfig): AxiosPromise<string> {
-            return localVarFp.retrieveRunSvg(id, options).then((request) => request(axios, basePath));
+        retrieveRunGraph(id: string, options?: RawAxiosRequestConfig): AxiosPromise<string> {
+            return localVarFp.retrieveRunGraph(id, options).then((request) => request(axios, basePath));
         },
         /**
          * Queues a new workflow run from a DOT graph source. The run is created in `queued` status and will be picked up by the scheduler.
@@ -436,7 +432,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        startRun(startRunRequest: StartRunRequest, options?: RawAxiosRequestConfig): AxiosPromise<StartRunResponse> {
+        startRun(startRunRequest: StartRunRequest, options?: RawAxiosRequestConfig): AxiosPromise<RunStatusResponse> {
             return localVarFp.startRun(startRunRequest, options).then((request) => request(axios, basePath));
         },
         /**
@@ -497,8 +493,8 @@ export class RunsApi extends BaseAPI {
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public retrieveRunSvg(id: string, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).retrieveRunSvg(id, options).then((request) => request(this.axios, this.basePath));
+    public retrieveRunGraph(id: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).retrieveRunGraph(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

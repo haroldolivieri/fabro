@@ -32,11 +32,7 @@ import type { PreviewUrlResponse } from '../models';
 // @ts-ignore
 import type { SteerRequest } from '../models';
 // @ts-ignore
-import type { SteerRunResponse } from '../models';
-// @ts-ignore
 import type { SubmitAnswerRequest } from '../models';
-// @ts-ignore
-import type { SubmitAnswerResponse } from '../models';
 /**
  * HumanInTheLoopApi - axios parameter creator
  */
@@ -92,10 +88,12 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
          * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
          * @summary List Run Questions
          * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunQuestions: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listRunQuestions: async (id: string, pageLimit?: number, pageOffset?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('listRunQuestions', 'id', id)
             const localVarPath = `/runs/{id}/questions`
@@ -117,6 +115,14 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (pageLimit !== undefined) {
+                localVarQueryParameter['page[limit]'] = pageLimit;
+            }
+
+            if (pageOffset !== undefined) {
+                localVarQueryParameter['page[offset]'] = pageOffset;
+            }
 
             localVarHeaderParameter['Accept'] = 'application/json';
 
@@ -252,11 +258,13 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
          * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
          * @summary List Run Questions
          * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRunQuestions(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedApiQuestionList>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunQuestions(id, options);
+        async listRunQuestions(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedApiQuestionList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunQuestions(id, pageLimit, pageOffset, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.listRunQuestions']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -269,7 +277,7 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async steerRun(id: string, steerRequest: SteerRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SteerRunResponse>> {
+        async steerRun(id: string, steerRequest: SteerRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.steerRun(id, steerRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.steerRun']?.[localVarOperationServerIndex]?.url;
@@ -284,7 +292,7 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async submitRunAnswer(id: string, qid: string, submitAnswerRequest: SubmitAnswerRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SubmitAnswerResponse>> {
+        async submitRunAnswer(id: string, qid: string, submitAnswerRequest: SubmitAnswerRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.submitRunAnswer(id, qid, submitAnswerRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.submitRunAnswer']?.[localVarOperationServerIndex]?.url;
@@ -314,11 +322,13 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
          * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
          * @summary List Run Questions
          * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunQuestions(id: string, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedApiQuestionList> {
-            return localVarFp.listRunQuestions(id, options).then((request) => request(axios, basePath));
+        listRunQuestions(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedApiQuestionList> {
+            return localVarFp.listRunQuestions(id, pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
          * Sends inline guidance to a running agent, targeting a specific file and line. The guidance is delivered asynchronously.
@@ -328,7 +338,7 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        steerRun(id: string, steerRequest: SteerRequest, options?: RawAxiosRequestConfig): AxiosPromise<SteerRunResponse> {
+        steerRun(id: string, steerRequest: SteerRequest, options?: RawAxiosRequestConfig): AxiosPromise<void> {
             return localVarFp.steerRun(id, steerRequest, options).then((request) => request(axios, basePath));
         },
         /**
@@ -340,7 +350,7 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        submitRunAnswer(id: string, qid: string, submitAnswerRequest: SubmitAnswerRequest, options?: RawAxiosRequestConfig): AxiosPromise<SubmitAnswerResponse> {
+        submitRunAnswer(id: string, qid: string, submitAnswerRequest: SubmitAnswerRequest, options?: RawAxiosRequestConfig): AxiosPromise<void> {
             return localVarFp.submitRunAnswer(id, qid, submitAnswerRequest, options).then((request) => request(axios, basePath));
         },
     };
@@ -366,11 +376,13 @@ export class HumanInTheLoopApi extends BaseAPI {
      * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
      * @summary List Run Questions
      * @param {string} id Unique run identifier (ULID).
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listRunQuestions(id: string, options?: RawAxiosRequestConfig) {
-        return HumanInTheLoopApiFp(this.configuration).listRunQuestions(id, options).then((request) => request(this.axios, this.basePath));
+    public listRunQuestions(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig) {
+        return HumanInTheLoopApiFp(this.configuration).listRunQuestions(id, pageLimit, pageOffset, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

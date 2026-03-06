@@ -148,7 +148,7 @@ export const RetrosApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveRetro(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+        async retrieveRetro(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<{ [key: string]: any; }>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRetro(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RetrosApi.retrieveRetro']?.[localVarOperationServerIndex]?.url;
@@ -181,7 +181,7 @@ export const RetrosApiFactory = function (configuration?: Configuration, basePat
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRetro(id: string, options?: RawAxiosRequestConfig): AxiosPromise<any> {
+        retrieveRetro(id: string, options?: RawAxiosRequestConfig): AxiosPromise<{ [key: string]: any; }> {
             return localVarFp.retrieveRetro(id, options).then((request) => request(axios, basePath));
         },
     };

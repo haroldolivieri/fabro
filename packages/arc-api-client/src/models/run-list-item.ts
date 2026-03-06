@@ -15,10 +15,10 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { CheckRun } from './check-run';
+import type { BoardColumn } from './board-column';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { RunListItemStatus } from './run-list-item-status';
+import type { CheckRun } from './check-run';
 
 /**
  * Summary of a run shown in the board view.
@@ -40,7 +40,7 @@ export interface RunListItem {
      * Slug of the workflow that produced this run.
      */
     'workflow': string;
-    'status': RunListItemStatus;
+    'status': BoardColumn;
     /**
      * Pull request number, if the run has opened a PR.
      */

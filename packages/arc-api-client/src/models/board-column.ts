@@ -15,12 +15,17 @@
 
 
 /**
- * Acknowledgement that the steering guidance was accepted for delivery.
+ * Board column status for a run in the list view.
  */
-export interface SteerRunResponse {
-    /**
-     * Whether the steering guidance was accepted.
-     */
-    'accepted': boolean;
-}
+
+export const BoardColumn = {
+    WORKING: 'working',
+    PENDING: 'pending',
+    REVIEW: 'review',
+    MERGE: 'merge'
+} as const;
+
+export type BoardColumn = typeof BoardColumn[keyof typeof BoardColumn];
+
+
 

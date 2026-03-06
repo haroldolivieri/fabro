@@ -28,7 +28,7 @@ import type { PaginatedRunList } from '../models';
 // @ts-ignore
 import type { PaginatedWorkflowList } from '../models';
 // @ts-ignore
-import type { StartRunResponse } from '../models';
+import type { RunStatusResponse } from '../models';
 // @ts-ignore
 import type { WorkflowDetail } from '../models';
 /**
@@ -274,7 +274,7 @@ export const WorkflowsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async startWorkflowRun(name: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<StartRunResponse>> {
+        async startWorkflowRun(name: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunStatusResponse>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.startWorkflowRun(name, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkflowsApi.startWorkflowRun']?.[localVarOperationServerIndex]?.url;
@@ -329,7 +329,7 @@ export const WorkflowsApiFactory = function (configuration?: Configuration, base
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        startWorkflowRun(name: string, options?: RawAxiosRequestConfig): AxiosPromise<StartRunResponse> {
+        startWorkflowRun(name: string, options?: RawAxiosRequestConfig): AxiosPromise<RunStatusResponse> {
             return localVarFp.startWorkflowRun(name, options).then((request) => request(axios, basePath));
         },
     };

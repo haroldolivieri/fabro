@@ -514,9 +514,7 @@ mod server_lifecycle {
             ))
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
-        assert_eq!(body["accepted"], true);
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         // 4. Poll until completed
         let mut final_status = String::new();
@@ -593,7 +591,7 @@ mod server_lifecycle {
         let response = app.clone().oneshot(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_json(response.into_body()).await;
-        assert_eq!(body["cancelled"], true);
+        assert_eq!(body["status"], "cancelled");
 
         // Verify status is cancelled
         let req = Request::builder()

@@ -36,10 +36,12 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
          * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing.
          * @summary List Run Stages
          * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunStages: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listRunStages: async (id: string, pageLimit?: number, pageOffset?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('listRunStages', 'id', id)
             const localVarPath = `/runs/{id}/stages`
@@ -61,6 +63,14 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (pageLimit !== undefined) {
+                localVarQueryParameter['page[limit]'] = pageLimit;
+            }
+
+            if (pageOffset !== undefined) {
+                localVarQueryParameter['page[offset]'] = pageOffset;
+            }
 
             localVarHeaderParameter['Accept'] = 'application/json';
 
@@ -264,11 +274,13 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
          * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing.
          * @summary List Run Stages
          * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRunStages(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunStageList>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunStages(id, options);
+        async listRunStages(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunStageList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunStages(id, pageLimit, pageOffset, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.listRunStages']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -296,7 +308,7 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveRunCheckpoint(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+        async retrieveRunCheckpoint(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<{ [key: string]: any; }>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunCheckpoint(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.retrieveRunCheckpoint']?.[localVarOperationServerIndex]?.url;
@@ -322,7 +334,7 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveRunContext(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<object>> {
+        async retrieveRunContext(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<{ [key: string]: any; }>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunContext(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.retrieveRunContext']?.[localVarOperationServerIndex]?.url;
@@ -341,11 +353,13 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
          * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing.
          * @summary List Run Stages
          * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunStages(id: string, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunStageList> {
-            return localVarFp.listRunStages(id, options).then((request) => request(axios, basePath));
+        listRunStages(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunStageList> {
+            return localVarFp.listRunStages(id, pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns a paginated list of conversation turns within a specific stage, including system prompts, assistant responses, and tool invocations.
@@ -367,7 +381,7 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRunCheckpoint(id: string, options?: RawAxiosRequestConfig): AxiosPromise<any> {
+        retrieveRunCheckpoint(id: string, options?: RawAxiosRequestConfig): AxiosPromise<{ [key: string]: any; }> {
             return localVarFp.retrieveRunCheckpoint(id, options).then((request) => request(axios, basePath));
         },
         /**
@@ -387,7 +401,7 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRunContext(id: string, options?: RawAxiosRequestConfig): AxiosPromise<object> {
+        retrieveRunContext(id: string, options?: RawAxiosRequestConfig): AxiosPromise<{ [key: string]: any; }> {
             return localVarFp.retrieveRunContext(id, options).then((request) => request(axios, basePath));
         },
     };
@@ -401,11 +415,13 @@ export class RunInternalsApi extends BaseAPI {
      * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing.
      * @summary List Run Stages
      * @param {string} id Unique run identifier (ULID).
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listRunStages(id: string, options?: RawAxiosRequestConfig) {
-        return RunInternalsApiFp(this.configuration).listRunStages(id, options).then((request) => request(this.axios, this.basePath));
+    public listRunStages(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).listRunStages(id, pageLimit, pageOffset, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

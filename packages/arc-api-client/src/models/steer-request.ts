@@ -21,11 +21,11 @@ export interface SteerRequest {
     /**
      * File path to target with the guidance.
      */
-    'file': string;
+    'file'?: string;
     /**
      * Line number in the file to annotate.
      */
-    'line': number;
+    'line'?: number;
     /**
      * Guidance text for the agent.
      */

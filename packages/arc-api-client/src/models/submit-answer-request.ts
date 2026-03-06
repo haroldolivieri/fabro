@@ -21,7 +21,7 @@ export interface SubmitAnswerRequest {
     /**
      * Freeform answer text.
      */
-    'value': string;
+    'value'?: string;
     /**
      * Key of the selected option (for multiple-choice questions).
      */

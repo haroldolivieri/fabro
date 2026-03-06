@@ -139,7 +139,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StartRunResponse"
+                $ref: "#/components/schemas/RunStatusResponse"
         "400":
           description: Invalid DOT source
           content:
@@ -183,7 +183,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CancelRunResponse"
+                $ref: "#/components/schemas/RunStatusResponse"
         "404":
           description: Run not found
           content:
@@ -199,7 +199,7 @@ paths:
 
   /runs/{id}/graph:
     get:
-      operationId: retrieveRunSvg
+      operationId: retrieveRunGraph
       tags: [Runs]
       summary: Render SVG
       description: Renders the workflow graph as an SVG image using Graphviz.
@@ -238,7 +238,11 @@ paths:
           description: Checkpoint data (null if not yet available)
           content:
             application/json:
-              schema: {}
+              schema:
+                oneOf:
+                  - type: object
+                    additionalProperties: true
+                  - type: "null"
         "404":
           description: Run not found
           content:
@@ -261,6 +265,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: true
         "404":
           description: Run not found
           content:
@@ -304,6 +309,8 @@ paths:
       description: Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
       parameters:
         - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageOffset"
       responses:
         "200":
           description: Array of pending questions
@@ -334,12 +341,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SubmitAnswerRequest"
       responses:
-        "200":
-          description: Answer accepted or rejected
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SubmitAnswerResponse"
+        "204":
+          description: Answer accepted
         "400":
           description: Invalid option key
           content:
@@ -348,6 +351,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Question no longer exists or already answered
           content:
             application/json:
               schema:
@@ -366,7 +375,11 @@ paths:
           description: Retro data (null if not yet available)
           content:
             application/json:
-              schema: {}
+              schema:
+                oneOf:
+                  - type: object
+                    additionalProperties: true
+                  - type: "null"
         "404":
           description: Run not found
           content:
@@ -382,6 +395,8 @@ paths:
       description: Returns the ordered list of stages in a run's workflow graph with their current status and timing.
       parameters:
         - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageOffset"
       responses:
         "200":
           description: Array of run stages
@@ -423,7 +438,7 @@ paths:
 
   /runs/{id}/compare:
     get:
-      operationId: listRunCompare
+      operationId: retrieveRunDiff
       tags: [Run Outputs]
       summary: List Run Compare
       description: Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
@@ -474,6 +489,8 @@ paths:
       description: Returns verification results for a run, organized by category with individual control statuses.
       parameters:
         - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageOffset"
       responses:
         "200":
           description: Array of verification categories with controls
@@ -527,10 +544,6 @@ paths:
       responses:
         "202":
           description: Steering accepted for processing
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SteerRunResponse"
         "404":
           description: Run not found
           content:
@@ -553,8 +566,8 @@ paths:
             schema:
               $ref: "#/components/schemas/PreviewUrlRequest"
       responses:
-        "200":
-          description: Preview URL generated
+        "201":
+          description: Preview URL created
           content:
             application/json:
               schema:
@@ -643,7 +656,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StartRunResponse"
+                $ref: "#/components/schemas/RunStatusResponse"
         "404":
           description: Workflow not found
           content:
@@ -1383,26 +1396,6 @@ components:
           description: DOT language source defining the workflow graph.
           example: 'digraph { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit }'
 
-    StartRunResponse:
-      description: Response returned after successfully queuing a new run.
-      type: object
-      required:
-        - id
-        - status
-        - created_at
-      properties:
-        id:
-          type: string
-          description: Unique run identifier (ULID).
-          example: 01JNQVR7M0EJ5GKAT2SC4ERS1Z
-        status:
-          $ref: "#/components/schemas/RunStatus"
-        created_at:
-          type: string
-          format: date-time
-          description: Timestamp when the run was created.
-          example: "2026-03-06T14:30:00Z"
-
     RunStatusResponse:
       description: Current status of a run with optional error and queue position.
       type: object
@@ -1430,28 +1423,6 @@ components:
           format: date-time
           description: Timestamp when the run was created.
           example: "2026-03-06T14:30:00Z"
-
-    CancelRunResponse:
-      description: Response returned after cancelling a run.
-      type: object
-      required:
-        - cancelled
-      properties:
-        cancelled:
-          type: boolean
-          description: Whether the cancellation was successful.
-          example: true
-
-    SteerRunResponse:
-      description: Acknowledgement that the steering guidance was accepted for delivery.
-      type: object
-      required:
-        - accepted
-      properties:
-        accepted:
-          type: boolean
-          description: Whether the steering guidance was accepted.
-          example: true
 
     ApiQuestionOption:
       description: A selectable option for a multiple-choice or multi-select question.
@@ -1512,8 +1483,6 @@ components:
     SubmitAnswerRequest:
       description: Request body for submitting an answer to a pending question.
       type: object
-      required:
-        - value
       properties:
         value:
           type: string
@@ -1523,17 +1492,6 @@ components:
           type: string
           description: Key of the selected option (for multiple-choice questions).
           example: option_a
-
-    SubmitAnswerResponse:
-      description: Response indicating whether the submitted answer was accepted.
-      type: object
-      required:
-        - accepted
-      properties:
-        accepted:
-          type: boolean
-          description: Whether the answer was accepted. Returns false if the question no longer exists.
-          example: true
 
     ErrorResponseEntry:
       description: A single error entry in an error response.
@@ -1570,7 +1528,7 @@ components:
 
     # ── Run Board Schemas ────────────────────────────────────────────────
 
-    RunListItemStatus:
+    BoardColumn:
       description: Board column status for a run in the list view.
       type: string
       enum:
@@ -1635,7 +1593,7 @@ components:
           description: Slug of the workflow that produced this run.
           example: implement
         status:
-          $ref: "#/components/schemas/RunListItemStatus"
+          $ref: "#/components/schemas/BoardColumn"
         number:
           type: integer
           description: Pull request number, if the run has opened a PR.
@@ -2133,8 +2091,6 @@ components:
       description: Request body for sending inline steering guidance to a running agent.
       type: object
       required:
-        - file
-        - line
         - guidance
       properties:
         file:

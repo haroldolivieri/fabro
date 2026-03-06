@@ -30,7 +30,7 @@ use arc_workflows::interviewer::{Answer, Interviewer, QuestionType};
 pub use arc_types::{
     ApiQuestion, ApiQuestionOption, PaginatedRunList, PaginationMeta,
     QuestionType as ApiQuestionType, RunStatus, RunStatusResponse, StartRunRequest,
-    StartRunResponse, SubmitAnswerRequest, SubmitAnswerResponse,
+    SubmitAnswerRequest,
 };
 
 fn default_page_limit() -> u32 {
@@ -451,9 +451,11 @@ async fn start_run(
 
     (
         StatusCode::CREATED,
-        Json(StartRunResponse {
+        Json(RunStatusResponse {
             id: run_id,
             status: RunStatus::Queued,
+            error: None,
+            queue_position: None,
             created_at,
         }),
     )
@@ -773,10 +775,26 @@ async fn submit_answer(
                         }
                     }
                 }
-                None => Answer::text(req.value),
+                None => match req.value {
+                    Some(v) => Answer::text(v),
+                    None => {
+                        return ApiError::bad_request(
+                            "Either value or selected_option_key is required.",
+                        )
+                        .into_response();
+                    }
+                },
             };
             let accepted = interviewer.submit_answer(&qid, answer);
-            (StatusCode::OK, Json(SubmitAnswerResponse { accepted })).into_response()
+            if accepted {
+                StatusCode::NO_CONTENT.into_response()
+            } else {
+                ApiError::new(
+                    StatusCode::CONFLICT,
+                    "Question no longer exists or was already answered.",
+                )
+                .into_response()
+            }
         }
         None => ApiError::not_found("Run not found.").into_response(),
     }
@@ -852,7 +870,18 @@ async fn cancel_run(
         Some(managed_run) => match managed_run.status {
             RunStatus::Queued => {
                 managed_run.status = RunStatus::Cancelled;
-                (StatusCode::OK, Json(serde_json::json!({"cancelled": true}))).into_response()
+                let created_at = managed_run.created_at;
+                (
+                    StatusCode::OK,
+                    Json(RunStatusResponse {
+                        id: id.clone(),
+                        status: RunStatus::Cancelled,
+                        error: None,
+                        queue_position: None,
+                        created_at,
+                    }),
+                )
+                    .into_response()
             }
             RunStatus::Starting | RunStatus::Running => {
                 if let Some(token) = &managed_run.cancel_token {
@@ -862,7 +891,18 @@ async fn cancel_run(
                     let _ = cancel_tx.send(());
                 }
                 managed_run.status = RunStatus::Cancelled;
-                (StatusCode::OK, Json(serde_json::json!({"cancelled": true}))).into_response()
+                let created_at = managed_run.created_at;
+                (
+                    StatusCode::OK,
+                    Json(RunStatusResponse {
+                        id: id.clone(),
+                        status: RunStatus::Cancelled,
+                        error: None,
+                        queue_position: None,
+                        created_at,
+                    }),
+                )
+                    .into_response()
             }
             _ => ApiError::new(StatusCode::CONFLICT, "Run is not cancellable.").into_response(),
         },

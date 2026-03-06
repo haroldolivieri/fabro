@@ -100,6 +100,18 @@ const ENDPOINTS: &[PaginatedEndpoint] = &[
         path: "/runs/run-1/stages/detect-drift/turns",
         name: "listStageTurns",
     },
+    PaginatedEndpoint {
+        path: "/runs/run-1/questions",
+        name: "listRunQuestions",
+    },
+    PaginatedEndpoint {
+        path: "/runs/run-1/stages",
+        name: "listRunStages",
+    },
+    PaginatedEndpoint {
+        path: "/runs/run-1/verifications",
+        name: "listRunVerifications",
+    },
 ];
 
 #[tokio::test]

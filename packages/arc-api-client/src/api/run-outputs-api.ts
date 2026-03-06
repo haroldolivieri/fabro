@@ -35,6 +35,57 @@ import type { RunUsage } from '../models';
 export const RunOutputsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
+         * Returns verification results for a run, organized by category with individual control statuses.
+         * @summary List Run Verifications
+         * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunVerifications: async (id: string, pageLimit?: number, pageOffset?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('listRunVerifications', 'id', id)
+            const localVarPath = `/runs/{id}/verifications`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication mTLS required
+            await setApiKeyToObject(localVarHeaderParameter, "X-mTLS-Client-CN", configuration)
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (pageLimit !== undefined) {
+                localVarQueryParameter['page[limit]'] = pageLimit;
+            }
+
+            if (pageOffset !== undefined) {
+                localVarQueryParameter['page[offset]'] = pageOffset;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
          * @summary List Run Compare
          * @param {string} id Unique run identifier (ULID).
@@ -42,9 +93,9 @@ export const RunOutputsApiAxiosParamCreator = function (configuration?: Configur
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunCompare: async (id: string, checkpoint?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        retrieveRunDiff: async (id: string, checkpoint?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
-            assertParamExists('listRunCompare', 'id', id)
+            assertParamExists('retrieveRunDiff', 'id', id)
             const localVarPath = `/runs/{id}/compare`
                 .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
@@ -68,47 +119,6 @@ export const RunOutputsApiAxiosParamCreator = function (configuration?: Configur
             if (checkpoint !== undefined) {
                 localVarQueryParameter['checkpoint'] = checkpoint;
             }
-
-            localVarHeaderParameter['Accept'] = 'application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * Returns verification results for a run, organized by category with individual control statuses.
-         * @summary List Run Verifications
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        listRunVerifications: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('listRunVerifications', 'id', id)
-            const localVarPath = `/runs/{id}/verifications`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            // authentication mTLS required
-            await setApiKeyToObject(localVarHeaderParameter, "X-mTLS-Client-CN", configuration)
-
-            // authentication BearerAuth required
-            // http bearer authentication required
-            await setBearerAuthToObject(localVarHeaderParameter, configuration)
 
             localVarHeaderParameter['Accept'] = 'application/json';
 
@@ -172,6 +182,21 @@ export const RunOutputsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = RunOutputsApiAxiosParamCreator(configuration)
     return {
         /**
+         * Returns verification results for a run, organized by category with individual control statuses.
+         * @summary List Run Verifications
+         * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listRunVerifications(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunVerificationList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunVerifications(id, pageLimit, pageOffset, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunOutputsApi.listRunVerifications']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
          * @summary List Run Compare
          * @param {string} id Unique run identifier (ULID).
@@ -179,23 +204,10 @@ export const RunOutputsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRunCompare(id: string, checkpoint?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunCompare>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunCompare(id, checkpoint, options);
+        async retrieveRunDiff(id: string, checkpoint?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunCompare>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunDiff(id, checkpoint, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunOutputsApi.listRunCompare']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * Returns verification results for a run, organized by category with individual control statuses.
-         * @summary List Run Verifications
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async listRunVerifications(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunVerificationList>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunVerifications(id, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunOutputsApi.listRunVerifications']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['RunOutputsApi.retrieveRunDiff']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -221,6 +233,18 @@ export const RunOutputsApiFactory = function (configuration?: Configuration, bas
     const localVarFp = RunOutputsApiFp(configuration)
     return {
         /**
+         * Returns verification results for a run, organized by category with individual control statuses.
+         * @summary List Run Verifications
+         * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of items to return per page.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunVerifications(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunVerificationList> {
+            return localVarFp.listRunVerifications(id, pageLimit, pageOffset, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
          * @summary List Run Compare
          * @param {string} id Unique run identifier (ULID).
@@ -228,18 +252,8 @@ export const RunOutputsApiFactory = function (configuration?: Configuration, bas
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunCompare(id: string, checkpoint?: string, options?: RawAxiosRequestConfig): AxiosPromise<RunCompare> {
-            return localVarFp.listRunCompare(id, checkpoint, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * Returns verification results for a run, organized by category with individual control statuses.
-         * @summary List Run Verifications
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        listRunVerifications(id: string, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunVerificationList> {
-            return localVarFp.listRunVerifications(id, options).then((request) => request(axios, basePath));
+        retrieveRunDiff(id: string, checkpoint?: string, options?: RawAxiosRequestConfig): AxiosPromise<RunCompare> {
+            return localVarFp.retrieveRunDiff(id, checkpoint, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns token and cost usage broken down by stage and model for a specific run.
@@ -259,6 +273,19 @@ export const RunOutputsApiFactory = function (configuration?: Configuration, bas
  */
 export class RunOutputsApi extends BaseAPI {
     /**
+     * Returns verification results for a run, organized by category with individual control statuses.
+     * @summary List Run Verifications
+     * @param {string} id Unique run identifier (ULID).
+     * @param {number} [pageLimit] Maximum number of items to return per page.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listRunVerifications(id: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig) {
+        return RunOutputsApiFp(this.configuration).listRunVerifications(id, pageLimit, pageOffset, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Returns file-level diffs produced by the run, optionally filtered to a specific checkpoint.
      * @summary List Run Compare
      * @param {string} id Unique run identifier (ULID).
@@ -266,19 +293,8 @@ export class RunOutputsApi extends BaseAPI {
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listRunCompare(id: string, checkpoint?: string, options?: RawAxiosRequestConfig) {
-        return RunOutputsApiFp(this.configuration).listRunCompare(id, checkpoint, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * Returns verification results for a run, organized by category with individual control statuses.
-     * @summary List Run Verifications
-     * @param {string} id Unique run identifier (ULID).
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public listRunVerifications(id: string, options?: RawAxiosRequestConfig) {
-        return RunOutputsApiFp(this.configuration).listRunVerifications(id, options).then((request) => request(this.axios, this.basePath));
+    public retrieveRunDiff(id: string, checkpoint?: string, options?: RawAxiosRequestConfig) {
+        return RunOutputsApiFp(this.configuration).retrieveRunDiff(id, checkpoint, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

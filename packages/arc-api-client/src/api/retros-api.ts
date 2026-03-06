@@ -25,6 +25,10 @@ import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError
 import type { ErrorResponse } from '../models';
 // @ts-ignore
 import type { PaginatedRetroList } from '../models';
+// @ts-ignore
+import type { RetroDetail } from '../models';
+// @ts-ignore
+import type { SmoothnessRating } from '../models';
 /**
  * RetrosApi - axios parameter creator
  */
@@ -33,12 +37,14 @@ export const RetrosApiAxiosParamCreator = function (configuration?: Configuratio
         /**
          * Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
          * @summary List Retros
+         * @param {string} [workflow] Filter retros by workflow slug.
+         * @param {SmoothnessRating} [smoothness] Filter retros by smoothness rating.
          * @param {number} [pageLimit] Maximum number of items to return per page.
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRetros: async (pageLimit?: number, pageOffset?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listRetros: async (workflow?: string, smoothness?: SmoothnessRating, pageLimit?: number, pageOffset?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/retros`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -57,6 +63,14 @@ export const RetrosApiAxiosParamCreator = function (configuration?: Configuratio
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (workflow !== undefined) {
+                localVarQueryParameter['workflow'] = workflow;
+            }
+
+            if (smoothness !== undefined) {
+                localVarQueryParameter['smoothness'] = smoothness;
+            }
 
             if (pageLimit !== undefined) {
                 localVarQueryParameter['page[limit]'] = pageLimit;
@@ -130,13 +144,15 @@ export const RetrosApiFp = function(configuration?: Configuration) {
         /**
          * Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
          * @summary List Retros
+         * @param {string} [workflow] Filter retros by workflow slug.
+         * @param {SmoothnessRating} [smoothness] Filter retros by smoothness rating.
          * @param {number} [pageLimit] Maximum number of items to return per page.
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRetros(pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRetroList>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRetros(pageLimit, pageOffset, options);
+        async listRetros(workflow?: string, smoothness?: SmoothnessRating, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRetroList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRetros(workflow, smoothness, pageLimit, pageOffset, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RetrosApi.listRetros']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -148,7 +164,7 @@ export const RetrosApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveRetro(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<{ [key: string]: any; }>> {
+        async retrieveRetro(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RetroDetail>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRetro(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RetrosApi.retrieveRetro']?.[localVarOperationServerIndex]?.url;
@@ -166,13 +182,15 @@ export const RetrosApiFactory = function (configuration?: Configuration, basePat
         /**
          * Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
          * @summary List Retros
+         * @param {string} [workflow] Filter retros by workflow slug.
+         * @param {SmoothnessRating} [smoothness] Filter retros by smoothness rating.
          * @param {number} [pageLimit] Maximum number of items to return per page.
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRetros(pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRetroList> {
-            return localVarFp.listRetros(pageLimit, pageOffset, options).then((request) => request(axios, basePath));
+        listRetros(workflow?: string, smoothness?: SmoothnessRating, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRetroList> {
+            return localVarFp.listRetros(workflow, smoothness, pageLimit, pageOffset, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns the retrospective analysis for a completed run, or null if the retro has not been generated yet.
@@ -181,7 +199,7 @@ export const RetrosApiFactory = function (configuration?: Configuration, basePat
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRetro(id: string, options?: RawAxiosRequestConfig): AxiosPromise<{ [key: string]: any; }> {
+        retrieveRetro(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RetroDetail> {
             return localVarFp.retrieveRetro(id, options).then((request) => request(axios, basePath));
         },
     };
@@ -194,13 +212,15 @@ export class RetrosApi extends BaseAPI {
     /**
      * Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
      * @summary List Retros
+     * @param {string} [workflow] Filter retros by workflow slug.
+     * @param {SmoothnessRating} [smoothness] Filter retros by smoothness rating.
      * @param {number} [pageLimit] Maximum number of items to return per page.
      * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listRetros(pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig) {
-        return RetrosApiFp(this.configuration).listRetros(pageLimit, pageOffset, options).then((request) => request(this.axios, this.basePath));
+    public listRetros(workflow?: string, smoothness?: SmoothnessRating, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig) {
+        return RetrosApiFp(this.configuration).listRetros(workflow, smoothness, pageLimit, pageOffset, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

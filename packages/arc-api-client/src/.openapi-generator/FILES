@@ -49,13 +49,19 @@ models/execute-query-response.ts
 models/feature-flags.ts
 models/file-checkpoint.ts
 models/file-diff.ts
+models/friction-kind.ts
+models/friction-point.ts
 models/git-configuration.ts
 models/health-response.ts
 models/history-entry.ts
 models/hook-definition.ts
 models/index.ts
+models/learning-category.ts
+models/learning.ts
 models/llm-configuration.ts
 models/model-reference.ts
+models/open-item-kind.ts
+models/open-item.ts
 models/paginated-api-question-list.ts
 models/paginated-branch-list.ts
 models/paginated-history-entry-list.ts
@@ -76,6 +82,7 @@ models/project.ts
 models/question-type.ts
 models/recent-control-result.ts
 models/repository-reference.ts
+models/retro-detail.ts
 models/retro-list-item.ts
 models/retro-stats.ts
 models/root-response-urls.ts
@@ -109,6 +116,7 @@ models/session-turn.ts
 models/setup-configuration.ts
 models/sibling-control.ts
 models/smoothness-rating.ts
+models/stage-retro.ts
 models/stage-status.ts
 models/stage-turn.ts
 models/start-run-request.ts

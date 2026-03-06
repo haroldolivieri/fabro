@@ -23,7 +23,7 @@ export interface RetroStats {
      */
     'total_duration_ms': number;
     /**
-     * Total cost in USD.
+     * Total cost in USD. Absent when cost data is unavailable from the model provider.
      */
     'total_cost'?: number;
     /**

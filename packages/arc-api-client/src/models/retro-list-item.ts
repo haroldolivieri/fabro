@@ -36,6 +36,9 @@ export interface RetroListItem {
      * Timestamp when the retro was generated.
      */
     'timestamp': string;
+    /**
+     * Absent when the retro has been generated from quantitative data but not yet enriched by the retro agent.
+     */
     'smoothness'?: SmoothnessRating;
     'stats': RetroStats;
     /**

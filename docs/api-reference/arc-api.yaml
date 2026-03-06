@@ -376,8 +376,7 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - type: object
-                    additionalProperties: true
+                  - $ref: "#/components/schemas/RetroDetail"
                   - type: "null"
         "404":
           description: Run not found
@@ -731,6 +730,8 @@ paths:
       summary: List Retros
       description: Returns a paginated list of run retrospectives ordered by recency, with smoothness ratings and summary statistics.
       parameters:
+        - $ref: "#/components/parameters/RetroWorkflowFilter"
+        - $ref: "#/components/parameters/RetroSmoothnessFilter"
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
       responses:
@@ -1195,6 +1196,24 @@ components:
       schema:
         type: string
       example: cp-3
+
+    RetroWorkflowFilter:
+      name: workflow
+      in: query
+      required: false
+      description: Filter retros by workflow slug.
+      schema:
+        type: string
+      example: implement
+
+    RetroSmoothnessFilter:
+      name: smoothness
+      in: query
+      required: false
+      description: Filter retros by smoothness rating.
+      schema:
+        $ref: "#/components/schemas/SmoothnessRating"
+      example: bumpy
 
     PageLimit:
       name: page[limit]
@@ -2735,7 +2754,7 @@ components:
           example: 389000
         total_cost:
           type: number
-          description: Total cost in USD.
+          description: Total cost in USD. Absent when cost data is unavailable from the model provider.
           example: 2.78
         total_retries:
           type: integer
@@ -2776,6 +2795,7 @@ components:
           description: Timestamp when the retro was generated.
           example: "2026-02-28T14:32:00Z"
         smoothness:
+          description: Absent when the retro has been generated from quantitative data but not yet enriched by the retro agent.
           $ref: "#/components/schemas/SmoothnessRating"
         stats:
           $ref: "#/components/schemas/RetroStats"
@@ -2783,6 +2803,190 @@ components:
           type: integer
           description: Number of friction points identified in the retro.
           example: 0
+
+    RetroDetail:
+      description: Full retrospective analysis for a completed run.
+      type: object
+      required:
+        - run_id
+        - workflow_name
+        - goal
+        - timestamp
+        - stages
+        - stats
+      properties:
+        run_id:
+          type: string
+          description: Unique run identifier.
+          example: run-1
+        workflow_name:
+          type: string
+          description: Workflow slug that produced this run.
+          example: implement
+        goal:
+          type: string
+          description: The goal that was set for the run.
+          example: Add rate limiting to auth endpoints
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the retro was generated.
+          example: "2026-02-28T14:32:00Z"
+        smoothness:
+          description: Absent when the retro has been generated from quantitative data but not yet enriched by the retro agent.
+          $ref: "#/components/schemas/SmoothnessRating"
+        stages:
+          type: array
+          description: Per-stage retrospective data.
+          items:
+            $ref: "#/components/schemas/StageRetro"
+        stats:
+          $ref: "#/components/schemas/RetroStats"
+        intent:
+          type: string
+          description: What the agent intended to accomplish.
+          example: Implement token-bucket rate limiting on /auth/login and /auth/register.
+        outcome:
+          type: string
+          description: What actually happened during the run.
+          example: Rate limiter deployed with configurable per-IP limits.
+        learnings:
+          type: array
+          description: Insights discovered during the run.
+          items:
+            $ref: "#/components/schemas/Learning"
+        friction_points:
+          type: array
+          description: Points where the run encountered difficulty.
+          items:
+            $ref: "#/components/schemas/FrictionPoint"
+        open_items:
+          type: array
+          description: Follow-up items identified during the run.
+          items:
+            $ref: "#/components/schemas/OpenItem"
+
+    StageRetro:
+      description: Retrospective data for a single stage in the workflow.
+      type: object
+      required:
+        - stage_id
+        - stage_label
+        - status
+        - duration_ms
+        - retries
+        - files_touched
+      properties:
+        stage_id:
+          type: string
+          description: Identifier of the stage in the workflow graph.
+          example: propose-changes
+        stage_label:
+          type: string
+          description: Human-readable label for the stage.
+          example: Propose Changes
+        status:
+          type: string
+          description: Final status of the stage.
+          example: completed
+        duration_ms:
+          type: integer
+          description: Stage duration in milliseconds.
+          example: 154000
+        retries:
+          type: integer
+          description: Number of retries for this stage.
+          example: 0
+        cost:
+          type: number
+          description: Cost in USD for this stage. Absent when cost data is unavailable.
+          example: 1.12
+        notes:
+          type: string
+          description: Optional notes about this stage's execution.
+        failure_reason:
+          type: string
+          description: Reason the stage failed, if applicable.
+        files_touched:
+          type: array
+          description: Files modified during this stage.
+          items:
+            type: string
+          example: ["src/middleware/rate-limit.ts", "src/routes/auth.ts"]
+
+    LearningCategory:
+      description: Category of a learning insight.
+      type: string
+      enum:
+        - repo
+        - code
+        - workflow
+        - tool
+
+    Learning:
+      description: An insight discovered during the run.
+      type: object
+      required:
+        - category
+        - text
+      properties:
+        category:
+          $ref: "#/components/schemas/LearningCategory"
+        text:
+          type: string
+          description: Description of the learning.
+          example: Auth middleware chain order matters.
+
+    FrictionKind:
+      description: Type of friction encountered during a run.
+      type: string
+      enum:
+        - retry
+        - timeout
+        - wrong_approach
+        - tool_failure
+        - ambiguity
+
+    FrictionPoint:
+      description: A point where the run encountered difficulty.
+      type: object
+      required:
+        - kind
+        - description
+      properties:
+        kind:
+          $ref: "#/components/schemas/FrictionKind"
+        description:
+          type: string
+          description: Description of the friction encountered.
+          example: Nested route outlet types were incorrect on first 3 attempts.
+        stage_id:
+          type: string
+          description: Stage where the friction occurred, if applicable.
+          example: apply-changes
+
+    OpenItemKind:
+      description: Type of open item identified during a run.
+      type: string
+      enum:
+        - tech_debt
+        - follow_up
+        - investigation
+        - test_gap
+
+    OpenItem:
+      description: A follow-up item identified during the run.
+      type: object
+      required:
+        - kind
+        - description
+      properties:
+        kind:
+          $ref: "#/components/schemas/OpenItemKind"
+        description:
+          type: string
+          description: Description of the open item.
+          example: Add rate-limit headers (X-RateLimit-Remaining) to response.
 
     # ── Session Schemas ──────────────────────────────────────────────────
 

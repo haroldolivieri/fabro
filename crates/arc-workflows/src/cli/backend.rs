@@ -209,7 +209,7 @@ impl CodergenBackend for AgentApiBackend {
 
         let max_tokens = node
             .max_tokens()
-            .or_else(|| arc_llm::catalog::get_model_info(model).and_then(|m| m.max_output));
+            .or_else(|| arc_llm::catalog::get_model_info(model).and_then(|m| m.limits.max_output));
 
         let request = arc_llm::types::Request {
             model: model.to_string(),
@@ -271,7 +271,7 @@ impl CodergenBackend for AgentApiBackend {
 
                     let max_tokens = node.max_tokens().or_else(|| {
                         arc_llm::catalog::get_model_info(&target.model)
-                            .and_then(|m| m.max_output)
+                            .and_then(|m| m.limits.max_output)
                     });
 
                     let fallback_request = arc_llm::types::Request {

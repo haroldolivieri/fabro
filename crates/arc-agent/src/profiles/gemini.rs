@@ -200,7 +200,7 @@ in the project.";
 
     fn capabilities(&self) -> ProfileCapabilities {
         let context_window_size = arc_llm::catalog::get_model_info(self.model())
-            .map(|info| info.context_window as usize)
+            .map(|info| info.limits.context_window as usize)
             .unwrap_or(1_000_000);
         ProfileCapabilities {
             supports_reasoning: true,

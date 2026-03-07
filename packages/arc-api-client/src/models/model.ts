@@ -13,6 +13,15 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ModelCosts } from './model-costs';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ModelFeatures } from './model-features';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ModelLimits } from './model-limits';
 
 /**
  * An available LLM model from the built-in catalog.
@@ -27,37 +36,20 @@ export interface Model {
      */
     'provider': string;
     /**
+     * Model family grouping.
+     */
+    'family': string;
+    /**
      * Human-readable model name.
      */
     'display_name': string;
+    'limits': ModelLimits;
     /**
-     * Maximum context window size in tokens.
+     * Training data cutoff date (YYYY-MM-DD).
      */
-    'context_window': number;
-    /**
-     * Maximum output tokens, if known.
-     */
-    'max_output'?: number;
-    /**
-     * Whether the model supports tool use.
-     */
-    'supports_tools': boolean;
-    /**
-     * Whether the model supports vision/image inputs.
-     */
-    'supports_vision': boolean;
-    /**
-     * Whether the model supports extended reasoning.
-     */
-    'supports_reasoning': boolean;
-    /**
-     * Cost per million input tokens in USD.
-     */
-    'input_cost_per_million'?: number;
-    /**
-     * Cost per million output tokens in USD.
-     */
-    'output_cost_per_million'?: number;
+    'training'?: string;
+    'features': ModelFeatures;
+    'costs': ModelCosts;
     /**
      * Estimated output tokens per second.
      */

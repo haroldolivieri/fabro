@@ -817,8 +817,8 @@ fn cheapest_model(provider: Provider) -> String {
     models
         .iter()
         .min_by(|a, b| {
-            let cost_a = a.input_cost_per_million.unwrap_or(f64::MAX);
-            let cost_b = b.input_cost_per_million.unwrap_or(f64::MAX);
+            let cost_a = a.costs.input_cost_per_mtok.unwrap_or(f64::MAX);
+            let cost_b = b.costs.input_cost_per_mtok.unwrap_or(f64::MAX);
             cost_a.total_cmp(&cost_b)
         })
         .map(|m| m.id.clone())

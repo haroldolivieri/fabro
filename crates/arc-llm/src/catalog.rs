@@ -56,8 +56,8 @@ pub fn list_models(provider: Option<&str>) -> Vec<ModelInfo> {
 
 /// Find the closest model on a target provider that matches the reference model's capabilities.
 ///
-/// Hard-filters on `supports_tools`, `supports_vision`, and `supports_reasoning`.
-/// Among matches, picks the closest by `input_cost_per_million` (absolute diff).
+/// Hard-filters on `features.tools`, `features.vision`, and `features.reasoning`.
+/// Among matches, picks the closest by `costs.input_cost_per_mtok` (absolute diff).
 /// Returns `None` if no model on the target provider matches all capabilities.
 #[must_use]
 pub fn closest_model(target_provider: &str, reference: &ModelInfo) -> Option<ModelInfo> {
@@ -65,14 +65,14 @@ pub fn closest_model(target_provider: &str, reference: &ModelInfo) -> Option<Mod
         .iter()
         .filter(|m| {
             m.provider == target_provider
-                && m.supports_tools == reference.supports_tools
-                && m.supports_vision == reference.supports_vision
-                && m.supports_reasoning == reference.supports_reasoning
+                && m.features.tools == reference.features.tools
+                && m.features.vision == reference.features.vision
+                && m.features.reasoning == reference.features.reasoning
         })
         .min_by(|a, b| {
-            let ref_cost = reference.input_cost_per_million.unwrap_or(0.0);
-            let cost_a = (a.input_cost_per_million.unwrap_or(0.0) - ref_cost).abs();
-            let cost_b = (b.input_cost_per_million.unwrap_or(0.0) - ref_cost).abs();
+            let ref_cost = reference.costs.input_cost_per_mtok.unwrap_or(0.0);
+            let cost_a = (a.costs.input_cost_per_mtok.unwrap_or(0.0) - ref_cost).abs();
+            let cost_b = (b.costs.input_cost_per_mtok.unwrap_or(0.0) - ref_cost).abs();
             cost_a.partial_cmp(&cost_b).unwrap_or(std::cmp::Ordering::Equal)
         })
         .cloned()
@@ -208,11 +208,11 @@ mod tests {
         let info = get_model_info("claude-opus-4-6").unwrap();
         assert_eq!(info.display_name, "Claude Opus 4.6");
         assert_eq!(info.provider, "anthropic");
-        assert!(info.supports_tools);
-        assert!(info.supports_vision);
-        assert!(info.supports_reasoning);
-        assert_eq!(info.context_window, 1_000_000);
-        assert_eq!(info.max_output, Some(128_000));
+        assert!(info.features.tools);
+        assert!(info.features.vision);
+        assert!(info.features.reasoning);
+        assert_eq!(info.limits.context_window, 1_000_000);
+        assert_eq!(info.limits.max_output, Some(128_000));
     }
 
     #[test]
@@ -253,13 +253,13 @@ mod tests {
         let m = get_model_info("gemini-3.1-flash-lite-preview").unwrap();
         assert_eq!(m.provider, "gemini");
         assert_eq!(m.display_name, "Gemini 3.1 Flash Lite (Preview)");
-        assert_eq!(m.context_window, 1048576);
-        assert_eq!(m.max_output, Some(65536));
-        assert!(m.supports_tools);
-        assert!(m.supports_vision);
-        assert!(m.supports_reasoning);
-        assert_eq!(m.input_cost_per_million, Some(0.25));
-        assert_eq!(m.output_cost_per_million, Some(1.5));
+        assert_eq!(m.limits.context_window, 1048576);
+        assert_eq!(m.limits.max_output, Some(65536));
+        assert!(m.features.tools);
+        assert!(m.features.vision);
+        assert!(m.features.reasoning);
+        assert_eq!(m.costs.input_cost_per_mtok, Some(0.25));
+        assert_eq!(m.costs.output_cost_per_mtok, Some(1.5));
     }
 
     #[test]
@@ -274,8 +274,8 @@ mod tests {
     fn kimi_k2_5_in_catalog() {
         let m = get_model_info("kimi-k2.5").unwrap();
         assert_eq!(m.provider, "kimi");
-        assert_eq!(m.max_output, Some(16000));
-        assert_eq!(m.context_window, 262144);
+        assert_eq!(m.limits.max_output, Some(16000));
+        assert_eq!(m.limits.context_window, 262144);
     }
 
     #[test]
@@ -299,11 +299,11 @@ mod tests {
     fn mercury_2_in_catalog() {
         let m = get_model_info("mercury-2").unwrap();
         assert_eq!(m.provider, "inception");
-        assert_eq!(m.context_window, 131072);
-        assert_eq!(m.max_output, Some(50000));
-        assert!(m.supports_tools);
-        assert!(!m.supports_vision);
-        assert!(m.supports_reasoning);
+        assert_eq!(m.limits.context_window, 131072);
+        assert_eq!(m.limits.max_output, Some(50000));
+        assert!(m.features.tools);
+        assert!(!m.features.vision);
+        assert!(m.features.reasoning);
     }
 
     #[test]
@@ -316,13 +316,13 @@ mod tests {
         let m = get_model_info("gpt-5.4").unwrap();
         assert_eq!(m.provider, "openai");
         assert_eq!(m.display_name, "GPT-5.4");
-        assert_eq!(m.context_window, 1047576);
-        assert_eq!(m.max_output, Some(128000));
-        assert!(m.supports_tools);
-        assert!(m.supports_vision);
-        assert!(m.supports_reasoning);
-        assert_eq!(m.input_cost_per_million, Some(2.5));
-        assert_eq!(m.output_cost_per_million, Some(15.0));
+        assert_eq!(m.limits.context_window, 1047576);
+        assert_eq!(m.limits.max_output, Some(128000));
+        assert!(m.features.tools);
+        assert!(m.features.vision);
+        assert!(m.features.reasoning);
+        assert_eq!(m.costs.input_cost_per_mtok, Some(2.5));
+        assert_eq!(m.costs.output_cost_per_mtok, Some(15.0));
         assert!(m.default);
     }
 
@@ -331,13 +331,13 @@ mod tests {
         let m = get_model_info("gpt-5.4-pro").unwrap();
         assert_eq!(m.provider, "openai");
         assert_eq!(m.display_name, "GPT-5.4 Pro");
-        assert_eq!(m.context_window, 1047576);
-        assert_eq!(m.max_output, Some(128000));
-        assert!(m.supports_tools);
-        assert!(m.supports_vision);
-        assert!(m.supports_reasoning);
-        assert_eq!(m.input_cost_per_million, Some(30.0));
-        assert_eq!(m.output_cost_per_million, Some(180.0));
+        assert_eq!(m.limits.context_window, 1047576);
+        assert_eq!(m.limits.max_output, Some(128000));
+        assert!(m.features.tools);
+        assert!(m.features.vision);
+        assert!(m.features.reasoning);
+        assert_eq!(m.costs.input_cost_per_mtok, Some(30.0));
+        assert_eq!(m.costs.output_cost_per_mtok, Some(180.0));
         assert!(!m.default);
     }
 
@@ -351,13 +351,13 @@ mod tests {
         let m = get_model_info("gpt-5.3-codex-spark").unwrap();
         assert_eq!(m.provider, "openai");
         assert_eq!(m.display_name, "GPT-5.3 Codex Spark");
-        assert_eq!(m.context_window, 131072);
-        assert_eq!(m.max_output, Some(128000));
-        assert!(m.supports_tools);
-        assert!(!m.supports_vision);
-        assert!(m.supports_reasoning);
-        assert_eq!(m.input_cost_per_million, None);
-        assert_eq!(m.output_cost_per_million, None);
+        assert_eq!(m.limits.context_window, 131072);
+        assert_eq!(m.limits.max_output, Some(128000));
+        assert!(m.features.tools);
+        assert!(!m.features.vision);
+        assert!(m.features.reasoning);
+        assert_eq!(m.costs.input_cost_per_mtok, None);
+        assert_eq!(m.costs.output_cost_per_mtok, None);
         assert_eq!(m.estimated_output_tps, Some(1000.0));
     }
 
@@ -408,7 +408,7 @@ mod tests {
 
     #[test]
     fn closest_model_no_capability_match() {
-        // glm-4.7 has tools=true, vision=false, reasoning=false
+        // glm-4.7 has features: tools=true, vision=false, reasoning=false
         // No gemini model matches vision=false (all gemini models have vision=true)
         let glm = get_model_info("glm-4.7").unwrap();
         assert!(closest_model("gemini", &glm).is_none());
@@ -471,10 +471,10 @@ mod tests {
     #[test]
     fn model_info_costs() {
         let claude = get_model_info("claude-opus-4-6").unwrap();
-        assert_eq!(claude.input_cost_per_million, Some(15.0));
-        assert_eq!(claude.output_cost_per_million, Some(75.0));
+        assert_eq!(claude.costs.input_cost_per_mtok, Some(15.0));
+        assert_eq!(claude.costs.output_cost_per_mtok, Some(75.0));
 
         let sonnet = get_model_info("claude-sonnet-4-5").unwrap();
-        assert_eq!(sonnet.input_cost_per_million, Some(3.0));
+        assert_eq!(sonnet.costs.input_cost_per_mtok, Some(3.0));
     }
 }

@@ -196,8 +196,8 @@ pub fn print_diagnostics(diagnostics: &[Diagnostic], styles: &Styles) {
 #[must_use]
 pub fn compute_stage_cost(usage: &StageUsage) -> Option<f64> {
     let info = arc_llm::catalog::get_model_info(&usage.model)?;
-    let input_rate = info.input_cost_per_million?;
-    let output_rate = info.output_cost_per_million?;
+    let input_rate = info.costs.input_cost_per_mtok?;
+    let output_rate = info.costs.output_cost_per_mtok?;
     Some(
         usage.input_tokens as f64 * input_rate / 1_000_000.0
             + usage.output_tokens as f64 * output_rate / 1_000_000.0,

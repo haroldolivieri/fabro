@@ -116,9 +116,9 @@ fn print_models_table(models: &[crate::types::ModelInfo], s: &Styles) {
             s.bold.apply_to(format!("{:<30}", model.id)),
             s.dim.apply_to(format!("{:<12}", model.provider)),
             s.dim.apply_to(format!("{:<24}", aliases)),
-            format_context_window(model.context_window),
-            format_cost(model.input_cost_per_million),
-            format_cost(model.output_cost_per_million),
+            format_context_window(model.limits.context_window),
+            format_cost(model.costs.input_cost_per_mtok),
+            format_cost(model.costs.output_cost_per_mtok),
             s.cyan
                 .apply_to(format!("{:>10}", format_speed(model.estimated_output_tps))),
         );
@@ -429,9 +429,9 @@ async fn test_models(provider: Option<&str>, model: Option<&str>, s: &Styles) ->
             "{} {} {:>10}  {:>7} / {:<7}  {}  {}",
             s.bold.apply_to(format!("{:<30}", info.id)),
             s.dim.apply_to(format!("{:<12}", info.provider)),
-            format_context_window(info.context_window),
-            format_cost(info.input_cost_per_million),
-            format_cost(info.output_cost_per_million),
+            format_context_window(info.limits.context_window),
+            format_cost(info.costs.input_cost_per_mtok),
+            format_cost(info.costs.output_cost_per_mtok),
             s.cyan
                 .apply_to(format!("{:>10}", format_speed(info.estimated_output_tps))),
             status_color.apply_to(&status),

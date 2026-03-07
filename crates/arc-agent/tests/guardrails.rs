@@ -22,12 +22,12 @@ fn profile_context_window_matches_catalog_for_default_models() {
 
         assert_eq!(
             profile.context_window_size(),
-            catalog_info.context_window as usize,
+            catalog_info.limits.context_window as usize,
             "context_window_size mismatch for {:?} model '{}': profile={} catalog={}",
             provider,
             model,
             profile.context_window_size(),
-            catalog_info.context_window as usize
+            catalog_info.limits.context_window as usize
         );
     }
 }

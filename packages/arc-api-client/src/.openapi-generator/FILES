@@ -60,6 +60,9 @@ models/index.ts
 models/learning-category.ts
 models/learning.ts
 models/llm-configuration.ts
+models/model-costs.ts
+models/model-features.ts
+models/model-limits.ts
 models/model-reference.ts
 models/model.ts
 models/open-item-kind.ts

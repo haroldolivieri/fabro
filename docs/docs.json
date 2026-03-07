@@ -265,14 +265,6 @@
             ]
           },
           {
-            "group": "Projects",
-            "icon": "folder",
-            "pages": [
-              "GET /projects",
-              "GET /projects/{id}/branches"
-            ]
-          },
-          {
             "group": "More",
             "icon": "ellipsis",
             "pages": [

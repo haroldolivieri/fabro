@@ -1264,11 +1264,10 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
     env.cleanup().await.unwrap();
 }
 
-/// E2E: Verify that public repos are cloned without credentials even when
-/// GitHub App is configured (the `is_repo_public` optimization path).
+/// E2E: Verify that public repos still get credentials (needed for pushing).
 #[tokio::test]
 #[ignore]
-async fn daytona_clone_public_repo_no_credentials_needed() {
+async fn daytona_clone_public_repo_gets_credentials() {
     let creds = load_github_app_credentials();
 
     // Directly test resolve_clone_credentials against a known public repo
@@ -1280,14 +1279,14 @@ async fn daytona_clone_public_repo_no_credentials_needed() {
     .await
     .unwrap();
 
-    assert!(
-        username.is_none(),
-        "public repo should not need credentials, got username: {:?}",
-        username
+    assert_eq!(
+        username.as_deref(),
+        Some("x-access-token"),
+        "public repo should get credentials for pushing"
     );
     assert!(
-        password.is_none(),
-        "public repo should not need credentials, got password set"
+        password.is_some(),
+        "public repo should get a token for pushing"
     );
 }
 

@@ -65,54 +65,6 @@ pub fn sign_app_jwt(app_id: &str, private_key_pem: &str) -> Result<String, Strin
     Ok(jwt)
 }
 
-/// Check whether a GitHub repository is public using the App JWT.
-pub async fn is_repo_public(
-    client: &reqwest::Client,
-    jwt: &str,
-    owner: &str,
-    repo: &str,
-    base_url: &str,
-) -> Result<bool, String> {
-    #[derive(Deserialize)]
-    struct RepoResponse {
-        private: bool,
-    }
-
-    let url = format!("{base_url}/repos/{owner}/{repo}");
-    let response = client
-        .get(&url)
-        .header("Authorization", format!("Bearer {jwt}"))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "arc")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to check repo visibility: {e}"))?;
-
-    let status = response.status();
-    // 404 = repo not found (or not visible); 401/403 = app JWT can't read repos.
-    // In all these cases, assume the repo is private and proceed to get an
-    // installation access token, which WILL have the right permissions.
-    if status == reqwest::StatusCode::NOT_FOUND
-        || status == reqwest::StatusCode::UNAUTHORIZED
-        || status == reqwest::StatusCode::FORBIDDEN
-    {
-        return Ok(false);
-    }
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "Failed to check repo visibility (HTTP {status}): {body}"
-        ));
-    }
-
-    let body: RepoResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse repo response: {e}"))?;
-
-    Ok(!body.private)
-}
-
 /// Request a scoped Installation Access Token for a specific repository.
 ///
 /// Uses the App JWT to find the installation for `owner/repo`, then requests
@@ -233,8 +185,9 @@ pub async fn create_installation_access_token(
 
 /// Resolve git clone credentials for a GitHub repository.
 ///
-/// Returns `(username, password)` for authenticated cloning, or `(None, None)`
-/// for public repositories.
+/// Returns `(username, password)` for authenticated cloning.
+/// Always generates a token regardless of repo visibility, since the token
+/// is needed for pushing from the sandbox.
 pub async fn resolve_clone_credentials(
     creds: &GitHubAppCredentials,
     owner: &str,
@@ -242,10 +195,6 @@ pub async fn resolve_clone_credentials(
 ) -> Result<(Option<String>, Option<String>), String> {
     let jwt = sign_app_jwt(&creds.app_id, &creds.private_key_pem)?;
     let client = reqwest::Client::new();
-
-    if is_repo_public(&client, &jwt, owner, repo, GITHUB_API_BASE_URL).await? {
-        return Ok((None, None));
-    }
 
     let token =
         create_installation_access_token(&client, &jwt, owner, repo, GITHUB_API_BASE_URL).await?;
@@ -362,58 +311,6 @@ mod tests {
         let result = sign_app_jwt("12345", "not-a-pem");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid RSA private key"));
-    }
-
-    // -----------------------------------------------------------------------
-    // is_repo_public (mockito)
-    // -----------------------------------------------------------------------
-
-    #[tokio::test]
-    async fn is_repo_public_returns_true_for_public() {
-        let mut server = mockito::Server::new_async().await;
-        let mock = server
-            .mock("GET", "/repos/owner/repo")
-            .match_header("Authorization", "Bearer test-jwt")
-            .with_status(200)
-            .with_body(r#"{"private": false}"#)
-            .create_async()
-            .await;
-
-        let client = reqwest::Client::new();
-        let result = is_repo_public(&client, "test-jwt", "owner", "repo", &server.url()).await;
-        assert_eq!(result.unwrap(), true);
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn is_repo_public_returns_false_for_private() {
-        let mut server = mockito::Server::new_async().await;
-        let mock = server
-            .mock("GET", "/repos/owner/repo")
-            .with_status(200)
-            .with_body(r#"{"private": true}"#)
-            .create_async()
-            .await;
-
-        let client = reqwest::Client::new();
-        let result = is_repo_public(&client, "test-jwt", "owner", "repo", &server.url()).await;
-        assert_eq!(result.unwrap(), false);
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn is_repo_public_returns_false_for_404() {
-        let mut server = mockito::Server::new_async().await;
-        let mock = server
-            .mock("GET", "/repos/owner/repo")
-            .with_status(404)
-            .create_async()
-            .await;
-
-        let client = reqwest::Client::new();
-        let result = is_repo_public(&client, "test-jwt", "owner", "repo", &server.url()).await;
-        assert_eq!(result.unwrap(), false);
-        mock.assert_async().await;
     }
 
     // -----------------------------------------------------------------------

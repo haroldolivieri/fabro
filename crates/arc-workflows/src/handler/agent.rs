@@ -79,6 +79,7 @@ pub(crate) fn expand_variables(text: &str, graph: &Graph) -> Result<String, ArcE
 const STATUS_FIELDS: &[&str] = &[
     "preferred_next_label",
     "outcome",
+    "failure_reason",
     "suggested_next_ids",
     "context_updates",
 ];
@@ -127,7 +128,7 @@ fn find_json_objects(text: &str) -> Vec<&str> {
 /// Searches for the last JSON object in the response that contains at least
 /// one status field (`preferred_next_label`, `outcome`, `suggested_next_ids`,
 /// `context_updates`). Merges extracted fields into the outcome.
-pub(crate) fn extract_status_fields(text: &str, outcome: &mut Outcome) {
+pub(crate) fn extract_status_fields(text: &str, outcome: &mut Outcome) -> bool {
     let candidates = find_json_objects(text);
 
     let parsed = candidates.iter().rev().find_map(|candidate| {
@@ -140,8 +141,8 @@ pub(crate) fn extract_status_fields(text: &str, outcome: &mut Outcome) {
         None
     });
 
-    let Some(value) = parsed else { return };
-    let Some(obj) = value.as_object() else { return };
+    let Some(value) = parsed else { return false };
+    let Some(obj) = value.as_object() else { return false };
 
     if let Some(label) = obj.get("preferred_next_label").and_then(|v| v.as_str()) {
         outcome.preferred_label = Some(label.to_string());
@@ -157,11 +158,27 @@ pub(crate) fn extract_status_fields(text: &str, outcome: &mut Outcome) {
         }
     }
 
+    if let Some(status_str) = obj.get("outcome").and_then(|v| v.as_str()) {
+        if let Ok(status) = status_str.parse::<crate::outcome::StageStatus>() {
+            outcome.status = status;
+            if outcome.status == crate::outcome::StageStatus::Fail {
+                if let Some(reason) = obj.get("failure_reason").and_then(|v| v.as_str()) {
+                    outcome.failure = Some(crate::outcome::FailureDetail::new(
+                        reason,
+                        crate::error::FailureClass::Deterministic,
+                    ));
+                }
+            }
+        }
+    }
+
     if let Some(updates) = obj.get("context_updates").and_then(|v| v.as_object()) {
         for (key, val) in updates {
             outcome.context_updates.insert(key.clone(), val.clone());
         }
     }
+
+    true
 }
 
 /// Truncate a string to at most `max_chars` characters (char-boundary safe).
@@ -262,8 +279,20 @@ impl Handler for AgentHandler {
             serde_json::json!(&response_text),
         );
 
-        // 7b. Parse routing directives from response text
-        extract_status_fields(&response_text, &mut outcome);
+        // 7b. Parse routing directives from response text, falling back to
+        //     status.json written by the agent into the sandbox CWD
+        let found_in_response = extract_status_fields(&response_text, &mut outcome);
+        if !found_in_response {
+            if let Ok(result) = services
+                .sandbox
+                .exec_command("cat status.json", 5_000, None, None, None)
+                .await
+            {
+                if result.exit_code == 0 {
+                    extract_status_fields(&result.stdout, &mut outcome);
+                }
+            }
+        }
         outcome.usage = stage_usage;
         outcome.files_touched = backend_files_touched;
 
@@ -402,6 +431,104 @@ mod tests {
             outcome.context_updates.get(&keys::response_key("step")),
             Some(&serde_json::json!("[Simulated] Response for stage: step"))
         );
+    }
+
+    #[tokio::test]
+    async fn codergen_handler_falls_back_to_status_json_in_sandbox() {
+        // Simulation mode returns text with no JSON directives, so the
+        // handler should fall back to reading status.json from the sandbox CWD.
+        let sandbox_dir = TempDir::new().unwrap();
+        std::fs::write(
+            sandbox_dir.path().join("status.json"),
+            r#"{"outcome": "fail", "failure_reason": "tests failed"}"#,
+        )
+        .unwrap();
+
+        let handler = AgentHandler::new(None);
+        let node = Node::new("step");
+        let context = Context::new();
+        let graph = Graph::new("test");
+        let tmp = TempDir::new().unwrap();
+
+        let services = EngineServices {
+            registry: std::sync::Arc::new(HandlerRegistry::new(Box::new(StartHandler))),
+            emitter: std::sync::Arc::new(EventEmitter::new()),
+            sandbox: std::sync::Arc::new(arc_agent::LocalSandbox::new(
+                sandbox_dir.path().to_path_buf(),
+            )),
+            git_state: std::sync::RwLock::new(None),
+            hook_runner: None,
+        };
+
+        let outcome = handler
+            .execute(&node, &context, &graph, tmp.path(), &services)
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.status, crate::outcome::StageStatus::Fail);
+        assert_eq!(outcome.failure_reason(), Some("tests failed"));
+    }
+
+    #[tokio::test]
+    async fn codergen_handler_prefers_response_text_over_status_json() {
+        use std::sync::Arc;
+
+        // Backend returns response text with routing directives — status.json
+        // in the sandbox should be ignored.
+        struct DirectiveBackend;
+
+        #[async_trait]
+        impl CodergenBackend for DirectiveBackend {
+            async fn run(
+                &self,
+                _node: &Node,
+                _prompt: &str,
+                _context: &Context,
+                _thread_id: Option<&str>,
+                _emitter: &Arc<EventEmitter>,
+                _stage_dir: &Path,
+                _sandbox: &Arc<dyn arc_agent::Sandbox>,
+            ) -> Result<CodergenResult, ArcError> {
+                Ok(CodergenResult::Text {
+                    text: r#"Done. {"outcome": "success", "preferred_next_label": "approve"}"#
+                        .to_string(),
+                    usage: None,
+                    files_touched: Vec::new(),
+                })
+            }
+        }
+
+        let sandbox_dir = TempDir::new().unwrap();
+        std::fs::write(
+            sandbox_dir.path().join("status.json"),
+            r#"{"outcome": "fail", "failure_reason": "should be ignored"}"#,
+        )
+        .unwrap();
+
+        let handler = AgentHandler::new(Some(Box::new(DirectiveBackend)));
+        let node = Node::new("step");
+        let context = Context::new();
+        let graph = Graph::new("test");
+        let tmp = TempDir::new().unwrap();
+
+        let services = EngineServices {
+            registry: std::sync::Arc::new(HandlerRegistry::new(Box::new(StartHandler))),
+            emitter: std::sync::Arc::new(EventEmitter::new()),
+            sandbox: std::sync::Arc::new(arc_agent::LocalSandbox::new(
+                sandbox_dir.path().to_path_buf(),
+            )),
+            git_state: std::sync::RwLock::new(None),
+            hook_runner: None,
+        };
+
+        let outcome = handler
+            .execute(&node, &context, &graph, tmp.path(), &services)
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.status, crate::outcome::StageStatus::Success);
+        assert_eq!(outcome.preferred_label.as_deref(), Some("approve"));
+        assert!(outcome.failure.is_none());
     }
 
     #[test]
@@ -655,6 +782,33 @@ That's it."#;
             outcome.context_updates.get("existing_key"),
             Some(&serde_json::json!("keep"))
         );
+    }
+
+    #[test]
+    fn extract_status_fields_outcome_fail_with_reason() {
+        let text = r#"{"outcome": "fail", "failure_reason": "tests failed"}"#;
+        let mut outcome = Outcome::success();
+        extract_status_fields(text, &mut outcome);
+        assert_eq!(outcome.status, crate::outcome::StageStatus::Fail);
+        assert_eq!(outcome.failure_reason(), Some("tests failed"));
+    }
+
+    #[test]
+    fn extract_status_fields_outcome_success() {
+        let text = r#"{"outcome": "success"}"#;
+        let mut outcome = Outcome::success();
+        extract_status_fields(text, &mut outcome);
+        assert_eq!(outcome.status, crate::outcome::StageStatus::Success);
+        assert!(outcome.failure.is_none());
+    }
+
+    #[test]
+    fn extract_status_fields_outcome_fail_without_reason() {
+        let text = r#"{"outcome": "fail"}"#;
+        let mut outcome = Outcome::success();
+        extract_status_fields(text, &mut outcome);
+        assert_eq!(outcome.status, crate::outcome::StageStatus::Fail);
+        assert!(outcome.failure.is_none());
     }
 
     #[test]

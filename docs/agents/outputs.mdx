@@ -35,6 +35,8 @@ Agent and prompt nodes can influence which edge is taken after they complete by 
 
 ```json
 {
+  "outcome": "fail",
+  "failure_reason": "tests failed",
   "preferred_next_label": "fix",
   "suggested_next_ids": ["implement", "review"],
   "context_updates": { "tests_passed": true, "coverage": 85 }
@@ -43,13 +45,15 @@ Agent and prompt nodes can influence which edge is taken after they complete by 
 
 | Field | Effect |
 |---|---|
+| `outcome` | Sets the node status: `success`, `fail`, `partial_success`, `retry`, or `skipped` |
+| `failure_reason` | When `outcome` is `fail`, provides a structured failure message |
 | `preferred_next_label` | Matched against edge labels to select the next node |
 | `suggested_next_ids` | Ordered list of preferred target node IDs |
 | `context_updates` | Key-value pairs merged into the run context |
 
 ### How extraction works
 
-Arc finds all balanced `{...}` JSON objects in the response text, parses each one, and uses the **last** object that contains at least one recognized field (`preferred_next_label`, `outcome`, `suggested_next_ids`, `context_updates`). The JSON can appear anywhere in the response -- inside a fenced code block, inline with natural language, or at the end.
+Arc finds all balanced `{...}` JSON objects in the response text, parses each one, and uses the **last** object that contains at least one recognized field (`preferred_next_label`, `outcome`, `failure_reason`, `suggested_next_ids`, `context_updates`). The JSON can appear anywhere in the response -- inside a fenced code block, inline with natural language, or at the end.
 
 ```markdown
 I've reviewed the code and found several issues that need fixing.
@@ -58,7 +62,15 @@ The test coverage is below the threshold.
 {"preferred_next_label": "fix", "context_updates": {"coverage": 72}}
 ```
 
-JSON objects without recognized fields are ignored. If no routing directive is found, the transition falls through to condition matching, unconditional edges, or weight-based tiebreaking as described in [Transitions](/workflows/transitions).
+JSON objects without recognized fields are ignored.
+
+### Fallback: status.json file
+
+If no routing directives are found in the response text, Arc checks whether the agent wrote a `status.json` file into the sandbox working directory. If the file exists, Arc extracts routing directives from it using the same logic. This is useful for agents that write structured output to files rather than including JSON in their response text.
+
+Response text directives always take priority -- `status.json` is only read as a fallback when the response contains no recognized routing fields.
+
+If neither source provides routing directives, the transition falls through to condition matching, unconditional edges, or weight-based tiebreaking as described in [Transitions](/workflows/transitions).
 
 ### Instructing the agent
 

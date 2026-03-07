@@ -86,7 +86,7 @@ This means your original working directory stays untouched while the agent makes
 If the working directory has uncommitted changes, Arc skips worktree setup and runs in place, logging a warning. Git checkpointing is disabled in this case.
 </Note>
 
-For Daytona sandboxes, the worktree is created inside the remote sandbox instead. The metadata branch is still written to the host repository so that runs can be resumed locally.
+For Daytona sandboxes, the worktree is created inside the remote sandbox instead. The metadata branch is still written to the host repository so that runs can be resumed locally. Both the run branch and the metadata branch are pushed to origin after each checkpoint — the run branch is pushed from the sandbox, while the metadata branch is pushed from the host using a GitHub App installation token. On the remote, the metadata branch appears at `arc/meta/{run_id}` (rather than the local `refs/arc/{run_id}` custom ref, since GitHub disallows branch names starting with `refs/`).
 
 ## Resuming a run
 
@@ -146,8 +146,11 @@ git show arc/run/01JKXYZ...
 # Diff the full run against the starting point
 git diff main..arc/run/01JKXYZ...
 
-# Read checkpoint data from the metadata branch
+# Read checkpoint data from the metadata branch (local)
 git show refs/arc/01JKXYZ...:checkpoint.json | jq .current_node
+
+# Read checkpoint data from the remote (Daytona runs)
+git show origin/arc/meta/01JKXYZ...:checkpoint.json | jq .current_node
 ```
 
 ## When checkpointing is active

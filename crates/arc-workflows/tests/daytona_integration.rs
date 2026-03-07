@@ -1436,3 +1436,122 @@ async fn daytona_git_push_run_branch_to_origin() {
 
     env.cleanup().await.unwrap();
 }
+
+/// Diagnose toolbox proxy staleness after idle time.
+///
+/// Creates a sandbox, runs a command, sleeps for increasing durations, then
+/// retries. If a call fails, makes raw HTTP requests to capture the actual
+/// underlying error that the SDK normally swallows.
+///
+/// Run: cargo test -p arc-workflows -- --ignored daytona_toolbox_idle_diagnostic --nocapture
+#[tokio::test]
+#[ignore]
+async fn daytona_toolbox_idle_diagnostic() {
+    let creds = load_github_app_credentials();
+    let env = create_env_with_github_app(Some(creds)).await;
+    env.initialize().await.unwrap();
+
+    // 1. Verify toolbox works immediately after init
+    let result = env
+        .exec_command("echo alive", 30_000, None, None, None)
+        .await;
+    eprintln!("[t=0s] exec_command after init: {:?}", result.as_ref().map(|r| r.exit_code));
+    assert!(result.is_ok(), "exec_command should work immediately after init");
+
+    let sandbox_name = env.sandbox_info();
+    eprintln!("[t=0s] sandbox: {sandbox_name}");
+
+    // 2. Sleep for increasing durations and test
+    for sleep_secs in [30, 60, 90, 120, 180] {
+        eprintln!("\n--- sleeping {sleep_secs}s ---");
+        tokio::time::sleep(std::time::Duration::from_secs(sleep_secs)).await;
+
+        let result = env
+            .exec_command("echo alive", 30_000, None, None, None)
+            .await;
+
+        match &result {
+            Ok(r) => {
+                eprintln!("[t=+{sleep_secs}s] OK exit_code={} stdout={}", r.exit_code, r.stdout.trim());
+            }
+            Err(e) => {
+                eprintln!("[t=+{sleep_secs}s] FAILED: {e}");
+
+                // Diagnose with raw HTTP calls
+                let api_key = std::env::var("DAYTONA_API_KEY").unwrap_or_default();
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(15))
+                    .build()
+                    .unwrap();
+                let api_url = std::env::var("DAYTONA_API_URL")
+                    .or_else(|_| std::env::var("DAYTONA_SERVER_URL"))
+                    .unwrap_or_else(|_| "https://app.daytona.io/api".to_string());
+
+                // Check sandbox state
+                let state_resp = client
+                    .get(format!("{api_url}/sandbox/{sandbox_name}"))
+                    .bearer_auth(&api_key)
+                    .send()
+                    .await;
+                match state_resp {
+                    Ok(resp) => {
+                        let body = resp.text().await.unwrap_or_default();
+                        let state = serde_json::from_str::<serde_json::Value>(&body)
+                            .ok()
+                            .and_then(|v| v.get("state").cloned());
+                        eprintln!("[diag] sandbox state: {state:?}");
+                    }
+                    Err(e) => {
+                        eprintln!("[diag] sandbox API failed: {e}");
+                    }
+                }
+
+                // Get toolbox proxy URL and try a direct call
+                let proxy_resp = client
+                    .get(format!("{api_url}/sandbox/{sandbox_name}/toolbox-proxy-url"))
+                    .bearer_auth(&api_key)
+                    .send()
+                    .await;
+                if let Ok(resp) = proxy_resp {
+                    let body = resp.text().await.unwrap_or_default();
+                    eprintln!("[diag] proxy URL response: {}", &body[..body.len().min(200)]);
+                    if let Some(url) = serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|v| v.get("url").and_then(|u| u.as_str()).map(String::from))
+                    {
+                        let toolbox_url = format!("{url}/{sandbox_name}/process/execute");
+                        eprintln!("[diag] trying direct POST to {toolbox_url}");
+                        let direct = client
+                            .post(&toolbox_url)
+                            .bearer_auth(&api_key)
+                            .json(&serde_json::json!({"command": "echo diag", "timeout": 10}))
+                            .send()
+                            .await;
+                        match direct {
+                            Ok(resp) => {
+                                let status = resp.status();
+                                let body = resp.text().await.unwrap_or_default();
+                                eprintln!("[diag] direct call: {status} body={}", &body[..body.len().min(300)]);
+                            }
+                            Err(e) => {
+                                // Walk the FULL error source chain
+                                let mut msg = format!("[diag] direct call FAILED: {e}");
+                                let mut source: Option<&dyn std::error::Error> = std::error::Error::source(&e);
+                                while let Some(cause) = source {
+                                    msg.push_str(&format!("\n  caused by: {cause}"));
+                                    source = cause.source();
+                                }
+                                eprintln!("{msg}");
+                            }
+                        }
+                    }
+                }
+
+                panic!("exec_command failed after {sleep_secs}s idle: {e}");
+            }
+        }
+    }
+
+    eprintln!("\n=== PASS: all idle durations survived ===");
+    env.cleanup().await.unwrap();
+}

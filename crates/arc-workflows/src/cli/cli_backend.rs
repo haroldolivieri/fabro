@@ -285,7 +285,7 @@ impl CodergenBackend for AgentCliBackend {
         prompt: &str,
         _context: &Context,
         _thread_id: Option<&str>,
-        _emitter: &Arc<EventEmitter>,
+        emitter: &Arc<EventEmitter>,
         stage_dir: &Path,
         sandbox: &Arc<dyn Sandbox>,
     ) -> Result<CodergenResult, ArcError> {
@@ -355,8 +355,13 @@ impl CodergenBackend for AgentCliBackend {
         } else {
             format!(". {env_path} && {command}")
         };
+        // Use setsid (if available) to create a new session so the child process is
+        // fully detached from the shell. Without this, Daytona's POST /process/execute
+        // blocks until ALL descendant processes exit, causing a 60s HTTP timeout.
+        // $SID is empty on macOS (where setsid doesn't exist but isn't needed since
+        // the local exec implementation doesn't wait for grandchildren).
         let bg_command = format!(
-            "({inner_command} > {stdout_path} 2>{stderr_path}; echo $? > {exit_code_path}) &\necho $!"
+            "SID=$(command -v setsid || true)\n$SID sh -c '{inner_command} > {stdout_path} 2>{stderr_path}; echo $? > {exit_code_path}' </dev/null >/dev/null 2>&1 &\necho $!"
         );
         let launch_start = std::time::Instant::now();
         let launch_result = sandbox
@@ -373,6 +378,7 @@ impl CodergenBackend for AgentCliBackend {
         let poll_interval = std::time::Duration::from_secs(5);
         let exit_code: i32 = loop {
             tokio::time::sleep(poll_interval).await;
+            emitter.touch(); // keep the stall watchdog alive while polling
             let poll_result = sandbox
                 .exec_command(&poll_command, 30_000, None, None, None)
                 .await

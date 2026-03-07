@@ -26,5 +26,9 @@ export interface CreateSessionRequest {
      * LLM model to use. If omitted, the server default is used.
      */
     'model'?: string;
+    /**
+     * System prompt for the session.
+     */
+    'system'?: string;
 }
 

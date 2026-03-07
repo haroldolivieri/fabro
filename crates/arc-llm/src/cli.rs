@@ -437,62 +437,42 @@ pub async fn run_prompt_via_server(args: PromptArgs, server: &ServerConnection) 
             bail!("Server returned {status}: {text}");
         }
 
-        // Parse SSE stream
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
+        let show_usage = args.usage;
         let mut output_usage: Option<serde_json::Value> = None;
 
-        use futures::StreamExt;
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.context("Error reading stream")?;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-            // Process complete SSE frames (separated by blank lines)
-            while let Some(pos) = buffer.find("\n\n") {
-                let frame = buffer[..pos].to_string();
-                buffer = buffer[pos + 2..].to_string();
-
-                let mut event_type = String::new();
-                let mut data = String::new();
-                for line in frame.lines() {
-                    if let Some(val) = line.strip_prefix("event: ") {
-                        event_type = val.to_string();
-                    } else if let Some(val) = line.strip_prefix("data: ") {
-                        data = val.to_string();
+        parse_sse_frames(response, |event_type, data| {
+            match event_type {
+                "content_block_delta" => {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                        if let Some(text) = parsed["delta"]["text"].as_str() {
+                            print!("{text}");
+                            let _ = io::stdout().flush();
+                        }
                     }
                 }
-
-                match event_type.as_str() {
-                    "content_block_delta" => {
-                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&data) {
-                            if let Some(text) = parsed["delta"]["text"].as_str() {
-                                print!("{text}");
-                                let _ = io::stdout().flush();
-                            }
+                "message_delta" => {
+                    if show_usage {
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                            output_usage = Some(parsed);
                         }
                     }
-                    "message_delta" => {
-                        if args.usage {
-                            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&data) {
-                                output_usage = Some(parsed);
-                            }
-                        }
-                    }
-                    "error" => {
-                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&data) {
-                            let msg = parsed["error"]["message"]
-                                .as_str()
-                                .unwrap_or("Unknown error");
-                            bail!("Server error: {msg}");
-                        }
-                    }
-                    _ => {}
                 }
+                "error" => {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                        let msg = parsed["error"]["message"]
+                            .as_str()
+                            .unwrap_or("Unknown error");
+                        bail!("Server error: {msg}");
+                    }
+                }
+                _ => {}
             }
-        }
+            Ok(true)
+        })
+        .await?;
         println!();
 
-        if args.usage {
+        if show_usage {
             if let Some(usage) = output_usage {
                 let output_tokens = usage["usage"]["output_tokens"].as_i64().unwrap_or(0);
                 eprintln!("Tokens: output {output_tokens}");
@@ -533,6 +513,204 @@ pub async fn run_prompt_via_server(args: PromptArgs, server: &ServerConnection) 
             let input = result["usage"]["input_tokens"].as_i64().unwrap_or(0);
             let output = result["usage"]["output_tokens"].as_i64().unwrap_or(0);
             eprintln!("Tokens: {} input, {} output, {} total", input, output, input + output);
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse SSE frames from a server response, calling `on_frame` for each complete frame.
+///
+/// Each frame provides `(event_type, data)`.
+async fn parse_sse_frames(
+    response: reqwest::Response,
+    mut on_frame: impl FnMut(&str, &str) -> Result<bool>,
+) -> Result<()> {
+    let mut stream = response.bytes_stream();
+    let mut buffer = String::new();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.context("Error reading stream")?;
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+        while let Some(pos) = buffer.find("\n\n") {
+            let frame = buffer[..pos].to_string();
+            buffer = buffer[pos + 2..].to_string();
+
+            let mut event_type = String::new();
+            let mut data = String::new();
+            for line in frame.lines() {
+                if let Some(val) = line.strip_prefix("event: ") {
+                    event_type = val.to_string();
+                } else if let Some(val) = line.strip_prefix("data: ") {
+                    data = val.to_string();
+                }
+            }
+
+            if !on_frame(&event_type, &data)? {
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Stream session SSE events, printing text deltas to stdout in real-time.
+async fn stream_session_text(response: reqwest::Response) -> Result<()> {
+    parse_sse_frames(response, |event_type, data| {
+        match event_type {
+            "content_delta" => {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                    if let Some(delta) = parsed["delta"].as_str() {
+                        print!("{delta}");
+                        let _ = io::stdout().flush();
+                    }
+                }
+            }
+            "assistant_turn" => {
+                // Text already printed via content_delta events
+            }
+            "done" => {
+                println!();
+                return Ok(false);
+            }
+            "error" => {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                    let msg = parsed["message"].as_str().unwrap_or("Unknown error");
+                    bail!("Server error: {msg}");
+                }
+            }
+            _ => {}
+        }
+        Ok(true)
+    })
+    .await
+}
+
+pub async fn run_chat_via_server(args: ChatArgs, server: &ServerConnection) -> Result<()> {
+    let is_tty = io::stdin().is_terminal();
+    let mut session_id: Option<String> = None;
+
+    loop {
+        let line = if is_tty {
+            let result = tokio::task::spawn_blocking(|| {
+                dialoguer::Input::<String>::with_theme(&ColorfulTheme::default())
+                    .with_prompt(">")
+                    .interact_on(&Term::stderr())
+            })
+            .await?;
+            match result {
+                Ok(line) => line,
+                Err(_) => break,
+            }
+        } else {
+            eprint!("> ");
+            io::stderr().flush()?;
+            let mut buf = String::new();
+            if io::stdin().read_line(&mut buf)? == 0 {
+                break;
+            }
+            buf.trim_end().to_string()
+        };
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if session_id.is_none() {
+            // First message: create session
+            let mut body = serde_json::json!({ "content": trimmed });
+            if let Some(ref model) = args.model {
+                body["model"] = serde_json::Value::String(model.clone());
+            }
+            if let Some(ref system) = args.system {
+                body["system"] = serde_json::Value::String(system.clone());
+            }
+
+            let url = format!("{}/sessions", server.base_url);
+            let response = server
+                .client
+                .post(&url)
+                .json(&body)
+                .send()
+                .await
+                .with_context(|| {
+                    format!("Failed to connect to server at {}", server.base_url)
+                })?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let text = response.text().await.unwrap_or_default();
+                bail!("Server returned {status}: {text}");
+            }
+
+            let create_resp: serde_json::Value = response
+                .json()
+                .await
+                .context("Failed to parse session creation response")?;
+
+            let sid = create_resp["id"]
+                .as_str()
+                .context("Missing session id in response")?
+                .to_string();
+            let model_id = create_resp["model"]["id"]
+                .as_str()
+                .unwrap_or("unknown");
+            eprintln!("Using model: {model_id}");
+
+            // Stream events
+            let events_url = format!("{}/sessions/{sid}/events", server.base_url);
+            let events_response = server
+                .client
+                .get(&events_url)
+                .send()
+                .await
+                .with_context(|| format!("Failed to connect to event stream"))?;
+
+            if !events_response.status().is_success() {
+                let text = events_response.text().await.unwrap_or_default();
+                bail!("Event stream returned error: {text}");
+            }
+
+            stream_session_text(events_response).await?;
+            session_id = Some(sid);
+        } else {
+            // Subsequent messages: send message
+            let sid = session_id.as_ref().unwrap();
+            let body = serde_json::json!({ "content": trimmed });
+            let url = format!("{}/sessions/{sid}/messages", server.base_url);
+            let response = server
+                .client
+                .post(&url)
+                .json(&body)
+                .send()
+                .await
+                .with_context(|| {
+                    format!("Failed to connect to server at {}", server.base_url)
+                })?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let text = response.text().await.unwrap_or_default();
+                bail!("Server returned {status}: {text}");
+            }
+
+            // Stream events
+            let events_url = format!("{}/sessions/{sid}/events", server.base_url);
+            let events_response = server
+                .client
+                .get(&events_url)
+                .send()
+                .await
+                .with_context(|| format!("Failed to connect to event stream"))?;
+
+            if !events_response.status().is_success() {
+                let text = events_response.text().await.unwrap_or_default();
+                bail!("Event stream returned error: {text}");
+            }
+
+            stream_session_text(events_response).await?;
         }
     }
 

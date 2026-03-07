@@ -101,12 +101,13 @@ pub struct AppState {
     runs: Mutex<HashMap<String, ManagedRun>>,
     aggregate_usage: Mutex<AggregateUsageTotals>,
     registry_factory: Box<dyn Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync>,
-    dry_run: bool,
+    pub dry_run: bool,
     pub db: sqlx::SqlitePool,
     max_concurrent_runs: usize,
     scheduler_notify: tokio::sync::Notify,
     pub hook_config: arc_workflows::hook::HookConfig,
     git_author: arc_workflows::git::GitAuthor,
+    pub sessions: crate::sessions::SessionStore,
 }
 
 /// Build the axum Router with all run endpoints.
@@ -275,10 +276,10 @@ fn real_routes() -> Router<Arc<AppState>> {
         .route("/verification/controls", get(not_implemented))
         .route("/verification/controls/{id}", get(not_implemented))
         .route("/retros", get(not_implemented))
-        .route("/sessions", get(not_implemented).post(not_implemented))
-        .route("/sessions/{id}", get(not_implemented))
-        .route("/sessions/{id}/messages", post(not_implemented))
-        .route("/sessions/{id}/events", get(not_implemented))
+        .route("/sessions", get(crate::sessions::list_sessions).post(crate::sessions::create_session))
+        .route("/sessions/{id}", get(crate::sessions::retrieve_session))
+        .route("/sessions/{id}/messages", post(crate::sessions::send_message))
+        .route("/sessions/{id}/events", get(crate::sessions::stream_session_events))
         .route(
             "/insights/queries",
             get(not_implemented).post(not_implemented),
@@ -385,6 +386,7 @@ pub fn create_app_state_with_options(
         scheduler_notify: tokio::sync::Notify::new(),
         hook_config: arc_workflows::hook::HookConfig::default(),
         git_author,
+        sessions: crate::sessions::new_session_store(),
     })
 }
 

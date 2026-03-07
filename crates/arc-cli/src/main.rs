@@ -177,7 +177,25 @@ async fn main() -> Result<()> {
                     if args.model.is_none() {
                         args.model = llm_defaults.and_then(|l| l.model.clone());
                     }
-                    arc_llm::cli::run_chat(args).await?
+                    let resolved = cli_config::resolve_mode(
+                        cli.mode,
+                        cli.server_url.as_deref(),
+                        &cli_config,
+                    );
+                    match resolved.mode {
+                        cli_config::ExecutionMode::Server => {
+                            let client =
+                                cli_config::build_server_client(resolved.tls.as_ref())?;
+                            let server = arc_llm::cli::ServerConnection {
+                                client,
+                                base_url: resolved.server_base_url,
+                            };
+                            arc_llm::cli::run_chat_via_server(args, &server).await?
+                        }
+                        cli_config::ExecutionMode::Standalone => {
+                            arc_llm::cli::run_chat(args).await?
+                        }
+                    }
                 }
             }
         }

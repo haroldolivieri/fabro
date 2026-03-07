@@ -857,6 +857,7 @@ paths:
 
         The stream emits the following SSE event types:
 
+        - `event: content_delta` — data: `{"delta": "..."}` (incremental text chunk)
         - `event: assistant_turn` — data: `AssistantTurn` JSON object
         - `event: tool_turn` — data: `ToolTurn` JSON object
         - `event: done` — data: `{}` (stream complete)
@@ -3448,6 +3449,10 @@ components:
           type: string
           description: LLM model to use. If omitted, the server default is used.
           example: claude-opus-4-6
+        system:
+          type: string
+          description: System prompt for the session.
+          example: You are a helpful coding assistant.
 
     CreateSessionResponse:
       description: Response returned after successfully creating a session.

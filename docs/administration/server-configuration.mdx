@@ -1,0 +1,139 @@
+---
+title: "Server Configuration"
+description: "Server config file, CLI overrides, and environment variables"
+---
+
+## Config file
+
+The server config file at `~/.arc/server.toml` controls how `arc serve` behaves — API binding, authentication, run defaults, and more. The [Quick Start](/getting-started/quick-start) doesn't require one, but production deployments should configure it explicitly.
+
+### Full reference
+
+```toml
+# Maximum concurrent workflow runs (default: 5)
+max_concurrent_runs = 8
+
+# Override the default data directory (default: ~/.arc)
+data_dir = "/var/lib/arc"
+
+[api]
+base_url = "https://arc.example.com"
+
+[api.tls]
+cert = "/etc/arc/tls/cert.pem"
+key = "/etc/arc/tls/key.pem"
+ca = "/etc/arc/tls/ca.pem"
+
+# Authentication strategies (array of Jwt or Mtls)
+[[api.authentication_strategies]]
+type = "Jwt"
+
+[web]
+url = "https://arc-web.example.com"
+
+[web.auth]
+provider = "Github"
+allowed_usernames = ["alice", "bob"]
+
+[git]
+provider = "Github"
+app_id = "123456"
+client_id = "Iv1.abc123"
+
+# Run defaults — applied to every run unless overridden by the run config
+[llm]
+model = "claude-sonnet-4-5"
+provider = "anthropic"
+
+[llm.fallbacks]
+anthropic = ["gemini", "openai"]
+
+[setup]
+commands = ["npm install"]
+timeout_ms = 120000
+
+[sandbox]
+provider = "daytona"
+
+[sandbox.daytona]
+auto_stop_interval = 60
+
+[sandbox.daytona.labels]
+team = "platform"
+
+[vars]
+default_branch = "main"
+```
+
+### CLI overrides
+
+Several `server.toml` settings can be overridden via `arc serve` flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--port` | `3000` | Port to listen on |
+| `--host` | `127.0.0.1` | Host address to bind to |
+| `--model` | — | Override default LLM model |
+| `--provider` | — | Override default LLM provider |
+| `--sandbox` | — | Override default sandbox provider |
+| `--max-concurrent-runs` | `5` | Maximum concurrent run executions |
+| `--config` | `~/.arc/server.toml` | Path to server config file |
+| `--dry-run` | — | Execute with simulated LLM backend |
+
+CLI flags take precedence over `server.toml` values. See [Run Configuration — Precedence](/execution/run-configuration#precedence) for the full resolution order.
+
+### Run defaults
+
+The `[llm]`, `[setup]`, `[sandbox]`, and `[vars]` sections in `server.toml` act as defaults for every run. A run config TOML can override any of these. For `[vars]` and Daytona labels, values are **merged** — the run config wins on key collisions. All other fields use "first non-empty wins" precedence.
+
+## Environment variables
+
+Arc reads environment variables from a `.env` file in the working directory (if present) and from the shell environment. Provider API keys are required for the models you want to use; everything else is optional.
+
+### LLM provider keys
+
+| Variable | Provider |
+|---|---|
+| `ANTHROPIC_API_KEY` | Anthropic (Claude) |
+| `OPENAI_API_KEY` | OpenAI (GPT) |
+| `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Google (Gemini) |
+| `KIMI_API_KEY` | Kimi |
+| `ZAI_API_KEY` | Zai (GLM) |
+| `MINIMAX_API_KEY` | Minimax |
+| `INCEPTION_API_KEY` | Inception (Mercury) |
+
+### Sandbox and tools
+
+| Variable | Description |
+|---|---|
+| `DAYTONA_API_KEY` | Daytona cloud sandbox API key |
+| `BRAVE_SEARCH_API_KEY` | Brave Search API key (for the `web_search` tool) |
+
+### Server authentication
+
+| Variable | Description |
+|---|---|
+| `ARC_JWT_PRIVATE_KEY` | Ed25519 private key (base64-encoded PEM) for JWT signing |
+| `ARC_JWT_PUBLIC_KEY` | Ed25519 public key (base64-encoded PEM) for JWT verification |
+| `SESSION_SECRET` | Session encryption secret (64-character hex string) |
+
+### GitHub App (optional)
+
+| Variable | Description |
+|---|---|
+| `GITHUB_APP_CLIENT_SECRET` | GitHub App client secret |
+| `GITHUB_APP_WEBHOOK_SECRET` | GitHub App webhook secret |
+| `GITHUB_APP_PRIVATE_KEY` | GitHub App private key (base64-encoded) |
+
+### Slack integration (optional)
+
+| Variable | Description |
+|---|---|
+| `ARC_SLACK_APP_TOKEN` | Slack App-level token |
+| `ARC_SLACK_BOT_TOKEN` | Slack Bot token |
+
+### Logging
+
+| Variable | Default | Description |
+|---|---|---|
+| `ARC_LOG` | `info` | Log level: `error`, `warn`, `info`, `debug` |

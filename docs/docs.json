@@ -81,7 +81,8 @@
               "reference/cli-configuration",
               "reference/logs-directory",
               "reference/architecture",
-              "administration/advanced-setup",
+              "administration/server-configuration",
+              "administration/troubleshooting",
               "administration/security"
             ]
           }
@@ -102,6 +103,13 @@
               "tutorials/multi-model",
               "tutorials/ensemble",
               "tutorials/sub-workflow"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "icon": "server",
+            "pages": [
+              "administration/deployment"
             ]
           },
           {
@@ -230,6 +238,13 @@
             "pages": [
               "GET /projects",
               "GET /projects/{id}/branches"
+            ]
+          },
+          {
+            "group": "Models",
+            "icon": "microchip-ai",
+            "pages": [
+              "GET /models"
             ]
           },
           {

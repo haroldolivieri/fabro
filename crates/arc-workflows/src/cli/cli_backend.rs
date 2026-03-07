@@ -8,10 +8,147 @@ use async_trait::async_trait;
 
 use crate::context::Context;
 use crate::error::ArcError;
-use crate::event::EventEmitter;
+use crate::event::{EventEmitter, WorkflowRunEvent};
 use crate::graph::Node;
 use crate::handler::agent::{CodergenBackend, CodergenResult};
 use crate::outcome::StageUsage;
+
+/// Maps a provider to its corresponding CLI tool metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentCli {
+    Claude,
+    Codex,
+    Gemini,
+}
+
+impl AgentCli {
+    pub fn for_provider(provider: Provider) -> Self {
+        match provider {
+            Provider::Anthropic => Self::Claude,
+            Provider::Gemini => Self::Gemini,
+            Provider::OpenAi
+            | Provider::Kimi
+            | Provider::Zai
+            | Provider::Minimax
+            | Provider::Inception => Self::Codex,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Gemini => "gemini",
+        }
+    }
+
+    pub fn npm_package(self) -> &'static str {
+        match self {
+            Self::Claude => "@anthropic-ai/claude-code",
+            Self::Codex => "@openai/codex",
+            Self::Gemini => "@anthropic-ai/gemini-cli",
+        }
+    }
+}
+
+/// Ensure the CLI tool for the given provider is installed in the sandbox.
+///
+/// Checks if the CLI binary exists; if not, installs Node.js (if missing) and
+/// the CLI via npm. Emits `CliEnsure*` events for observability.
+async fn ensure_cli(
+    cli: AgentCli,
+    provider: Provider,
+    sandbox: &Arc<dyn Sandbox>,
+    emitter: &Arc<EventEmitter>,
+) -> Result<(), ArcError> {
+    let start = std::time::Instant::now();
+    let cli_name = cli.name();
+    let provider_str = provider.as_str();
+
+    emitter.emit(&WorkflowRunEvent::CliEnsureStarted {
+        cli_name: cli_name.to_string(),
+        provider: provider_str.to_string(),
+    });
+
+    // Check if the CLI is already installed
+    let version_check = sandbox
+        .exec_command(&format!("{cli_name} --version"), 30_000, None, None, None)
+        .await
+        .map_err(|e| ArcError::handler(format!("Failed to check {cli_name} version: {e}")))?;
+
+    if version_check.exit_code == 0 {
+        let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        emitter.emit(&WorkflowRunEvent::CliEnsureCompleted {
+            cli_name: cli_name.to_string(),
+            provider: provider_str.to_string(),
+            already_installed: true,
+            node_installed: false,
+            duration_ms,
+        });
+        return Ok(());
+    }
+
+    // Check if Node.js is available
+    let node_check = sandbox
+        .exec_command("node --version", 30_000, None, None, None)
+        .await
+        .map_err(|e| ArcError::handler(format!("Failed to check node version: {e}")))?;
+
+    let mut node_installed = false;
+    if node_check.exit_code != 0 {
+        // Install Node.js via NodeSource
+        let node_install_cmd = "apt-get update -qq && apt-get install -y -qq curl ca-certificates && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y -qq nodejs";
+        let node_result = sandbox
+            .exec_command(node_install_cmd, 120_000, None, None, None)
+            .await
+            .map_err(|e| ArcError::handler(format!("Failed to install Node.js: {e}")))?;
+
+        if node_result.exit_code != 0 {
+            let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let stderr: String = node_result.stderr.chars().rev().take(500).collect::<Vec<_>>().into_iter().rev().collect();
+            let error_msg = format!("Node.js install exited with code {}: {stderr}", node_result.exit_code);
+            emitter.emit(&WorkflowRunEvent::CliEnsureFailed {
+                cli_name: cli_name.to_string(),
+                provider: provider_str.to_string(),
+                error: error_msg.clone(),
+                duration_ms,
+            });
+            return Err(ArcError::handler(error_msg));
+        }
+        node_installed = true;
+    }
+
+    // Install the CLI via npm
+    let npm_cmd = format!("npm install -g {}", cli.npm_package());
+    let npm_result = sandbox
+        .exec_command(&npm_cmd, 120_000, None, None, None)
+        .await
+        .map_err(|e| ArcError::handler(format!("Failed to install {cli_name}: {e}")))?;
+
+    if npm_result.exit_code != 0 {
+        let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let stderr: String = npm_result.stderr.chars().rev().take(500).collect::<Vec<_>>().into_iter().rev().collect();
+        let error_msg = format!("{cli_name} npm install exited with code {}: {stderr}", npm_result.exit_code);
+        emitter.emit(&WorkflowRunEvent::CliEnsureFailed {
+            cli_name: cli_name.to_string(),
+            provider: provider_str.to_string(),
+            error: error_msg.clone(),
+            duration_ms,
+        });
+        return Err(ArcError::handler(error_msg));
+    }
+
+    let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    emitter.emit(&WorkflowRunEvent::CliEnsureCompleted {
+        cli_name: cli_name.to_string(),
+        provider: provider_str.to_string(),
+        already_installed: false,
+        node_installed,
+        duration_ms,
+    });
+
+    Ok(())
+}
 
 /// Models that are only available through CLI tools (not via API).
 const CLI_ONLY_MODELS: &[&str] = &[];
@@ -312,6 +449,11 @@ impl CodergenBackend for AgentCliBackend {
             .llm_provider()
             .and_then(|s| s.parse::<Provider>().ok())
             .unwrap_or(self.provider);
+
+        // Ensure the CLI tool is installed in the sandbox
+        let cli = AgentCli::for_provider(provider);
+        ensure_cli(cli, provider, sandbox, emitter).await?;
+
         let command = cli_command_for_provider(provider, model, &prompt_path);
 
         let _ = tokio::fs::create_dir_all(stage_dir).await;
@@ -571,6 +713,179 @@ impl CodergenBackend for BackendRouter {
 mod tests {
     use super::*;
     use crate::graph::AttrValue;
+
+    // -- AgentCli --
+
+    #[test]
+    fn agent_cli_for_provider() {
+        assert_eq!(AgentCli::for_provider(Provider::Anthropic), AgentCli::Claude);
+        assert_eq!(AgentCli::for_provider(Provider::OpenAi), AgentCli::Codex);
+        assert_eq!(AgentCli::for_provider(Provider::Gemini), AgentCli::Gemini);
+        assert_eq!(AgentCli::for_provider(Provider::Kimi), AgentCli::Codex);
+        assert_eq!(AgentCli::for_provider(Provider::Zai), AgentCli::Codex);
+        assert_eq!(AgentCli::for_provider(Provider::Minimax), AgentCli::Codex);
+        assert_eq!(AgentCli::for_provider(Provider::Inception), AgentCli::Codex);
+    }
+
+    #[test]
+    fn agent_cli_name() {
+        assert_eq!(AgentCli::Claude.name(), "claude");
+        assert_eq!(AgentCli::Codex.name(), "codex");
+        assert_eq!(AgentCli::Gemini.name(), "gemini");
+    }
+
+    #[test]
+    fn agent_cli_npm_package() {
+        assert_eq!(AgentCli::Claude.npm_package(), "@anthropic-ai/claude-code");
+        assert_eq!(AgentCli::Codex.npm_package(), "@openai/codex");
+        assert_eq!(AgentCli::Gemini.npm_package(), "@anthropic-ai/gemini-cli");
+    }
+
+    // -- ensure_cli --
+
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+    use arc_agent::sandbox::{DirEntry, GrepOptions};
+
+    /// Mock sandbox that returns pre-configured ExecResults in FIFO order.
+    struct CliMockSandbox {
+        results: Mutex<VecDeque<ExecResult>>,
+        commands: Mutex<Vec<String>>,
+    }
+
+    impl CliMockSandbox {
+        fn new(results: Vec<ExecResult>) -> Self {
+            Self {
+                results: Mutex::new(results.into()),
+                commands: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn commands(&self) -> Vec<String> {
+            self.commands.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for CliMockSandbox {
+        async fn read_file(&self, _path: &str, _offset: Option<usize>, _limit: Option<usize>) -> Result<String, String> {
+            Ok(String::new())
+        }
+        async fn write_file(&self, _path: &str, _content: &str) -> Result<(), String> { Ok(()) }
+        async fn delete_file(&self, _path: &str) -> Result<(), String> { Ok(()) }
+        async fn file_exists(&self, _path: &str) -> Result<bool, String> { Ok(false) }
+        async fn list_directory(&self, _path: &str, _depth: Option<usize>) -> Result<Vec<DirEntry>, String> { Ok(vec![]) }
+        async fn exec_command(
+            &self,
+            command: &str,
+            _timeout_ms: u64,
+            _working_dir: Option<&str>,
+            _env_vars: Option<&std::collections::HashMap<String, String>>,
+            _cancel_token: Option<tokio_util::sync::CancellationToken>,
+        ) -> Result<ExecResult, String> {
+            self.commands.lock().unwrap().push(command.to_string());
+            self.results.lock().unwrap().pop_front().ok_or_else(|| "no more mock results".to_string())
+        }
+        async fn grep(&self, _pattern: &str, _path: &str, _options: &GrepOptions) -> Result<Vec<String>, String> { Ok(vec![]) }
+        async fn glob(&self, _pattern: &str, _path: Option<&str>) -> Result<Vec<String>, String> { Ok(vec![]) }
+        async fn download_file_to_local(&self, _remote: &str, _local: &Path) -> Result<(), String> { Ok(()) }
+        async fn initialize(&self) -> Result<(), String> { Ok(()) }
+        async fn cleanup(&self) -> Result<(), String> { Ok(()) }
+        fn working_directory(&self) -> &str { "/workspace" }
+        fn platform(&self) -> &str { "linux" }
+        fn os_version(&self) -> String { "Ubuntu 22.04".to_string() }
+        async fn set_autostop_interval(&self, _minutes: i32) -> Result<(), String> { Ok(()) }
+    }
+
+    fn ok_result() -> ExecResult {
+        ExecResult { exit_code: 0, stdout: String::new(), stderr: String::new(), timed_out: false, duration_ms: 10 }
+    }
+
+    fn fail_result(code: i32) -> ExecResult {
+        ExecResult { exit_code: code, stdout: String::new(), stderr: "error".to_string(), timed_out: false, duration_ms: 10 }
+    }
+
+    #[tokio::test]
+    async fn ensure_cli_skips_install_when_present() {
+        let sandbox: Arc<dyn Sandbox> = Arc::new(CliMockSandbox::new(vec![ok_result()]));
+        let emitter = Arc::new(EventEmitter::new());
+
+        let result = ensure_cli(AgentCli::Claude, Provider::Anthropic, &sandbox, &emitter).await;
+        assert!(result.is_ok());
+
+        let mock = sandbox.as_ref() as *const dyn Sandbox as *const CliMockSandbox;
+        let commands = unsafe { &*mock }.commands();
+        assert_eq!(commands.len(), 1);
+        assert!(commands[0].contains("claude --version"));
+    }
+
+    #[tokio::test]
+    async fn ensure_cli_installs_when_missing_with_node() {
+        // version check fails, node check succeeds, npm install succeeds
+        let sandbox: Arc<dyn Sandbox> = Arc::new(CliMockSandbox::new(vec![
+            fail_result(127),  // claude --version
+            ok_result(),       // node --version
+            ok_result(),       // npm install -g
+        ]));
+        let emitter = Arc::new(EventEmitter::new());
+
+        let result = ensure_cli(AgentCli::Claude, Provider::Anthropic, &sandbox, &emitter).await;
+        assert!(result.is_ok());
+
+        let mock = sandbox.as_ref() as *const dyn Sandbox as *const CliMockSandbox;
+        let commands = unsafe { &*mock }.commands();
+        assert_eq!(commands.len(), 3);
+        assert!(commands[2].contains("npm install -g @anthropic-ai/claude-code"));
+    }
+
+    #[tokio::test]
+    async fn ensure_cli_installs_node_and_cli() {
+        // version check fails, node check fails, node install succeeds, npm install succeeds
+        let sandbox: Arc<dyn Sandbox> = Arc::new(CliMockSandbox::new(vec![
+            fail_result(127),  // claude --version
+            fail_result(127),  // node --version
+            ok_result(),       // apt-get ... nodejs
+            ok_result(),       // npm install -g
+        ]));
+        let emitter = Arc::new(EventEmitter::new());
+
+        let result = ensure_cli(AgentCli::Claude, Provider::Anthropic, &sandbox, &emitter).await;
+        assert!(result.is_ok());
+
+        let mock = sandbox.as_ref() as *const dyn Sandbox as *const CliMockSandbox;
+        let commands = unsafe { &*mock }.commands();
+        assert_eq!(commands.len(), 4);
+        assert!(commands[2].contains("nodesource"));
+        assert!(commands[3].contains("npm install -g"));
+    }
+
+    #[tokio::test]
+    async fn ensure_cli_fails_on_node_install_failure() {
+        let sandbox: Arc<dyn Sandbox> = Arc::new(CliMockSandbox::new(vec![
+            fail_result(127),  // claude --version
+            fail_result(127),  // node --version
+            fail_result(1),    // node install fails
+        ]));
+        let emitter = Arc::new(EventEmitter::new());
+
+        let result = ensure_cli(AgentCli::Claude, Provider::Anthropic, &sandbox, &emitter).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Node.js install"));
+    }
+
+    #[tokio::test]
+    async fn ensure_cli_fails_on_npm_install_failure() {
+        let sandbox: Arc<dyn Sandbox> = Arc::new(CliMockSandbox::new(vec![
+            fail_result(127),  // claude --version
+            ok_result(),       // node --version
+            fail_result(1),    // npm install fails
+        ]));
+        let emitter = Arc::new(EventEmitter::new());
+
+        let result = ensure_cli(AgentCli::Claude, Provider::Anthropic, &sandbox, &emitter).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("npm install"));
+    }
 
     // -- Cycle 1: cli_command_for_provider --
 

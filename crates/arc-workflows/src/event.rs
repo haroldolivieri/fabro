@@ -198,6 +198,23 @@ pub enum WorkflowRunEvent {
         to_model: String,
         error: String,
     },
+    CliEnsureStarted {
+        cli_name: String,
+        provider: String,
+    },
+    CliEnsureCompleted {
+        cli_name: String,
+        provider: String,
+        already_installed: bool,
+        node_installed: bool,
+        duration_ms: u64,
+    },
+    CliEnsureFailed {
+        cli_name: String,
+        provider: String,
+        error: String,
+        duration_ms: u64,
+    },
 }
 
 impl WorkflowRunEvent {
@@ -474,6 +491,41 @@ impl WorkflowRunEvent {
                     to_model,
                     error,
                     "LLM provider failover"
+                );
+            }
+            Self::CliEnsureStarted {
+                cli_name, provider, ..
+            } => {
+                debug!(cli_name, provider, "CLI ensure started");
+            }
+            Self::CliEnsureCompleted {
+                cli_name,
+                provider,
+                already_installed,
+                node_installed,
+                duration_ms,
+            } => {
+                info!(
+                    cli_name,
+                    provider,
+                    already_installed,
+                    node_installed,
+                    duration_ms,
+                    "CLI ensure completed"
+                );
+            }
+            Self::CliEnsureFailed {
+                cli_name,
+                provider,
+                error,
+                duration_ms,
+            } => {
+                error!(
+                    cli_name,
+                    provider,
+                    error,
+                    duration_ms,
+                    "CLI ensure failed"
                 );
             }
         }
@@ -1651,6 +1703,36 @@ mod tests {
         assert_eq!(name, "Sandbox.SnapshotPulling");
         assert_eq!(fields["snapshot_name"], "base-image");
         assert!(!fields.contains_key("name"));
+    }
+
+    #[test]
+    fn cli_ensure_events_serialization() {
+        let events = vec![
+            WorkflowRunEvent::CliEnsureStarted {
+                cli_name: "claude".into(),
+                provider: "anthropic".into(),
+            },
+            WorkflowRunEvent::CliEnsureCompleted {
+                cli_name: "claude".into(),
+                provider: "anthropic".into(),
+                already_installed: false,
+                node_installed: true,
+                duration_ms: 45000,
+            },
+            WorkflowRunEvent::CliEnsureFailed {
+                cli_name: "codex".into(),
+                provider: "openai".into(),
+                error: "npm install failed".into(),
+                duration_ms: 30000,
+            },
+        ];
+
+        for event in &events {
+            let json = serde_json::to_string(event).unwrap();
+            let deserialized: WorkflowRunEvent = serde_json::from_str(&json).unwrap();
+            let json2 = serde_json::to_string(&deserialized).unwrap();
+            assert_eq!(json, json2);
+        }
     }
 
     #[test]

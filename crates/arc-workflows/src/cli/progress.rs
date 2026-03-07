@@ -186,6 +186,7 @@ pub struct ProgressUI {
     setup_command_count: usize,
     sandbox_bar: Option<ProgressBar>,
     setup_bar: Option<ProgressBar>,
+    cli_ensure_bar: Option<ProgressBar>,
     any_stage_started: bool,
     parallel_parent: Option<String>,
 }
@@ -206,6 +207,7 @@ impl ProgressUI {
             setup_command_count: 0,
             sandbox_bar: None,
             setup_bar: None,
+            cli_ensure_bar: None,
             any_stage_started: false,
             parallel_parent: None,
         }
@@ -427,6 +429,20 @@ impl ProgressUI {
                     "\u{21bb} {name}: retrying (attempt {attempt}/{max_attempts}, delay {dur})"
                 ));
             }
+            WorkflowRunEvent::CliEnsureStarted { cli_name, .. } => {
+                self.on_cli_ensure_started(cli_name);
+            }
+            WorkflowRunEvent::CliEnsureCompleted {
+                cli_name,
+                already_installed,
+                duration_ms,
+                ..
+            } => {
+                self.on_cli_ensure_completed(cli_name, *already_installed, *duration_ms);
+            }
+            WorkflowRunEvent::CliEnsureFailed { cli_name, .. } => {
+                self.on_cli_ensure_failed(cli_name);
+            }
             _ => {}
         }
     }
@@ -535,6 +551,55 @@ impl ProgressUI {
             }
             ProgressRenderer::Plain => {
                 eprintln!("    Setup: {count} command{suffix} ({dur})");
+            }
+        }
+    }
+
+    // ── CLI ensure ────────────────────────────────────────────────────────
+
+    fn on_cli_ensure_started(&mut self, cli_name: &str) {
+        match &self.renderer {
+            ProgressRenderer::Tty(tty) => {
+                let bar = tty.multi.add(ProgressBar::new_spinner());
+                bar.set_style(style_header_running());
+                bar.set_message(format!("CLI: ensuring {cli_name}..."));
+                bar.enable_steady_tick(Duration::from_millis(100));
+                self.cli_ensure_bar = Some(bar);
+            }
+            ProgressRenderer::Plain => {}
+        }
+    }
+
+    fn on_cli_ensure_completed(&mut self, cli_name: &str, already_installed: bool, duration_ms: u64) {
+        let dur = format_duration_ms(duration_ms);
+        let status = if already_installed { "found" } else { "installed" };
+        match &self.renderer {
+            ProgressRenderer::Tty(_) => {
+                if let Some(bar) = self.cli_ensure_bar.take() {
+                    bar.set_style(style_header_done());
+                    bar.set_prefix(dur);
+                    bar.finish_with_message(format!("CLI: {cli_name} ({status})"));
+                }
+            }
+            ProgressRenderer::Plain => {
+                eprintln!("    CLI: {cli_name} ({status}, {dur})");
+            }
+        }
+    }
+
+    fn on_cli_ensure_failed(&mut self, cli_name: &str) {
+        match &self.renderer {
+            ProgressRenderer::Tty(_) => {
+                if let Some(bar) = self.cli_ensure_bar.take() {
+                    bar.set_style(style_header_done());
+                    bar.finish_with_message(format!(
+                        "{} CLI: {cli_name} install failed",
+                        red_cross()
+                    ));
+                }
+            }
+            ProgressRenderer::Plain => {
+                eprintln!("    {} CLI: {cli_name} install failed", red_cross());
             }
         }
     }

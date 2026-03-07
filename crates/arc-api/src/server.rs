@@ -193,7 +193,7 @@ fn demo_routes() -> Router<Arc<AppState>> {
         .route("/workflows/{name}", get(crate::demo::get_workflow))
         .route(
             "/workflows/{name}/runs",
-            get(crate::demo::list_workflow_runs).post(crate::demo::trigger_workflow_run_stub),
+            get(crate::demo::list_workflow_runs),
         )
         .route(
             "/verification/criteria",
@@ -267,7 +267,7 @@ fn real_routes() -> Router<Arc<AppState>> {
         .route("/workflows/{name}", get(not_implemented))
         .route(
             "/workflows/{name}/runs",
-            get(not_implemented).post(not_implemented),
+            get(not_implemented),
         )
         .route("/verification/criteria", get(not_implemented))
         .route("/verification/criteria/{id}", get(not_implemented))

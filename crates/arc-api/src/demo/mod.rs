@@ -283,18 +283,6 @@ pub async fn list_workflow_runs(
     paginated_response(items, &pagination)
 }
 
-pub async fn trigger_workflow_run_stub(
-    _auth: AuthenticatedService,
-    State(_state): State<Arc<AppState>>,
-    Path(_name): Path<String>,
-) -> Response {
-    (
-        StatusCode::CREATED,
-        Json(serde_json::json!({"id": "demo-workflow-run", "status": "queued", "created_at": "2026-03-06T14:30:00Z"})),
-    )
-        .into_response()
-}
-
 // ── Verification ──────────────────────────────────────────────────────
 
 pub async fn list_verification_criteria(

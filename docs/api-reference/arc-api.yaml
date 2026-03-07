@@ -653,32 +653,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-    post:
-      operationId: startWorkflowRun
-      tags: [Workflows]
-      summary: Start Workflow Run
-      description: Queues a new run of the specified workflow using its stored DOT graph.
-      parameters:
-        - $ref: "#/components/parameters/WorkflowName"
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/StartWorkflowRunRequest"
-      responses:
-        "201":
-          description: Run created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RunStatusResponse"
-        "404":
-          description: Workflow not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
   # ── Verification ──────────────────────────────────────────────────────
 
@@ -1610,21 +1584,6 @@ components:
         - completed
         - failed
         - cancelled
-
-    StartWorkflowRunRequest:
-      description: Optional request body for starting a workflow run with overrides.
-      type: object
-      properties:
-        goal:
-          type: string
-          description: Goal description override for this run.
-        vars:
-          type: object
-          additionalProperties:
-            type: string
-          description: Variable map overrides for template expansion.
-        llm:
-          $ref: "#/components/schemas/LlmConfiguration"
 
     StartRunRequest:
       description: Request body for starting a new run from a DOT graph source.

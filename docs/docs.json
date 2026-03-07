@@ -230,8 +230,7 @@
             "pages": [
               "GET /workflows",
               "GET /workflows/{name}",
-              "GET /workflows/{name}/runs",
-              "POST /workflows/{name}/runs"
+              "GET /workflows/{name}/runs"
             ]
           },
           {

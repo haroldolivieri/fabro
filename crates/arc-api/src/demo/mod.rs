@@ -527,27 +527,7 @@ pub async fn list_models(
     State(_state): State<Arc<AppState>>,
     Query(pagination): Query<PaginationParams>,
 ) -> Response {
-    let items: Vec<serde_json::Value> = arc_llm::catalog::list_models(None)
-        .into_iter()
-        .map(|m| {
-            json!({
-                "id": m.id,
-                "provider": m.provider,
-                "display_name": m.display_name,
-                "context_window": m.context_window,
-                "max_output": m.max_output,
-                "supports_tools": m.supports_tools,
-                "supports_vision": m.supports_vision,
-                "supports_reasoning": m.supports_reasoning,
-                "input_cost_per_million": m.input_cost_per_million,
-                "output_cost_per_million": m.output_cost_per_million,
-                "estimated_output_tps": m.estimated_output_tps,
-                "aliases": m.aliases,
-                "default": m.default,
-            })
-        })
-        .collect();
-    paginated_response(items, &pagination)
+    paginated_response(arc_llm::catalog::list_models(None), &pagination)
 }
 
 // ── Settings ───────────────────────────────────────────────────────────

@@ -5825,6 +5825,22 @@ mod real_llm {
             _sandbox: &Arc<dyn arc_agent::Sandbox>,
             _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
         ) -> Result<CodergenResult, ArcError> {
+            self.complete(prompt).await
+        }
+
+        async fn one_shot(
+            &self,
+            _node: &Node,
+            prompt: &str,
+            _system_prompt: Option<&str>,
+            _stage_dir: &std::path::Path,
+        ) -> Result<CodergenResult, ArcError> {
+            self.complete(prompt).await
+        }
+    }
+
+    impl LlmCodergenBackend {
+        async fn complete(&self, prompt: &str) -> Result<CodergenResult, ArcError> {
             let request = Request {
                 model: self.model.clone(),
                 messages: vec![Message::user(prompt)],

@@ -136,7 +136,8 @@ macro_rules! provider_tests {
         provider_test!($scenario, Provider::Kimi, "kimi-k2.5", kimi);
         provider_test!($scenario, Provider::Zai, "glm-4.7", zai);
         provider_test!($scenario, Provider::Minimax, "minimax-m2.5", minimax);
-        provider_test!($scenario, Provider::Inception, "mercury-2", inception);
+        // Quarantined: Inception provider unreliable
+        // provider_test!($scenario, Provider::Inception, "mercury-2", inception);
     };
 }
 
@@ -182,7 +183,8 @@ macro_rules! non_openai_provider_tests {
         provider_test!($scenario, Provider::Kimi, "kimi-k2.5", kimi);
         provider_test!($scenario, Provider::Zai, "glm-4.7", zai);
         provider_test!($scenario, Provider::Minimax, "minimax-m2.5", minimax);
-        provider_test!($scenario, Provider::Inception, "mercury-2", inception);
+        // Quarantined: Inception provider unreliable
+        // provider_test!($scenario, Provider::Inception, "mercury-2", inception);
     };
 }
 
@@ -433,7 +435,8 @@ reasoning_effort_tests!(
 reasoning_effort_tests!(Provider::Kimi, "kimi-k2.5", kimi_reasoning_effort);
 reasoning_effort_tests!(Provider::Zai, "glm-4.7", zai_reasoning_effort);
 reasoning_effort_tests!(Provider::Minimax, "minimax-m2.5", minimax_reasoning_effort);
-reasoning_effort_tests!(Provider::Inception, "mercury-2", inception_reasoning_effort);
+// Quarantined: Inception provider unreliable
+// reasoning_effort_tests!(Provider::Inception, "mercury-2", inception_reasoning_effort);
 
 // ---------------------------------------------------------------------------
 // Scenario 12: subagent_spawn
@@ -487,7 +490,8 @@ loop_detection_tests!(
 loop_detection_tests!(Provider::Kimi, "kimi-k2.5", kimi_loop_detection);
 loop_detection_tests!(Provider::Zai, "glm-4.7", zai_loop_detection);
 loop_detection_tests!(Provider::Minimax, "minimax-m2.5", minimax_loop_detection);
-loop_detection_tests!(Provider::Inception, "mercury-2", inception_loop_detection);
+// Quarantined: Inception provider unreliable
+// loop_detection_tests!(Provider::Inception, "mercury-2", inception_loop_detection);
 
 // ---------------------------------------------------------------------------
 // Scenario 14: error_recovery

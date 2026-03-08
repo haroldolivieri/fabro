@@ -126,10 +126,23 @@ async fn ensure_oras() -> crate::Result<()> {
     Ok(())
 }
 
+/// Find the first `.tgz` file in a directory.
+async fn find_tgz(dir: &Path) -> Option<String> {
+    let mut entries = tokio::fs::read_dir(dir).await.ok()?;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if let Some(name) = entry.file_name().to_str() {
+            if name.ends_with(".tgz") {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
 /// Extract a tgz archive in the given directory.
-async fn extract_tgz(feature_dir: &Path, feature_id: &str) -> crate::Result<()> {
+async fn extract_tgz(feature_dir: &Path, tgz_name: &str, feature_id: &str) -> crate::Result<()> {
     let status = tokio::process::Command::new("tar")
-        .args(["xzf", "devcontainer-feature.tgz"])
+        .args(["xzf", tgz_name])
         .current_dir(feature_dir)
         .status()
         .await
@@ -193,8 +206,9 @@ async fn fetch_feature_oci(feature_id: &str, output_dir: &Path) -> crate::Result
         )));
     }
 
-    if feature_dir.join("devcontainer-feature.tgz").exists() {
-        extract_tgz(&feature_dir, feature_id).await?;
+    // OCI registries may name the tgz with a feature suffix (e.g. devcontainer-feature-node.tgz)
+    if let Some(tgz) = find_tgz(&feature_dir).await {
+        extract_tgz(&feature_dir, &tgz, feature_id).await?;
     }
 
     read_feature_metadata(&feature_dir).await
@@ -249,7 +263,7 @@ async fn fetch_feature_https(
         DevcontainerError::Feature(format!("failed to write {}: {e}", tgz_path.display()))
     })?;
 
-    extract_tgz(&feature_dir, feature_id).await?;
+    extract_tgz(&feature_dir, "devcontainer-feature.tgz", feature_id).await?;
 
     read_feature_metadata(&feature_dir).await
 }

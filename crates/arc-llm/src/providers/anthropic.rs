@@ -1075,7 +1075,12 @@ fn build_api_request(
     let api_request = ApiRequest {
         model: request.model.clone(),
         messages: api_messages,
-        max_tokens: request.max_tokens.unwrap_or(65536),
+        max_tokens: request
+            .max_tokens
+            .or_else(|| {
+                crate::catalog::get_model_info(&request.model).and_then(|m| m.limits.max_output)
+            })
+            .unwrap_or(65536),
         system: system_value,
         temperature: request.temperature,
         top_p: request.top_p,

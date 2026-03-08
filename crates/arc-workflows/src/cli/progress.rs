@@ -160,6 +160,7 @@ struct ActiveStage {
     has_model: bool,
     spinner: ProgressBar,
     tool_calls: VecDeque<ToolCallEntry>,
+    compaction_bar: Option<ProgressBar>,
 }
 
 const MAX_TOOL_CALLS: usize = 5;
@@ -188,7 +189,6 @@ pub struct ProgressUI {
     sandbox_bar: Option<ProgressBar>,
     setup_bar: Option<ProgressBar>,
     cli_ensure_bar: Option<ProgressBar>,
-    compaction_bar: Option<ProgressBar>,
     any_stage_started: bool,
     parallel_parent: Option<String>,
 }
@@ -211,7 +211,6 @@ impl ProgressUI {
             sandbox_bar: None,
             setup_bar: None,
             cli_ensure_bar: None,
-            compaction_bar: None,
             any_stage_started: false,
             parallel_parent: None,
         }
@@ -653,6 +652,7 @@ impl ProgressUI {
                     has_model: false,
                     spinner: bar,
                     tool_calls: VecDeque::new(),
+                    compaction_bar: None,
                 },
             );
         }
@@ -662,6 +662,9 @@ impl ProgressUI {
         match &self.renderer {
             ProgressRenderer::Tty(_) => {
                 if let Some(stage) = self.active_stages.remove(node_id) {
+                    if let Some(bar) = stage.compaction_bar {
+                        bar.finish_and_clear();
+                    }
                     for entry in &stage.tool_calls {
                         if entry.is_branch || self.verbose {
                             // Keep visible: branches always, all entries in verbose mode
@@ -737,20 +740,19 @@ impl ProgressUI {
             AgentEvent::CompactionStarted { .. } => {
                 match &self.renderer {
                     ProgressRenderer::Tty(tty) => {
-                        let after = self
-                            .active_stages
-                            .get(stage_node_id)
-                            .map(|s| s.tool_calls.back().map_or(&s.spinner, |e| &e.bar));
-                        let bar = if let Some(after_bar) = after {
-                            tty.multi
-                                .insert_after(after_bar, ProgressBar::new_spinner())
-                        } else {
-                            tty.multi.add(ProgressBar::new_spinner())
-                        };
-                        bar.set_style(style_tool_running());
-                        bar.set_message("\u{27f3} compacting context\u{2026}");
-                        bar.enable_steady_tick(Duration::from_millis(100));
-                        self.compaction_bar = Some(bar);
+                        if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
+                            let after = stage
+                                .tool_calls
+                                .back()
+                                .map_or(&stage.spinner, |e| &e.bar);
+                            let bar =
+                                tty.multi
+                                    .insert_after(after, ProgressBar::new_spinner());
+                            bar.set_style(style_tool_running());
+                            bar.set_message("\u{27f3} compacting context\u{2026}");
+                            bar.enable_steady_tick(Duration::from_millis(100));
+                            stage.compaction_bar = Some(bar);
+                        }
                     }
                     ProgressRenderer::Plain => {}
                 }
@@ -766,7 +768,11 @@ impl ProgressUI {
                 );
                 match &self.renderer {
                     ProgressRenderer::Tty(_) => {
-                        if let Some(bar) = self.compaction_bar.take() {
+                        let bar = self
+                            .active_stages
+                            .get_mut(stage_node_id)
+                            .and_then(|s| s.compaction_bar.take());
+                        if let Some(bar) = bar {
                             bar.set_style(style_tool_done());
                             bar.finish_with_message(msg);
                         } else {
@@ -1166,7 +1172,7 @@ mod tests {
         let mut ui = ProgressUI::new(true, false);
 
         ui.handle_event(&stage_started("s1", "Build"));
-        assert!(ui.compaction_bar.is_none());
+        assert!(ui.active_stages["s1"].compaction_bar.is_none());
 
         ui.handle_event(&WorkflowRunEvent::Agent {
             stage: "s1".into(),
@@ -1175,7 +1181,7 @@ mod tests {
                 context_window_size: 8000,
             },
         });
-        assert!(ui.compaction_bar.is_some());
+        assert!(ui.active_stages["s1"].compaction_bar.is_some());
 
         ui.handle_event(&WorkflowRunEvent::Agent {
             stage: "s1".into(),
@@ -1186,7 +1192,7 @@ mod tests {
                 tracked_file_count: 3,
             },
         });
-        assert!(ui.compaction_bar.is_none());
+        assert!(ui.active_stages["s1"].compaction_bar.is_none());
     }
 
     #[test]

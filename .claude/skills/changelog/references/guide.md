@@ -27,6 +27,12 @@ Each major feature gets its own `##` section. Write 2-4 sentences max. Most post
 
 **Include a code example** when the feature has a CLI command, config snippet, or DOT syntax.
 
+**Name features the way users know them.** Use the UI label or docs term, not internal module/crate names.
+
+**Be specific about fixes.** "Fixes an issue where long-running stages could timeout during checkpoint saves" tells users whether this affected them. "Bug fixes" tells them nothing.
+
+**Most important change first** — don't bury the lede.
+
 ## Progressive disclosure footer
 
 After the hero features, add a `## More` heading followed by categorized one-liners inside `<Accordion>` components. This keeps the post scannable — readers who want details can expand the sections.
@@ -50,81 +56,11 @@ Use only the categories that apply to a given post. Order them as listed:
 - Use backticks for code: endpoints, flags, config keys, model names
 - No periods at the end
 
-## Template
-
-```mdx
----
-title: "Hero feature name"
-date: "YYYY-MM-DD"
----
-
-<Warning>
-**Breaking change summary.** Brief explanation.
-
-To migrate: Steps to update.
-</Warning>
-
-## Hero feature name
-
-Problem or context sentence. Solution sentence with what's new. Optional sentence on how it works or why it matters.
-
-```bash
-arc example-command --flag
-```
-
-## Second feature
-
-Problem/context. Solution.
-
-## More
-
-<Accordion title="API">
-- New `GET /endpoint` returns aggregate data broken down by model
-- `POST /runs` now accepts `concurrency` parameter
-</Accordion>
-
-<Accordion title="CLI">
-- Added `arc parse` command for inspecting workflow ASTs
-- Persistent CLI defaults in `~/.arc/cli.toml`
-</Accordion>
-
-<Accordion title="Workflows">
-- Added `wait.timer` node type for scheduled pauses between stages
-- `codergen_mode` now accepts `"streaming"` for incremental output
-</Accordion>
-
-<Accordion title="Fixes">
-- Fixed HTTP 529 responses being misclassified as non-retryable
-- Fixed progress display panic when tool calls contain long whitespace
-</Accordion>
-
-<Accordion title="Improvements">
-- Gemini 3.1 Flash Lite added to model catalog
-- MODEL column in CLI tables widened from 24 to 30 characters
-- All API error responses now use consistent JSON structure with error codes
-</Accordion>
-```
-
 ## Title conventions
 
 - Name the post after the hero feature: "Time in status", "Form templates"
 - For multi-feature posts, list 2-3 top features: "mTLS auth, setup wizard, and arc doctor"
 - No version numbers or dates in the title (the frontmatter has the date)
-
-## Navigation
-
-Changelog entries are grouped by month in the sidebar navigation (`docs/docs.json`). When adding an entry for a new month, create a new group:
-
-```json
-{
-  "group": "March 2026",
-  "icon": "clock-rotate-left",
-  "pages": [
-    "changelog/2026-03-06",
-    "changelog/2026-03-05"
-  ]
-}
-```
 
 ## What NOT to do
 

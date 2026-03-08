@@ -932,6 +932,7 @@ mod runs {
                     network: Some(arc_workflows::daytona_sandbox::DaytonaNetwork::Block),
                 }),
                 exe: None,
+                env: None,
             }),
             vars: Some(std::collections::HashMap::from([
                 ("repo_url".into(), "https://github.com/org/api-server".into()),
@@ -1052,6 +1053,7 @@ mod workflows {
                             network: None,
                         }),
                         exe: None,
+                env: None,
                     }),
                     vars: Some(std::collections::HashMap::from([
                         ("repo_url".into(), "https://github.com/org/service".into()),
@@ -1117,6 +1119,7 @@ mod workflows {
                             network: None,
                         }),
                         exe: None,
+                env: None,
                     }),
                     vars: Some(std::collections::HashMap::from([
                         ("spec_path".into(), "specs/feature.md".into()),
@@ -1193,6 +1196,7 @@ mod workflows {
                             network: None,
                         }),
                         exe: None,
+                env: None,
                     }),
                     vars: Some(std::collections::HashMap::from([
                         ("source_env".into(), "production".into()),
@@ -1260,6 +1264,7 @@ mod workflows {
                             network: None,
                         }),
                         exe: None,
+                env: None,
                     }),
                     vars: Some(std::collections::HashMap::from([
                         ("analytics_window".into(), "30d".into()),
@@ -2653,6 +2658,7 @@ mod settings {
                         network: Some(arc_workflows::daytona_sandbox::DaytonaNetwork::Block),
                     }),
                     exe: None,
+                env: None,
                 }),
                 vars: None,
                 checkpoint: Default::default(),

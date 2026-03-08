@@ -53,6 +53,7 @@ pub struct SandboxConfig {
     pub preserve: Option<bool>,
     pub daytona: Option<DaytonaConfig>,
     pub exe: Option<arc_exe::ExeConfig>,
+    pub env: Option<HashMap<String, String>>,
 }
 
 /// Defaults for workflow runs, loaded from the server config.
@@ -135,6 +136,13 @@ impl WorkflowRunConfig {
                     (None, Some(_)) => task.daytona = default.daytona.clone(),
                     _ => {}
                 }
+                if let Some(ref default_env) = default.env {
+                    let mut merged = default_env.clone();
+                    if let Some(ref task_env) = task.env {
+                        merged.extend(task_env.clone());
+                    }
+                    task.env = Some(merged);
+                }
             }
             (None, Some(_)) => self.sandbox = defaults.sandbox.clone(),
             _ => {}
@@ -171,8 +179,45 @@ pub fn load_run_config(path: &Path) -> anyhow::Result<WorkflowRunConfig> {
 
     let config_dir = path.parent().unwrap_or(Path::new("."));
     resolve_dockerfile(&mut config, config_dir)?;
+    resolve_sandbox_env(&mut config)?;
 
     Ok(config)
+}
+
+/// Resolve `${env.VARNAME}` references in `[sandbox.env]` values.
+///
+/// Only whole-value references are supported (no partial interpolation).
+/// Missing host env vars produce a hard error.
+fn resolve_sandbox_env(config: &mut WorkflowRunConfig) -> anyhow::Result<()> {
+    if let Some(env) = config
+        .sandbox
+        .as_mut()
+        .and_then(|s| s.env.as_mut())
+    {
+        resolve_env_refs(env)?;
+    }
+    Ok(())
+}
+
+/// Resolve `${env.VARNAME}` patterns in a map of env vars.
+///
+/// If the entire value is `${env.VARNAME}`, it is replaced with the host
+/// environment variable. Any other value is left as-is. Missing host
+/// variables produce an error.
+pub fn resolve_env_refs(env: &mut HashMap<String, String>) -> anyhow::Result<()> {
+    for (key, value) in env.iter_mut() {
+        if let Some(var_name) = value
+            .strip_prefix("${env.")
+            .and_then(|s| s.strip_suffix('}'))
+        {
+            *value = std::env::var(var_name).with_context(|| {
+                format!(
+                    "sandbox.env.{key}: host environment variable {var_name:?} is not set"
+                )
+            })?;
+        }
+    }
+    Ok(())
 }
 
 /// If the config contains a `dockerfile = { path = "..." }`, read the file
@@ -882,6 +927,7 @@ preserve = true
                 preserve: Some(false),
                 daytona: None,
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -908,6 +954,7 @@ provider = "docker"
                 preserve: Some(true),
                 daytona: None,
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -937,6 +984,7 @@ provider = "daytona"
                     ..DaytonaConfig::default()
                 }),
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -973,6 +1021,7 @@ auto_stop_interval = 60
                     ..DaytonaConfig::default()
                 }),
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -1008,6 +1057,7 @@ env = "from_task"
                     ..DaytonaConfig::default()
                 }),
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -1047,6 +1097,7 @@ cpu = 2
                     ..DaytonaConfig::default()
                 }),
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -1085,6 +1136,7 @@ auto_stop_interval = 60
                     ..DaytonaConfig::default()
                 }),
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -1318,6 +1370,7 @@ network = "block"
                     ..DaytonaConfig::default()
                 }),
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -1352,6 +1405,7 @@ auto_stop_interval = 60
                     ..DaytonaConfig::default()
                 }),
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -1475,6 +1529,191 @@ exclude_globs = ["**/node_modules/**"]
         assert_eq!(
             defaults.checkpoint.exclude_globs,
             vec!["**/node_modules/**"]
+        );
+    }
+
+    #[test]
+    fn parse_toml_with_sandbox_env() {
+        let toml = r#"
+version = 1
+goal = "test"
+graph = "w.dot"
+
+[sandbox.env]
+FOO = "bar"
+BAZ = "${env.HOME}"
+"#;
+        let config = parse_run_config(toml).unwrap();
+        let env = config.sandbox.unwrap().env.unwrap();
+        assert_eq!(env["FOO"], "bar");
+        // Not yet resolved (parse_run_config doesn't resolve env refs)
+        assert_eq!(env["BAZ"], "${env.HOME}");
+    }
+
+    #[test]
+    fn parse_toml_without_sandbox_env() {
+        let toml = r#"
+version = 1
+goal = "test"
+graph = "w.dot"
+
+[sandbox]
+provider = "daytona"
+"#;
+        let config = parse_run_config(toml).unwrap();
+        assert!(config.sandbox.unwrap().env.is_none());
+    }
+
+    #[test]
+    fn resolve_env_refs_literal_passthrough() {
+        let mut env = HashMap::from([("FOO".into(), "bar".into())]);
+        resolve_env_refs(&mut env).unwrap();
+        assert_eq!(env["FOO"], "bar");
+    }
+
+    #[test]
+    fn resolve_env_refs_host_var() {
+        std::env::set_var("ARC_TEST_RESOLVE_VAR", "secret123");
+        let mut env = HashMap::from([
+            ("MY_KEY".into(), "${env.ARC_TEST_RESOLVE_VAR}".into()),
+        ]);
+        resolve_env_refs(&mut env).unwrap();
+        assert_eq!(env["MY_KEY"], "secret123");
+        std::env::remove_var("ARC_TEST_RESOLVE_VAR");
+    }
+
+    #[test]
+    fn resolve_env_refs_missing_var_errors() {
+        let mut env = HashMap::from([
+            ("MY_KEY".into(), "${env.ARC_TEST_NONEXISTENT_VAR_12345}".into()),
+        ]);
+        let err = resolve_env_refs(&mut env).unwrap_err();
+        assert!(
+            err.to_string().contains("ARC_TEST_NONEXISTENT_VAR_12345"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_env_refs_partial_not_interpolated() {
+        let mut env = HashMap::from([
+            ("MIXED".into(), "prefix_${env.HOME}_suffix".into()),
+        ]);
+        // Partial interpolation is not supported — value is left as-is
+        resolve_env_refs(&mut env).unwrap();
+        assert_eq!(env["MIXED"], "prefix_${env.HOME}_suffix");
+    }
+
+    #[test]
+    fn apply_defaults_merges_sandbox_env() {
+        let mut cfg = parse_run_config(
+            r#"
+version = 1
+goal = "test"
+graph = "w.dot"
+
+[sandbox.env]
+TASK_KEY = "task_val"
+SHARED = "from_task"
+"#,
+        )
+        .unwrap();
+        let defaults = RunDefaults {
+            sandbox: Some(SandboxConfig {
+                provider: None,
+                preserve: None,
+                daytona: None,
+                exe: None,
+                env: Some(HashMap::from([
+                    ("DEFAULT_KEY".into(), "default_val".into()),
+                    ("SHARED".into(), "from_default".into()),
+                ])),
+            }),
+            ..RunDefaults::default()
+        };
+        cfg.apply_defaults(&defaults);
+        let env = cfg.sandbox.unwrap().env.unwrap();
+        assert_eq!(env["DEFAULT_KEY"], "default_val");
+        assert_eq!(env["TASK_KEY"], "task_val");
+        assert_eq!(env["SHARED"], "from_task");
+    }
+
+    #[test]
+    fn apply_defaults_sandbox_env_from_default_only() {
+        let mut cfg = parse_run_config(
+            r#"
+version = 1
+goal = "test"
+graph = "w.dot"
+
+[sandbox]
+provider = "daytona"
+"#,
+        )
+        .unwrap();
+        let defaults = RunDefaults {
+            sandbox: Some(SandboxConfig {
+                provider: None,
+                preserve: None,
+                daytona: None,
+                exe: None,
+                env: Some(HashMap::from([("KEY".into(), "val".into())])),
+            }),
+            ..RunDefaults::default()
+        };
+        cfg.apply_defaults(&defaults);
+        let env = cfg.sandbox.unwrap().env.unwrap();
+        assert_eq!(env["KEY"], "val");
+    }
+
+    #[test]
+    fn load_run_config_resolves_env_refs() {
+        std::env::set_var("ARC_TEST_LOAD_ENV", "resolved_value");
+        let dir = tempfile::tempdir().unwrap();
+        let toml_path = dir.path().join("run.toml");
+        std::fs::write(
+            &toml_path,
+            r#"
+version = 1
+goal = "test"
+graph = "w.dot"
+
+[sandbox.env]
+LITERAL = "hello"
+FROM_HOST = "${env.ARC_TEST_LOAD_ENV}"
+"#,
+        )
+        .unwrap();
+
+        let config = load_run_config(&toml_path).unwrap();
+        let env = config.sandbox.unwrap().env.unwrap();
+        assert_eq!(env["LITERAL"], "hello");
+        assert_eq!(env["FROM_HOST"], "resolved_value");
+        std::env::remove_var("ARC_TEST_LOAD_ENV");
+    }
+
+    #[test]
+    fn load_run_config_missing_env_var_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let toml_path = dir.path().join("run.toml");
+        std::fs::write(
+            &toml_path,
+            r#"
+version = 1
+goal = "test"
+graph = "w.dot"
+
+[sandbox.env]
+MISSING = "${env.ARC_TEST_DEFINITELY_NOT_SET_67890}"
+"#,
+        )
+        .unwrap();
+
+        let err = load_run_config(&toml_path).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("ARC_TEST_DEFINITELY_NOT_SET_67890"),
+            "unexpected error: {err}"
         );
     }
 }

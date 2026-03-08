@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -330,16 +331,32 @@ pub fn parse_cli_response(provider: Provider, output: &str) -> Option<CliRespons
     }
 }
 
+/// Escape a value for safe embedding inside single quotes in a shell command.
+fn shell_escape(val: &str) -> String {
+    val.replace('\'', "'\\''")
+}
+
 /// CLI backend that invokes external CLI tools (claude, codex, gemini) via `exec_command()`.
 pub struct AgentCliBackend {
     model: String,
     provider: Provider,
+    env: HashMap<String, String>,
 }
 
 impl AgentCliBackend {
     #[must_use]
     pub fn new(model: String, provider: Provider) -> Self {
-        Self { model, provider }
+        Self {
+            model,
+            provider,
+            env: HashMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_env(mut self, env: HashMap<String, String>) -> Self {
+        self.env = env;
+        self
     }
 
     /// Detect changed files by comparing git state before and after the CLI run.
@@ -455,8 +472,11 @@ impl CodergenBackend for AgentCliBackend {
         env_lines.extend(provider.api_key_env_vars().iter().filter_map(|name| {
             std::env::var(name)
                 .ok()
-                .map(|val| format!("export {name}='{val}'"))
+                .map(|val| format!("export {name}='{}'", shell_escape(&val)))
         }));
+        for (name, val) in &self.env {
+            env_lines.push(format!("export {name}='{}'", shell_escape(val)));
+        }
         {
             sandbox
                 .write_file(&env_path, &env_lines.join("\n"))

@@ -860,6 +860,7 @@ impl WorkflowRunEngine {
                 sandbox,
                 git_state: std::sync::RwLock::new(None),
                 hook_runner: None,
+                env: HashMap::new(),
             },
             interviewer: None,
         }
@@ -875,6 +876,7 @@ impl WorkflowRunEngine {
                 sandbox: Arc::clone(&services.sandbox),
                 git_state: std::sync::RwLock::new(None),
                 hook_runner: services.hook_runner.clone(),
+                env: services.env.clone(),
             },
             interviewer: None,
         }
@@ -895,6 +897,7 @@ impl WorkflowRunEngine {
                 sandbox,
                 git_state: std::sync::RwLock::new(None),
                 hook_runner: None,
+                env: HashMap::new(),
             },
             interviewer: Some(interviewer),
         }
@@ -903,6 +906,11 @@ impl WorkflowRunEngine {
     /// Set the hook runner for lifecycle hooks.
     pub fn set_hook_runner(&mut self, runner: Arc<HookRunner>) {
         self.services.hook_runner = Some(runner);
+    }
+
+    /// Set environment variables from `[sandbox.env]` config.
+    pub fn set_env(&mut self, env: HashMap<String, String>) {
+        self.services.env = env;
     }
 
     /// Run lifecycle hooks and return the merged decision.

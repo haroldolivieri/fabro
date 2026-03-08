@@ -25,7 +25,7 @@ impl Handler for CommandHandler {
         context: &Context,
         _graph: &Graph,
         logs_root: &Path,
-        _services: &EngineServices,
+        services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         let script = node
             .attrs
@@ -69,11 +69,13 @@ impl Handler for CommandHandler {
             tokio::process::Command::new("python3")
                 .arg("-c")
                 .arg(script)
+                .envs(&services.env)
                 .output()
         } else {
             tokio::process::Command::new("sh")
                 .arg("-c")
                 .arg(script)
+                .envs(&services.env)
                 .output()
         };
 
@@ -183,6 +185,7 @@ mod tests {
             )),
             git_state: std::sync::RwLock::new(None),
             hook_runner: None,
+            env: std::collections::HashMap::new(),
         }
     }
 

@@ -659,13 +659,23 @@ pub async fn run_command(
     );
 
     // 7. Build engine
-    let registry = default_registry(interviewer.clone(), || {
-        if dry_run_mode {
-            None
-        } else {
-            let api = AgentApiBackend::new(model.clone(), provider_enum, fallback_chain.clone());
-            let cli = AgentCliBackend::new(model.clone(), provider_enum);
-            Some(Box::new(BackendRouter::new(Box::new(api), cli)))
+    let sandbox_env: HashMap<String, String> = run_cfg
+        .as_ref()
+        .and_then(|c| c.sandbox.as_ref())
+        .and_then(|s| s.env.clone())
+        .unwrap_or_default();
+    let registry = default_registry(interviewer.clone(), {
+        let sandbox_env = sandbox_env.clone();
+        let model = model.clone();
+        move || {
+            if dry_run_mode {
+                None
+            } else {
+                let api = AgentApiBackend::new(model.clone(), provider_enum, fallback_chain.clone());
+                let cli = AgentCliBackend::new(model.clone(), provider_enum)
+                    .with_env(sandbox_env.clone());
+                Some(Box::new(BackendRouter::new(Box::new(api), cli)))
+            }
         }
     });
     let mut engine = WorkflowRunEngine::with_interviewer(
@@ -674,6 +684,9 @@ pub async fn run_command(
         interviewer,
         Arc::clone(&sandbox),
     );
+    if !sandbox_env.is_empty() {
+        engine.set_env(sandbox_env);
+    }
 
     // Wire up hook runner from run config
     if let Some(ref cfg) = run_cfg {
@@ -1740,6 +1753,7 @@ mod tests {
                 preserve: Some(false),
                 daytona: None,
                 exe: None,
+                env: None,
             }),
             vars: None,
             hooks: Vec::new(),
@@ -1763,6 +1777,7 @@ mod tests {
                 preserve: Some(true),
                 daytona: None,
                 exe: None,
+                env: None,
             }),
             vars: None,
             hooks: Vec::new(),
@@ -1774,6 +1789,7 @@ mod tests {
                 preserve: Some(false),
                 daytona: None,
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };
@@ -1788,6 +1804,7 @@ mod tests {
                 preserve: Some(true),
                 daytona: None,
                 exe: None,
+                env: None,
             }),
             ..RunDefaults::default()
         };

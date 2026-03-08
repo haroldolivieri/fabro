@@ -36,6 +36,8 @@ pub struct EngineServices {
     pub(crate) git_state: std::sync::RwLock<Option<Arc<GitState>>>,
     /// Hook runner for user-defined lifecycle hooks.
     pub hook_runner: Option<Arc<HookRunner>>,
+    /// Environment variables from `[sandbox.env]` config, injected into command nodes.
+    pub env: HashMap<String, String>,
 }
 
 impl EngineServices {

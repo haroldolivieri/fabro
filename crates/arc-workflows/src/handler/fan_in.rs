@@ -228,6 +228,7 @@ async fn llm_evaluate(
             emitter,
             &stage_dir,
             sandbox,
+            None,
         )
         .await
     {
@@ -435,6 +436,7 @@ mod tests {
                 _emitter: &Arc<EventEmitter>,
                 _stage_dir: &std::path::Path,
                 _sandbox: &Arc<dyn Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 // Return text that contains the ID "branch_b"
                 Ok(CodergenResult::Text {

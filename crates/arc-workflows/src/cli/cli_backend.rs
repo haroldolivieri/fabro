@@ -440,6 +440,7 @@ impl CodergenBackend for AgentCliBackend {
         emitter: &Arc<EventEmitter>,
         stage_dir: &Path,
         sandbox: &Arc<dyn Sandbox>,
+        _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
     ) -> Result<CodergenResult, ArcError> {
         // 1. Snapshot git state before the CLI run
         let files_before = self.detect_changed_files(sandbox).await;
@@ -704,17 +705,18 @@ impl CodergenBackend for BackendRouter {
         emitter: &Arc<EventEmitter>,
         stage_dir: &Path,
         sandbox: &Arc<dyn Sandbox>,
+        tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
     ) -> Result<CodergenResult, ArcError> {
         if self.should_use_cli(node) {
             self.cli_backend
                 .run(
-                    node, prompt, context, thread_id, emitter, stage_dir, sandbox,
+                    node, prompt, context, thread_id, emitter, stage_dir, sandbox, tool_hooks,
                 )
                 .await
         } else {
             self.api_backend
                 .run(
-                    node, prompt, context, thread_id, emitter, stage_dir, sandbox,
+                    node, prompt, context, thread_id, emitter, stage_dir, sandbox, tool_hooks,
                 )
                 .await
         }
@@ -1133,6 +1135,7 @@ mod tests {
             _emitter: &Arc<EventEmitter>,
             _stage_dir: &Path,
             _sandbox: &Arc<dyn Sandbox>,
+            _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
         ) -> Result<CodergenResult, ArcError> {
             Ok(CodergenResult::Text {
                 text: "stub".to_string(),

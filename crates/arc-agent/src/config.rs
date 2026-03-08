@@ -8,6 +8,55 @@ use arc_mcp::config::McpServerConfig;
 /// `Err(message)` to deny with the given message.
 pub type ToolApprovalFn = Arc<dyn Fn(&str, &serde_json::Value) -> Result<(), String> + Send + Sync>;
 
+/// Decision returned by a [`ToolHookCallback`] before a tool executes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ToolHookDecision {
+    /// Allow the tool call to proceed.
+    #[default]
+    Proceed,
+    /// Block the tool call with the given reason.
+    Block { reason: String },
+}
+
+/// Async callback trait invoked around tool execution.
+#[async_trait::async_trait]
+pub trait ToolHookCallback: Send + Sync {
+    /// Called before a tool executes. Return [`ToolHookDecision::Proceed`] to
+    /// allow or [`ToolHookDecision::Block`] to deny.
+    async fn pre_tool_use(
+        &self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> ToolHookDecision;
+
+    /// Called after a tool executes successfully.
+    async fn post_tool_use(&self, tool_name: &str, tool_call_id: &str, tool_output: &str);
+
+    /// Called after a tool execution fails.
+    async fn post_tool_use_failure(&self, tool_name: &str, tool_call_id: &str, error: &str);
+}
+
+/// Adapter that wraps a [`ToolApprovalFn`] and implements [`ToolHookCallback`].
+pub struct ToolApprovalAdapter(pub ToolApprovalFn);
+
+#[async_trait::async_trait]
+impl ToolHookCallback for ToolApprovalAdapter {
+    async fn pre_tool_use(
+        &self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> ToolHookDecision {
+        match (self.0)(tool_name, tool_input) {
+            Ok(()) => ToolHookDecision::Proceed,
+            Err(reason) => ToolHookDecision::Block { reason },
+        }
+    }
+
+    async fn post_tool_use(&self, _tool_name: &str, _tool_call_id: &str, _tool_output: &str) {}
+
+    async fn post_tool_use_failure(&self, _tool_name: &str, _tool_call_id: &str, _error: &str) {}
+}
+
 #[derive(Clone)]
 pub struct SessionConfig {
     pub max_turns: usize,
@@ -25,7 +74,8 @@ pub struct SessionConfig {
     pub max_subagent_depth: usize,
     pub git_root: Option<String>,
     pub user_instructions: Option<String>,
-    pub tool_approval: Option<ToolApprovalFn>,
+    /// Async hook callbacks invoked around tool execution.
+    pub tool_hooks: Option<Arc<dyn ToolHookCallback>>,
     pub enable_context_compaction: bool,
     pub compaction_threshold_percent: usize,
     pub compaction_preserve_turns: usize,
@@ -58,8 +108,8 @@ impl std::fmt::Debug for SessionConfig {
             .field("git_root", &self.git_root)
             .field("user_instructions", &self.user_instructions)
             .field(
-                "tool_approval",
-                &self.tool_approval.as_ref().map(|_| "<fn>"),
+                "tool_hooks",
+                &self.tool_hooks.as_ref().map(|_| "<callback>"),
             )
             .field("enable_context_compaction", &self.enable_context_compaction)
             .field(
@@ -90,7 +140,7 @@ impl Default for SessionConfig {
             max_subagent_depth: 1,
             git_root: None,
             user_instructions: None,
-            tool_approval: None,
+            tool_hooks: None,
             enable_context_compaction: true,
             compaction_threshold_percent: 80,
             compaction_preserve_turns: 6,
@@ -141,5 +191,42 @@ mod tests {
         assert_eq!(config.max_turns, 50);
         assert_eq!(config.reasoning_effort, Some("high".into()));
         assert_eq!(config.max_tool_rounds_per_input, 200);
+    }
+
+    #[test]
+    fn tool_hook_decision_default_is_proceed() {
+        assert_eq!(ToolHookDecision::default(), ToolHookDecision::Proceed);
+    }
+
+    #[tokio::test]
+    async fn tool_approval_adapter_allows() {
+        let approval: ToolApprovalFn = Arc::new(|_name, _args| Ok(()));
+        let adapter = ToolApprovalAdapter(approval);
+        let decision = adapter.pre_tool_use("shell", &serde_json::json!({})).await;
+        assert_eq!(decision, ToolHookDecision::Proceed);
+    }
+
+    #[tokio::test]
+    async fn tool_approval_adapter_blocks() {
+        let approval: ToolApprovalFn = Arc::new(|_name, _args| Err("denied".to_string()));
+        let adapter = ToolApprovalAdapter(approval);
+        let decision = adapter.pre_tool_use("shell", &serde_json::json!({})).await;
+        assert_eq!(
+            decision,
+            ToolHookDecision::Block {
+                reason: "denied".to_string()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_approval_adapter_post_is_noop() {
+        let approval: ToolApprovalFn = Arc::new(|_name, _args| Ok(()));
+        let adapter = ToolApprovalAdapter(approval);
+        // These should not panic
+        adapter.post_tool_use("shell", "call_1", "output").await;
+        adapter
+            .post_tool_use_failure("shell", "call_1", "error")
+            .await;
     }
 }

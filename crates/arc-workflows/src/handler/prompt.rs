@@ -211,6 +211,7 @@ mod tests {
                 _emitter: &Arc<crate::event::EventEmitter>,
                 _stage_dir: &Path,
                 _sandbox: &Arc<dyn Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 panic!("run() should not be called for prompt handler");
             }
@@ -272,6 +273,7 @@ mod tests {
             _emitter: &Arc<crate::event::EventEmitter>,
             _stage_dir: &Path,
             _sandbox: &Arc<dyn arc_agent::Sandbox>,
+            _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
         ) -> Result<CodergenResult, ArcError> {
             panic!("run() should not be called for prompt handler");
         }

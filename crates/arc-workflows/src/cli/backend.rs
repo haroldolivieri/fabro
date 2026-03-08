@@ -133,8 +133,17 @@ impl AgentApiBackend {
         &self,
         node: &Node,
         sandbox: &Arc<dyn Sandbox>,
+        tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
     ) -> Result<Session, ArcError> {
-        Self::create_session_for(&self.model, self.provider, node, sandbox, &self.env).await
+        Self::create_session_for(
+            &self.model,
+            self.provider,
+            node,
+            sandbox,
+            &self.env,
+            tool_hooks,
+        )
+        .await
     }
 
     async fn create_session_for(
@@ -143,6 +152,7 @@ impl AgentApiBackend {
         node: &Node,
         sandbox: &Arc<dyn Sandbox>,
         env: &HashMap<String, String>,
+        tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
     ) -> Result<Session, ArcError> {
         let client = Client::from_env()
             .await
@@ -153,6 +163,7 @@ impl AgentApiBackend {
         let config = SessionConfig {
             max_tokens: node.max_tokens(),
             reasoning_effort: Some(node.reasoning_effort().to_string()),
+            tool_hooks,
             ..SessionConfig::default()
         };
 
@@ -370,6 +381,7 @@ impl CodergenBackend for AgentApiBackend {
         emitter: &Arc<crate::event::EventEmitter>,
         stage_dir: &std::path::Path,
         sandbox: &Arc<dyn Sandbox>,
+        tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
     ) -> Result<CodergenResult, ArcError> {
         let fidelity = context.fidelity();
         let reuse_key = if fidelity == crate::context::keys::Fidelity::Full {
@@ -384,10 +396,18 @@ impl CodergenBackend for AgentApiBackend {
             if let Some(s) = existing {
                 (s, true)
             } else {
-                (self.create_session(node, sandbox).await?, false)
+                (
+                    self.create_session(node, sandbox, tool_hooks.clone())
+                        .await?,
+                    false,
+                )
             }
         } else {
-            (self.create_session(node, sandbox).await?, false)
+            (
+                self.create_session(node, sandbox, tool_hooks.clone())
+                    .await?,
+                false,
+            )
         };
 
         tracing::debug!(
@@ -460,6 +480,7 @@ impl CodergenBackend for AgentApiBackend {
                         node,
                         sandbox,
                         &self.env,
+                        tool_hooks.clone(),
                     )
                     .await
                     {

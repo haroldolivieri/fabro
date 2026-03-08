@@ -1,7 +1,8 @@
+use crate::config::ToolApprovalFn;
 use crate::{
     subagent::{SessionFactory, SubAgentManager},
     AgentEvent, AnthropicProfile, GeminiProfile, LocalSandbox, OpenAiProfile, ProviderProfile,
-    Session, SessionConfig, ToolApprovalFn, Turn,
+    Session, SessionConfig, Turn,
 };
 use arc_llm::client::Client;
 use arc_llm::provider::{ModelId, Provider};
@@ -416,9 +417,11 @@ pub async fn run_with_args_and_client(
     let permissions = args.permissions.unwrap_or(PermissionLevel::ReadWrite);
     let is_interactive = std::io::stdin().is_terminal() && !args.auto_approve;
     let tool_approval = build_tool_approval(permissions, is_interactive, styles);
+    let tool_hooks: Arc<dyn crate::config::ToolHookCallback> =
+        Arc::new(crate::config::ToolApprovalAdapter(tool_approval));
 
     let config = SessionConfig {
-        tool_approval: Some(tool_approval),
+        tool_hooks: Some(tool_hooks.clone()),
         skill_dirs: args.skills_dir.map(|d| vec![d]),
         mcp_servers,
         ..SessionConfig::default()
@@ -432,7 +435,7 @@ pub async fn run_with_args_and_client(
     let factory_client = client.clone();
     let factory_model = model.to_string();
     let factory_env = Arc::clone(&env);
-    let factory_approval = config.tool_approval.clone();
+    let factory_hooks = config.tool_hooks.clone();
     let factory: SessionFactory = Arc::new(move || {
         let child_summarizer = build_summarizer(provider, Some(factory_client.clone()));
         let child_profile: Arc<dyn ProviderProfile> = match provider {
@@ -458,7 +461,7 @@ pub async fn run_with_args_and_client(
             child_profile,
             Arc::clone(&factory_env),
             SessionConfig {
-                tool_approval: factory_approval.clone(),
+                tool_hooks: factory_hooks.clone(),
                 ..SessionConfig::default()
             },
         )

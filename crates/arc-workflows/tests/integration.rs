@@ -1179,6 +1179,7 @@ impl CodergenBackend for MockCodergenBackend {
         _emitter: &Arc<EventEmitter>,
         _stage_dir: &std::path::Path,
         _sandbox: &Arc<dyn arc_agent::Sandbox>,
+        _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
     ) -> Result<CodergenResult, ArcError> {
         Ok(CodergenResult::Text {
             text: format!(
@@ -5822,6 +5823,7 @@ mod real_llm {
             _emitter: &Arc<EventEmitter>,
             _stage_dir: &std::path::Path,
             _sandbox: &Arc<dyn arc_agent::Sandbox>,
+            _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
         ) -> Result<CodergenResult, ArcError> {
             let request = Request {
                 model: self.model.clone(),
@@ -9290,6 +9292,7 @@ async fn cli_backend_run_writes_prompt_and_calls_exec() {
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await
         .expect("CLI backend should succeed");
@@ -9361,6 +9364,7 @@ async fn cli_backend_run_detects_changed_files() {
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await
         .expect("CLI backend should succeed");
@@ -9394,6 +9398,7 @@ async fn cli_backend_run_with_codex_provider() {
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await
         .expect("CLI backend should succeed");
@@ -9557,6 +9562,7 @@ async fn cli_backend_run_fails_on_nonzero_exit() {
             &emitter,
             dir.path(),
             &failing_env,
+            None,
         )
         .await;
 
@@ -9594,6 +9600,7 @@ async fn cli_backend_run_fails_on_unparseable_output() {
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await;
 
@@ -9627,7 +9634,16 @@ async fn cli_backend_run_uses_node_model_override() {
     let dir = tempfile::tempdir().unwrap();
 
     backend
-        .run(&node, "test", &context, None, &emitter, dir.path(), &env)
+        .run(
+            &node,
+            "test",
+            &context,
+            None,
+            &emitter,
+            dir.path(),
+            &env,
+            None,
+        )
         .await
         .expect("should succeed");
 
@@ -9668,7 +9684,16 @@ async fn cli_backend_run_uses_node_provider_override() {
     let dir = tempfile::tempdir().unwrap();
 
     backend
-        .run(&node, "test", &context, None, &emitter, dir.path(), &env)
+        .run(
+            &node,
+            "test",
+            &context,
+            None,
+            &emitter,
+            dir.path(),
+            &env,
+            None,
+        )
         .await
         .expect("should succeed");
 
@@ -9693,7 +9718,16 @@ async fn cli_backend_run_writes_provider_used_json() {
     let dir = tempfile::tempdir().unwrap();
 
     backend
-        .run(&node, "test", &context, None, &emitter, dir.path(), &env)
+        .run(
+            &node,
+            "test",
+            &context,
+            None,
+            &emitter,
+            dir.path(),
+            &env,
+            None,
+        )
         .await
         .expect("should succeed");
 
@@ -9742,6 +9776,7 @@ async fn backend_router_delegates_to_cli_for_cli_node() {
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await
         .expect("router should succeed");
@@ -9784,6 +9819,7 @@ async fn backend_router_delegates_to_api_for_normal_node() {
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await
         .expect("router should succeed");
@@ -9829,6 +9865,7 @@ async fn backend_router_delegates_to_cli_for_backend_attr() {
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await
         .expect("router should succeed");
@@ -10110,6 +10147,7 @@ async fn run_real_cli_test(provider: Provider, model: &str) {
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await
         .unwrap_or_else(|_| panic!("CLI backend ({provider}/{model}) should succeed"));

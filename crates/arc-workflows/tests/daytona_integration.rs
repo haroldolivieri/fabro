@@ -932,6 +932,7 @@ async fn run_daytona_cli_test(provider: Provider, model: &str, install_command: 
             &emitter,
             dir.path(),
             &env,
+            None,
         )
         .await;
 

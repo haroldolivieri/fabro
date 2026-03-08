@@ -17,13 +17,19 @@ pub enum HookEvent {
     SandboxReady,
     SandboxCleanup,
     CheckpointSaved,
+    PreToolUse,
+    PostToolUse,
+    PostToolUseFailure,
 }
 
 impl HookEvent {
     /// Whether hooks for this event block execution by default.
     #[must_use]
     pub fn is_blocking_by_default(self) -> bool {
-        matches!(self, Self::RunStart | Self::StageStart | Self::EdgeSelected)
+        matches!(
+            self,
+            Self::RunStart | Self::StageStart | Self::EdgeSelected | Self::PreToolUse
+        )
     }
 }
 
@@ -43,6 +49,9 @@ impl std::fmt::Display for HookEvent {
             Self::SandboxReady => "sandbox_ready",
             Self::SandboxCleanup => "sandbox_cleanup",
             Self::CheckpointSaved => "checkpoint_saved",
+            Self::PreToolUse => "pre_tool_use",
+            Self::PostToolUse => "post_tool_use",
+            Self::PostToolUseFailure => "post_tool_use_failure",
         })
     }
 }
@@ -75,6 +84,16 @@ pub struct HookContext {
     pub attempt: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_attempts: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
 }
 
 impl HookContext {
@@ -95,6 +114,11 @@ impl HookContext {
             failure_reason: None,
             attempt: None,
             max_attempts: None,
+            tool_name: None,
+            tool_input: None,
+            tool_call_id: None,
+            tool_output: None,
+            error_message: None,
         }
     }
 }
@@ -173,6 +197,9 @@ mod tests {
             HookEvent::SandboxReady,
             HookEvent::SandboxCleanup,
             HookEvent::CheckpointSaved,
+            HookEvent::PreToolUse,
+            HookEvent::PostToolUse,
+            HookEvent::PostToolUseFailure,
         ];
         for event in events {
             let json = serde_json::to_string(&event).unwrap();
@@ -226,6 +253,11 @@ mod tests {
             failure_reason: None,
             attempt: Some(1),
             max_attempts: Some(3),
+            tool_name: None,
+            tool_input: None,
+            tool_call_id: None,
+            tool_output: None,
+            error_message: None,
         };
         let json = serde_json::to_string(&ctx).unwrap();
         let back: HookContext = serde_json::from_str(&json).unwrap();
@@ -331,5 +363,51 @@ mod tests {
             serde_json::from_str(r#"{"ok": false, "reason": "not ready"}"#).unwrap();
         assert!(!resp.ok);
         assert_eq!(resp.reason.as_deref(), Some("not ready"));
+    }
+
+    #[test]
+    fn pre_tool_use_serde_round_trip() {
+        let json = serde_json::to_string(&HookEvent::PreToolUse).unwrap();
+        assert_eq!(json, "\"pre_tool_use\"");
+        let back: HookEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, HookEvent::PreToolUse);
+    }
+
+    #[test]
+    fn pre_tool_use_is_blocking_by_default() {
+        assert!(HookEvent::PreToolUse.is_blocking_by_default());
+    }
+
+    #[test]
+    fn post_tool_use_is_not_blocking_by_default() {
+        assert!(!HookEvent::PostToolUse.is_blocking_by_default());
+    }
+
+    #[test]
+    fn post_tool_use_failure_is_not_blocking_by_default() {
+        assert!(!HookEvent::PostToolUseFailure.is_blocking_by_default());
+    }
+
+    #[test]
+    fn hook_context_with_tool_fields() {
+        let mut ctx = HookContext::new(HookEvent::PreToolUse, "run-1".into(), "wf".into());
+        ctx.tool_name = Some("shell".into());
+        ctx.tool_input = Some(serde_json::json!({"command": "ls"}));
+        ctx.tool_call_id = Some("call_123".into());
+        let json = serde_json::to_string(&ctx).unwrap();
+        assert!(json.contains("\"tool_name\":\"shell\""));
+        assert!(json.contains("\"tool_call_id\":\"call_123\""));
+        assert!(json.contains("\"tool_input\""));
+    }
+
+    #[test]
+    fn hook_context_tool_output_serializes() {
+        let mut ctx = HookContext::new(HookEvent::PostToolUse, "run-1".into(), "wf".into());
+        ctx.tool_name = Some("shell".into());
+        ctx.tool_output = Some("file1.txt\nfile2.txt".into());
+        let json = serde_json::to_string(&ctx).unwrap();
+        assert!(json.contains("\"tool_output\""));
+        // error_message should be omitted
+        assert!(!json.contains("\"error_message\""));
     }
 }

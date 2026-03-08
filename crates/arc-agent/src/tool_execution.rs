@@ -1,4 +1,4 @@
-use crate::config::{SessionConfig, ToolApprovalFn};
+use crate::config::{SessionConfig, ToolHookCallback, ToolHookDecision};
 use crate::event::EventEmitter;
 use crate::sandbox::Sandbox;
 use crate::tool_registry::ToolRegistry;
@@ -8,6 +8,7 @@ use arc_llm::types::ToolResult;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
+use tracing::debug;
 
 /// Execute tool calls, choosing parallel or sequential based on `parallel` flag.
 #[allow(clippy::too_many_arguments)]
@@ -16,7 +17,7 @@ pub async fn execute_tool_calls(
     parallel: bool,
     registry: &ToolRegistry,
     env: Arc<dyn Sandbox>,
-    tool_approval: Option<&ToolApprovalFn>,
+    tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: &CancellationToken,
     config: &SessionConfig,
     emitter: &EventEmitter,
@@ -28,7 +29,7 @@ pub async fn execute_tool_calls(
             tool_calls,
             registry,
             env,
-            tool_approval,
+            tool_hooks,
             cancel_token,
             config,
             emitter,
@@ -41,7 +42,7 @@ pub async fn execute_tool_calls(
             tool_calls,
             registry,
             env,
-            tool_approval,
+            tool_hooks,
             cancel_token,
             config,
             emitter,
@@ -57,7 +58,7 @@ async fn execute_tool_calls_sequential(
     tool_calls: &[arc_llm::types::ToolCall],
     registry: &ToolRegistry,
     env: Arc<dyn Sandbox>,
-    tool_approval: Option<&ToolApprovalFn>,
+    tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: &CancellationToken,
     config: &SessionConfig,
     emitter: &EventEmitter,
@@ -75,7 +76,7 @@ async fn execute_tool_calls_sequential(
             tc,
             registry,
             env.clone(),
-            tool_approval,
+            tool_hooks,
             cancel_token.child_token(),
             config,
             emitter,
@@ -93,7 +94,7 @@ async fn execute_tool_calls_parallel(
     tool_calls: &[arc_llm::types::ToolCall],
     registry: &ToolRegistry,
     env: Arc<dyn Sandbox>,
-    tool_approval: Option<&ToolApprovalFn>,
+    tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: &CancellationToken,
     config: &SessionConfig,
     emitter: &EventEmitter,
@@ -110,7 +111,7 @@ async fn execute_tool_calls_parallel(
             let cancel_token = cancel_token.clone();
             let tc = tc.clone();
             let session_id = session_id.to_owned();
-            let tool_approval = tool_approval.cloned();
+            let tool_hooks = tool_hooks.cloned();
             let tool_env = tool_env.clone();
             // Look up the tool before spawning since ToolRegistry is not Send.
             let registered_tool = registry.get(&tc.name).cloned();
@@ -119,7 +120,7 @@ async fn execute_tool_calls_parallel(
                     &tc,
                     registered_tool.as_ref(),
                     env,
-                    tool_approval.as_ref(),
+                    tool_hooks.as_ref(),
                     cancel_token.child_token(),
                     &config,
                     &emitter,
@@ -140,7 +141,7 @@ pub async fn execute_and_emit_one_tool(
     tc: &arc_llm::types::ToolCall,
     registry: &ToolRegistry,
     env: Arc<dyn Sandbox>,
-    tool_approval: Option<&ToolApprovalFn>,
+    tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: CancellationToken,
     config: &SessionConfig,
     emitter: &EventEmitter,
@@ -151,7 +152,7 @@ pub async fn execute_and_emit_one_tool(
         tc,
         registry.get(&tc.name),
         env,
-        tool_approval,
+        tool_hooks,
         cancel_token,
         config,
         emitter,
@@ -167,7 +168,7 @@ async fn execute_and_emit_one_tool_with_lookup(
     tc: &arc_llm::types::ToolCall,
     registered_tool: Option<&crate::tool_registry::RegisteredTool>,
     env: Arc<dyn Sandbox>,
-    tool_approval: Option<&ToolApprovalFn>,
+    tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: CancellationToken,
     config: &SessionConfig,
     emitter: &EventEmitter,
@@ -183,15 +184,38 @@ async fn execute_and_emit_one_tool_with_lookup(
         },
     );
 
-    let result = execute_one_tool(
-        tc,
-        registered_tool,
-        env,
-        tool_approval,
-        cancel_token,
-        tool_env,
-    )
-    .await;
+    // Pre-tool-use hook
+    if let Some(hooks) = tool_hooks {
+        debug!(tool = %tc.name, hook_event = "pre_tool_use", "Calling tool hook");
+        let start = std::time::Instant::now();
+        let decision = hooks.pre_tool_use(&tc.name, &tc.arguments).await;
+        let elapsed = start.elapsed().as_millis() as u64;
+        debug!(tool = %tc.name, hook_event = "pre_tool_use", ?decision, duration_ms = elapsed, "Tool hook complete");
+
+        if let ToolHookDecision::Block { reason } = decision {
+            let result = ToolResult::error(&tc.id, &reason);
+
+            emitter.emit(
+                session_id.to_owned(),
+                AgentEvent::ToolCallOutputDelta {
+                    delta: result.content.to_string(),
+                },
+            );
+            emitter.emit(
+                session_id.to_owned(),
+                AgentEvent::ToolCallCompleted {
+                    tool_name: tc.name.clone(),
+                    tool_call_id: tc.id.clone(),
+                    output: result.content.clone(),
+                    is_error: true,
+                },
+            );
+
+            return truncate_tool_result(&result, &tc.name, config);
+        }
+    }
+
+    let result = execute_one_tool(tc, registered_tool, env, cancel_token, tool_env).await;
 
     emitter.emit(
         session_id.to_owned(),
@@ -210,6 +234,29 @@ async fn execute_and_emit_one_tool_with_lookup(
         },
     );
 
+    // Post-tool-use hooks
+    if let Some(hooks) = tool_hooks {
+        let fallback;
+        let content_str = match result.content.as_str() {
+            Some(s) => s,
+            None => {
+                fallback = result.content.to_string();
+                &fallback
+            }
+        };
+        if result.is_error {
+            debug!(tool = %tc.name, hook_event = "post_tool_use_failure", "Calling tool hook");
+            hooks
+                .post_tool_use_failure(&tc.name, &tc.id, content_str)
+                .await;
+            debug!(tool = %tc.name, hook_event = "post_tool_use_failure", "Tool hook complete");
+        } else {
+            debug!(tool = %tc.name, hook_event = "post_tool_use", "Calling tool hook");
+            hooks.post_tool_use(&tc.name, &tc.id, content_str).await;
+            debug!(tool = %tc.name, hook_event = "post_tool_use", "Tool hook complete");
+        }
+    }
+
     truncate_tool_result(&result, &tc.name, config)
 }
 
@@ -218,16 +265,9 @@ async fn execute_one_tool(
     tc: &arc_llm::types::ToolCall,
     registered_tool: Option<&crate::tool_registry::RegisteredTool>,
     env: Arc<dyn Sandbox>,
-    tool_approval: Option<&ToolApprovalFn>,
     cancel_token: CancellationToken,
     tool_env: Option<&HashMap<String, String>>,
 ) -> ToolResult {
-    if let Some(approval_fn) = tool_approval {
-        if let Err(denial_message) = approval_fn(&tc.name, &tc.arguments) {
-            return ToolResult::error(&tc.id, denial_message);
-        }
-    }
-
     match registered_tool {
         Some(tool) => {
             if let Err(validation_error) =
@@ -298,5 +338,268 @@ pub fn validate_tool_args(
             "Tool argument validation failed: {}",
             errors.join("; ")
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ToolHookCallback, ToolHookDecision};
+    use crate::event::EventEmitter;
+    use crate::tool_registry::{RegisteredTool, ToolContext, ToolRegistry};
+    use arc_llm::types::{ToolCall, ToolDefinition};
+    use std::sync::Mutex;
+
+    fn make_echo_tool() -> RegisteredTool {
+        RegisteredTool {
+            definition: ToolDefinition {
+                name: "echo".to_string(),
+                description: "Echo input".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"}
+                    },
+                    "required": ["text"]
+                }),
+            },
+            executor: Arc::new(|args: serde_json::Value, _ctx: ToolContext| {
+                Box::pin(async move {
+                    let text = args["text"].as_str().unwrap_or("").to_string();
+                    Ok(format!("echo: {text}"))
+                })
+            }),
+        }
+    }
+
+    fn make_fail_tool() -> RegisteredTool {
+        RegisteredTool {
+            definition: ToolDefinition {
+                name: "fail_tool".to_string(),
+                description: "Always fails".to_string(),
+                parameters: serde_json::json!({}),
+            },
+            executor: Arc::new(|_args: serde_json::Value, _ctx: ToolContext| {
+                Box::pin(async move { Err("tool failed".to_string()) })
+            }),
+        }
+    }
+
+    fn make_tool_call(name: &str, id: &str, args: serde_json::Value) -> ToolCall {
+        ToolCall {
+            id: id.to_string(),
+            name: name.to_string(),
+            arguments: args,
+            raw_arguments: None,
+            provider_metadata: None,
+        }
+    }
+
+    struct MockHookCallback {
+        pre_decision: ToolHookDecision,
+        post_calls: Arc<Mutex<Vec<(String, String, String)>>>,
+        post_failure_calls: Arc<Mutex<Vec<(String, String, String)>>>,
+    }
+
+    impl MockHookCallback {
+        fn new(decision: ToolHookDecision) -> Self {
+            Self {
+                pre_decision: decision,
+                post_calls: Arc::new(Mutex::new(Vec::new())),
+                post_failure_calls: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ToolHookCallback for MockHookCallback {
+        async fn pre_tool_use(
+            &self,
+            _tool_name: &str,
+            _tool_input: &serde_json::Value,
+        ) -> ToolHookDecision {
+            self.pre_decision.clone()
+        }
+
+        async fn post_tool_use(&self, tool_name: &str, tool_call_id: &str, tool_output: &str) {
+            self.post_calls.lock().unwrap().push((
+                tool_name.to_string(),
+                tool_call_id.to_string(),
+                tool_output.to_string(),
+            ));
+        }
+
+        async fn post_tool_use_failure(&self, tool_name: &str, tool_call_id: &str, error: &str) {
+            self.post_failure_calls.lock().unwrap().push((
+                tool_name.to_string(),
+                tool_call_id.to_string(),
+                error.to_string(),
+            ));
+        }
+    }
+
+    fn make_sandbox() -> Arc<dyn Sandbox> {
+        Arc::new(crate::local_sandbox::LocalSandbox::new(
+            std::env::current_dir().unwrap(),
+        ))
+    }
+
+    #[tokio::test]
+    async fn pre_tool_use_hook_blocks_execution() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let hooks: Arc<dyn ToolHookCallback> =
+            Arc::new(MockHookCallback::new(ToolHookDecision::Block {
+                reason: "blocked by hook".to_string(),
+            }));
+
+        let tc = make_tool_call("echo", "call_1", serde_json::json!({"text": "hello"}));
+        let emitter = EventEmitter::new();
+        let config = SessionConfig::default();
+
+        let result = execute_and_emit_one_tool(
+            &tc,
+            &registry,
+            make_sandbox(),
+            Some(&hooks),
+            CancellationToken::new(),
+            &config,
+            &emitter,
+            "test-session",
+            None,
+        )
+        .await;
+
+        assert!(result.is_error);
+        let content = result.content.as_str().unwrap();
+        assert!(content.contains("blocked by hook"));
+    }
+
+    #[tokio::test]
+    async fn pre_tool_use_hook_proceeds() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let hooks: Arc<dyn ToolHookCallback> =
+            Arc::new(MockHookCallback::new(ToolHookDecision::Proceed));
+
+        let tc = make_tool_call("echo", "call_1", serde_json::json!({"text": "hello"}));
+        let emitter = EventEmitter::new();
+        let config = SessionConfig::default();
+
+        let result = execute_and_emit_one_tool(
+            &tc,
+            &registry,
+            make_sandbox(),
+            Some(&hooks),
+            CancellationToken::new(),
+            &config,
+            &emitter,
+            "test-session",
+            None,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        let content = result.content.to_string();
+        assert!(content.contains("echo: hello"));
+    }
+
+    #[tokio::test]
+    async fn post_tool_use_hook_fires_on_success() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let mock = Arc::new(MockHookCallback::new(ToolHookDecision::Proceed));
+        let hooks: Arc<dyn ToolHookCallback> = mock.clone();
+
+        let tc = make_tool_call("echo", "call_1", serde_json::json!({"text": "hello"}));
+        let emitter = EventEmitter::new();
+        let config = SessionConfig::default();
+
+        execute_and_emit_one_tool(
+            &tc,
+            &registry,
+            make_sandbox(),
+            Some(&hooks),
+            CancellationToken::new(),
+            &config,
+            &emitter,
+            "test-session",
+            None,
+        )
+        .await;
+
+        let calls = mock.post_calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "echo");
+        assert_eq!(calls[0].1, "call_1");
+        assert!(calls[0].2.contains("echo: hello"));
+
+        let failure_calls = mock.post_failure_calls.lock().unwrap();
+        assert!(failure_calls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn post_tool_use_failure_hook_fires_on_error() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_fail_tool());
+
+        let mock = Arc::new(MockHookCallback::new(ToolHookDecision::Proceed));
+        let hooks: Arc<dyn ToolHookCallback> = mock.clone();
+
+        let tc = make_tool_call("fail_tool", "call_1", serde_json::json!({}));
+        let emitter = EventEmitter::new();
+        let config = SessionConfig::default();
+
+        execute_and_emit_one_tool(
+            &tc,
+            &registry,
+            make_sandbox(),
+            Some(&hooks),
+            CancellationToken::new(),
+            &config,
+            &emitter,
+            "test-session",
+            None,
+        )
+        .await;
+
+        let failure_calls = mock.post_failure_calls.lock().unwrap();
+        assert_eq!(failure_calls.len(), 1);
+        assert_eq!(failure_calls[0].0, "fail_tool");
+        assert_eq!(failure_calls[0].1, "call_1");
+        assert!(failure_calls[0].2.contains("tool failed"));
+
+        let calls = mock.post_calls.lock().unwrap();
+        assert!(calls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn no_hooks_skips_all_callbacks() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+
+        let tc = make_tool_call("echo", "call_1", serde_json::json!({"text": "hello"}));
+        let emitter = EventEmitter::new();
+        let config = SessionConfig::default();
+
+        let result = execute_and_emit_one_tool(
+            &tc,
+            &registry,
+            make_sandbox(),
+            None,
+            CancellationToken::new(),
+            &config,
+            &emitter,
+            "test-session",
+            None,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        let content = result.content.to_string();
+        assert!(content.contains("echo: hello"));
     }
 }

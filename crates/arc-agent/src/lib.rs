@@ -27,7 +27,7 @@ pub mod types;
 pub mod v4a_patch;
 
 pub use arc_mcp::config::McpServerConfig;
-pub use config::{SessionConfig, ToolApprovalFn};
+pub use config::{SessionConfig, ToolApprovalAdapter, ToolHookCallback, ToolHookDecision};
 #[cfg(feature = "docker")]
 pub use docker_sandbox::{DockerSandbox, DockerSandboxConfig};
 pub use error::AgentError;

@@ -116,6 +116,7 @@ impl HookRunner {
             context.handler_type.as_deref(),
             context.edge_to.as_deref(),
             context.edge_from.as_deref(),
+            context.tool_name.as_deref(),
         ]
         .iter()
         .any(|field| field.is_some_and(|v| re.is_match(v)))
@@ -330,6 +331,29 @@ mod tests {
 
         let mut ctx = make_context(HookEvent::StageStart);
         ctx.handler_type = Some("command".into());
+        assert!(runner.filter_hooks(&ctx).is_empty());
+    }
+
+    #[tokio::test]
+    async fn matcher_filters_by_tool_name() {
+        let mut hook = make_hook(HookEvent::PreToolUse, "tool-filter");
+        hook.matcher = Some("shell".into());
+        let config = HookConfig { hooks: vec![hook] };
+        let runner = HookRunner::with_executor(
+            config,
+            Arc::new(MockExecutor {
+                decision: HookDecision::Proceed,
+            }),
+        );
+
+        // Matches tool_name "shell"
+        let mut ctx = make_context(HookEvent::PreToolUse);
+        ctx.tool_name = Some("shell".into());
+        assert_eq!(runner.filter_hooks(&ctx).len(), 1);
+
+        // Does not match tool_name "read_file"
+        let mut ctx = make_context(HookEvent::PreToolUse);
+        ctx.tool_name = Some("read_file".into());
         assert!(runner.filter_hooks(&ctx).is_empty());
     }
 

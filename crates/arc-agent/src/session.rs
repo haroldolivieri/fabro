@@ -610,7 +610,7 @@ impl Session {
                 self.provider_profile.supports_parallel_tool_calls(),
                 self.provider_profile.tool_registry(),
                 self.sandbox.clone(),
-                self.config.tool_approval.as_ref(),
+                self.config.tool_hooks.as_ref(),
                 &self.cancel_token,
                 &self.config,
                 &self.event_emitter,
@@ -1489,7 +1489,9 @@ mod tests {
         ];
 
         let config = SessionConfig {
-            tool_approval: Some(Arc::new(|_name, _args| Err("denied by policy".to_string()))),
+            tool_hooks: Some(Arc::new(crate::config::ToolApprovalAdapter(Arc::new(
+                |_name, _args| Err("denied by policy".to_string()),
+            )))),
             ..Default::default()
         };
 
@@ -1528,7 +1530,9 @@ mod tests {
         ];
 
         let config = SessionConfig {
-            tool_approval: Some(Arc::new(|_name, _args| Ok(()))),
+            tool_hooks: Some(Arc::new(crate::config::ToolApprovalAdapter(Arc::new(
+                |_name, _args| Ok(()),
+            )))),
             ..Default::default()
         };
 
@@ -1562,10 +1566,12 @@ mod tests {
         ];
 
         let config = SessionConfig {
-            tool_approval: Some(Arc::new(move |name, args| {
-                *captured_clone.lock().unwrap() = Some((name.to_string(), args.clone()));
-                Ok(())
-            })),
+            tool_hooks: Some(Arc::new(crate::config::ToolApprovalAdapter(Arc::new(
+                move |name, args| {
+                    *captured_clone.lock().unwrap() = Some((name.to_string(), args.clone()));
+                    Ok(())
+                },
+            )))),
             ..Default::default()
         };
 
@@ -1591,7 +1597,7 @@ mod tests {
         ];
 
         let config = SessionConfig {
-            tool_approval: None,
+            tool_hooks: None,
             ..Default::default()
         };
 
@@ -1622,7 +1628,9 @@ mod tests {
         ];
 
         let config = SessionConfig {
-            tool_approval: Some(Arc::new(|_name, _args| Err("not allowed".to_string()))),
+            tool_hooks: Some(Arc::new(crate::config::ToolApprovalAdapter(Arc::new(
+                |_name, _args| Err("not allowed".to_string()),
+            )))),
             ..Default::default()
         };
 

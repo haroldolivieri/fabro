@@ -38,6 +38,7 @@ pub trait CodergenBackend: Send + Sync {
         emitter: &Arc<EventEmitter>,
         stage_dir: &Path,
         sandbox: &Arc<dyn Sandbox>,
+        tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
     ) -> Result<CodergenResult, ArcError>;
 
     /// Run a single LLM call with no tools (one_shot mode).
@@ -225,6 +226,17 @@ impl Handler for AgentHandler {
 
         // 3. Call LLM backend (agent loop)
         let thread_id = context.thread_id();
+        let tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>> =
+            services.hook_runner.as_ref().map(|hr| {
+                Arc::new(crate::hook::bridge::WorkflowToolHookCallback {
+                    hook_runner: Arc::clone(hr),
+                    sandbox: Arc::clone(&services.sandbox),
+                    run_id: context.run_id(),
+                    workflow_name: graph.name.clone(),
+                    work_dir: None,
+                    node_id: node.id.clone(),
+                }) as Arc<dyn arc_agent::ToolHookCallback>
+            });
         let (response_text, stage_usage, backend_files_touched) =
             if let Some(backend) = &self.backend {
                 let result = backend
@@ -236,6 +248,7 @@ impl Handler for AgentHandler {
                         &services.emitter,
                         &stage_dir,
                         &services.sandbox,
+                        tool_hooks,
                     )
                     .await;
                 match result {
@@ -494,6 +507,7 @@ mod tests {
                 _emitter: &Arc<EventEmitter>,
                 _stage_dir: &Path,
                 _sandbox: &Arc<dyn arc_agent::Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 Ok(CodergenResult::Text {
                     text: r#"Done. {"outcome": "success", "preferred_next_label": "approve"}"#
@@ -603,6 +617,7 @@ mod tests {
                 _emitter: &Arc<EventEmitter>,
                 _stage_dir: &Path,
                 _sandbox: &Arc<dyn Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 *self.captured_thread_id.lock().unwrap() = Some(thread_id.map(String::from));
                 Ok(CodergenResult::Text {
@@ -654,6 +669,7 @@ mod tests {
                 _emitter: &Arc<EventEmitter>,
                 _stage_dir: &Path,
                 _sandbox: &Arc<dyn Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 *self.captured_thread_id.lock().unwrap() = Some(thread_id.map(String::from));
                 Ok(CodergenResult::Text {
@@ -700,6 +716,7 @@ mod tests {
                 _emitter: &Arc<EventEmitter>,
                 _stage_dir: &Path,
                 _sandbox: &Arc<dyn Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 Err(ArcError::handler("Request timed out".to_string()))
             }
@@ -843,6 +860,7 @@ Some text in between.
                 _emitter: &Arc<EventEmitter>,
                 _stage_dir: &Path,
                 _sandbox: &Arc<dyn Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 Err(ArcError::Validation("bad config".to_string()))
             }
@@ -881,6 +899,7 @@ Some text in between.
                 _emitter: &Arc<EventEmitter>,
                 _stage_dir: &std::path::Path,
                 _sandbox: &Arc<dyn Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 *self.captured_prompt.lock().unwrap() = Some(prompt.to_string());
                 Ok(CodergenResult::Text {
@@ -949,6 +968,7 @@ Some text in between.
                 _emitter: &Arc<EventEmitter>,
                 _stage_dir: &std::path::Path,
                 _sandbox: &Arc<dyn Sandbox>,
+                _tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
             ) -> Result<CodergenResult, ArcError> {
                 *self.captured_prompt.lock().unwrap() = Some(prompt.to_string());
                 Ok(CodergenResult::Text {

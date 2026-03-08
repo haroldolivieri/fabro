@@ -274,7 +274,8 @@ pub async fn run_command(
 
     let goal = graph.goal();
     if !goal.is_empty() {
-        eprintln!("{} {goal}\n", styles.bold.apply_to("Goal:"));
+        let first_line = goal.lines().next().unwrap_or(&goal);
+        eprintln!("{} {first_line}\n", styles.bold.apply_to("Goal:"));
     }
 
     print_diagnostics(&diagnostics, styles);

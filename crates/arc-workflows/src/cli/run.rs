@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::bail;
-use tracing::debug;
 use arc_agent::{DockerSandbox, DockerSandboxConfig, LocalSandbox, Sandbox};
 use arc_util::terminal::Styles;
 use chrono::{Local, Utc};
+use tracing::debug;
 
 use crate::checkpoint::Checkpoint;
 use crate::engine::{GitCheckpointMode, RunConfig, WorkflowRunEngine};
@@ -244,9 +244,9 @@ pub async fn run_command(
     };
     let dot_dir = dot_path.parent().unwrap_or(std::path::Path::new("."));
     let mut builder = WorkflowBuilder::new();
-    builder.register_transform(Box::new(
-        crate::transform::FileInliningTransform::new(dot_dir.to_path_buf()),
-    ));
+    builder.register_transform(Box::new(crate::transform::FileInliningTransform::new(
+        dot_dir.to_path_buf(),
+    )));
     let (mut graph, diagnostics) = builder.prepare(&source)?;
     apply_goal_override(&mut graph, args.goal.as_deref());
 
@@ -478,7 +478,11 @@ pub async fn run_command(
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to create Daytona client: {e}"))?;
             let config = daytona_config.clone().unwrap_or_default();
-            let mut env = crate::daytona_sandbox::DaytonaSandbox::new(daytona_client, config, github_app.clone());
+            let mut env = crate::daytona_sandbox::DaytonaSandbox::new(
+                daytona_client,
+                config,
+                github_app.clone(),
+            );
             let emitter_cb = Arc::clone(&emitter);
             env.set_event_callback(Arc::new(move |event| {
                 emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
@@ -550,9 +554,7 @@ pub async fn run_command(
         if let Some(ref daytona) = daytona_sandbox_ref {
             match daytona.create_ssh_access().await {
                 Ok(ssh_command) => {
-                    emitter.emit(&crate::event::WorkflowRunEvent::SshAccessReady {
-                        ssh_command,
-                    });
+                    emitter.emit(&crate::event::WorkflowRunEvent::SshAccessReady { ssh_command });
                 }
                 Err(e) => {
                     eprintln!(
@@ -652,11 +654,7 @@ pub async fn run_command(
         .unwrap_or(Provider::Anthropic);
 
     // Resolve fallback chain from config
-    let fallback_chain = resolve_fallback_chain(
-        provider_enum,
-        &model,
-        run_cfg.as_ref(),
-    );
+    let fallback_chain = resolve_fallback_chain(provider_enum, &model, run_cfg.as_ref());
 
     // 7. Build engine
     let sandbox_env: HashMap<String, String> = run_cfg
@@ -671,8 +669,9 @@ pub async fn run_command(
             if dry_run_mode {
                 None
             } else {
-                let api = AgentApiBackend::new(model.clone(), provider_enum, fallback_chain.clone())
-                    .with_env(sandbox_env.clone());
+                let api =
+                    AgentApiBackend::new(model.clone(), provider_enum, fallback_chain.clone())
+                        .with_env(sandbox_env.clone());
                 let cli = AgentCliBackend::new(model.clone(), provider_enum)
                     .with_env(sandbox_env.clone());
                 Some(Box::new(BackendRouter::new(Box::new(api), cli)))
@@ -835,7 +834,12 @@ pub async fn run_command(
                     ))
                 );
             } else {
-                eprintln!("{}", styles.dim.apply_to(format!("Tokens: {}", format_tokens_human(total_tokens))));
+                eprintln!(
+                    "{}",
+                    styles
+                        .dim
+                        .apply_to(format!("Tokens: {}", format_tokens_human(total_tokens)))
+                );
             }
             if acc.total_cache_read_tokens > 0 {
                 eprintln!(
@@ -875,10 +879,7 @@ pub async fn run_command(
                 styles.bold.apply_to("Info:")
             );
         } else {
-            eprintln!(
-                "\n{} sandbox preserved",
-                styles.bold.apply_to("Info:")
-            );
+            eprintln!("\n{} sandbox preserved", styles.bold.apply_to("Info:"));
         }
     } else if let Err(e) = sandbox.cleanup().await {
         tracing::warn!(error = %e, "Sandbox cleanup failed");
@@ -1042,8 +1043,8 @@ async fn run_from_branch(
         .map_err(|e| anyhow::anyhow!("failed to attach worktree to {run_branch}: {e}"))?;
     std::env::set_current_dir(&worktree_path)?;
 
-    let base_sha = crate::git::MetadataStore::read_manifest(&original_cwd, &run_id)?
-        .and_then(|m| m.base_sha);
+    let base_sha =
+        crate::git::MetadataStore::read_manifest(&original_cwd, &run_id)?.and_then(|m| m.base_sha);
 
     // Build minimal sandbox (local only for now)
     let emitter = Arc::new(EventEmitter::new());
@@ -1239,13 +1240,27 @@ async fn run_preflight(
         status: CheckStatus::Pass,
         summary: graph.name.clone(),
         details: vec![
-            CheckDetail { text: format!("Nodes: {}", graph.nodes.len()) },
-            CheckDetail { text: format!("Edges: {}", graph.edges.len()) },
-            CheckDetail { text: format!("Goal: {}", graph.goal()) },
-            CheckDetail { text: format!("Model: {model}") },
-            CheckDetail { text: format!("Provider: {}", provider.as_deref().unwrap_or("anthropic")) },
-            CheckDetail { text: format!("Setup commands: {setup_command_count}") },
-            CheckDetail { text: format!("Git clean: {git_clean}") },
+            CheckDetail {
+                text: format!("Nodes: {}", graph.nodes.len()),
+            },
+            CheckDetail {
+                text: format!("Edges: {}", graph.edges.len()),
+            },
+            CheckDetail {
+                text: format!("Goal: {}", graph.goal()),
+            },
+            CheckDetail {
+                text: format!("Model: {model}"),
+            },
+            CheckDetail {
+                text: format!("Provider: {}", provider.as_deref().unwrap_or("anthropic")),
+            },
+            CheckDetail {
+                text: format!("Setup commands: {setup_command_count}"),
+            },
+            CheckDetail {
+                text: format!("Git clean: {git_clean}"),
+            },
         ],
         remediation: None,
     });
@@ -1267,7 +1282,8 @@ async fn run_preflight(
         SandboxProvider::Daytona => match daytona_sdk::Client::new().await {
             Ok(daytona_client) => {
                 let config = daytona_config.unwrap_or_default();
-                let env = crate::daytona_sandbox::DaytonaSandbox::new(daytona_client, config, github_app);
+                let env =
+                    crate::daytona_sandbox::DaytonaSandbox::new(daytona_client, config, github_app);
                 Ok(Arc::new(env) as Arc<dyn Sandbox>)
             }
             Err(e) => Err(format!("Daytona client creation failed: {e}")),
@@ -1296,7 +1312,9 @@ async fn run_preflight(
                     name: "Sandbox".into(),
                     status: CheckStatus::Error,
                     summary: "failed".into(),
-                    details: vec![CheckDetail { text: format!("Provider: {sandbox_provider}") }],
+                    details: vec![CheckDetail {
+                        text: format!("Provider: {sandbox_provider}"),
+                    }],
                     remediation: Some(format!("Sandbox init failed: {e}")),
                 });
                 false
@@ -1307,7 +1325,9 @@ async fn run_preflight(
                 name: "Sandbox".into(),
                 status: CheckStatus::Error,
                 summary: "failed".into(),
-                details: vec![CheckDetail { text: format!("Provider: {sandbox_provider}") }],
+                details: vec![CheckDetail {
+                    text: format!("Provider: {sandbox_provider}"),
+                }],
                 remediation: Some(e),
             });
             false
@@ -1319,7 +1339,9 @@ async fn run_preflight(
             name: "Sandbox".into(),
             status: CheckStatus::Pass,
             summary: sandbox_provider.to_string(),
-            details: vec![CheckDetail { text: format!("Provider: {sandbox_provider}") }],
+            details: vec![CheckDetail {
+                text: format!("Provider: {sandbox_provider}"),
+            }],
             remediation: None,
         });
     }
@@ -1327,11 +1349,7 @@ async fn run_preflight(
     // 3. LLM client check
     let llm_ok = match arc_llm::client::Client::from_env().await {
         Ok(c) => {
-            let names: Vec<String> = c
-                .provider_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
+            let names: Vec<String> = c.provider_names().iter().map(|s| s.to_string()).collect();
             if names.is_empty() {
                 checks.push(CheckResult {
                     name: "LLM providers".into(),
@@ -1469,7 +1487,10 @@ async fn generate_retro(
 
     // Run retro agent session
     eprintln!("\n{}", styles.bold.apply_to("=== Retro ==="));
-    eprintln!("{}", styles.dim.apply_to(format!("Running retro ({model})...")));
+    eprintln!(
+        "{}",
+        styles.dim.apply_to(format!("Running retro ({model})..."))
+    );
     let retro_start = std::time::Instant::now();
     let narrative_result = if dry_run_mode {
         Ok(crate::retro_agent::dry_run_narrative())
@@ -1491,10 +1512,7 @@ async fn generate_retro(
                         .as_ref()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| "unknown".to_string());
-                    let outcome_str = retro
-                        .outcome
-                        .as_deref()
-                        .unwrap_or("No outcome recorded");
+                    let outcome_str = retro.outcome.as_deref().unwrap_or("No outcome recorded");
                     let line1_content = format!("Retro: {smoothness_str} \u{2014} {outcome_str}");
                     let term_width = console::Term::stderr().size().1 as usize;
                     let dur_len = retro_dur.len();
@@ -1502,19 +1520,17 @@ async fn generate_retro(
                     eprintln!(
                         "{} {}{:pad1$}{}",
                         styles.bold.apply_to("Retro:"),
-                        styles.dim.apply_to(format!("{smoothness_str} \u{2014} {outcome_str}")),
+                        styles
+                            .dim
+                            .apply_to(format!("{smoothness_str} \u{2014} {outcome_str}")),
                         "",
                         styles.dim.apply_to(&retro_dur),
                     );
 
                     // Line 2: friction + open items (only if non-zero)
-                    let friction_count = retro
-                        .friction_points
-                        .as_ref()
-                        .map(|v| v.len())
-                        .unwrap_or(0);
-                    let open_count =
-                        retro.open_items.as_ref().map(|v| v.len()).unwrap_or(0);
+                    let friction_count =
+                        retro.friction_points.as_ref().map(|v| v.len()).unwrap_or(0);
+                    let open_count = retro.open_items.as_ref().map(|v| v.len()).unwrap_or(0);
                     if friction_count > 0 || open_count > 0 {
                         let mut parts = Vec::new();
                         if friction_count > 0 {
@@ -1537,10 +1553,7 @@ async fn generate_retro(
                     }
 
                     // Line 3: file path
-                    let retro_path = format!(
-                        "{}/retro.json",
-                        super::tilde_path(logs_dir)
-                    );
+                    let retro_path = format!("{}/retro.json", super::tilde_path(logs_dir));
                     eprintln!(
                         "  {} {}",
                         styles.dim.apply_to("Retro saved to"),
@@ -1572,9 +1585,10 @@ mod tests {
     fn apply_goal_override_replaces_graph_goal() {
         use crate::graph::types::{AttrValue, Graph};
         let mut graph = Graph::new("test");
-        graph
-            .attrs
-            .insert("goal".to_string(), AttrValue::String("original".to_string()));
+        graph.attrs.insert(
+            "goal".to_string(),
+            AttrValue::String("original".to_string()),
+        );
         apply_goal_override(&mut graph, Some("CLI goal"));
         assert_eq!(graph.goal(), "CLI goal");
     }
@@ -1583,9 +1597,10 @@ mod tests {
     fn apply_goal_override_noop_when_none() {
         use crate::graph::types::{AttrValue, Graph};
         let mut graph = Graph::new("test");
-        graph
-            .attrs
-            .insert("goal".to_string(), AttrValue::String("original".to_string()));
+        graph.attrs.insert(
+            "goal".to_string(),
+            AttrValue::String("original".to_string()),
+        );
         apply_goal_override(&mut graph, None);
         assert_eq!(graph.goal(), "original");
     }

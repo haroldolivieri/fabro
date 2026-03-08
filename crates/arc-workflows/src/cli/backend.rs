@@ -68,7 +68,8 @@ fn spawn_event_forwarder(
                     ..
                 } => {
                     if !*is_error {
-                        if let Some(path) = pending_tool_calls.lock().unwrap().remove(tool_call_id) {
+                        if let Some(path) = pending_tool_calls.lock().unwrap().remove(tool_call_id)
+                        {
                             files_touched.lock().unwrap().insert(path);
                         }
                     } else {
@@ -133,14 +134,7 @@ impl AgentApiBackend {
         node: &Node,
         sandbox: &Arc<dyn Sandbox>,
     ) -> Result<Session, ArcError> {
-        Self::create_session_for(
-            &self.model,
-            self.provider,
-            node,
-            sandbox,
-            &self.env,
-        )
-        .await
+        Self::create_session_for(&self.model, self.provider, node, sandbox, &self.env).await
     }
 
     async fn create_session_for(
@@ -277,11 +271,17 @@ impl CodergenBackend for AgentApiBackend {
             Ok(resp) => (
                 resp,
                 request.model.clone(),
-                request.provider.clone().unwrap_or_else(|| default_provider.clone()),
+                request
+                    .provider
+                    .clone()
+                    .unwrap_or_else(|| default_provider.clone()),
             ),
             Err(sdk_err) if sdk_err.failover_eligible() && !fallback_chain.is_empty() => {
                 let error_msg = sdk_err.to_string();
-                let from_provider = request.provider.clone().unwrap_or_else(|| default_provider.clone());
+                let from_provider = request
+                    .provider
+                    .clone()
+                    .unwrap_or_else(|| default_provider.clone());
                 let from_model = request.model.clone();
 
                 let mut last_err = sdk_err;
@@ -585,14 +585,19 @@ mod tests {
 
     #[test]
     fn agent_backend_stores_config() {
-        let backend = AgentApiBackend::new("claude-opus-4-6".to_string(), Provider::OpenAi, Vec::new());
+        let backend =
+            AgentApiBackend::new("claude-opus-4-6".to_string(), Provider::OpenAi, Vec::new());
         assert_eq!(backend.model, "claude-opus-4-6");
         assert_eq!(backend.provider, Provider::OpenAi);
     }
 
     #[test]
     fn agent_backend_initializes_empty_sessions() {
-        let backend = AgentApiBackend::new("claude-opus-4-6".to_string(), Provider::Anthropic, Vec::new());
+        let backend = AgentApiBackend::new(
+            "claude-opus-4-6".to_string(),
+            Provider::Anthropic,
+            Vec::new(),
+        );
         assert!(backend.sessions.lock().unwrap().is_empty());
     }
 

@@ -87,7 +87,10 @@ impl AgentArgs {
             .or_else(|| provider.map(String::from))
             .or_else(|| Some("anthropic".to_string()));
         self.model = self.model.take().or_else(|| model.map(String::from));
-        self.permissions = self.permissions.or(permissions).or(Some(PermissionLevel::ReadWrite));
+        self.permissions = self
+            .permissions
+            .or(permissions)
+            .or(Some(PermissionLevel::ReadWrite));
         self.output_format = self
             .output_format
             .or(output_format)
@@ -381,10 +384,10 @@ pub async fn run_with_args(args: AgentArgs) -> anyhow::Result<()> {
 
     // Resolve model and build profile
     let model = args.model.unwrap_or_else(|| {
-            arc_llm::catalog::default_model_for_provider(provider.as_str())
-                .map(|m| m.id)
-                .unwrap_or_else(|| provider.as_str().to_string())
-        });
+        arc_llm::catalog::default_model_for_provider(provider.as_str())
+            .map(|m| m.id)
+            .unwrap_or_else(|| provider.as_str().to_string())
+    });
     eprintln!("{}", styles.dim.apply_to(format!("Using model: {model}")));
     let mut profile = build_profile(provider, &model, Some(client.clone()));
 
@@ -523,7 +526,11 @@ pub async fn run_with_args(args: AgentArgs) -> anyhow::Result<()> {
                             ..
                         } => {
                             let short_id = &agent_id[..8.min(agent_id.len())];
-                            let task_preview = if task.len() > 60 { &task[..crate::truncation::floor_char_boundary(task, 60)] } else { task };
+                            let task_preview = if task.len() > 60 {
+                                &task[..crate::truncation::floor_char_boundary(task, 60)]
+                            } else {
+                                task
+                            };
                             eprintln!(
                                 "  {}",
                                 s.dim.apply_to(format!(

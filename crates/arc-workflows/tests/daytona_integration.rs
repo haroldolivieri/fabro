@@ -56,20 +56,18 @@ fn load_github_app_credentials() -> arc_workflows::github_app::GitHubAppCredenti
         app_id: Option<String>,
     }
 
-    let config: Config =
-        toml::from_str(&config_str).expect("Failed to parse server.toml");
-    let app_id = config.git.app_id.expect("app_id not set in server.toml [git] section");
+    let config: Config = toml::from_str(&config_str).expect("Failed to parse server.toml");
+    let app_id = config
+        .git
+        .app_id
+        .expect("app_id not set in server.toml [git] section");
 
-    let raw = std::env::var("GITHUB_APP_PRIVATE_KEY")
-        .expect("GITHUB_APP_PRIVATE_KEY not set");
+    let raw = std::env::var("GITHUB_APP_PRIVATE_KEY").expect("GITHUB_APP_PRIVATE_KEY not set");
     let private_key_pem = if raw.starts_with("-----") {
         raw
     } else {
-        let bytes = base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD,
-            &raw,
-        )
-        .expect("GITHUB_APP_PRIVATE_KEY is not valid base64");
+        let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &raw)
+            .expect("GITHUB_APP_PRIVATE_KEY is not valid base64");
         String::from_utf8(bytes).expect("GITHUB_APP_PRIVATE_KEY decoded to invalid UTF-8")
     };
     arc_workflows::github_app::GitHubAppCredentials {
@@ -179,9 +177,9 @@ async fn daytona_snapshot_sandbox() {
             cpu: Some(2),
             memory: Some(4),
             disk: Some(10),
-            dockerfile: Some(
-                arc_workflows::daytona_sandbox::DockerfileSource::Inline("FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string()),
-            ),
+            dockerfile: Some(arc_workflows::daytona_sandbox::DockerfileSource::Inline(
+                "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
+            )),
         }),
         ..DaytonaConfig::default()
     };
@@ -1286,13 +1284,10 @@ async fn daytona_clone_public_repo_gets_credentials() {
     let creds = load_github_app_credentials();
 
     // Directly test resolve_clone_credentials against a known public repo
-    let (username, password) = arc_workflows::github_app::resolve_clone_credentials(
-        &creds,
-        "rust-lang",
-        "rust",
-    )
-    .await
-    .unwrap();
+    let (username, password) =
+        arc_workflows::github_app::resolve_clone_credentials(&creds, "rust-lang", "rust")
+            .await
+            .unwrap();
 
     assert_eq!(
         username.as_deref(),
@@ -1312,14 +1307,13 @@ async fn daytona_clone_public_repo_gets_credentials() {
 async fn daytona_iat_not_installed_gives_clear_error() {
     let creds = load_github_app_credentials();
 
-    let result = arc_workflows::github_app::resolve_clone_credentials(
-        &creds,
-        "torvalds",
-        "linux",
-    )
-    .await;
+    let result =
+        arc_workflows::github_app::resolve_clone_credentials(&creds, "torvalds", "linux").await;
 
-    assert!(result.is_err(), "should fail for repo the app isn't installed on");
+    assert!(
+        result.is_err(),
+        "should fail for repo the app isn't installed on"
+    );
     let err = result.unwrap_err();
     assert!(
         err.contains("not installed"),
@@ -1374,14 +1368,17 @@ async fn daytona_git_push_run_branch_to_origin() {
     );
 
     let mut start = Node::new("start");
-    start
-        .attrs
-        .insert("shape".to_string(), AttrValue::String("Mdiamond".to_string()));
+    start.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Mdiamond".to_string()),
+    );
     graph.nodes.insert("start".to_string(), start);
 
     let mut exit = Node::new("exit");
-    exit.attrs
-        .insert("shape".to_string(), AttrValue::String("Msquare".to_string()));
+    exit.attrs.insert(
+        "shape".to_string(),
+        AttrValue::String("Msquare".to_string()),
+    );
     graph.nodes.insert("exit".to_string(), exit);
 
     let mut work = Node::new("work");
@@ -1472,8 +1469,14 @@ async fn daytona_toolbox_idle_diagnostic() {
     let result = env
         .exec_command("echo alive", 30_000, None, None, None)
         .await;
-    eprintln!("[t=0s] exec_command after init: {:?}", result.as_ref().map(|r| r.exit_code));
-    assert!(result.is_ok(), "exec_command should work immediately after init");
+    eprintln!(
+        "[t=0s] exec_command after init: {:?}",
+        result.as_ref().map(|r| r.exit_code)
+    );
+    assert!(
+        result.is_ok(),
+        "exec_command should work immediately after init"
+    );
 
     let sandbox_name = env.sandbox_info();
     eprintln!("[t=0s] sandbox: {sandbox_name}");
@@ -1489,7 +1492,11 @@ async fn daytona_toolbox_idle_diagnostic() {
 
         match &result {
             Ok(r) => {
-                eprintln!("[t=+{sleep_secs}s] OK exit_code={} stdout={}", r.exit_code, r.stdout.trim());
+                eprintln!(
+                    "[t=+{sleep_secs}s] OK exit_code={} stdout={}",
+                    r.exit_code,
+                    r.stdout.trim()
+                );
             }
             Err(e) => {
                 eprintln!("[t=+{sleep_secs}s] FAILED: {e}");
@@ -1525,13 +1532,18 @@ async fn daytona_toolbox_idle_diagnostic() {
 
                 // Get toolbox proxy URL and try a direct call
                 let proxy_resp = client
-                    .get(format!("{api_url}/sandbox/{sandbox_name}/toolbox-proxy-url"))
+                    .get(format!(
+                        "{api_url}/sandbox/{sandbox_name}/toolbox-proxy-url"
+                    ))
                     .bearer_auth(&api_key)
                     .send()
                     .await;
                 if let Ok(resp) = proxy_resp {
                     let body = resp.text().await.unwrap_or_default();
-                    eprintln!("[diag] proxy URL response: {}", &body[..body.len().min(200)]);
+                    eprintln!(
+                        "[diag] proxy URL response: {}",
+                        &body[..body.len().min(200)]
+                    );
                     if let Some(url) = serde_json::from_str::<serde_json::Value>(&body)
                         .ok()
                         .and_then(|v| v.get("url").and_then(|u| u.as_str()).map(String::from))
@@ -1548,12 +1560,16 @@ async fn daytona_toolbox_idle_diagnostic() {
                             Ok(resp) => {
                                 let status = resp.status();
                                 let body = resp.text().await.unwrap_or_default();
-                                eprintln!("[diag] direct call: {status} body={}", &body[..body.len().min(300)]);
+                                eprintln!(
+                                    "[diag] direct call: {status} body={}",
+                                    &body[..body.len().min(300)]
+                                );
                             }
                             Err(e) => {
                                 // Walk the FULL error source chain
                                 let mut msg = format!("[diag] direct call FAILED: {e}");
-                                let mut source: Option<&dyn std::error::Error> = std::error::Error::source(&e);
+                                let mut source: Option<&dyn std::error::Error> =
+                                    std::error::Error::source(&e);
                                 while let Some(cause) = source {
                                     msg.push_str(&format!("\n  caused by: {cause}"));
                                     source = cause.source();

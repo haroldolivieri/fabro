@@ -59,7 +59,14 @@ pub struct ExeSandbox {
     /// Factory for creating data-plane SSH runners, used during initialize().
     /// In production, this connects to the VM host via OpensshRunner.
     /// In tests, this is replaced with a closure that returns a MockSshRunner.
-    data_ssh_factory: Box<dyn Fn(&str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Box<dyn SshRunner>, String>> + Send>> + Send + Sync>,
+    data_ssh_factory: Box<
+        dyn Fn(
+                &str,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<Box<dyn SshRunner>, String>> + Send>,
+            > + Send
+            + Sync,
+    >,
 }
 
 impl ExeSandbox {
@@ -121,27 +128,24 @@ impl Sandbox for ExeSandbox {
         let init_start = Instant::now();
 
         // Create a new VM via the management plane
-        let output = self
-            .mgmt_ssh
-            .run_command("new --json")
-            .await
-            .map_err(|e| {
-                let err = format!("Failed to create exe.dev VM: {e}");
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: PROVIDER.into(),
-                    error: err.clone(),
-                    duration_ms,
-                });
-                err
-            })?;
+        let output = self.mgmt_ssh.run_command("new --json").await.map_err(|e| {
+            let err = format!("Failed to create exe.dev VM: {e}");
+            let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            self.emit(SandboxEvent::InitializeFailed {
+                provider: PROVIDER.into(),
+                error: err.clone(),
+                duration_ms,
+            });
+            err
+        })?;
 
         if output.exit_code != 0 {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            let err = format!("exe.dev VM creation failed (exit {}): {stderr}", output.exit_code);
-            let duration_ms =
-                u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let err = format!(
+                "exe.dev VM creation failed (exit {}): {stderr}",
+                output.exit_code
+            );
+            let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
             self.emit(SandboxEvent::InitializeFailed {
                 provider: PROVIDER.into(),
                 error: err.clone(),
@@ -152,18 +156,16 @@ impl Sandbox for ExeSandbox {
 
         // Parse JSON response to get VM name and host
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let json: serde_json::Value = serde_json::from_str(stdout.trim())
-            .map_err(|e| {
-                let err = format!("Failed to parse exe.dev response: {e}");
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: PROVIDER.into(),
-                    error: err.clone(),
-                    duration_ms,
-                });
-                err
-            })?;
+        let json: serde_json::Value = serde_json::from_str(stdout.trim()).map_err(|e| {
+            let err = format!("Failed to parse exe.dev response: {e}");
+            let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            self.emit(SandboxEvent::InitializeFailed {
+                provider: PROVIDER.into(),
+                error: err.clone(),
+                duration_ms,
+            });
+            err
+        })?;
 
         let vm_name = json["vm_name"]
             .as_str()
@@ -184,8 +186,7 @@ impl Sandbox for ExeSandbox {
         // Create data-plane SSH connection
         let runner = (self.data_ssh_factory)(&data_host).await.map_err(|e| {
             let err = format!("Failed to connect to exe.dev VM {data_host}: {e}");
-            let duration_ms =
-                u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
             self.emit(SandboxEvent::InitializeFailed {
                 provider: PROVIDER.into(),
                 error: err.clone(),
@@ -310,8 +311,8 @@ impl Sandbox for ExeSandbox {
             return Err(format!("Failed to read {resolved}: {stderr}"));
         }
 
-        let content =
-            String::from_utf8(output.stdout).map_err(|e| format!("File is not valid UTF-8: {e}"))?;
+        let content = String::from_utf8(output.stdout)
+            .map_err(|e| format!("File is not valid UTF-8: {e}"))?;
 
         Ok(format_lines_numbered(&content, offset, limit))
     }
@@ -372,9 +373,7 @@ impl Sandbox for ExeSandbox {
             max_depth,
         );
 
-        let result = self
-            .exec_command(&cmd, 30_000, None, None, None)
-            .await?;
+        let result = self.exec_command(&cmd, 30_000, None, None, None).await?;
 
         if result.exit_code != 0 {
             return Err(format!(
@@ -541,10 +540,7 @@ impl Sandbox for ExeSandbox {
     }
 
     fn sandbox_info(&self) -> String {
-        self.vm_name
-            .get()
-            .cloned()
-            .unwrap_or_default()
+        self.vm_name.get().cloned().unwrap_or_default()
     }
 }
 
@@ -817,7 +813,10 @@ mod tests {
         data.queue_response("a\nb\nc\nd\ne\n", "", 0);
         let sandbox = sandbox_with_mock_data(data);
 
-        let content = sandbox.read_file("test.txt", Some(1), Some(2)).await.unwrap();
+        let content = sandbox
+            .read_file("test.txt", Some(1), Some(2))
+            .await
+            .unwrap();
         assert!(content.contains("2 | b"));
         assert!(content.contains("3 | c"));
         assert!(!content.contains("1 | a"));
@@ -831,10 +830,7 @@ mod tests {
         data.queue_response("content\n", "", 0);
         let sandbox = sandbox_with_mock_data(data);
 
-        sandbox
-            .read_file("/etc/hosts", None, None)
-            .await
-            .unwrap();
+        sandbox.read_file("/etc/hosts", None, None).await.unwrap();
 
         let recorded = commands.lock().unwrap();
         assert!(
@@ -858,7 +854,10 @@ mod tests {
         data.queue_response("", "", 0);
         let sandbox = sandbox_with_mock_data(data);
 
-        sandbox.write_file("src/main.rs", "fn main() {}").await.unwrap();
+        sandbox
+            .write_file("src/main.rs", "fn main() {}")
+            .await
+            .unwrap();
 
         let recorded = uploads.lock().unwrap();
         assert_eq!(recorded[0].path, "/home/exedev/src/main.rs");
@@ -936,7 +935,11 @@ mod tests {
         // find output for list_directory (run via exec_command, so two responses:
         // first for the rg_available check if it fires... but exec_command calls
         // run_command_with_timeout directly, which will get the next response)
-        data.queue_response("f\t1024\tfile.txt\nd\t4096\tsrc\nf\t512\tREADME.md\n", "", 0);
+        data.queue_response(
+            "f\t1024\tfile.txt\nd\t4096\tsrc\nf\t512\tREADME.md\n",
+            "",
+            0,
+        );
         let sandbox = sandbox_with_mock_data(data);
 
         let entries = sandbox.list_directory(".", None).await.unwrap();
@@ -959,7 +962,11 @@ mod tests {
         // First call: rg --version check (cached)
         data.queue_response("ripgrep 14.0.0", "", 0);
         // Second call: the actual grep
-        data.queue_response("src/main.rs:1:fn main() {}\nsrc/lib.rs:5:fn helper() {}\n", "", 0);
+        data.queue_response(
+            "src/main.rs:1:fn main() {}\nsrc/lib.rs:5:fn helper() {}\n",
+            "",
+            0,
+        );
         let sandbox = sandbox_with_mock_data(data);
 
         let results = sandbox

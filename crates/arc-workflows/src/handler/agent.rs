@@ -73,7 +73,8 @@ impl AgentHandler {
 /// `$gaol` at runtime.
 pub(crate) fn expand_variables(text: &str, graph: &Graph) -> Result<String, ArcError> {
     let vars = HashMap::from([("goal".to_string(), graph.goal().to_string())]);
-    crate::cli::run_config::expand_vars(text, &vars).map_err(|e| ArcError::Validation(e.to_string()))
+    crate::cli::run_config::expand_vars(text, &vars)
+        .map_err(|e| ArcError::Validation(e.to_string()))
 }
 
 /// Status fields that indicate a JSON object contains routing directives.
@@ -143,7 +144,9 @@ pub(crate) fn extract_status_fields(text: &str, outcome: &mut Outcome) -> bool {
     });
 
     let Some(value) = parsed else { return false };
-    let Some(obj) = value.as_object() else { return false };
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
 
     if let Some(label) = obj.get("preferred_next_label").and_then(|v| v.as_str()) {
         outcome.preferred_label = Some(label.to_string());

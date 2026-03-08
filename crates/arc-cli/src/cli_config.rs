@@ -69,9 +69,7 @@ pub fn resolve_mode(
     cli_server_url: Option<&str>,
     config: &CliConfig,
 ) -> ResolvedMode {
-    let mode = cli_mode
-        .or_else(|| config.mode.clone())
-        .unwrap_or_default();
+    let mode = cli_mode.or_else(|| config.mode.clone()).unwrap_or_default();
 
     let server_defaults = config.server.as_ref();
 

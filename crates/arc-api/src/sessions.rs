@@ -34,10 +34,17 @@ pub struct SessionState {
 
 #[derive(Clone, Debug)]
 pub enum SessionEvent {
-    TextDelta { delta: String },
-    AssistantTurnComplete { content: String, created_at: chrono::DateTime<chrono::Utc> },
+    TextDelta {
+        delta: String,
+    },
+    AssistantTurnComplete {
+        content: String,
+        created_at: chrono::DateTime<chrono::Utc>,
+    },
     Done,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 fn generate_title(content: &str) -> String {
@@ -77,12 +84,7 @@ fn turns_to_messages(turns: &[arc_types::SessionTurn]) -> Vec<arc_llm::types::Me
         .collect()
 }
 
-fn spawn_generation(
-    store: SessionStore,
-    session_id: uuid::Uuid,
-    dry_run: bool,
-    seq_at_start: u64,
-) {
+fn spawn_generation(store: SessionStore, session_id: uuid::Uuid, dry_run: bool, seq_at_start: u64) {
     tokio::spawn(async move {
         let (event_tx, model_id, model_provider, system_prompt, messages, generation_seq) = {
             let store = store.read().expect("session store lock poisoned");
@@ -233,12 +235,7 @@ pub async fn create_session(
         store.insert(session_id, session);
     }
 
-    spawn_generation(
-        Arc::clone(&state.sessions),
-        session_id,
-        state.dry_run,
-        1,
-    );
+    spawn_generation(Arc::clone(&state.sessions), session_id, state.dry_run, 1);
 
     (
         StatusCode::CREATED,
@@ -289,13 +286,13 @@ pub async fn send_message(
         match store.get_mut(&id) {
             Some(session) => {
                 let now = chrono::Utc::now();
-                session.turns.push(arc_types::SessionTurn::UserTurn(
-                    arc_types::UserTurn {
+                session
+                    .turns
+                    .push(arc_types::SessionTurn::UserTurn(arc_types::UserTurn {
                         kind: arc_types::UserTurnKind::User,
                         content: req.content,
                         created_at: now,
-                    },
-                ));
+                    }));
                 session.updated_at = now;
                 let seq = session.generation_seq.fetch_add(1, Ordering::Relaxed) + 1;
                 seq
@@ -304,12 +301,7 @@ pub async fn send_message(
         }
     };
 
-    spawn_generation(
-        Arc::clone(&state.sessions),
-        id,
-        state.dry_run,
-        seq,
-    );
+    spawn_generation(Arc::clone(&state.sessions), id, state.dry_run, seq);
 
     (
         StatusCode::ACCEPTED,
@@ -333,8 +325,8 @@ pub async fn stream_session_events(
 
     use tokio_stream::StreamExt;
 
-    let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|result| {
-        match result {
+    let stream =
+        tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|result| match result {
             Ok(event) => {
                 let sse: Option<Event> = match event {
                     SessionEvent::TextDelta { delta } => Some(
@@ -342,7 +334,10 @@ pub async fn stream_session_events(
                             .event("content_delta")
                             .data(serde_json::json!({"delta": delta}).to_string()),
                     ),
-                    SessionEvent::AssistantTurnComplete { content, created_at } => Some(
+                    SessionEvent::AssistantTurnComplete {
+                        content,
+                        created_at,
+                    } => Some(
                         Event::default().event("assistant_turn").data(
                             serde_json::json!({
                                 "kind": "assistant",
@@ -352,11 +347,7 @@ pub async fn stream_session_events(
                             .to_string(),
                         ),
                     ),
-                    SessionEvent::Done => Some(
-                        Event::default()
-                            .event("done")
-                            .data("{}"),
-                    ),
+                    SessionEvent::Done => Some(Event::default().event("done").data("{}")),
                     SessionEvent::Error { message } => Some(
                         Event::default()
                             .event("error")
@@ -366,8 +357,7 @@ pub async fn stream_session_events(
                 sse.map(|e| Ok::<_, std::convert::Infallible>(e))
             }
             Err(_) => None,
-        }
-    });
+        });
 
     Sse::new(stream).into_response()
 }

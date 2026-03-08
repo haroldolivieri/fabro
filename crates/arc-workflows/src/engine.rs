@@ -25,8 +25,8 @@ use crate::graph::{Edge, Graph, Node};
 use crate::handler::{EngineServices, HandlerRegistry};
 use crate::hook::{HookContext, HookDecision, HookEvent, HookRunner};
 use crate::interviewer::Interviewer;
-use crate::outcome::{Outcome, StageStatus};
 use crate::millis_u64;
+use crate::outcome::{Outcome, StageStatus};
 use crate::preamble::build_preamble;
 
 /// Classify the failure mode of a completed outcome.
@@ -283,7 +283,11 @@ pub fn resolve_thread_id(
 // --- Run directory helpers (spec 5.6) ---
 
 /// Write manifest.json at the start of a workflow run. Returns the manifest.
-fn write_manifest(logs_root: &Path, graph: &Graph, config: &RunConfig) -> crate::manifest::Manifest {
+fn write_manifest(
+    logs_root: &Path,
+    graph: &Graph,
+    config: &RunConfig,
+) -> crate::manifest::Manifest {
     let workflow_name = if graph.name.is_empty() {
         "unnamed".to_string()
     } else {
@@ -692,11 +696,9 @@ async fn git_push_meta_host(
                 }
             };
             match crate::github_app::resolve_clone_credentials(creds, &owner, &repo).await {
-                Ok((_, Some(token))) => https_url.replacen(
-                    "https://",
-                    &format!("https://x-access-token:{token}@"),
-                    1,
-                ),
+                Ok((_, Some(token))) => {
+                    https_url.replacen("https://", &format!("https://x-access-token:{token}@"), 1)
+                }
                 Ok(_) => {
                     tracing::warn!("No token returned for metadata push");
                     return;
@@ -915,11 +917,7 @@ impl WorkflowRunEngine {
 
     /// Run lifecycle hooks and return the merged decision.
     /// Returns `Proceed` if no hook runner is configured.
-    async fn run_hooks(
-        &self,
-        hook_context: &HookContext,
-        work_dir: Option<&Path>,
-    ) -> HookDecision {
+    async fn run_hooks(&self, hook_context: &HookContext, work_dir: Option<&Path>) -> HookDecision {
         let Some(ref runner) = self.services.hook_runner else {
             return HookDecision::Proceed;
         };
@@ -1251,11 +1249,8 @@ impl WorkflowRunEngine {
 
         // RunStart hook (blocking — can prevent run)
         {
-            let hook_ctx = HookContext::new(
-                HookEvent::RunStart,
-                run_id.clone(),
-                graph.name.clone(),
-            );
+            let hook_ctx =
+                HookContext::new(HookEvent::RunStart, run_id.clone(), graph.name.clone());
             let decision = self.run_hooks(&hook_ctx, hook_work_dir.as_deref()).await;
             if let HookDecision::Block { reason } = decision {
                 let msg = reason.unwrap_or_else(|| "blocked by RunStart hook".into());
@@ -1457,17 +1452,15 @@ impl WorkflowRunEngine {
             if is_terminal(node) {
                 match check_goal_gates(graph, &node_outcomes) {
                     Ok(()) => {
-                        self.services
-                            .emitter
-                            .emit(&WorkflowRunEvent::StageStarted {
-                                node_id: node.id.clone(),
-                                name: node.label().to_string(),
-                                index: stage_index,
-                                handler_type: node.handler_type().map(String::from),
-                                script: node_script(node),
-                                attempt: 1,
-                                max_attempts: 1,
-                            });
+                        self.services.emitter.emit(&WorkflowRunEvent::StageStarted {
+                            node_id: node.id.clone(),
+                            name: node.label().to_string(),
+                            index: stage_index,
+                            handler_type: node.handler_type().map(String::from),
+                            script: node_script(node),
+                            attempt: 1,
+                            max_attempts: 1,
+                        });
                         self.services
                             .emitter
                             .emit(&WorkflowRunEvent::StageCompleted {
@@ -1504,7 +1497,13 @@ impl WorkflowRunEngine {
                                 git_commit_sha: last_git_sha.clone(),
                             });
 
-                        self.run_failed_hook(&run_id, &graph.name, &error, hook_work_dir.as_deref()).await;
+                        self.run_failed_hook(
+                            &run_id,
+                            &graph.name,
+                            &error,
+                            hook_work_dir.as_deref(),
+                        )
+                        .await;
 
                         return Ok((error.to_fail_outcome(), context));
                     }
@@ -1557,7 +1556,10 @@ impl WorkflowRunEngine {
 
             // Step 2: Execute node handler with retry policy
             let visit = *loop_state.node_visits.get(&current_node_id).unwrap_or(&1);
-            context.set(context::keys::INTERNAL_NODE_VISIT_COUNT, serde_json::json!(visit));
+            context.set(
+                context::keys::INTERNAL_NODE_VISIT_COUNT,
+                serde_json::json!(visit),
+            );
             context.set(context::keys::CURRENT_NODE, serde_json::json!(&node.id));
             let retry_policy = build_retry_policy(node, graph);
 
@@ -1573,28 +1575,21 @@ impl WorkflowRunEngine {
 
             // StageStart hook (blocking — can skip node)
             {
-                let mut hook_ctx = HookContext::new(
-                    HookEvent::StageStart,
-                    run_id.clone(),
-                    graph.name.clone(),
-                );
+                let mut hook_ctx =
+                    HookContext::new(HookEvent::StageStart, run_id.clone(), graph.name.clone());
                 hook_ctx.cwd = hook_work_dir.as_ref().map(|p| p.display().to_string());
                 hook_ctx.node_id = Some(node.id.clone());
                 hook_ctx.node_label = Some(node.label().to_string());
                 hook_ctx.handler_type = node.handler_type().map(String::from);
                 hook_ctx.attempt = Some(1);
-                hook_ctx.max_attempts = Some(
-                    usize::try_from(retry_policy.max_attempts).unwrap_or(usize::MAX),
-                );
-                let decision = self
-                    .run_hooks(&hook_ctx, hook_work_dir.as_deref())
-                    .await;
+                hook_ctx.max_attempts =
+                    Some(usize::try_from(retry_policy.max_attempts).unwrap_or(usize::MAX));
+                let decision = self.run_hooks(&hook_ctx, hook_work_dir.as_deref()).await;
                 match decision {
                     HookDecision::Skip { reason } => {
                         let mut outcome = Outcome::skipped();
-                        outcome.notes = Some(
-                            reason.unwrap_or_else(|| "skipped by StageStart hook".into()),
-                        );
+                        outcome.notes =
+                            Some(reason.unwrap_or_else(|| "skipped by StageStart hook".into()));
                         completed_nodes.push(node.id.clone());
                         node_outcomes.insert(node.id.clone(), outcome);
                         previous_node_id = Some(node.id.clone());
@@ -1719,9 +1714,7 @@ impl WorkflowRunEngine {
                     hook_ctx.handler_type = node.handler_type().map(String::from);
                     hook_ctx.status = Some("fail".into());
                     hook_ctx.failure_reason = outcome.failure_reason().map(String::from);
-                    let _ = self
-                        .run_hooks(&hook_ctx, hook_work_dir.as_deref())
-                        .await;
+                    let _ = self.run_hooks(&hook_ctx, hook_work_dir.as_deref()).await;
                 }
             } else {
                 self.services
@@ -1754,9 +1747,7 @@ impl WorkflowRunEngine {
                     hook_ctx.node_label = Some(node.label().to_string());
                     hook_ctx.handler_type = node.handler_type().map(String::from);
                     hook_ctx.status = Some(outcome.status.to_string());
-                    let _ = self
-                        .run_hooks(&hook_ctx, hook_work_dir.as_deref())
-                        .await;
+                    let _ = self.run_hooks(&hook_ctx, hook_work_dir.as_deref()).await;
                 }
             }
 
@@ -1783,7 +1774,10 @@ impl WorkflowRunEngine {
 
             // Step 4: Apply context updates from outcome
             context.apply_updates(&outcome.context_updates);
-            context.set(context::keys::OUTCOME, serde_json::json!(outcome.status.to_string()));
+            context.set(
+                context::keys::OUTCOME,
+                serde_json::json!(outcome.status.to_string()),
+            );
             context.set(
                 context::keys::FAILURE_CLASS,
                 serde_json::json!(outcome_failure_class.map_or(String::new(), |fc| fc.to_string())),
@@ -1836,17 +1830,19 @@ impl WorkflowRunEngine {
                     );
                     hook_ctx.edge_from = Some(node.id.clone());
                     hook_ctx.edge_to = Some(to.clone());
-                    hook_ctx.edge_label = next_edge.as_ref().and_then(|e| e.label().map(String::from));
-                    let decision = self
-                        .run_hooks(&hook_ctx, hook_work_dir.as_deref())
-                        .await;
+                    hook_ctx.edge_label =
+                        next_edge.as_ref().and_then(|e| e.label().map(String::from));
+                    let decision = self.run_hooks(&hook_ctx, hook_work_dir.as_deref()).await;
                     match decision {
-                        HookDecision::Override { edge_to: new_target } => {
+                        HookDecision::Override {
+                            edge_to: new_target,
+                        } => {
                             // Redirect routing to the hook-specified target
                             (None, Some(new_target))
                         }
                         HookDecision::Block { reason } => {
-                            let msg = reason.unwrap_or_else(|| "blocked by EdgeSelected hook".into());
+                            let msg =
+                                reason.unwrap_or_else(|| "blocked by EdgeSelected hook".into());
                             return Err(ArcError::engine(msg));
                         }
                         _ => (next_edge, jump_target),
@@ -1897,138 +1893,143 @@ impl WorkflowRunEngine {
             // Step 6b: Write shadow branch first, then run branch commit with trailer
             // Skip git checkpoint for the start node — it's a no-op, so the commit is always empty.
             if start_node_id.as_deref() != Some(&*node.id) {
-            if let Some(ref mode) = config.git_checkpoint {
-                // Shadow commit (best-effort): extract repo path from either variant
-                let shadow_sha: Option<String> = if config.meta_branch.is_some() {
-                    let repo_path = match mode {
-                        GitCheckpointMode::Host(ref p) | GitCheckpointMode::Remote(ref p) => p,
-                    };
-                    let store = crate::git::MetadataStore::new(repo_path, &config.git_author);
-                    serde_json::to_vec_pretty(&checkpoint)
-                        .ok()
-                        .and_then(|cp_json| {
-                            let artifact_entries: Vec<(String, Vec<u8>)> = artifact_store
-                                .list()
-                                .iter()
-                                .filter_map(|info| {
-                                    info.file_path.as_ref().and_then(|path| {
-                                        std::fs::read(path).ok().map(|data| {
-                                            (format!("artifacts/{}.json", info.id), data)
+                if let Some(ref mode) = config.git_checkpoint {
+                    // Shadow commit (best-effort): extract repo path from either variant
+                    let shadow_sha: Option<String> = if config.meta_branch.is_some() {
+                        let repo_path = match mode {
+                            GitCheckpointMode::Host(ref p) | GitCheckpointMode::Remote(ref p) => p,
+                        };
+                        let store = crate::git::MetadataStore::new(repo_path, &config.git_author);
+                        serde_json::to_vec_pretty(&checkpoint)
+                            .ok()
+                            .and_then(|cp_json| {
+                                let artifact_entries: Vec<(String, Vec<u8>)> = artifact_store
+                                    .list()
+                                    .iter()
+                                    .filter_map(|info| {
+                                        info.file_path.as_ref().and_then(|path| {
+                                            std::fs::read(path).ok().map(|data| {
+                                                (format!("artifacts/{}.json", info.id), data)
+                                            })
                                         })
                                     })
-                                })
-                                .collect();
-                            let artifact_refs: Vec<(&str, &[u8])> = artifact_entries
-                                .iter()
-                                .map(|(k, v)| (k.as_str(), v.as_slice()))
-                                .collect();
-                            match store.write_checkpoint(&config.run_id, &cp_json, &artifact_refs) {
-                                Ok(sha) => Some(sha),
-                                Err(e) => {
-                                    context.append_log(format!(
-                                        "metadata checkpoint write failed: {e}"
-                                    ));
-                                    None
+                                    .collect();
+                                let artifact_refs: Vec<(&str, &[u8])> = artifact_entries
+                                    .iter()
+                                    .map(|(k, v)| (k.as_str(), v.as_slice()))
+                                    .collect();
+                                match store.write_checkpoint(
+                                    &config.run_id,
+                                    &cp_json,
+                                    &artifact_refs,
+                                ) {
+                                    Ok(sha) => Some(sha),
+                                    Err(e) => {
+                                        context.append_log(format!(
+                                            "metadata checkpoint write failed: {e}"
+                                        ));
+                                        None
+                                    }
                                 }
-                            }
-                        })
-                } else {
-                    None
-                };
+                            })
+                    } else {
+                        None
+                    };
 
-                // Run branch commit with Arc-Meta trailer pointing to shadow commit
-                let rid = run_id.clone();
-                let nid = node.id.clone();
-                let status_str = outcome.status.to_string();
-                let completed_count = completed_nodes.len();
+                    // Run branch commit with Arc-Meta trailer pointing to shadow commit
+                    let rid = run_id.clone();
+                    let nid = node.id.clone();
+                    let status_str = outcome.status.to_string();
+                    let completed_count = completed_nodes.len();
 
-                let commit_result = match mode {
-                    GitCheckpointMode::Host(work_dir) => {
-                        git_checkpoint_host(
-                            work_dir.clone(),
-                            rid,
-                            nid,
-                            status_str,
-                            completed_count,
-                            shadow_sha,
-                            config.checkpoint_exclude_globs.clone(),
-                            config.git_author.clone(),
-                        )
-                        .await
-                    }
-                    GitCheckpointMode::Remote(_) => {
-                        git_checkpoint_remote(
-                            &*self.services.sandbox,
-                            &run_id,
-                            &node.id,
-                            &outcome.status.to_string(),
-                            completed_count,
-                            shadow_sha,
-                            &config.checkpoint_exclude_globs,
-                            &config.git_author,
-                        )
-                        .await
-                    }
-                };
-
-                if let Some(sha) = commit_result {
-                    checkpoint.git_commit_sha = Some(sha.clone());
-                    if let Err(e) = checkpoint.save(&checkpoint_path) {
-                        context.append_log(format!("checkpoint re-save with SHA failed: {e}"));
-                    }
-                    self.services
-                        .emitter
-                        .emit(&WorkflowRunEvent::GitCheckpoint {
-                            run_id: run_id.clone(),
-                            node_id: node.id.clone(),
-                            status: outcome.status.to_string(),
-                            git_commit_sha: sha.clone(),
-                        });
-
-                    // Push run branch and metadata branch to origin after remote checkpoint
-                    if let GitCheckpointMode::Remote(ref host_repo) = mode {
-                        if let Some(ref branch) = config.run_branch {
-                            git_push_remote(&*self.services.sandbox, branch).await;
-                        }
-                        if let Some(ref meta_branch) = config.meta_branch {
-                            git_push_meta_host(
-                                host_repo.clone(),
-                                meta_branch.clone(),
-                                config.github_app.clone(),
-                            )
-                            .await;
-                        }
-                    }
-
-                    // Save diff.patch for this stage
-                    let prev = last_git_sha
-                        .as_deref()
-                        .or(config.base_sha.as_deref())
-                        .unwrap_or(&sha);
-                    let diff_base = prev.to_string();
-                    let diff_dest = node_dir(&config.logs_root, &node.id, visit).join("diff.patch");
-
-                    let diff_result = match mode {
+                    let commit_result = match mode {
                         GitCheckpointMode::Host(work_dir) => {
-                            git_diff_host(work_dir.clone(), diff_base).await
+                            git_checkpoint_host(
+                                work_dir.clone(),
+                                rid,
+                                nid,
+                                status_str,
+                                completed_count,
+                                shadow_sha,
+                                config.checkpoint_exclude_globs.clone(),
+                                config.git_author.clone(),
+                            )
+                            .await
                         }
                         GitCheckpointMode::Remote(_) => {
-                            git_diff_remote(&*self.services.sandbox, &diff_base).await
+                            git_checkpoint_remote(
+                                &*self.services.sandbox,
+                                &run_id,
+                                &node.id,
+                                &outcome.status.to_string(),
+                                completed_count,
+                                shadow_sha,
+                                &config.checkpoint_exclude_globs,
+                                &config.git_author,
+                            )
+                            .await
                         }
                     };
-                    if let Some(patch) = diff_result {
-                        if !patch.is_empty() {
-                            let _ = std::fs::write(&diff_dest, patch);
-                        }
-                    } else {
-                        context.append_log("git diff failed".to_string());
-                    }
 
-                    last_git_sha = Some(sha);
-                } else {
-                    context.append_log("git checkpoint commit failed".to_string());
+                    if let Some(sha) = commit_result {
+                        checkpoint.git_commit_sha = Some(sha.clone());
+                        if let Err(e) = checkpoint.save(&checkpoint_path) {
+                            context.append_log(format!("checkpoint re-save with SHA failed: {e}"));
+                        }
+                        self.services
+                            .emitter
+                            .emit(&WorkflowRunEvent::GitCheckpoint {
+                                run_id: run_id.clone(),
+                                node_id: node.id.clone(),
+                                status: outcome.status.to_string(),
+                                git_commit_sha: sha.clone(),
+                            });
+
+                        // Push run branch and metadata branch to origin after remote checkpoint
+                        if let GitCheckpointMode::Remote(ref host_repo) = mode {
+                            if let Some(ref branch) = config.run_branch {
+                                git_push_remote(&*self.services.sandbox, branch).await;
+                            }
+                            if let Some(ref meta_branch) = config.meta_branch {
+                                git_push_meta_host(
+                                    host_repo.clone(),
+                                    meta_branch.clone(),
+                                    config.github_app.clone(),
+                                )
+                                .await;
+                            }
+                        }
+
+                        // Save diff.patch for this stage
+                        let prev = last_git_sha
+                            .as_deref()
+                            .or(config.base_sha.as_deref())
+                            .unwrap_or(&sha);
+                        let diff_base = prev.to_string();
+                        let diff_dest =
+                            node_dir(&config.logs_root, &node.id, visit).join("diff.patch");
+
+                        let diff_result = match mode {
+                            GitCheckpointMode::Host(work_dir) => {
+                                git_diff_host(work_dir.clone(), diff_base).await
+                            }
+                            GitCheckpointMode::Remote(_) => {
+                                git_diff_remote(&*self.services.sandbox, &diff_base).await
+                            }
+                        };
+                        if let Some(patch) = diff_result {
+                            if !patch.is_empty() {
+                                let _ = std::fs::write(&diff_dest, patch);
+                            }
+                        } else {
+                            context.append_log("git diff failed".to_string());
+                        }
+
+                        last_git_sha = Some(sha);
+                    } else {
+                        context.append_log("git checkpoint commit failed".to_string());
+                    }
                 }
-            }
             }
 
             // Step 7: Follow selected edge (or direct jump)
@@ -2059,7 +2060,13 @@ impl WorkflowRunEngine {
                                 git_commit_sha: last_git_sha.clone(),
                             });
 
-                        self.run_failed_hook(&run_id, &graph.name, &error, hook_work_dir.as_deref()).await;
+                        self.run_failed_hook(
+                            &run_id,
+                            &graph.name,
+                            &error,
+                            hook_work_dir.as_deref(),
+                        )
+                        .await;
 
                         return Err(error);
                     }
@@ -2141,11 +2148,8 @@ impl WorkflowRunEngine {
 
         // RunComplete hook (non-blocking)
         {
-            let hook_ctx = HookContext::new(
-                HookEvent::RunComplete,
-                run_id.clone(),
-                graph.name.clone(),
-            );
+            let hook_ctx =
+                HookContext::new(HookEvent::RunComplete, run_id.clone(), graph.name.clone());
             let _ = self.run_hooks(&hook_ctx, hook_work_dir.as_deref()).await;
         }
 
@@ -3163,8 +3167,7 @@ mod tests {
         };
         engine.run(&g, &config).await.unwrap();
 
-        let manifest =
-            crate::manifest::Manifest::load(&dir.path().join("manifest.json")).unwrap();
+        let manifest = crate::manifest::Manifest::load(&dir.path().join("manifest.json")).unwrap();
         assert_eq!(manifest.labels.get("env").map(String::as_str), Some("test"));
     }
 
@@ -3190,8 +3193,7 @@ mod tests {
         };
         engine.run(&g, &config).await.unwrap();
 
-        let manifest =
-            crate::manifest::Manifest::load(&dir.path().join("manifest.json")).unwrap();
+        let manifest = crate::manifest::Manifest::load(&dir.path().join("manifest.json")).unwrap();
         assert!(manifest.labels.is_empty());
     }
 
@@ -4836,7 +4838,10 @@ mod tests {
         // Check the checkpoint for the failure_signature context value
         let checkpoint_path = dir.path().join("checkpoint.json");
         let cp = Checkpoint::load(&checkpoint_path).unwrap();
-        let sig_value = cp.context_values.get(context::keys::FAILURE_SIGNATURE).unwrap();
+        let sig_value = cp
+            .context_values
+            .get(context::keys::FAILURE_SIGNATURE)
+            .unwrap();
         let sig_str = sig_value.as_str().unwrap();
         assert!(
             sig_str.contains("work|deterministic|"),
@@ -4855,7 +4860,16 @@ mod tests {
             .output()
             .unwrap();
         std::process::Command::new("git")
-            .args(["-c", "user.name=Test", "-c", "user.email=test@test.com", "commit", "--allow-empty", "-m", "initial"])
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@test.com",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "initial",
+            ])
             .current_dir(repo)
             .output()
             .unwrap();

@@ -126,7 +126,6 @@ pub enum HookDecision {
     },
 }
 
-
 impl HookDecision {
     /// Merge two decisions. Block > Skip/Override > Proceed.
     #[must_use]
@@ -237,11 +236,7 @@ mod tests {
 
     #[test]
     fn hook_context_omits_none_fields() {
-        let ctx = HookContext::new(
-            HookEvent::RunStart,
-            "run-1".into(),
-            "wf".into(),
-        );
+        let ctx = HookContext::new(HookEvent::RunStart, "run-1".into(), "wf".into());
         let json = serde_json::to_string(&ctx).unwrap();
         assert!(!json.contains("node_id"));
         assert!(!json.contains("failure_reason"));
@@ -303,10 +298,7 @@ mod tests {
             proceed.clone().merge(skip.clone()),
             HookDecision::Skip { .. }
         ));
-        assert!(matches!(
-            skip.merge(proceed),
-            HookDecision::Skip { .. }
-        ));
+        assert!(matches!(skip.merge(proceed), HookDecision::Skip { .. }));
     }
 
     #[test]
@@ -318,10 +310,7 @@ mod tests {
             edge_to: "x".into(),
         };
         // First non-Proceed wins when no Block
-        assert!(matches!(
-            skip.merge(override_d),
-            HookDecision::Skip { .. }
-        ));
+        assert!(matches!(skip.merge(override_d), HookDecision::Skip { .. }));
     }
 
     #[test]

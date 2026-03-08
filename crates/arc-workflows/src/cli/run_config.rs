@@ -189,11 +189,7 @@ pub fn load_run_config(path: &Path) -> anyhow::Result<WorkflowRunConfig> {
 /// Only whole-value references are supported (no partial interpolation).
 /// Missing host env vars produce a hard error.
 fn resolve_sandbox_env(config: &mut WorkflowRunConfig) -> anyhow::Result<()> {
-    if let Some(env) = config
-        .sandbox
-        .as_mut()
-        .and_then(|s| s.env.as_mut())
-    {
+    if let Some(env) = config.sandbox.as_mut().and_then(|s| s.env.as_mut()) {
         resolve_env_refs(env)?;
     }
     Ok(())
@@ -211,9 +207,7 @@ pub fn resolve_env_refs(env: &mut HashMap<String, String>) -> anyhow::Result<()>
             .and_then(|s| s.strip_suffix('}'))
         {
             *value = std::env::var(var_name).with_context(|| {
-                format!(
-                    "sandbox.env.{key}: host environment variable {var_name:?} is not set"
-                )
+                format!("sandbox.env.{key}: host environment variable {var_name:?} is not set")
             })?;
         }
     }
@@ -624,8 +618,11 @@ dockerfile = { path = "./Dockerfile" }
     fn load_run_config_resolves_dockerfile_path() {
         let dir = tempfile::tempdir().unwrap();
         let dockerfile_path = dir.path().join("Dockerfile");
-        std::fs::write(&dockerfile_path, "FROM rust:1.85-slim-bookworm\nRUN apt-get update")
-            .unwrap();
+        std::fs::write(
+            &dockerfile_path,
+            "FROM rust:1.85-slim-bookworm\nRUN apt-get update",
+        )
+        .unwrap();
 
         let toml_path = dir.path().join("run.toml");
         std::fs::write(
@@ -1205,19 +1202,13 @@ anthropic = ["gemini"]
             llm: Some(LlmConfig {
                 model: None,
                 provider: Some("anthropic".into()),
-                fallbacks: Some(HashMap::from([(
-                    "anthropic".into(),
-                    vec!["openai".into()],
-                )])),
+                fallbacks: Some(HashMap::from([("anthropic".into(), vec!["openai".into()])])),
             }),
             ..RunDefaults::default()
         };
         cfg.apply_defaults(&defaults);
         let llm = cfg.llm.unwrap();
-        assert_eq!(
-            llm.fallbacks.unwrap()["anthropic"],
-            vec!["gemini"]
-        );
+        assert_eq!(llm.fallbacks.unwrap()["anthropic"], vec!["gemini"]);
     }
 
     #[test]
@@ -1237,19 +1228,13 @@ model = "opus"
             llm: Some(LlmConfig {
                 model: None,
                 provider: Some("anthropic".into()),
-                fallbacks: Some(HashMap::from([(
-                    "anthropic".into(),
-                    vec!["openai".into()],
-                )])),
+                fallbacks: Some(HashMap::from([("anthropic".into(), vec!["openai".into()])])),
             }),
             ..RunDefaults::default()
         };
         cfg.apply_defaults(&defaults);
         let llm = cfg.llm.unwrap();
-        assert_eq!(
-            llm.fallbacks.unwrap()["anthropic"],
-            vec!["openai"]
-        );
+        assert_eq!(llm.fallbacks.unwrap()["anthropic"], vec!["openai"]);
     }
 
     #[tokio::test]
@@ -1461,10 +1446,7 @@ exclude_globs = ["**/dist/**", "**/.cache/**"]
         .unwrap();
         let defaults = RunDefaults {
             checkpoint: CheckpointConfig {
-                exclude_globs: vec![
-                    "**/.cache/**".into(),
-                    "**/node_modules/**".into(),
-                ],
+                exclude_globs: vec!["**/.cache/**".into(), "**/node_modules/**".into()],
             },
             ..RunDefaults::default()
         };
@@ -1492,10 +1474,7 @@ graph = "w.dot"
             ..RunDefaults::default()
         };
         cfg.apply_defaults(&defaults);
-        assert_eq!(
-            cfg.checkpoint.exclude_globs,
-            vec!["**/node_modules/**"]
-        );
+        assert_eq!(cfg.checkpoint.exclude_globs, vec!["**/node_modules/**"]);
     }
 
     #[test]
@@ -1513,10 +1492,7 @@ exclude_globs = ["**/dist/**"]
         .unwrap();
         let defaults = RunDefaults::default();
         cfg.apply_defaults(&defaults);
-        assert_eq!(
-            cfg.checkpoint.exclude_globs,
-            vec!["**/dist/**"]
-        );
+        assert_eq!(cfg.checkpoint.exclude_globs, vec!["**/dist/**"]);
     }
 
     #[test]
@@ -1574,9 +1550,7 @@ provider = "daytona"
     #[test]
     fn resolve_env_refs_host_var() {
         std::env::set_var("ARC_TEST_RESOLVE_VAR", "secret123");
-        let mut env = HashMap::from([
-            ("MY_KEY".into(), "${env.ARC_TEST_RESOLVE_VAR}".into()),
-        ]);
+        let mut env = HashMap::from([("MY_KEY".into(), "${env.ARC_TEST_RESOLVE_VAR}".into())]);
         resolve_env_refs(&mut env).unwrap();
         assert_eq!(env["MY_KEY"], "secret123");
         std::env::remove_var("ARC_TEST_RESOLVE_VAR");
@@ -1584,9 +1558,10 @@ provider = "daytona"
 
     #[test]
     fn resolve_env_refs_missing_var_errors() {
-        let mut env = HashMap::from([
-            ("MY_KEY".into(), "${env.ARC_TEST_NONEXISTENT_VAR_12345}".into()),
-        ]);
+        let mut env = HashMap::from([(
+            "MY_KEY".into(),
+            "${env.ARC_TEST_NONEXISTENT_VAR_12345}".into(),
+        )]);
         let err = resolve_env_refs(&mut env).unwrap_err();
         assert!(
             err.to_string().contains("ARC_TEST_NONEXISTENT_VAR_12345"),
@@ -1596,9 +1571,7 @@ provider = "daytona"
 
     #[test]
     fn resolve_env_refs_partial_not_interpolated() {
-        let mut env = HashMap::from([
-            ("MIXED".into(), "prefix_${env.HOME}_suffix".into()),
-        ]);
+        let mut env = HashMap::from([("MIXED".into(), "prefix_${env.HOME}_suffix".into())]);
         // Partial interpolation is not supported — value is left as-is
         resolve_env_refs(&mut env).unwrap();
         assert_eq!(env["MIXED"], "prefix_${env.HOME}_suffix");

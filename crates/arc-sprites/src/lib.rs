@@ -98,11 +98,7 @@ impl SpritesSandbox {
     /// Build args for `sprite exec -s <name> [-o org] bash -c <command>`.
     fn build_exec_args(&self, command: &str) -> Result<Vec<String>, String> {
         let name = self.sprite_name()?;
-        let mut args = vec![
-            "exec".to_string(),
-            "-s".to_string(),
-            name.to_string(),
-        ];
+        let mut args = vec!["exec".to_string(), "-s".to_string(), name.to_string()];
         if let Some(ref org) = self.config.org {
             args.push("-o".to_string());
             args.push(org.clone());
@@ -180,8 +176,7 @@ impl Sandbox for SpritesSandbox {
         let url_refs: Vec<&str> = url_args.iter().map(|s| s.as_str()).collect();
         let url_output = self.runner.run(&url_refs).await.map_err(|e| {
             let err = format!("Failed to get sprite URL: {e}");
-            let duration_ms =
-                u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
             self.emit(SandboxEvent::InitializeFailed {
                 provider: PROVIDER.into(),
                 error: err.clone(),
@@ -273,7 +268,11 @@ impl Sandbox for SpritesSandbox {
 
         if let Some(vars) = env_vars {
             for (key, value) in vars {
-                parts.push(format!("export {}='{}';", key, value.replace('\'', "'\\''")));
+                parts.push(format!(
+                    "export {}='{}';",
+                    key,
+                    value.replace('\'', "'\\''")
+                ));
             }
         }
 
@@ -816,10 +815,7 @@ mod tests {
         runner.queue_response("content\n", "", 0);
         let sandbox = sandbox_with_mock(runner);
 
-        sandbox
-            .read_file("/etc/hosts", None, None)
-            .await
-            .unwrap();
+        sandbox.read_file("/etc/hosts", None, None).await.unwrap();
 
         let recorded = commands.lock().unwrap();
         let cmd = recorded[0].args.last().unwrap();
@@ -885,10 +881,7 @@ mod tests {
 
         let recorded = commands.lock().unwrap();
         let cmd = recorded[0].args.last().unwrap();
-        assert!(
-            cmd.contains("rm -f"),
-            "expected rm -f, got: {cmd}",
-        );
+        assert!(cmd.contains("rm -f"), "expected rm -f, got: {cmd}",);
     }
 
     // ---- file_exists ----
@@ -980,11 +973,7 @@ mod tests {
     #[tokio::test]
     async fn glob_finds_files() {
         let runner = MockSpriteRunner::new();
-        runner.queue_response(
-            "/home/sprite/src/main.rs\n/home/sprite/src/lib.rs\n",
-            "",
-            0,
-        );
+        runner.queue_response("/home/sprite/src/main.rs\n/home/sprite/src/lib.rs\n", "", 0);
         let sandbox = sandbox_with_mock(runner);
 
         let results = sandbox.glob("*.rs", Some("src")).await.unwrap();
@@ -999,8 +988,7 @@ mod tests {
     async fn download_file_to_local_writes_bytes() {
         let runner = MockSpriteRunner::new();
         use base64::Engine;
-        let encoded =
-            base64::engine::general_purpose::STANDARD.encode(b"binary content");
+        let encoded = base64::engine::general_purpose::STANDARD.encode(b"binary content");
         runner.queue_response(&encoded, "", 0);
         let sandbox = sandbox_with_mock(runner);
 

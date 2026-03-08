@@ -150,7 +150,10 @@ impl Handler for SubWorkflowHandler {
             labels: HashMap::new(),
             checkpoint_exclude_globs: Vec::new(),
             github_app: None,
-            git_author: git_state.as_ref().map(|gs| gs.git_author.clone()).unwrap_or_default(),
+            git_author: git_state
+                .as_ref()
+                .map(|gs| gs.git_author.clone())
+                .unwrap_or_default(),
         };
 
         // Clone parent context for child; inject parent preamble
@@ -683,14 +686,8 @@ mod tests {
             serde_json::json!("exit"),
         );
         after.insert("current_node".to_string(), serde_json::json!("exit"));
-        after.insert(
-            "response.plan".to_string(),
-            serde_json::json!("the plan"),
-        );
-        after.insert(
-            "review.result".to_string(),
-            serde_json::json!("approved"),
-        );
+        after.insert("response.plan".to_string(), serde_json::json!("the plan"));
+        after.insert("review.result".to_string(), serde_json::json!("approved"));
 
         let raw_diff = context_diff(&before, &after);
         let filtered: HashMap<String, serde_json::Value> = raw_diff
@@ -803,8 +800,7 @@ mod tests {
                 _logs_root: &Path,
                 _services: &EngineServices,
             ) -> Result<Outcome, ArcError> {
-                let parent_preamble =
-                    context.get_string(keys::INTERNAL_PARENT_PREAMBLE, "");
+                let parent_preamble = context.get_string(keys::INTERNAL_PARENT_PREAMBLE, "");
                 let mut outcome = Outcome::success();
                 outcome.context_updates.insert(
                     "echo.parent_preamble".to_string(),

@@ -10,14 +10,14 @@ use arc_workflows::engine::{RunConfig, WorkflowRunEngine};
 use arc_workflows::error::ArcError;
 use arc_workflows::event::{EventEmitter, WorkflowRunEvent};
 use arc_workflows::graph::{AttrValue, Edge, Graph, Node};
-use arc_workflows::handler::agent::{CodergenBackend, AgentHandler, CodergenResult};
+use arc_workflows::handler::agent::{AgentHandler, CodergenBackend, CodergenResult};
+use arc_workflows::handler::command::CommandHandler;
 use arc_workflows::handler::conditional::ConditionalHandler;
 use arc_workflows::handler::default_registry;
 use arc_workflows::handler::exit::ExitHandler;
-use arc_workflows::handler::manager_loop::SubWorkflowHandler;
-use arc_workflows::handler::command::CommandHandler;
-use arc_workflows::handler::start::StartHandler;
 use arc_workflows::handler::human::HumanHandler;
+use arc_workflows::handler::manager_loop::SubWorkflowHandler;
+use arc_workflows::handler::start::StartHandler;
 use arc_workflows::handler::wait::WaitHandler;
 use arc_workflows::handler::{Handler, HandlerRegistry};
 use arc_workflows::interviewer::auto_approve::AutoApproveInterviewer;
@@ -401,10 +401,8 @@ async fn end_to_end_human_gate_pipeline() {
         "shape".to_string(),
         AttrValue::String("hexagon".to_string()),
     );
-    gate.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("human".to_string()),
-    );
+    gate.attrs
+        .insert("type".to_string(), AttrValue::String("human".to_string()));
     gate.attrs.insert(
         "label".to_string(),
         AttrValue::String("Review Changes".to_string()),
@@ -1959,10 +1957,8 @@ async fn auto_approve_interviewer_e2e() {
         "shape".to_string(),
         AttrValue::String("hexagon".to_string()),
     );
-    gate.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("human".to_string()),
-    );
+    gate.attrs
+        .insert("type".to_string(), AttrValue::String("human".to_string()));
     gate.attrs
         .insert("label".to_string(), AttrValue::String("Review".to_string()));
     graph.nodes.insert("gate".to_string(), gate);
@@ -2174,10 +2170,8 @@ async fn human_gate_loops_back() {
         "shape".to_string(),
         AttrValue::String("hexagon".to_string()),
     );
-    gate.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("human".to_string()),
-    );
+    gate.attrs
+        .insert("type".to_string(), AttrValue::String("human".to_string()));
     gate.attrs
         .insert("label".to_string(), AttrValue::String("Review".to_string()));
     graph.nodes.insert("gate".to_string(), gate);
@@ -5675,7 +5669,7 @@ mod real_llm {
     use arc_workflows::context::Context;
     use arc_workflows::error::ArcError;
     use arc_workflows::graph::Node;
-    use arc_workflows::handler::agent::{CodergenBackend, AgentHandler, CodergenResult};
+    use arc_workflows::handler::agent::{AgentHandler, CodergenBackend, CodergenResult};
 
     use arc_llm::client::Client;
     use arc_llm::types::{Message, Request};
@@ -5749,8 +5743,8 @@ mod real_llm {
     use arc_workflows::event::EventEmitter;
     use arc_workflows::graph::{AttrValue, Edge, Graph};
     use arc_workflows::handler::exit::ExitHandler;
-    use arc_workflows::handler::start::StartHandler;
     use arc_workflows::handler::human::HumanHandler;
+    use arc_workflows::handler::start::StartHandler;
     use arc_workflows::handler::HandlerRegistry;
     use arc_workflows::interviewer::auto_approve::AutoApproveInterviewer;
     use arc_workflows::outcome::StageStatus;
@@ -5835,7 +5829,7 @@ mod real_llm {
             labels: std::collections::HashMap::new(),
             checkpoint_exclude_globs: Vec::new(),
             github_app: None,
-        git_author: arc_workflows::git::GitAuthor::default(),
+            git_author: arc_workflows::git::GitAuthor::default(),
         };
 
         let outcome = tokio::time::timeout(
@@ -5950,7 +5944,7 @@ mod real_llm {
             labels: std::collections::HashMap::new(),
             checkpoint_exclude_globs: Vec::new(),
             github_app: None,
-        git_author: arc_workflows::git::GitAuthor::default(),
+            git_author: arc_workflows::git::GitAuthor::default(),
         };
 
         let outcome = tokio::time::timeout(
@@ -6016,10 +6010,8 @@ mod real_llm {
             "shape".to_string(),
             AttrValue::String("hexagon".to_string()),
         );
-        gate.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("human".to_string()),
-        );
+        gate.attrs
+            .insert("type".to_string(), AttrValue::String("human".to_string()));
         gate.attrs.insert(
             "label".to_string(),
             AttrValue::String("Approve?".to_string()),
@@ -6092,7 +6084,7 @@ mod real_llm {
             labels: std::collections::HashMap::new(),
             checkpoint_exclude_globs: Vec::new(),
             github_app: None,
-        git_author: arc_workflows::git::GitAuthor::default(),
+            git_author: arc_workflows::git::GitAuthor::default(),
         };
 
         let outcome = tokio::time::timeout(
@@ -6200,7 +6192,7 @@ mod real_llm {
             labels: std::collections::HashMap::new(),
             checkpoint_exclude_globs: Vec::new(),
             github_app: None,
-        git_author: arc_workflows::git::GitAuthor::default(),
+            git_author: arc_workflows::git::GitAuthor::default(),
         };
 
         let outcome = tokio::time::timeout(
@@ -6254,10 +6246,8 @@ async fn human_gate_freeform_only_routes_text() {
         "shape".to_string(),
         AttrValue::String("hexagon".to_string()),
     );
-    gate.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("human".to_string()),
-    );
+    gate.attrs
+        .insert("type".to_string(), AttrValue::String("human".to_string()));
     gate.attrs.insert(
         "label".to_string(),
         AttrValue::String("Enter feedback".to_string()),
@@ -6360,10 +6350,8 @@ async fn human_gate_freeform_with_fixed_choice_match() {
         "shape".to_string(),
         AttrValue::String("hexagon".to_string()),
     );
-    gate.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("human".to_string()),
-    );
+    gate.attrs
+        .insert("type".to_string(), AttrValue::String("human".to_string()));
     gate.attrs.insert(
         "label".to_string(),
         AttrValue::String("Review Changes".to_string()),
@@ -6483,10 +6471,8 @@ async fn human_gate_freeform_fallback_on_unmatched_text() {
         "shape".to_string(),
         AttrValue::String("hexagon".to_string()),
     );
-    gate.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("human".to_string()),
-    );
+    gate.attrs
+        .insert("type".to_string(), AttrValue::String("human".to_string()));
     gate.attrs.insert(
         "label".to_string(),
         AttrValue::String("Review Changes".to_string()),
@@ -6620,10 +6606,8 @@ async fn human_gate_freeform_sets_allow_freeform_on_question() {
         "shape".to_string(),
         AttrValue::String("hexagon".to_string()),
     );
-    gate.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("human".to_string()),
-    );
+    gate.attrs
+        .insert("type".to_string(), AttrValue::String("human".to_string()));
     gate.attrs.insert(
         "label".to_string(),
         AttrValue::String("Pick or type".to_string()),
@@ -6731,10 +6715,8 @@ async fn human_gate_without_freeform_sets_allow_freeform_false() {
         "shape".to_string(),
         AttrValue::String("hexagon".to_string()),
     );
-    gate.attrs.insert(
-        "type".to_string(),
-        AttrValue::String("human".to_string()),
-    );
+    gate.attrs
+        .insert("type".to_string(), AttrValue::String("human".to_string()));
     gate.attrs.insert(
         "label".to_string(),
         AttrValue::String("Pick one".to_string()),
@@ -7010,9 +6992,7 @@ fn subgraph_without_label_no_class_derived() {
 // ---------------------------------------------------------------------------
 
 /// Helper: create a WorkflowRunEngine with hooks configured from HookDefinitions.
-fn engine_with_hooks(
-    hooks: Vec<arc_workflows::hook::HookDefinition>,
-) -> WorkflowRunEngine {
+fn engine_with_hooks(hooks: Vec<arc_workflows::hook::HookDefinition>) -> WorkflowRunEngine {
     let registry = make_linear_registry();
     let emitter = Arc::new(EventEmitter::new());
     let sandbox = local_env();
@@ -7028,7 +7008,10 @@ fn engine_with_hooks(
 /// Helper: create a WorkflowRunEngine with hooks and event capture.
 fn engine_with_hooks_and_events(
     hooks: Vec<arc_workflows::hook::HookDefinition>,
-) -> (WorkflowRunEngine, Arc<std::sync::Mutex<Vec<WorkflowRunEvent>>>) {
+) -> (
+    WorkflowRunEngine,
+    Arc<std::sync::Mutex<Vec<WorkflowRunEvent>>>,
+) {
     let registry = make_linear_registry();
     let mut emitter = EventEmitter::new();
     let events = collect_events(&mut emitter);
@@ -7151,13 +7134,17 @@ async fn hook_run_start_block_prevents_run() {
     // WorkflowRunStarted should still have been emitted (it fires before the hook)
     let captured = events.lock().unwrap();
     assert!(
-        captured.iter().any(|e| matches!(e, WorkflowRunEvent::WorkflowRunStarted { .. })),
+        captured
+            .iter()
+            .any(|e| matches!(e, WorkflowRunEvent::WorkflowRunStarted { .. })),
         "WorkflowRunStarted should be emitted before hook blocks"
     );
 
     // But no StageStarted — the run never reached node execution
     assert!(
-        !captured.iter().any(|e| matches!(e, WorkflowRunEvent::StageStarted { .. })),
+        !captured
+            .iter()
+            .any(|e| matches!(e, WorkflowRunEvent::StageStarted { .. })),
         "No stage should start when RunStart hook blocks"
     );
 }
@@ -7201,7 +7188,11 @@ async fn hook_stage_start_proceed_allows_execution() {
 
     // Work node should have executed (response.md exists)
     assert!(
-        dir.path().join("nodes").join("work").join("response.md").exists(),
+        dir.path()
+            .join("nodes")
+            .join("work")
+            .join("response.md")
+            .exists(),
         "response.md should exist when StageStart hook proceeds"
     );
 }
@@ -7224,7 +7215,11 @@ async fn hook_stage_start_skip_bypasses_node() {
 
     // response.md should NOT exist for the work node (it was skipped)
     assert!(
-        !dir.path().join("nodes").join("work").join("response.md").exists(),
+        !dir.path()
+            .join("nodes")
+            .join("work")
+            .join("response.md")
+            .exists(),
         "response.md should not exist when StageStart hook skips node"
     );
 
@@ -7232,8 +7227,10 @@ async fn hook_stage_start_skip_bypasses_node() {
     let captured = events.lock().unwrap();
     let stage_starts: Vec<_> = captured
         .iter()
-        .filter(|e| matches!(e, WorkflowRunEvent::StageStarted { handler_type, .. }
-            if handler_type.as_deref() != Some("start") && handler_type.as_deref() != Some("exit")))
+        .filter(|e| {
+            matches!(e, WorkflowRunEvent::StageStarted { handler_type, .. }
+            if handler_type.as_deref() != Some("start") && handler_type.as_deref() != Some("exit"))
+        })
         .collect();
     assert!(
         !stage_starts.is_empty(),
@@ -7277,13 +7274,21 @@ async fn hook_stage_start_matcher_filters_by_node_id() {
 
     // step1 should have executed (response.md exists)
     assert!(
-        dir.path().join("nodes").join("step1").join("response.md").exists(),
+        dir.path()
+            .join("nodes")
+            .join("step1")
+            .join("response.md")
+            .exists(),
         "step1 should execute because matcher doesn't match it"
     );
 
     // step2 should have been skipped (no response.md)
     assert!(
-        !dir.path().join("nodes").join("step2").join("response.md").exists(),
+        !dir.path()
+            .join("nodes")
+            .join("step2")
+            .join("response.md")
+            .exists(),
         "step2 should be skipped because matcher matches it"
     );
 }
@@ -7291,10 +7296,7 @@ async fn hook_stage_start_matcher_filters_by_node_id() {
 #[tokio::test]
 async fn hook_stage_start_matcher_no_match_proceeds() {
     // Hook with matcher that matches nothing
-    let mut hook = make_hook(
-        arc_workflows::hook::HookEvent::StageStart,
-        "exit 1",
-    );
+    let mut hook = make_hook(arc_workflows::hook::HookEvent::StageStart, "exit 1");
     hook.matcher = Some("nonexistent_node".into());
     let hooks = vec![hook];
 
@@ -7326,7 +7328,10 @@ async fn hook_stage_complete_fires_after_success() {
     assert_eq!(outcome.status, StageStatus::Success);
 
     // Marker file should exist and contain node IDs
-    assert!(marker.exists(), "StageComplete hook should have written marker file");
+    assert!(
+        marker.exists(),
+        "StageComplete hook should have written marker file"
+    );
     let content = std::fs::read_to_string(&marker).unwrap();
     // start, step1, step2, exit all complete — hook fires for each
     assert!(
@@ -7565,10 +7570,7 @@ async fn hook_edge_selected_override_redirects_routing() {
 
 #[tokio::test]
 async fn hook_edge_selected_block_aborts_run() {
-    let mut hook = make_hook(
-        arc_workflows::hook::HookEvent::EdgeSelected,
-        "exit 1",
-    );
+    let mut hook = make_hook(arc_workflows::hook::HookEvent::EdgeSelected, "exit 1");
     hook.matcher = Some("^plan$".into());
     let hooks = vec![hook];
 
@@ -7578,10 +7580,7 @@ async fn hook_edge_selected_block_aborts_run() {
     let config = make_run_config(dir.path());
 
     let result = engine.run(&graph, &config).await;
-    assert!(
-        result.is_err(),
-        "EdgeSelected block should abort the run"
-    );
+    assert!(result.is_err(), "EdgeSelected block should abort the run");
 }
 
 // --- CheckpointSaved hook ---
@@ -7603,10 +7602,7 @@ async fn hook_checkpoint_saved_fires() {
     assert_eq!(outcome.status, StageStatus::Success);
 
     // Checkpoint is saved after each node
-    assert!(
-        marker.exists(),
-        "CheckpointSaved hook should have fired"
-    );
+    assert!(marker.exists(), "CheckpointSaved hook should have fired");
     let content = std::fs::read_to_string(&marker).unwrap();
     assert!(
         content.contains("work"),
@@ -7735,15 +7731,23 @@ event = "run_complete"
 command = "echo done"
 "#;
 
-    let cfg: arc_workflows::cli::run_config::WorkflowRunConfig =
-        toml::from_str(toml).unwrap();
+    let cfg: arc_workflows::cli::run_config::WorkflowRunConfig = toml::from_str(toml).unwrap();
     assert_eq!(cfg.hooks.len(), 2);
-    assert_eq!(cfg.hooks[0].event, arc_workflows::hook::HookEvent::StageStart);
+    assert_eq!(
+        cfg.hooks[0].event,
+        arc_workflows::hook::HookEvent::StageStart
+    );
     assert_eq!(cfg.hooks[0].matcher.as_deref(), Some("agent_loop"));
     assert!(cfg.hooks[0].is_blocking());
     assert!(!cfg.hooks[0].runs_in_sandbox());
-    assert_eq!(cfg.hooks[0].timeout(), std::time::Duration::from_millis(30000));
-    assert_eq!(cfg.hooks[1].event, arc_workflows::hook::HookEvent::RunComplete);
+    assert_eq!(
+        cfg.hooks[0].timeout(),
+        std::time::Duration::from_millis(30000)
+    );
+    assert_eq!(
+        cfg.hooks[1].event,
+        arc_workflows::hook::HookEvent::RunComplete
+    );
     assert!(!cfg.hooks[1].is_blocking()); // RunComplete non-blocking by default
 }
 
@@ -7752,10 +7756,7 @@ command = "echo done"
 #[tokio::test]
 async fn hook_blocking_override_makes_non_blocking_event_blocking() {
     // StageComplete is non-blocking by default, but force it to blocking
-    let mut hook = make_hook(
-        arc_workflows::hook::HookEvent::StageComplete,
-        "exit 1",
-    );
+    let mut hook = make_hook(arc_workflows::hook::HookEvent::StageComplete, "exit 1");
     hook.blocking = Some(true);
     let hooks = vec![hook];
 
@@ -7777,10 +7778,7 @@ async fn hook_blocking_override_makes_non_blocking_event_blocking() {
 #[tokio::test]
 async fn hook_non_blocking_override_on_blocking_event() {
     // RunStart is blocking by default, but force it to non-blocking
-    let mut hook = make_hook(
-        arc_workflows::hook::HookEvent::RunStart,
-        "exit 1",
-    );
+    let mut hook = make_hook(arc_workflows::hook::HookEvent::RunStart, "exit 1");
     hook.blocking = Some(false);
     let hooks = vec![hook];
 
@@ -7818,11 +7816,19 @@ async fn hook_matcher_regex_pattern() {
 
     // Both step1 and step2 should be skipped
     assert!(
-        !dir.path().join("nodes").join("step1").join("response.md").exists(),
+        !dir.path()
+            .join("nodes")
+            .join("step1")
+            .join("response.md")
+            .exists(),
         "step1 should be skipped by regex ^step"
     );
     assert!(
-        !dir.path().join("nodes").join("step2").join("response.md").exists(),
+        !dir.path()
+            .join("nodes")
+            .join("step2")
+            .join("response.md")
+            .exists(),
         "step2 should be skipped by regex ^step"
     );
 }
@@ -7857,7 +7863,10 @@ async fn hook_json_block_with_reason() {
 
     let result = engine.run(&graph, &config).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("forbidden by policy"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("forbidden by policy"));
 }
 
 // --- Sandbox field tests ---
@@ -7908,21 +7917,29 @@ max_tool_rounds = 10
 timeout_ms = 120000
 "#;
 
-    let cfg: arc_workflows::cli::run_config::WorkflowRunConfig =
-        toml::from_str(toml).unwrap();
+    let cfg: arc_workflows::cli::run_config::WorkflowRunConfig = toml::from_str(toml).unwrap();
     assert_eq!(cfg.hooks.len(), 2);
 
     // Prompt hook
-    assert_eq!(cfg.hooks[0].event, arc_workflows::hook::HookEvent::StageStart);
+    assert_eq!(
+        cfg.hooks[0].event,
+        arc_workflows::hook::HookEvent::StageStart
+    );
     assert!(matches!(
         cfg.hooks[0].resolved_hook_type().as_deref(),
         Some(arc_workflows::hook::HookType::Prompt { prompt, model })
             if prompt == "Should this stage proceed?" && *model == Some("haiku".into())
     ));
-    assert_eq!(cfg.hooks[0].timeout(), std::time::Duration::from_millis(30000));
+    assert_eq!(
+        cfg.hooks[0].timeout(),
+        std::time::Duration::from_millis(30000)
+    );
 
     // Agent hook
-    assert_eq!(cfg.hooks[1].event, arc_workflows::hook::HookEvent::RunComplete);
+    assert_eq!(
+        cfg.hooks[1].event,
+        arc_workflows::hook::HookEvent::RunComplete
+    );
     assert!(matches!(
         cfg.hooks[1].resolved_hook_type().as_deref(),
         Some(arc_workflows::hook::HookType::Agent { prompt, model, max_tool_rounds })
@@ -7930,7 +7947,10 @@ timeout_ms = 120000
             && *model == Some("sonnet".into())
             && *max_tool_rounds == Some(10)
     ));
-    assert_eq!(cfg.hooks[1].timeout(), std::time::Duration::from_millis(120000));
+    assert_eq!(
+        cfg.hooks[1].timeout(),
+        std::time::Duration::from_millis(120000)
+    );
 }
 
 // --- Prompt/Agent hook E2E with real LLM ---
@@ -7987,7 +8007,10 @@ async fn hook_prompt_block_prevents_run() {
     let config = make_run_config(dir.path());
 
     let result = engine.run(&graph, &config).await;
-    assert!(result.is_err(), "Prompt hook block should cause error, got: {result:?}");
+    assert!(
+        result.is_err(),
+        "Prompt hook block should cause error, got: {result:?}"
+    );
 }
 
 #[tokio::test]
@@ -8083,7 +8106,10 @@ async fn hooks_do_not_duplicate_workflow_events() {
         .iter()
         .filter(|e| matches!(e, WorkflowRunEvent::WorkflowRunCompleted { .. }))
         .count();
-    assert_eq!(run_completed, 1, "Should have exactly 1 WorkflowRunCompleted");
+    assert_eq!(
+        run_completed, 1,
+        "Should have exactly 1 WorkflowRunCompleted"
+    );
 
     // No WorkflowRunFailed
     let run_failed = captured

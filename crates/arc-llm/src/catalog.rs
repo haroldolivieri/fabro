@@ -73,7 +73,9 @@ pub fn closest_model(target_provider: &str, reference: &ModelInfo) -> Option<Mod
             let ref_cost = reference.costs.input_cost_per_mtok.unwrap_or(0.0);
             let cost_a = (a.costs.input_cost_per_mtok.unwrap_or(0.0) - ref_cost).abs();
             let cost_b = (b.costs.input_cost_per_mtok.unwrap_or(0.0) - ref_cost).abs();
-            cost_a.partial_cmp(&cost_b).unwrap_or(std::cmp::Ordering::Equal)
+            cost_a
+                .partial_cmp(&cost_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
         })
         .cloned()
 }
@@ -430,10 +432,7 @@ mod tests {
 
     #[test]
     fn build_fallback_chain_provider_not_in_map() {
-        let fallbacks = HashMap::from([(
-            "openai".to_string(),
-            vec!["anthropic".to_string()],
-        )]);
+        let fallbacks = HashMap::from([("openai".to_string(), vec!["anthropic".to_string()])]);
         let chain = build_fallback_chain("anthropic", "claude-opus-4-6", &fallbacks);
         assert!(chain.is_empty());
     }
@@ -460,10 +459,7 @@ mod tests {
 
     #[test]
     fn build_fallback_chain_unknown_primary_model() {
-        let fallbacks = HashMap::from([(
-            "anthropic".to_string(),
-            vec!["gemini".to_string()],
-        )]);
+        let fallbacks = HashMap::from([("anthropic".to_string(), vec!["gemini".to_string()])]);
         let chain = build_fallback_chain("anthropic", "unknown-model-xyz", &fallbacks);
         assert!(chain.is_empty());
     }

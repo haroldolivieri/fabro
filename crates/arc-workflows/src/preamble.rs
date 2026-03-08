@@ -68,7 +68,9 @@ pub fn build_preamble(
 
     let parent_preamble = context.get_string(keys::INTERNAL_PARENT_PREAMBLE, "");
     if !parent_preamble.is_empty() && !preamble.is_empty() {
-        format!("## Parent workflow context\n{parent_preamble}\n\n## Current sub-workflow\n{preamble}")
+        format!(
+            "## Parent workflow context\n{parent_preamble}\n\n## Current sub-workflow\n{preamble}"
+        )
     } else {
         preamble
     }
@@ -728,9 +730,15 @@ mod tests {
         context.set(keys::INTERNAL_FIDELITY, serde_json::json!("compact"));
         context.set(&keys::retry_count_key("plan"), serde_json::json!(1));
         context.set(keys::CURRENT_NODE, serde_json::json!("work"));
-        context.set(&keys::graph_attr_key("default_fidelity"), serde_json::json!("compact"));
+        context.set(
+            &keys::graph_attr_key("default_fidelity"),
+            serde_json::json!("compact"),
+        );
         context.set("thread.main.current_node", serde_json::json!("work"));
-        context.set(&keys::response_key("plan"), serde_json::json!("some response"));
+        context.set(
+            &keys::response_key("plan"),
+            serde_json::json!("some response"),
+        );
         context.set(keys::LAST_STAGE, serde_json::json!("plan"));
         context.set(keys::LAST_RESPONSE, serde_json::json!("resp"));
         context.set(keys::PREFERRED_LABEL, serde_json::json!("success"));
@@ -916,9 +924,15 @@ mod tests {
     fn compact_context_excludes_engine_keys() {
         let graph = Graph::new("test");
         let context = Context::new();
-        context.set(&keys::graph_attr_key("default_fidelity"), serde_json::json!("compact"));
+        context.set(
+            &keys::graph_attr_key("default_fidelity"),
+            serde_json::json!("compact"),
+        );
         context.set("thread.main.current_node", serde_json::json!("work"));
-        context.set(&keys::response_key("plan"), serde_json::json!("some LLM response"));
+        context.set(
+            &keys::response_key("plan"),
+            serde_json::json!("some LLM response"),
+        );
         context.set(keys::LAST_STAGE, serde_json::json!("plan"));
         context.set("user.preference", serde_json::json!("dark"));
         let completed_nodes: Vec<String> = Vec::new();
@@ -1564,10 +1578,7 @@ mod tests {
             preamble.contains("## Stage: report"),
             "should have stage heading"
         );
-        assert!(
-            preamble.contains("Handler: agent"),
-            "should show handler"
-        );
+        assert!(preamble.contains("Handler: agent"), "should show handler");
         assert!(
             preamble.contains("Model: claude-sonnet-4-20250514"),
             "should show model"
@@ -1669,9 +1680,13 @@ mod tests {
         assert!(is_context_key_excluded(&keys::retry_count_key("plan")));
         assert!(is_context_key_excluded(keys::CURRENT_NODE));
         assert!(is_context_key_excluded(keys::CURRENT_PREAMBLE));
-        assert!(is_context_key_excluded(&keys::graph_attr_key("default_fidelity")));
+        assert!(is_context_key_excluded(&keys::graph_attr_key(
+            "default_fidelity"
+        )));
         assert!(is_context_key_excluded(keys::GRAPH_GOAL));
-        assert!(is_context_key_excluded(&keys::thread_current_node_key("main")));
+        assert!(is_context_key_excluded(&keys::thread_current_node_key(
+            "main"
+        )));
         assert!(is_context_key_excluded(&keys::response_key("plan")));
         assert!(is_context_key_excluded(keys::OUTCOME));
         assert!(is_context_key_excluded(keys::LAST_STAGE));
@@ -1714,10 +1729,7 @@ mod tests {
             !preamble.contains("**start**"),
             "should not show start node, got:\n{preamble}"
         );
-        assert!(
-            preamble.contains("**plan**"),
-            "should show non-meta nodes"
-        );
+        assert!(preamble.contains("**plan**"), "should show non-meta nodes");
     }
 
     #[test]
@@ -1826,10 +1838,7 @@ mod tests {
             !preamble.contains("- start:"),
             "should not show start stage, got:\n{preamble}"
         );
-        assert!(
-            preamble.contains("- work:"),
-            "should show non-meta stages"
-        );
+        assert!(preamble.contains("- work:"), "should show non-meta stages");
     }
 
     #[test]
@@ -1862,10 +1871,7 @@ mod tests {
             !preamble.contains("- start:"),
             "should not show start stage, got:\n{preamble}"
         );
-        assert!(
-            preamble.contains("- work:"),
-            "should show non-meta stages"
-        );
+        assert!(preamble.contains("- work:"), "should show non-meta stages");
     }
 
     #[test]

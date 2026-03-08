@@ -70,7 +70,10 @@ impl AttrValue {
 /// Returns true if the handler type is an LLM-based handler (agent or prompt, including legacy aliases).
 #[must_use]
 pub fn is_llm_handler_type(handler_type: Option<&str>) -> bool {
-    matches!(handler_type, Some("agent") | Some("agent_loop") | Some("prompt") | Some("one_shot"))
+    matches!(
+        handler_type,
+        Some("agent") | Some("agent_loop") | Some("prompt") | Some("one_shot")
+    )
 }
 
 /// Maps Graphviz shapes to handler type strings (Section 2.8).
@@ -574,10 +577,8 @@ mod tests {
     #[test]
     fn node_handler_type_explicit() {
         let mut node = Node::new("gate");
-        node.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("human".to_string()),
-        );
+        node.attrs
+            .insert("type".to_string(), AttrValue::String("human".to_string()));
         assert_eq!(node.handler_type(), Some("human"));
     }
 

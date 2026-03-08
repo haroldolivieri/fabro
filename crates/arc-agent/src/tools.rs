@@ -219,10 +219,19 @@ pub fn make_shell_tool_with_config(config: &SessionConfig) -> RegisteredTool {
                     .unwrap_or(default_timeout)
                     .min(max_timeout);
 
-                tracing::debug!(env_var_count = ctx.tool_env.as_ref().map_or(0, |e| e.len()), "Injecting sandbox env vars into tool execution");
+                tracing::debug!(
+                    env_var_count = ctx.tool_env.as_ref().map_or(0, |e| e.len()),
+                    "Injecting sandbox env vars into tool execution"
+                );
                 let result = ctx
                     .env
-                    .exec_command(command, timeout_ms, None, ctx.tool_env.as_ref(), Some(ctx.cancel))
+                    .exec_command(
+                        command,
+                        timeout_ms,
+                        None,
+                        ctx.tool_env.as_ref(),
+                        Some(ctx.cancel),
+                    )
                     .await?;
 
                 let mut output = String::new();

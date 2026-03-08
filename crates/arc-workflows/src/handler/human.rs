@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 
-use crate::millis_u64;
 use crate::context::keys;
 use crate::context::Context;
 use crate::error::ArcError;
@@ -13,6 +12,7 @@ use crate::graph::{Graph, Node};
 use crate::interviewer::{
     Answer, AnswerValue, Interviewer, Question, QuestionOption, QuestionType,
 };
+use crate::millis_u64;
 use crate::outcome::Outcome;
 
 use super::{EngineServices, Handler};
@@ -226,9 +226,10 @@ fn make_choice_outcome(key: &str, label: &str, to: &str) -> Outcome {
     let mut outcome = Outcome::success();
     outcome.preferred_label = Some(label.to_string());
     outcome.suggested_next_ids = vec![to.to_string()];
-    outcome
-        .context_updates
-        .insert(keys::HUMAN_GATE_SELECTED.to_string(), serde_json::json!(key));
+    outcome.context_updates.insert(
+        keys::HUMAN_GATE_SELECTED.to_string(),
+        serde_json::json!(key),
+    );
     outcome
         .context_updates
         .insert(keys::HUMAN_GATE_LABEL.to_string(), serde_json::json!(label));

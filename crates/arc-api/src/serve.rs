@@ -120,10 +120,8 @@ pub async fn serve_command(args: ServeArgs, styles: &'static Styles) -> anyhow::
 
     let (auth_mode, client_auth, max_concurrent_runs) = {
         let cfg = shared_config.read().expect("config lock poisoned");
-        let auth_mode = crate::jwt_auth::resolve_auth_mode(
-            &cfg.api,
-            cfg.web.auth.allowed_usernames.clone(),
-        );
+        let auth_mode =
+            crate::jwt_auth::resolve_auth_mode(&cfg.api, cfg.web.auth.allowed_usernames.clone());
         let client_auth = cfg
             .api
             .tls
@@ -143,7 +141,13 @@ pub async fn serve_command(args: ServeArgs, styles: &'static Styles) -> anyhow::
             cfg.git.author.email.clone(),
         )
     };
-    let state = crate::server::create_app_state_with_options(db, factory, dry_run_mode, max_concurrent_runs, git_author);
+    let state = crate::server::create_app_state_with_options(
+        db,
+        factory,
+        dry_run_mode,
+        max_concurrent_runs,
+        git_author,
+    );
     crate::server::spawn_scheduler(Arc::clone(&state));
     let router = build_router(state, auth_mode);
 

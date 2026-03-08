@@ -143,11 +143,8 @@ mod tests {
 
     #[test]
     fn post_message_request_body_format() {
-        let body = build_post_message_body(
-            "#general",
-            &[serde_json::json!({"type": "section"})],
-            None,
-        );
+        let body =
+            build_post_message_body("#general", &[serde_json::json!({"type": "section"})], None);
         assert_eq!(body["channel"], "#general");
         assert_eq!(body["blocks"][0]["type"], "section");
         assert!(body["thread_ts"].is_null());

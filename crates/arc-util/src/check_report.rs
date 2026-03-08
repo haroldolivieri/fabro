@@ -297,7 +297,11 @@ mod tests {
     #[test]
     fn render_footer_text_when_provided() {
         let r = report(vec![pass_check("Test")]);
-        let out = r.render(&Styles::new(false), false, Some("Run with --live to probe."));
+        let out = r.render(
+            &Styles::new(false),
+            false,
+            Some("Run with --live to probe."),
+        );
         assert!(out.contains("Run with --live to probe."));
     }
 

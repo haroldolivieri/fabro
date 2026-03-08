@@ -114,8 +114,14 @@ fn ask_multi_select_interactive(question: &Question) -> Answer {
 
     match selection {
         Ok(Some(indices)) if !indices.is_empty() => {
-            let keys: Vec<String> = indices.iter().map(|&i| question.options[i].key.clone()).collect();
-            let options: Vec<_> = indices.iter().map(|&i| question.options[i].clone()).collect();
+            let keys: Vec<String> = indices
+                .iter()
+                .map(|&i| question.options[i].key.clone())
+                .collect();
+            let options: Vec<_> = indices
+                .iter()
+                .map(|&i| question.options[i].clone())
+                .collect();
             Answer::multi_selected(keys, options)
         }
         _ => Answer::skipped(),

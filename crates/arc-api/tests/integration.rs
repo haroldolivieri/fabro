@@ -420,8 +420,8 @@ mod server_lifecycle {
     use arc_api::server::{build_router, create_app_state};
     use arc_workflows::handler::agent::AgentHandler;
     use arc_workflows::handler::exit::ExitHandler;
-    use arc_workflows::handler::start::StartHandler;
     use arc_workflows::handler::human::HumanHandler;
+    use arc_workflows::handler::start::StartHandler;
     use arc_workflows::handler::HandlerRegistry;
     use arc_workflows::interviewer::Interviewer;
     use axum::body::Body;

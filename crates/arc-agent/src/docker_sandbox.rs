@@ -748,10 +748,7 @@ impl Sandbox for DockerSandbox {
     }
 
     fn sandbox_info(&self) -> String {
-        self.container_id
-            .get()
-            .cloned()
-            .unwrap_or_default()
+        self.container_id.get().cloned().unwrap_or_default()
     }
 }
 

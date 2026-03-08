@@ -120,9 +120,19 @@ macro_rules! provider_test {
 
 macro_rules! provider_tests {
     ($scenario:ident) => {
-        provider_test!($scenario, Provider::Anthropic, "claude-haiku-4-5", anthropic);
+        provider_test!(
+            $scenario,
+            Provider::Anthropic,
+            "claude-haiku-4-5",
+            anthropic
+        );
         provider_test!($scenario, Provider::OpenAi, "gpt-5-mini", openai);
-        provider_test!($scenario, Provider::Gemini, "gemini-3-flash-preview", gemini);
+        provider_test!(
+            $scenario,
+            Provider::Gemini,
+            "gemini-3-flash-preview",
+            gemini
+        );
         provider_test!($scenario, Provider::Kimi, "kimi-k2.5", kimi);
         provider_test!($scenario, Provider::Zai, "glm-4.7", zai);
         provider_test!($scenario, Provider::Minimax, "minimax-m2.5", minimax);
@@ -157,8 +167,18 @@ provider_tests!(error_recovery);
 // gpt-5-mini is too weak to reliably apply precise file edits (uses apply_patch, not edit_file).
 macro_rules! non_openai_provider_tests {
     ($scenario:ident) => {
-        provider_test!($scenario, Provider::Anthropic, "claude-haiku-4-5", anthropic);
-        provider_test!($scenario, Provider::Gemini, "gemini-3-flash-preview", gemini);
+        provider_test!(
+            $scenario,
+            Provider::Anthropic,
+            "claude-haiku-4-5",
+            anthropic
+        );
+        provider_test!(
+            $scenario,
+            Provider::Gemini,
+            "gemini-3-flash-preview",
+            gemini
+        );
         provider_test!($scenario, Provider::Kimi, "kimi-k2.5", kimi);
         provider_test!($scenario, Provider::Zai, "glm-4.7", zai);
         provider_test!($scenario, Provider::Minimax, "minimax-m2.5", minimax);
@@ -399,9 +419,17 @@ macro_rules! reasoning_effort_tests {
     };
 }
 
-reasoning_effort_tests!(Provider::Anthropic, "claude-haiku-4-5", anthropic_reasoning_effort);
+reasoning_effort_tests!(
+    Provider::Anthropic,
+    "claude-haiku-4-5",
+    anthropic_reasoning_effort
+);
 // gpt-5-mini does not support the reasoning.effort parameter, so no OpenAI test.
-reasoning_effort_tests!(Provider::Gemini, "gemini-3-flash-preview", gemini_reasoning_effort);
+reasoning_effort_tests!(
+    Provider::Gemini,
+    "gemini-3-flash-preview",
+    gemini_reasoning_effort
+);
 reasoning_effort_tests!(Provider::Kimi, "kimi-k2.5", kimi_reasoning_effort);
 reasoning_effort_tests!(Provider::Zai, "glm-4.7", zai_reasoning_effort);
 reasoning_effort_tests!(Provider::Minimax, "minimax-m2.5", minimax_reasoning_effort);
@@ -445,9 +473,17 @@ macro_rules! loop_detection_tests {
     };
 }
 
-loop_detection_tests!(Provider::Anthropic, "claude-haiku-4-5", anthropic_loop_detection);
+loop_detection_tests!(
+    Provider::Anthropic,
+    "claude-haiku-4-5",
+    anthropic_loop_detection
+);
 loop_detection_tests!(Provider::OpenAi, "gpt-5-mini", openai_loop_detection);
-loop_detection_tests!(Provider::Gemini, "gemini-3-flash-preview", gemini_loop_detection);
+loop_detection_tests!(
+    Provider::Gemini,
+    "gemini-3-flash-preview",
+    gemini_loop_detection
+);
 loop_detection_tests!(Provider::Kimi, "kimi-k2.5", kimi_loop_detection);
 loop_detection_tests!(Provider::Zai, "glm-4.7", zai_loop_detection);
 loop_detection_tests!(Provider::Minimax, "minimax-m2.5", minimax_loop_detection);

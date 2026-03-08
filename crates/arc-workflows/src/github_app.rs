@@ -107,18 +107,14 @@ pub async fn create_installation_access_token(
             ));
         }
         403 => {
-            return Err(
-                "GitHub App installation is suspended. \
+            return Err("GitHub App installation is suspended. \
                  Re-enable it in your organization's GitHub App settings."
-                    .to_string(),
-            );
+                .to_string());
         }
         401 => {
-            return Err(
-                "GitHub App authentication failed. \
+            return Err("GitHub App authentication failed. \
                  Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
-                    .to_string(),
-            );
+                .to_string());
         }
         _ => {
             return Err(format!(
@@ -162,11 +158,9 @@ pub async fn create_installation_access_token(
             ));
         }
         401 => {
-            return Err(
-                "GitHub App authentication failed. \
+            return Err("GitHub App authentication failed. \
                  Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
-                    .to_string(),
-            );
+                .to_string());
         }
         _ => {
             return Err(format!(
@@ -217,10 +211,7 @@ pub async fn resolve_clone_credentials(
 
     let token =
         create_installation_access_token(&client, &jwt, owner, repo, GITHUB_API_BASE_URL).await?;
-    Ok((
-        Some("x-access-token".to_string()),
-        Some(token),
-    ))
+    Ok((Some("x-access-token".to_string()), Some(token)))
 }
 
 #[cfg(test)]
@@ -307,7 +298,13 @@ mod tests {
     fn test_rsa_key() -> String {
         use std::process::Command;
         let output = Command::new("openssl")
-            .args(["genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048"])
+            .args([
+                "genpkey",
+                "-algorithm",
+                "RSA",
+                "-pkeyopt",
+                "rsa_keygen_bits:2048",
+            ])
             .output()
             .expect("openssl should be available");
         assert!(output.status.success(), "openssl keygen failed");
@@ -326,9 +323,11 @@ mod tests {
         let pem = test_rsa_key();
         let jwt = sign_app_jwt("12345", &pem).unwrap();
         let header_b64 = jwt.split('.').next().unwrap();
-        let header_json =
-            base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, header_b64)
-                .unwrap();
+        let header_json = base64::Engine::decode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            header_b64,
+        )
+        .unwrap();
         let header: serde_json::Value = serde_json::from_slice(&header_json).unwrap();
         assert_eq!(header["alg"], "RS256");
     }
@@ -338,9 +337,11 @@ mod tests {
         let pem = test_rsa_key();
         let jwt = sign_app_jwt("99999", &pem).unwrap();
         let payload_b64 = jwt.split('.').nth(1).unwrap();
-        let payload_json =
-            base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, payload_b64)
-                .unwrap();
+        let payload_json = base64::Engine::decode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            payload_b64,
+        )
+        .unwrap();
         let claims: serde_json::Value = serde_json::from_slice(&payload_json).unwrap();
         assert_eq!(claims["iss"], "99999");
 

@@ -20,8 +20,13 @@ pub struct Hunk {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PatchOperation {
-    Add { path: String, content: String },
-    Delete { path: String },
+    Add {
+        path: String,
+        content: String,
+    },
+    Delete {
+        path: String,
+    },
     Update {
         path: String,
         new_path: Option<String>,
@@ -156,13 +161,12 @@ pub fn parse_v4a_patch(text: &str) -> Result<Vec<PatchOperation>, String> {
                     }
 
                     // Check for *** End of File marker
-                    let end_of_file =
-                        if i < lines.len() && lines[i].trim() == "*** End of File" {
-                            i += 1;
-                            true
-                        } else {
-                            false
-                        };
+                    let end_of_file = if i < lines.len() && lines[i].trim() == "*** End of File" {
+                        i += 1;
+                        true
+                    } else {
+                        false
+                    };
 
                     hunks.push(Hunk {
                         context_line,
@@ -309,9 +313,7 @@ fn apply_hunks(content: &str, hunks: &[Hunk]) -> Result<String, String> {
                         Change::Remove(t) | Change::Context(t) => Some(t.as_str()),
                         Change::Add(_) => None,
                     })
-                    .ok_or(
-                        "Hunk with bare @@ has no remove or context lines to locate position",
-                    )?;
+                    .ok_or("Hunk with bare @@ has no remove or context lines to locate position")?;
                 find_line_match_reverse(&lines, first_match_text)
             }
             .ok_or_else(|| {
@@ -660,8 +662,14 @@ mod tests {
                 assert_eq!(hunks.len(), 1);
                 assert_eq!(hunks[0].context_line, "");
                 assert_eq!(hunks[0].changes.len(), 4);
-                assert_eq!(hunks[0].changes[0], Change::Context("fn unchanged() {".into()));
-                assert_eq!(hunks[0].changes[1], Change::Remove("    old_line();".into()));
+                assert_eq!(
+                    hunks[0].changes[0],
+                    Change::Context("fn unchanged() {".into())
+                );
+                assert_eq!(
+                    hunks[0].changes[1],
+                    Change::Remove("    old_line();".into())
+                );
                 assert_eq!(hunks[0].changes[2], Change::Add("    new_line();".into()));
                 assert_eq!(hunks[0].changes[3], Change::Context("}".into()));
             }
@@ -981,10 +989,7 @@ mod tests {
         }];
         let result = apply_hunks(content, &hunks).unwrap();
         // First "pass" should be untouched, second should be replaced
-        assert_eq!(
-            result,
-            "def foo():\n    pass\n\ndef bar():\n    return 99"
-        );
+        assert_eq!(result, "def foo():\n    pass\n\ndef bar():\n    return 99");
     }
 
     // Phase 4: *** Move to:
@@ -1447,14 +1452,12 @@ def farewell(name):
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let mut session = Session::new(
-            client,
-            profile,
-            env.clone(),
-            SessionConfig::default(),
-        );
+        let mut session = Session::new(client, profile, env.clone(), SessionConfig::default());
         session.initialize().await;
-        session.process_input("Update the greeting functions").await.unwrap();
+        session
+            .process_input("Update the greeting functions")
+            .await
+            .unwrap();
 
         let content = env.read_file("src/app.py", None, None).await.unwrap();
         assert!(content.contains("Hello, {name}!"));

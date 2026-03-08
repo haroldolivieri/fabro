@@ -442,7 +442,10 @@ mod tests {
             ..
         } = assistant_turn
         {
-            assert!(provider_parts.is_empty(), "reasoning items should be stripped");
+            assert!(
+                provider_parts.is_empty(),
+                "reasoning items should be stripped"
+            );
             assert_eq!(tool_calls.len(), 1, "tool_calls should be preserved");
             assert_eq!(content, "response", "text content should be preserved");
         } else {
@@ -479,7 +482,11 @@ mod tests {
 
         let assistant_turn = &history.turns()[2];
         if let Turn::Assistant { provider_parts, .. } = assistant_turn {
-            assert_eq!(provider_parts.len(), 1, "thinking block should be preserved");
+            assert_eq!(
+                provider_parts.len(),
+                1,
+                "thinking block should be preserved"
+            );
             assert!(matches!(&provider_parts[0], ContentPart::Thinking(_)));
         } else {
             panic!("expected Assistant turn");

@@ -190,9 +190,7 @@ impl HookExecutorImpl {
             .strip_prefix("```json")
             .or_else(|| trimmed.strip_prefix("```"))
             .unwrap_or(trimmed);
-        let inner = inner
-            .strip_suffix("```")
-            .unwrap_or(inner);
+        let inner = inner.strip_suffix("```").unwrap_or(inner);
         inner.trim()
     }
 
@@ -522,22 +520,24 @@ impl HookExecutor for HookExecutorImpl {
         let start = Instant::now();
 
         let decision = match definition.resolved_hook_type() {
-            Some(Cow::Borrowed(HookType::Command { ref command })
-                | Cow::Owned(HookType::Command { ref command })) => {
-                Self::execute_command(definition, command, context, &sandbox, work_dir).await
-            }
-            Some(Cow::Borrowed(HookType::Http {
-                ref url,
-                ref headers,
-                ref allowed_env_vars,
-                ref tls,
-            })
-            | Cow::Owned(HookType::Http {
-                ref url,
-                ref headers,
-                ref allowed_env_vars,
-                ref tls,
-            })) => {
+            Some(
+                Cow::Borrowed(HookType::Command { ref command })
+                | Cow::Owned(HookType::Command { ref command }),
+            ) => Self::execute_command(definition, command, context, &sandbox, work_dir).await,
+            Some(
+                Cow::Borrowed(HookType::Http {
+                    ref url,
+                    ref headers,
+                    ref allowed_env_vars,
+                    ref tls,
+                })
+                | Cow::Owned(HookType::Http {
+                    ref url,
+                    ref headers,
+                    ref allowed_env_vars,
+                    ref tls,
+                }),
+            ) => {
                 let clients = HTTP_CLIENTS.get_or_init(HttpClientCache::new);
                 Self::execute_http(
                     clients.get(tls),
@@ -550,26 +550,28 @@ impl HookExecutor for HookExecutorImpl {
                 )
                 .await
             }
-            Some(Cow::Borrowed(HookType::Prompt {
-                ref prompt,
-                ref model,
-            })
-            | Cow::Owned(HookType::Prompt {
-                ref prompt,
-                ref model,
-            })) => {
-                Self::execute_prompt(prompt, model, context, definition.timeout()).await
-            }
-            Some(Cow::Borrowed(HookType::Agent {
-                ref prompt,
-                ref model,
-                ref max_tool_rounds,
-            })
-            | Cow::Owned(HookType::Agent {
-                ref prompt,
-                ref model,
-                ref max_tool_rounds,
-            })) => {
+            Some(
+                Cow::Borrowed(HookType::Prompt {
+                    ref prompt,
+                    ref model,
+                })
+                | Cow::Owned(HookType::Prompt {
+                    ref prompt,
+                    ref model,
+                }),
+            ) => Self::execute_prompt(prompt, model, context, definition.timeout()).await,
+            Some(
+                Cow::Borrowed(HookType::Agent {
+                    ref prompt,
+                    ref model,
+                    ref max_tool_rounds,
+                })
+                | Cow::Owned(HookType::Agent {
+                    ref prompt,
+                    ref model,
+                    ref max_tool_rounds,
+                }),
+            ) => {
                 Self::execute_agent(
                     prompt,
                     model,
@@ -594,7 +596,6 @@ impl HookExecutor for HookExecutorImpl {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,7 +607,9 @@ mod tests {
     }
 
     fn make_sandbox() -> Arc<dyn Sandbox> {
-        Arc::new(arc_agent::LocalSandbox::new(std::env::current_dir().unwrap()))
+        Arc::new(arc_agent::LocalSandbox::new(
+            std::env::current_dir().unwrap(),
+        ))
     }
 
     fn test_http_client() -> reqwest::Client {
@@ -717,8 +720,7 @@ mod tests {
     #[tokio::test]
     async fn command_executor_host_json_decision() {
         let executor = HookExecutorImpl;
-        let def =
-            make_definition(r#"echo '{"decision": "skip", "reason": "test skip"}'"#);
+        let def = make_definition(r#"echo '{"decision": "skip", "reason": "test skip"}'"#);
         let ctx = make_context();
         let sandbox = make_sandbox();
         let result = executor.execute(&def, &ctx, sandbox, None).await;
@@ -800,7 +802,9 @@ mod tests {
     #[test]
     fn parse_prompt_response_strips_code_fences() {
         assert_eq!(
-            HookExecutorImpl::parse_prompt_response("```json\n{\"ok\": false, \"reason\": \"no\"}\n```"),
+            HookExecutorImpl::parse_prompt_response(
+                "```json\n{\"ok\": false, \"reason\": \"no\"}\n```"
+            ),
             HookDecision::Block {
                 reason: Some("no".into())
             },
@@ -809,7 +813,10 @@ mod tests {
 
     #[test]
     fn strip_code_fences_plain() {
-        assert_eq!(HookExecutorImpl::strip_code_fences(r#"{"ok": true}"#), r#"{"ok": true}"#);
+        assert_eq!(
+            HookExecutorImpl::strip_code_fences(r#"{"ok": true}"#),
+            r#"{"ok": true}"#
+        );
     }
 
     #[test]
@@ -833,10 +840,8 @@ mod tests {
     #[test]
     fn interpolate_resolves_allowed_var() {
         std::env::set_var("ARC_TEST_KEY_1", "secret123");
-        let result = interpolate_env_vars(
-            "Bearer $ARC_TEST_KEY_1",
-            &["ARC_TEST_KEY_1".to_string()],
-        );
+        let result =
+            interpolate_env_vars("Bearer $ARC_TEST_KEY_1", &["ARC_TEST_KEY_1".to_string()]);
         assert_eq!(result, "Bearer secret123");
         std::env::remove_var("ARC_TEST_KEY_1");
     }
@@ -844,10 +849,7 @@ mod tests {
     #[test]
     fn interpolate_resolves_braced_var() {
         std::env::set_var("ARC_TEST_KEY_2", "val");
-        let result = interpolate_env_vars(
-            "x${ARC_TEST_KEY_2}y",
-            &["ARC_TEST_KEY_2".to_string()],
-        );
+        let result = interpolate_env_vars("x${ARC_TEST_KEY_2}y", &["ARC_TEST_KEY_2".to_string()]);
         assert_eq!(result, "xvaly");
         std::env::remove_var("ARC_TEST_KEY_2");
     }
@@ -855,10 +857,7 @@ mod tests {
     #[test]
     fn interpolate_unlisted_var_becomes_empty() {
         std::env::set_var("ARC_TEST_KEY_3", "should_not_appear");
-        let result = interpolate_env_vars(
-            "prefix-$ARC_TEST_KEY_3-suffix",
-            &[],
-        );
+        let result = interpolate_env_vars("prefix-$ARC_TEST_KEY_3-suffix", &[]);
         assert_eq!(result, "prefix--suffix");
         std::env::remove_var("ARC_TEST_KEY_3");
     }
@@ -866,10 +865,8 @@ mod tests {
     #[test]
     fn interpolate_missing_var_becomes_empty() {
         std::env::remove_var("ARC_TEST_NOEXIST");
-        let result = interpolate_env_vars(
-            "a$ARC_TEST_NOEXIST-b",
-            &["ARC_TEST_NOEXIST".to_string()],
-        );
+        let result =
+            interpolate_env_vars("a$ARC_TEST_NOEXIST-b", &["ARC_TEST_NOEXIST".to_string()]);
         assert_eq!(result, "a-b");
     }
 
@@ -1007,9 +1004,10 @@ mod tests {
             .create_async()
             .await;
 
-        let headers = HashMap::from([
-            ("Authorization".to_string(), "Bearer $ARC_TEST_TOKEN".to_string()),
-        ]);
+        let headers = HashMap::from([(
+            "Authorization".to_string(),
+            "Bearer $ARC_TEST_TOKEN".to_string(),
+        )]);
 
         let client = test_http_client();
         let decision = HookExecutorImpl::execute_http(

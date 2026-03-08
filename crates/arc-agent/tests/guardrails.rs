@@ -6,9 +6,7 @@ use arc_llm::provider::Provider;
 fn profile_context_window_matches_catalog_for_default_models() {
     for &provider in Provider::ALL {
         let catalog_info = catalog::default_model_for_provider(provider.as_str())
-            .unwrap_or_else(|| {
-                panic!("no default model for {:?} in catalog", provider)
-            });
+            .unwrap_or_else(|| panic!("no default model for {:?} in catalog", provider));
         let model = &catalog_info.id;
 
         let profile: Box<dyn ProviderProfile> = match provider {

@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use serde_json::json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use serde_json::json;
 
 use crate::error::ApiError;
 use crate::jwt_auth::AuthenticatedService;
@@ -23,13 +23,20 @@ pub struct RetroListParams {
     smoothness: Option<arc_types::SmoothnessRating>,
 }
 
-fn paginated_response<T: serde::Serialize>(items: Vec<T>, pagination: &PaginationParams) -> Response {
+fn paginated_response<T: serde::Serialize>(
+    items: Vec<T>,
+    pagination: &PaginationParams,
+) -> Response {
     let limit = pagination.limit.clamp(1, 100) as usize;
     let offset = pagination.offset as usize;
     let mut data: Vec<_> = items.into_iter().skip(offset).take(limit + 1).collect();
     let has_more = data.len() > limit;
     data.truncate(limit);
-    (StatusCode::OK, Json(json!({ "data": data, "meta": { "has_more": has_more } }))).into_response()
+    (
+        StatusCode::OK,
+        Json(json!({ "data": data, "meta": { "has_more": has_more } })),
+    )
+        .into_response()
 }
 
 // ── Runs ───────────────────────────────────────────────────────────────
@@ -218,7 +225,11 @@ pub async fn get_run_graph(
     {
         Ok(child) => child,
         Err(_) => {
-            return ApiError::new(StatusCode::BAD_GATEWAY, "Graphviz dot command not available.").into_response();
+            return ApiError::new(
+                StatusCode::BAD_GATEWAY,
+                "Graphviz dot command not available.",
+            )
+            .into_response();
         }
     };
 
@@ -332,10 +343,26 @@ pub async fn list_retros(
 ) -> Response {
     let items: Vec<_> = retros::list_items()
         .into_iter()
-        .filter(|r| params.workflow.as_ref().map_or(true, |w| &r.workflow.slug == w))
-        .filter(|r| params.smoothness.as_ref().map_or(true, |s| r.smoothness.as_ref() == Some(s)))
+        .filter(|r| {
+            params
+                .workflow
+                .as_ref()
+                .map_or(true, |w| &r.workflow.slug == w)
+        })
+        .filter(|r| {
+            params
+                .smoothness
+                .as_ref()
+                .map_or(true, |s| r.smoothness.as_ref() == Some(s))
+        })
         .collect();
-    paginated_response(items, &PaginationParams { limit: params.limit, offset: params.offset })
+    paginated_response(
+        items,
+        &PaginationParams {
+            limit: params.limit,
+            offset: params.offset,
+        },
+    )
 }
 
 // ── Sessions ───────────────────────────────────────────────────────────
@@ -377,7 +404,11 @@ pub async fn send_message_stub(
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
 ) -> Response {
-    (StatusCode::ACCEPTED, Json(serde_json::json!({"accepted": true}))).into_response()
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({"accepted": true})),
+    )
+        .into_response()
 }
 
 pub async fn session_events_stub(
@@ -407,9 +438,7 @@ pub async fn session_events_stub(
             arc_types::SessionTurn::AssistantTurn(t) => {
                 ("assistant_turn", serde_json::to_string(t).unwrap())
             }
-            arc_types::SessionTurn::ToolTurn(t) => {
-                ("tool_turn", serde_json::to_string(t).unwrap())
-            }
+            arc_types::SessionTurn::ToolTurn(t) => ("tool_turn", serde_json::to_string(t).unwrap()),
         };
 
         if last_event_id.is_none() || seq > last_event_id.unwrap() {
@@ -552,69 +581,139 @@ mod runs {
         vec![
             RunListItem {
                 id: "run-1".into(),
-                repository: RepositoryReference { name: "api-server".into() },
+                repository: RepositoryReference {
+                    name: "api-server".into(),
+                },
                 title: "Add rate limiting to auth endpoints".into(),
-                workflow: WorkflowReference { slug: "implement".into() },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 status: BoardColumn::Working,
                 pull_request: None,
-                timings: Some(RunTimings { elapsed_secs: 420.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-a1b2c3d4".into(), resources: Some(SandboxResources { cpu: 4, memory: 8 }) }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 420.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-a1b2c3d4".into(),
+                    resources: Some(SandboxResources { cpu: 4, memory: 8 }),
+                }),
                 question: None,
                 created_at: ts("2026-03-06T14:30:00Z"),
             },
             RunListItem {
                 id: "run-2".into(),
-                repository: RepositoryReference { name: "web-dashboard".into() },
+                repository: RepositoryReference {
+                    name: "web-dashboard".into(),
+                },
                 title: "Migrate to React Router v7".into(),
-                workflow: WorkflowReference { slug: "implement".into() },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 status: BoardColumn::Working,
                 pull_request: None,
-                timings: Some(RunTimings { elapsed_secs: 8100.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-e5f6g7h8".into(), resources: Some(SandboxResources { cpu: 8, memory: 16 }) }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 8100.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-e5f6g7h8".into(),
+                    resources: Some(SandboxResources { cpu: 8, memory: 16 }),
+                }),
                 question: None,
                 created_at: ts("2026-03-06T12:00:00Z"),
             },
             RunListItem {
                 id: "run-3".into(),
-                repository: RepositoryReference { name: "cli-tools".into() },
+                repository: RepositoryReference {
+                    name: "cli-tools".into(),
+                },
                 title: "Fix config parsing for nested values".into(),
-                workflow: WorkflowReference { slug: "fix_build".into() },
+                workflow: WorkflowReference {
+                    slug: "fix_build".into(),
+                },
                 status: BoardColumn::Working,
                 pull_request: None,
-                timings: Some(RunTimings { elapsed_secs: 2700.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-i9j0k1l2".into(), resources: Some(SandboxResources { cpu: 2, memory: 4 }) }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 2700.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-i9j0k1l2".into(),
+                    resources: Some(SandboxResources { cpu: 2, memory: 4 }),
+                }),
                 question: None,
                 created_at: ts("2026-03-05T09:20:00Z"),
             },
             RunListItem {
                 id: "run-4".into(),
-                repository: RepositoryReference { name: "api-server".into() },
+                repository: RepositoryReference {
+                    name: "api-server".into(),
+                },
                 title: "Update OpenAPI spec for v3".into(),
-                workflow: WorkflowReference { slug: "expand".into() },
+                workflow: WorkflowReference {
+                    slug: "expand".into(),
+                },
                 status: BoardColumn::Pending,
-                pull_request: Some(RunPullRequest { number: 0, additions: Some(567), deletions: Some(234), comments: Some(0), checks: vec![] }),
-                timings: Some(RunTimings { elapsed_secs: 4320.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-q7r8s9t0".into(), resources: None }),
-                question: Some(RunQuestion { text: "Accept or push for another round?".into() }),
+                pull_request: Some(RunPullRequest {
+                    number: 0,
+                    additions: Some(567),
+                    deletions: Some(234),
+                    comments: Some(0),
+                    checks: vec![],
+                }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 4320.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-q7r8s9t0".into(),
+                    resources: None,
+                }),
+                question: Some(RunQuestion {
+                    text: "Accept or push for another round?".into(),
+                }),
                 created_at: ts("2026-03-04T15:00:00Z"),
             },
             RunListItem {
                 id: "run-5".into(),
-                repository: RepositoryReference { name: "shared-types".into() },
+                repository: RepositoryReference {
+                    name: "shared-types".into(),
+                },
                 title: "Add pipeline event types".into(),
-                workflow: WorkflowReference { slug: "implement".into() },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 status: BoardColumn::Pending,
-                pull_request: Some(RunPullRequest { number: 0, additions: Some(145), deletions: Some(23), comments: Some(0), checks: vec![] }),
-                timings: Some(RunTimings { elapsed_secs: 1680.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-u1v2w3x4".into(), resources: None }),
-                question: Some(RunQuestion { text: "Proceed from investigation to fix?".into() }),
+                pull_request: Some(RunPullRequest {
+                    number: 0,
+                    additions: Some(145),
+                    deletions: Some(23),
+                    comments: Some(0),
+                    checks: vec![],
+                }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 1680.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-u1v2w3x4".into(),
+                    resources: None,
+                }),
+                question: Some(RunQuestion {
+                    text: "Proceed from investigation to fix?".into(),
+                }),
                 created_at: ts("2026-03-04T10:00:00Z"),
             },
             RunListItem {
                 id: "run-6".into(),
-                repository: RepositoryReference { name: "web-dashboard".into() },
+                repository: RepositoryReference {
+                    name: "web-dashboard".into(),
+                },
                 title: "Add dark mode toggle".into(),
-                workflow: WorkflowReference { slug: "implement".into() },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 status: BoardColumn::Review,
                 pull_request: Some(RunPullRequest {
                     number: 889,
@@ -622,25 +721,63 @@ mod runs {
                     deletions: Some(67),
                     comments: Some(4),
                     checks: vec![
-                        CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(23.0) },
-                        CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(72.0) },
-                        CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(154.0) },
-                        CheckRun { name: "integration-tests".into(), status: CheckRunStatus::Failure, duration_secs: Some(296.0) },
-                        CheckRun { name: "e2e / chrome".into(), status: CheckRunStatus::Failure, duration_secs: Some(182.0) },
-                        CheckRun { name: "build".into(), status: CheckRunStatus::Success, duration_secs: Some(105.0) },
-                        CheckRun { name: "coverage".into(), status: CheckRunStatus::Skipped, duration_secs: None },
+                        CheckRun {
+                            name: "lint".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(23.0),
+                        },
+                        CheckRun {
+                            name: "typecheck".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(72.0),
+                        },
+                        CheckRun {
+                            name: "unit-tests".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(154.0),
+                        },
+                        CheckRun {
+                            name: "integration-tests".into(),
+                            status: CheckRunStatus::Failure,
+                            duration_secs: Some(296.0),
+                        },
+                        CheckRun {
+                            name: "e2e / chrome".into(),
+                            status: CheckRunStatus::Failure,
+                            duration_secs: Some(182.0),
+                        },
+                        CheckRun {
+                            name: "build".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(105.0),
+                        },
+                        CheckRun {
+                            name: "coverage".into(),
+                            status: CheckRunStatus::Skipped,
+                            duration_secs: None,
+                        },
                     ],
                 }),
-                timings: Some(RunTimings { elapsed_secs: 2100.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-m3n4o5p6".into(), resources: None }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 2100.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-m3n4o5p6".into(),
+                    resources: None,
+                }),
                 question: None,
                 created_at: ts("2026-03-03T16:45:00Z"),
             },
             RunListItem {
                 id: "run-7".into(),
-                repository: RepositoryReference { name: "infrastructure".into() },
+                repository: RepositoryReference {
+                    name: "infrastructure".into(),
+                },
                 title: "Terraform module for Redis cluster".into(),
-                workflow: WorkflowReference { slug: "implement".into() },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 status: BoardColumn::Review,
                 pull_request: Some(RunPullRequest {
                     number: 156,
@@ -648,23 +785,53 @@ mod runs {
                     deletions: Some(0),
                     comments: Some(1),
                     checks: vec![
-                        CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(18.0) },
-                        CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(56.0) },
-                        CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Pending, duration_secs: None },
-                        CheckRun { name: "integration-tests".into(), status: CheckRunStatus::Queued, duration_secs: None },
-                        CheckRun { name: "build".into(), status: CheckRunStatus::Pending, duration_secs: None },
+                        CheckRun {
+                            name: "lint".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(18.0),
+                        },
+                        CheckRun {
+                            name: "typecheck".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(56.0),
+                        },
+                        CheckRun {
+                            name: "unit-tests".into(),
+                            status: CheckRunStatus::Pending,
+                            duration_secs: None,
+                        },
+                        CheckRun {
+                            name: "integration-tests".into(),
+                            status: CheckRunStatus::Queued,
+                            duration_secs: None,
+                        },
+                        CheckRun {
+                            name: "build".into(),
+                            status: CheckRunStatus::Pending,
+                            duration_secs: None,
+                        },
                     ],
                 }),
-                timings: Some(RunTimings { elapsed_secs: 720.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-y5z6a7b8".into(), resources: None }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 720.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-y5z6a7b8".into(),
+                    resources: None,
+                }),
                 question: None,
                 created_at: ts("2026-03-03T11:00:00Z"),
             },
             RunListItem {
                 id: "run-8".into(),
-                repository: RepositoryReference { name: "api-server".into() },
+                repository: RepositoryReference {
+                    name: "api-server".into(),
+                },
                 title: "Implement webhook retry logic".into(),
-                workflow: WorkflowReference { slug: "implement".into() },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 status: BoardColumn::Merge,
                 pull_request: Some(RunPullRequest {
                     number: 1249,
@@ -672,30 +839,88 @@ mod runs {
                     deletions: Some(45),
                     comments: Some(7),
                     checks: vec![
-                        CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(21.0) },
-                        CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(68.0) },
-                        CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(192.0) },
-                        CheckRun { name: "integration-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(334.0) },
-                        CheckRun { name: "e2e / chrome".into(), status: CheckRunStatus::Success, duration_secs: Some(262.0) },
-                        CheckRun { name: "e2e / firefox".into(), status: CheckRunStatus::Success, duration_secs: Some(285.0) },
-                        CheckRun { name: "build".into(), status: CheckRunStatus::Success, duration_secs: Some(121.0) },
-                        CheckRun { name: "deploy-preview".into(), status: CheckRunStatus::Success, duration_secs: Some(93.0) },
-                        CheckRun { name: "security-scan".into(), status: CheckRunStatus::Skipped, duration_secs: None },
-                        CheckRun { name: "performance".into(), status: CheckRunStatus::Success, duration_secs: Some(138.0) },
-                        CheckRun { name: "bundle-size".into(), status: CheckRunStatus::Success, duration_secs: Some(34.0) },
-                        CheckRun { name: "accessibility".into(), status: CheckRunStatus::Success, duration_secs: Some(72.0) },
+                        CheckRun {
+                            name: "lint".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(21.0),
+                        },
+                        CheckRun {
+                            name: "typecheck".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(68.0),
+                        },
+                        CheckRun {
+                            name: "unit-tests".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(192.0),
+                        },
+                        CheckRun {
+                            name: "integration-tests".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(334.0),
+                        },
+                        CheckRun {
+                            name: "e2e / chrome".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(262.0),
+                        },
+                        CheckRun {
+                            name: "e2e / firefox".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(285.0),
+                        },
+                        CheckRun {
+                            name: "build".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(121.0),
+                        },
+                        CheckRun {
+                            name: "deploy-preview".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(93.0),
+                        },
+                        CheckRun {
+                            name: "security-scan".into(),
+                            status: CheckRunStatus::Skipped,
+                            duration_secs: None,
+                        },
+                        CheckRun {
+                            name: "performance".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(138.0),
+                        },
+                        CheckRun {
+                            name: "bundle-size".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(34.0),
+                        },
+                        CheckRun {
+                            name: "accessibility".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(72.0),
+                        },
                     ],
                 }),
-                timings: Some(RunTimings { elapsed_secs: 259200.0, elapsed_warning: Some(true) }),
-                sandbox: Some(RunSandbox { id: "sb-c9d0e1f2".into(), resources: None }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 259200.0,
+                    elapsed_warning: Some(true),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-c9d0e1f2".into(),
+                    resources: None,
+                }),
                 question: None,
                 created_at: ts("2026-02-28T14:00:00Z"),
             },
             RunListItem {
                 id: "run-9".into(),
-                repository: RepositoryReference { name: "cli-tools".into() },
+                repository: RepositoryReference {
+                    name: "cli-tools".into(),
+                },
                 title: "Add --verbose flag to run command".into(),
-                workflow: WorkflowReference { slug: "expand".into() },
+                workflow: WorkflowReference {
+                    slug: "expand".into(),
+                },
                 status: BoardColumn::Merge,
                 pull_request: Some(RunPullRequest {
                     number: 430,
@@ -703,24 +928,58 @@ mod runs {
                     deletions: Some(12),
                     comments: Some(2),
                     checks: vec![
-                        CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(15.0) },
-                        CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(48.0) },
-                        CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(116.0) },
-                        CheckRun { name: "build".into(), status: CheckRunStatus::Success, duration_secs: Some(82.0) },
-                        CheckRun { name: "coverage".into(), status: CheckRunStatus::Success, duration_secs: Some(124.0) },
-                        CheckRun { name: "bundle-size".into(), status: CheckRunStatus::Skipped, duration_secs: None },
+                        CheckRun {
+                            name: "lint".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(15.0),
+                        },
+                        CheckRun {
+                            name: "typecheck".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(48.0),
+                        },
+                        CheckRun {
+                            name: "unit-tests".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(116.0),
+                        },
+                        CheckRun {
+                            name: "build".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(82.0),
+                        },
+                        CheckRun {
+                            name: "coverage".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(124.0),
+                        },
+                        CheckRun {
+                            name: "bundle-size".into(),
+                            status: CheckRunStatus::Skipped,
+                            duration_secs: None,
+                        },
                     ],
                 }),
-                timings: Some(RunTimings { elapsed_secs: 3900.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-g3h4i5j6".into(), resources: None }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 3900.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-g3h4i5j6".into(),
+                    resources: None,
+                }),
                 question: None,
                 created_at: ts("2026-02-27T09:00:00Z"),
             },
             RunListItem {
                 id: "run-10".into(),
-                repository: RepositoryReference { name: "shared-types".into() },
+                repository: RepositoryReference {
+                    name: "shared-types".into(),
+                },
                 title: "Export utility type helpers".into(),
-                workflow: WorkflowReference { slug: "sync_drift".into() },
+                workflow: WorkflowReference {
+                    slug: "sync_drift".into(),
+                },
                 status: BoardColumn::Merge,
                 pull_request: Some(RunPullRequest {
                     number: 76,
@@ -728,14 +987,36 @@ mod runs {
                     deletions: Some(8),
                     comments: Some(0),
                     checks: vec![
-                        CheckRun { name: "lint".into(), status: CheckRunStatus::Success, duration_secs: Some(12.0) },
-                        CheckRun { name: "typecheck".into(), status: CheckRunStatus::Success, duration_secs: Some(34.0) },
-                        CheckRun { name: "unit-tests".into(), status: CheckRunStatus::Success, duration_secs: Some(75.0) },
-                        CheckRun { name: "build".into(), status: CheckRunStatus::Success, duration_secs: Some(58.0) },
+                        CheckRun {
+                            name: "lint".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(12.0),
+                        },
+                        CheckRun {
+                            name: "typecheck".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(34.0),
+                        },
+                        CheckRun {
+                            name: "unit-tests".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(75.0),
+                        },
+                        CheckRun {
+                            name: "build".into(),
+                            status: CheckRunStatus::Success,
+                            duration_secs: Some(58.0),
+                        },
                     ],
                 }),
-                timings: Some(RunTimings { elapsed_secs: 2880.0, elapsed_warning: Some(false) }),
-                sandbox: Some(RunSandbox { id: "sb-k7l8m9n0".into(), resources: None }),
+                timings: Some(RunTimings {
+                    elapsed_secs: 2880.0,
+                    elapsed_warning: Some(false),
+                }),
+                sandbox: Some(RunSandbox {
+                    id: "sb-k7l8m9n0".into(),
+                    resources: None,
+                }),
                 question: None,
                 created_at: ts("2026-02-26T08:00:00Z"),
             },
@@ -820,27 +1101,63 @@ mod runs {
         RunUsage {
             stages: vec![
                 UsageStage {
-                    stage: UsageStageRef { id: "detect-drift".into(), name: "Detect Drift".into() },
-                    model: ModelReference { id: "Opus 4.6".into() },
-                    usage: TokenUsage { input_tokens: 12480, output_tokens: 3210, cost: 0.48 },
+                    stage: UsageStageRef {
+                        id: "detect-drift".into(),
+                        name: "Detect Drift".into(),
+                    },
+                    model: ModelReference {
+                        id: "Opus 4.6".into(),
+                    },
+                    usage: TokenUsage {
+                        input_tokens: 12480,
+                        output_tokens: 3210,
+                        cost: 0.48,
+                    },
                     runtime_secs: 72.0,
                 },
                 UsageStage {
-                    stage: UsageStageRef { id: "propose-changes".into(), name: "Propose Changes".into() },
-                    model: ModelReference { id: "Gemini 3.1".into() },
-                    usage: TokenUsage { input_tokens: 28640, output_tokens: 8750, cost: 0.72 },
+                    stage: UsageStageRef {
+                        id: "propose-changes".into(),
+                        name: "Propose Changes".into(),
+                    },
+                    model: ModelReference {
+                        id: "Gemini 3.1".into(),
+                    },
+                    usage: TokenUsage {
+                        input_tokens: 28640,
+                        output_tokens: 8750,
+                        cost: 0.72,
+                    },
                     runtime_secs: 154.0,
                 },
                 UsageStage {
-                    stage: UsageStageRef { id: "review-changes".into(), name: "Review Changes".into() },
-                    model: ModelReference { id: "Codex 5.3".into() },
-                    usage: TokenUsage { input_tokens: 9120, output_tokens: 2640, cost: 0.19 },
+                    stage: UsageStageRef {
+                        id: "review-changes".into(),
+                        name: "Review Changes".into(),
+                    },
+                    model: ModelReference {
+                        id: "Codex 5.3".into(),
+                    },
+                    usage: TokenUsage {
+                        input_tokens: 9120,
+                        output_tokens: 2640,
+                        cost: 0.19,
+                    },
                     runtime_secs: 45.0,
                 },
                 UsageStage {
-                    stage: UsageStageRef { id: "apply-changes".into(), name: "Apply Changes".into() },
-                    model: ModelReference { id: "Opus 4.6".into() },
-                    usage: TokenUsage { input_tokens: 21300, output_tokens: 6480, cost: 0.87 },
+                    stage: UsageStageRef {
+                        id: "apply-changes".into(),
+                        name: "Apply Changes".into(),
+                    },
+                    model: ModelReference {
+                        id: "Opus 4.6".into(),
+                    },
+                    usage: TokenUsage {
+                        input_tokens: 21300,
+                        output_tokens: 6480,
+                        cost: 0.87,
+                    },
                     runtime_secs: 118.0,
                 },
             ],
@@ -852,19 +1169,37 @@ mod runs {
             },
             by_model: vec![
                 UsageByModel {
-                    model: ModelReference { id: "Opus 4.6".into() },
+                    model: ModelReference {
+                        id: "Opus 4.6".into(),
+                    },
                     stages: 2,
-                    usage: TokenUsage { input_tokens: 33780, output_tokens: 9690, cost: 1.35 },
+                    usage: TokenUsage {
+                        input_tokens: 33780,
+                        output_tokens: 9690,
+                        cost: 1.35,
+                    },
                 },
                 UsageByModel {
-                    model: ModelReference { id: "Gemini 3.1".into() },
+                    model: ModelReference {
+                        id: "Gemini 3.1".into(),
+                    },
                     stages: 1,
-                    usage: TokenUsage { input_tokens: 28640, output_tokens: 8750, cost: 0.72 },
+                    usage: TokenUsage {
+                        input_tokens: 28640,
+                        output_tokens: 8750,
+                        cost: 0.72,
+                    },
                 },
                 UsageByModel {
-                    model: ModelReference { id: "Codex 5.3".into() },
+                    model: ModelReference {
+                        id: "Codex 5.3".into(),
+                    },
                     stages: 1,
-                    usage: TokenUsage { input_tokens: 9120, output_tokens: 2640, cost: 0.19 },
+                    usage: TokenUsage {
+                        input_tokens: 9120,
+                        output_tokens: 2640,
+                        cost: 0.19,
+                    },
                 },
             ],
         }
@@ -881,8 +1216,14 @@ mod runs {
                 text: "Should we proceed with the proposed changes?".into(),
                 question_type: QuestionType::YesNo,
                 options: vec![
-                    ApiQuestionOption { key: "yes".into(), label: "Yes".into() },
-                    ApiQuestionOption { key: "no".into(), label: "No".into() },
+                    ApiQuestionOption {
+                        key: "yes".into(),
+                        label: "Yes".into(),
+                    },
+                    ApiQuestionOption {
+                        key: "no".into(),
+                        label: "No".into(),
+                    },
                 ],
                 allow_freeform: false,
             },
@@ -891,8 +1232,14 @@ mod runs {
                 text: "Which approach do you prefer for the migration?".into(),
                 question_type: QuestionType::MultipleChoice,
                 options: vec![
-                    ApiQuestionOption { key: "incremental".into(), label: "Incremental migration".into() },
-                    ApiQuestionOption { key: "big_bang".into(), label: "Big-bang rewrite".into() },
+                    ApiQuestionOption {
+                        key: "incremental".into(),
+                        label: "Incremental migration".into(),
+                    },
+                    ApiQuestionOption {
+                        key: "big_bang".into(),
+                        label: "Big-bang rewrite".into(),
+                    },
                 ],
                 allow_freeform: true,
             },
@@ -919,9 +1266,10 @@ mod runs {
                 preserve: None,
                 daytona: Some(arc_workflows::daytona_sandbox::DaytonaConfig {
                     auto_stop_interval: Some(60),
-                    labels: Some(std::collections::HashMap::from([
-                        ("project".into(), "api-server".into()),
-                    ])),
+                    labels: Some(std::collections::HashMap::from([(
+                        "project".into(),
+                        "api-server".into(),
+                    )])),
                     snapshot: Some(arc_workflows::daytona_sandbox::DaytonaSnapshotConfig {
                         name: "api-server-dev".into(),
                         cpu: Some(4),
@@ -935,7 +1283,10 @@ mod runs {
                 env: None,
             }),
             vars: Some(std::collections::HashMap::from([
-                ("repo_url".into(), "https://github.com/org/api-server".into()),
+                (
+                    "repo_url".into(),
+                    "https://github.com/org/api-server".into(),
+                ),
                 ("branch".into(), "feature/rate-limiting".into()),
             ])),
             hooks: vec![],
@@ -959,19 +1310,37 @@ mod usage {
             },
             by_model: vec![
                 UsageByModel {
-                    model: ModelReference { id: "Opus 4.6".into() },
+                    model: ModelReference {
+                        id: "Opus 4.6".into(),
+                    },
                     stages: 18,
-                    usage: TokenUsage { input_tokens: 304_020, output_tokens: 87_210, cost: 12.15 },
+                    usage: TokenUsage {
+                        input_tokens: 304_020,
+                        output_tokens: 87_210,
+                        cost: 12.15,
+                    },
                 },
                 UsageByModel {
-                    model: ModelReference { id: "Gemini 3.1".into() },
+                    model: ModelReference {
+                        id: "Gemini 3.1".into(),
+                    },
                     stages: 9,
-                    usage: TokenUsage { input_tokens: 257_760, output_tokens: 78_750, cost: 6.48 },
+                    usage: TokenUsage {
+                        input_tokens: 257_760,
+                        output_tokens: 78_750,
+                        cost: 6.48,
+                    },
                 },
                 UsageByModel {
-                    model: ModelReference { id: "Codex 5.3".into() },
+                    model: ModelReference {
+                        id: "Codex 5.3".into(),
+                    },
                     stages: 9,
-                    usage: TokenUsage { input_tokens: 82_080, output_tokens: 23_760, cost: 1.71 },
+                    usage: TokenUsage {
+                        input_tokens: 82_080,
+                        output_tokens: 23_760,
+                        cost: 1.71,
+                    },
                 },
             ],
         }
@@ -988,34 +1357,44 @@ mod workflows {
                 name: "Fix Build".into(),
                 slug: "fix_build".into(),
                 filename: "fix_build.dot".into(),
-                last_run: Some(WorkflowLastRun { ran_at: ts("2025-09-15T12:00:00Z") }),
+                last_run: Some(WorkflowLastRun {
+                    ran_at: ts("2025-09-15T12:00:00Z"),
+                }),
                 schedule: None,
             },
             WorkflowListItem {
                 name: "Implement Feature".into(),
                 slug: "implement".into(),
                 filename: "implement.dot".into(),
-                last_run: Some(WorkflowLastRun { ran_at: ts("2025-09-11T10:00:00Z") }),
+                last_run: Some(WorkflowLastRun {
+                    ran_at: ts("2025-09-11T10:00:00Z"),
+                }),
                 schedule: None,
             },
             WorkflowListItem {
                 name: "Sync Drift".into(),
                 slug: "sync_drift".into(),
                 filename: "sync_drift.dot".into(),
-                last_run: Some(WorkflowLastRun { ran_at: ts("2025-09-14T14:00:00Z") }),
+                last_run: Some(WorkflowLastRun {
+                    ran_at: ts("2025-09-14T14:00:00Z"),
+                }),
                 schedule: None,
             },
             WorkflowListItem {
                 name: "Expand Product".into(),
                 slug: "expand".into(),
                 filename: "expand.dot".into(),
-                last_run: Some(WorkflowLastRun { ran_at: ts("2025-09-01T08:00:00Z") }),
+                last_run: Some(WorkflowLastRun {
+                    ran_at: ts("2025-09-01T08:00:00Z"),
+                }),
                 schedule: None,
             },
         ]
     }
 
-    fn run_config_to_api(cfg: arc_workflows::cli::run_config::WorkflowRunConfig) -> RunConfiguration {
+    fn run_config_to_api(
+        cfg: arc_workflows::cli::run_config::WorkflowRunConfig,
+    ) -> RunConfiguration {
         serde_json::from_value(serde_json::to_value(cfg).unwrap()).unwrap()
     }
 
@@ -1952,8 +2331,13 @@ mod verifications {
     fn recent_results_from_def(defs: &[RecentResultDef]) -> Vec<RecentControlResult> {
         defs.iter()
             .map(|r| RecentControlResult {
-                run: RunReference { id: r.run_id.into(), title: r.run_title.into() },
-                workflow: WorkflowReference { slug: r.workflow.into() },
+                run: RunReference {
+                    id: r.run_id.into(),
+                    title: r.run_title.into(),
+                },
+                workflow: WorkflowReference {
+                    slug: r.workflow.into(),
+                },
                 result: r.result,
                 timestamp: ts(r.timestamp),
             })
@@ -2043,16 +2427,20 @@ mod verifications {
         ALL_CATEGORIES
             .iter()
             .flat_map(|cat| {
-                cat.controls.iter().map(move |c| VerificationControlListItem {
-                    name: c.name.into(),
-                    slug: c.slug.into(),
-                    description: c.description.into(),
-                    type_: c.type_,
-                    mode: Some(c.mode),
-                    f1: c.f1,
-                    pass_at_1: c.pass_at_1,
-                    criterion: CriterionReference { name: cat.name.into() },
-                })
+                cat.controls
+                    .iter()
+                    .map(move |c| VerificationControlListItem {
+                        name: c.name.into(),
+                        slug: c.slug.into(),
+                        description: c.description.into(),
+                        type_: c.type_,
+                        mode: Some(c.mode),
+                        f1: c.f1,
+                        pass_at_1: c.pass_at_1,
+                        criterion: CriterionReference {
+                            name: cat.name.into(),
+                        },
+                    })
             })
             .collect()
     }
@@ -2085,7 +2473,9 @@ mod verifications {
                             slug: ctrl.slug.into(),
                             description: ctrl.description.into(),
                             type_: Some(ctrl.type_),
-                            criterion: CriterionReference { name: cat.name.into() },
+                            criterion: CriterionReference {
+                                name: cat.name.into(),
+                            },
                         },
                         performance: ControlPerformance {
                             mode: ctrl.mode,
@@ -2135,7 +2525,17 @@ mod retros {
     use super::ts;
     use arc_types::*;
 
-    fn stage(id: &str, label: &str, status: &str, duration_ms: i64, retries: i64, cost: Option<f64>, notes: Option<&str>, failure_reason: Option<&str>, files_touched: Vec<&str>) -> StageRetro {
+    fn stage(
+        id: &str,
+        label: &str,
+        status: &str,
+        duration_ms: i64,
+        retries: i64,
+        cost: Option<f64>,
+        notes: Option<&str>,
+        failure_reason: Option<&str>,
+        files_touched: Vec<&str>,
+    ) -> StageRetro {
         StageRetro {
             stage_id: id.into(),
             stage_label: label.into(),
@@ -2324,8 +2724,13 @@ mod retros {
     pub fn list_items() -> Vec<RetroListItem> {
         vec![
             RetroListItem {
-                run: RunReference { id: "run-1".into(), title: "Add rate limiting to auth endpoints".into() },
-                workflow: WorkflowReference { slug: "implement".into() },
+                run: RunReference {
+                    id: "run-1".into(),
+                    title: "Add rate limiting to auth endpoints".into(),
+                },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 timestamp: ts("2026-02-28T14:32:00Z"),
                 smoothness: Some(SmoothnessRating::Smooth),
                 stats: RetroStats {
@@ -2344,8 +2749,13 @@ mod retros {
                 friction_point_count: 0,
             },
             RetroListItem {
-                run: RunReference { id: "run-2".into(), title: "Migrate to React Router v7".into() },
-                workflow: WorkflowReference { slug: "implement".into() },
+                run: RunReference {
+                    id: "run-2".into(),
+                    title: "Migrate to React Router v7".into(),
+                },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 timestamp: ts("2026-02-28T10:15:00Z"),
                 smoothness: Some(SmoothnessRating::Bumpy),
                 stats: RetroStats {
@@ -2367,8 +2777,13 @@ mod retros {
                 friction_point_count: 2,
             },
             RetroListItem {
-                run: RunReference { id: "run-6".into(), title: "Add dark mode toggle".into() },
-                workflow: WorkflowReference { slug: "implement".into() },
+                run: RunReference {
+                    id: "run-6".into(),
+                    title: "Add dark mode toggle".into(),
+                },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 timestamp: ts("2026-02-27T16:45:00Z"),
                 smoothness: Some(SmoothnessRating::Effortless),
                 stats: RetroStats {
@@ -2386,8 +2801,13 @@ mod retros {
                 friction_point_count: 0,
             },
             RetroListItem {
-                run: RunReference { id: "run-3".into(), title: "Fix config parsing for nested values".into() },
-                workflow: WorkflowReference { slug: "fix_build".into() },
+                run: RunReference {
+                    id: "run-3".into(),
+                    title: "Fix config parsing for nested values".into(),
+                },
+                workflow: WorkflowReference {
+                    slug: "fix_build".into(),
+                },
                 timestamp: ts("2026-02-27T09:20:00Z"),
                 smoothness: Some(SmoothnessRating::Struggled),
                 stats: RetroStats {
@@ -2406,8 +2826,13 @@ mod retros {
                 friction_point_count: 3,
             },
             RetroListItem {
-                run: RunReference { id: "run-8".into(), title: "Implement webhook retry logic".into() },
-                workflow: WorkflowReference { slug: "implement".into() },
+                run: RunReference {
+                    id: "run-8".into(),
+                    title: "Implement webhook retry logic".into(),
+                },
+                workflow: WorkflowReference {
+                    slug: "implement".into(),
+                },
                 timestamp: ts("2026-02-26T11:00:00Z"),
                 smoothness: Some(SmoothnessRating::Smooth),
                 stats: RetroStats {
@@ -2659,16 +3084,13 @@ mod settings {
                         network: Some(arc_workflows::daytona_sandbox::DaytonaNetwork::Block),
                     }),
                     exe: None,
-                env: None,
+                    env: None,
                 }),
                 vars: None,
                 checkpoint: Default::default(),
             },
-            hook_config: arc_workflows::hook::HookConfig {
-                hooks: vec![],
-            },
+            hook_config: arc_workflows::hook::HookConfig { hooks: vec![] },
         })
         .unwrap()
     }
 }
-

@@ -6,13 +6,13 @@ use arc_agent::Sandbox;
 use async_trait::async_trait;
 use tokio::sync::Semaphore;
 
-use crate::millis_u64;
 use crate::context::keys;
 use crate::context::Context;
 use crate::engine::GitCheckpointMode;
 use crate::error::ArcError;
 use crate::event::WorkflowRunEvent;
 use crate::graph::{Graph, Node};
+use crate::millis_u64;
 use crate::outcome::{Outcome, StageStatus};
 
 use super::{EngineServices, Handler};
@@ -367,7 +367,8 @@ impl Handler for ParallelHandler {
                                 "failed to reset remote worktree {wt_path_str}"
                             )));
                         }
-                        branch_context.set(keys::INTERNAL_WORK_DIR, serde_json::json!(&wt_path_str));
+                        branch_context
+                            .set(keys::INTERNAL_WORK_DIR, serde_json::json!(&wt_path_str));
                         let env: Arc<dyn Sandbox> = Arc::new(WorktreeSandbox {
                             inner: Arc::clone(&services.sandbox),
                             worktree_dir: wt_path_str.clone(),
@@ -400,7 +401,10 @@ impl Handler for ParallelHandler {
             let sem = Arc::clone(&semaphore);
             let has_git = git_state.is_some();
             let run_id = git_state.as_ref().map(|gs| gs.run_id.clone());
-            let git_author = git_state.as_ref().map(|gs| gs.git_author.clone()).unwrap_or_default();
+            let git_author = git_state
+                .as_ref()
+                .map(|gs| gs.git_author.clone())
+                .unwrap_or_default();
 
             let handle = tokio::spawn(async move {
                 let _permit = sem

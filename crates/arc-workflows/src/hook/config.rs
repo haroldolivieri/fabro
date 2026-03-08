@@ -21,7 +21,9 @@ pub enum TlsMode {
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HookType {
-    Command { command: String },
+    Command {
+        command: String,
+    },
     Http {
         url: String,
         headers: Option<std::collections::HashMap<String, String>>,
@@ -70,15 +72,18 @@ impl HookDefinition {
         if let Some(ref ht) = self.hook_type {
             return Some(Cow::Borrowed(ht));
         }
-        self.command
-            .as_ref()
-            .map(|cmd| Cow::Owned(HookType::Command { command: cmd.clone() }))
+        self.command.as_ref().map(|cmd| {
+            Cow::Owned(HookType::Command {
+                command: cmd.clone(),
+            })
+        })
     }
 
     /// Whether this hook is blocking for its event.
     #[must_use]
     pub fn is_blocking(&self) -> bool {
-        self.blocking.unwrap_or_else(|| self.event.is_blocking_by_default())
+        self.blocking
+            .unwrap_or_else(|| self.event.is_blocking_by_default())
     }
 
     /// Timeout duration for this hook.
@@ -115,7 +120,8 @@ impl HookDefinition {
                 format!("{event_str}:{short}")
             }
             Some(HookType::Http { ref url, .. }) => format!("{event_str}:{url}"),
-            Some(HookType::Prompt { ref prompt, .. }) | Some(HookType::Agent { ref prompt, .. }) => {
+            Some(HookType::Prompt { ref prompt, .. })
+            | Some(HookType::Agent { ref prompt, .. }) => {
                 let short = &prompt[..arc_agent::floor_char_boundary(prompt, 20)];
                 format!("{event_str}:{short}")
             }
@@ -180,7 +186,9 @@ command = "./scripts/pre-check.sh"
         assert_eq!(hook.event, HookEvent::StageStart);
         assert_eq!(hook.command.as_deref(), Some("./scripts/pre-check.sh"));
         let resolved = hook.resolved_hook_type().unwrap();
-        assert!(matches!(&*resolved, HookType::Command { command } if command == "./scripts/pre-check.sh"));
+        assert!(
+            matches!(&*resolved, HookType::Command { command } if command == "./scripts/pre-check.sh")
+        );
     }
 
     #[test]

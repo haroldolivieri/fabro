@@ -17,9 +17,7 @@ pub fn validate_command(args: &ValidateArgs, styles: &Styles) -> anyhow::Result<
 
     eprintln!(
         "{} ({} nodes, {} edges)",
-        styles
-            .bold
-            .apply_to(format!("Workflow: {}", graph.name)),
+        styles.bold.apply_to(format!("Workflow: {}", graph.name)),
         graph.nodes.len(),
         graph.edges.len(),
     );

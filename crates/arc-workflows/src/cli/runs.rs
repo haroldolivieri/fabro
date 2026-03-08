@@ -337,7 +337,9 @@ mod tests {
                 "edge_count": 1,
                 "labels": { "env": "prod" }
             })),
-            Some(serde_json::json!({ "timestamp": "2026-01-01T12:01:00Z", "status": "success", "duration_ms": 60000 })),
+            Some(
+                serde_json::json!({ "timestamp": "2026-01-01T12:01:00Z", "status": "success", "duration_ms": 60000 }),
+            ),
             false,
         );
 
@@ -523,7 +525,9 @@ mod tests {
                 "node_count": 1,
                 "edge_count": 0
             })),
-            Some(serde_json::json!({ "timestamp": "2025-01-01T12:01:00Z", "status": "success", "duration_ms": 60000 })),
+            Some(
+                serde_json::json!({ "timestamp": "2025-01-01T12:01:00Z", "status": "success", "duration_ms": 60000 }),
+            ),
             false,
         );
 
@@ -557,7 +561,9 @@ mod tests {
                 "node_count": 1,
                 "edge_count": 0
             })),
-            Some(serde_json::json!({ "timestamp": "2025-01-01T12:01:00Z", "status": "success", "duration_ms": 60000 })),
+            Some(
+                serde_json::json!({ "timestamp": "2025-01-01T12:01:00Z", "status": "success", "duration_ms": 60000 }),
+            ),
             false,
         );
 
@@ -573,7 +579,9 @@ mod tests {
                 "node_count": 1,
                 "edge_count": 0
             })),
-            Some(serde_json::json!({ "timestamp": "2026-03-01T12:01:00Z", "status": "success", "duration_ms": 60000 })),
+            Some(
+                serde_json::json!({ "timestamp": "2026-03-01T12:01:00Z", "status": "success", "duration_ms": 60000 }),
+            ),
             false,
         );
 

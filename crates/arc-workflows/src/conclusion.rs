@@ -53,10 +53,7 @@ mod tests {
         assert_eq!(loaded.status, crate::outcome::StageStatus::Success);
         assert_eq!(loaded.duration_ms, 12345);
         assert!(loaded.failure_reason.is_none());
-        assert_eq!(
-            loaded.final_git_commit_sha.as_deref(),
-            Some("deadbeef")
-        );
+        assert_eq!(loaded.final_git_commit_sha.as_deref(), Some("deadbeef"));
     }
 
     #[test]

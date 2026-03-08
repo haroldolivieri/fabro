@@ -24,7 +24,9 @@ fn button(label: &str, value: &str, action_id: &str) -> Value {
 }
 
 pub fn answered_blocks(question_text: &str, answer_text: &str) -> Vec<Value> {
-    vec![text_block(&format!("~{question_text}~\n*Answer:* {answer_text}"))]
+    vec![text_block(&format!(
+        "~{question_text}~\n*Answer:* {answer_text}"
+    ))]
 }
 
 pub fn question_to_blocks(question_id: &str, question: &Question) -> Vec<Value> {

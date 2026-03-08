@@ -114,7 +114,11 @@ fn shorten_path(path: &str) -> String {
 fn tool_display_name(tool_name: &str, arguments: &serde_json::Value) -> String {
     let dim = Style::new().dim();
     let arg = |key: &str| arguments.get(key).and_then(|v| v.as_str());
-    let path_arg = || arg("path").or_else(|| arg("file_path")).map(|p| truncate(&shorten_path(p), 60));
+    let path_arg = || {
+        arg("path")
+            .or_else(|| arg("file_path"))
+            .map(|p| truncate(&shorten_path(p), 60))
+    };
 
     let detail = match tool_name {
         "bash" | "shell" | "execute_command" => arg("command").map(|c| truncate(c, 60)),
@@ -334,11 +338,7 @@ impl ProgressUI {
             } => {
                 self.finish_stage(node_id, name, red_cross(), "");
                 let red = Style::new().red();
-                self.insert_info_line(&format!(
-                    "{} {}",
-                    red.apply_to("Error:"),
-                    failure.message,
-                ));
+                self.insert_info_line(&format!("{} {}", red.apply_to("Error:"), failure.message,));
             }
             WorkflowRunEvent::ParallelStarted { .. } => {
                 // The fork stage is the (only) active stage at this point.
@@ -403,11 +403,7 @@ impl ProgressUI {
                 } else {
                     red_cross()
                 };
-                let msg = format!(
-                    "{glyph} [{}/{total}] {}",
-                    index + 1,
-                    truncate(command, 60),
-                );
+                let msg = format!("{glyph} [{}/{total}] {}", index + 1, truncate(command, 60),);
                 match &self.renderer {
                     ProgressRenderer::Tty(tty) => {
                         let bar = if let Some(ref setup_bar) = self.setup_bar {
@@ -480,9 +476,11 @@ impl ProgressUI {
             } => {
                 let dur = format_duration_ms(*duration_ms);
                 let detail = match (name, cpu, memory) {
-                    (Some(n), Some(c), Some(m)) => {
-                        Some(format!("{n} ({} cpu, {} GB)", format_number(*c), format_number(*m)))
-                    }
+                    (Some(n), Some(c), Some(m)) => Some(format!(
+                        "{n} ({} cpu, {} GB)",
+                        format_number(*c),
+                        format_number(*m)
+                    )),
                     (Some(n), _, _) => Some(n.clone()),
                     _ => None,
                 };
@@ -497,7 +495,8 @@ impl ProgressUI {
                             bar.set_prefix(dur);
                             bar.finish_with_message(format!("Sandbox: {display_provider}"));
                             if let Some(detail_str) = &detail {
-                                let detail_bar = tty.multi.insert_after(&bar, ProgressBar::new_spinner());
+                                let detail_bar =
+                                    tty.multi.insert_after(&bar, ProgressBar::new_spinner());
                                 detail_bar.set_style(style_sandbox_detail());
                                 detail_bar.finish_with_message(detail_str.clone());
                             }
@@ -579,9 +578,18 @@ impl ProgressUI {
         }
     }
 
-    fn on_cli_ensure_completed(&mut self, cli_name: &str, already_installed: bool, duration_ms: u64) {
+    fn on_cli_ensure_completed(
+        &mut self,
+        cli_name: &str,
+        already_installed: bool,
+        duration_ms: u64,
+    ) {
         let dur = format_duration_ms(duration_ms);
-        let status = if already_installed { "found" } else { "installed" };
+        let status = if already_installed {
+            "found"
+        } else {
+            "installed"
+        };
         match &self.renderer {
             ProgressRenderer::Tty(_) => {
                 if let Some(bar) = self.cli_ensure_bar.take() {
@@ -743,25 +751,23 @@ impl ProgressUI {
                     ),
                 );
             }
-            AgentEvent::CompactionStarted { .. } => {
-                match &self.renderer {
-                    ProgressRenderer::Tty(tty) => {
-                        if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
-                            if let Some(old) = stage.compaction_bar.take() {
-                                old.finish_and_clear();
-                            }
-                            let bar = tty
-                                .multi
-                                .insert_after(stage.last_bar(), ProgressBar::new_spinner());
-                            bar.set_style(style_tool_running());
-                            bar.set_message("\u{27f3} compacting context\u{2026}");
-                            bar.enable_steady_tick(Duration::from_millis(100));
-                            stage.compaction_bar = Some(bar);
+            AgentEvent::CompactionStarted { .. } => match &self.renderer {
+                ProgressRenderer::Tty(tty) => {
+                    if let Some(stage) = self.active_stages.get_mut(stage_node_id) {
+                        if let Some(old) = stage.compaction_bar.take() {
+                            old.finish_and_clear();
                         }
+                        let bar = tty
+                            .multi
+                            .insert_after(stage.last_bar(), ProgressBar::new_spinner());
+                        bar.set_style(style_tool_running());
+                        bar.set_message("\u{27f3} compacting context\u{2026}");
+                        bar.enable_steady_tick(Duration::from_millis(100));
+                        stage.compaction_bar = Some(bar);
                     }
-                    ProgressRenderer::Plain => {}
                 }
-            }
+                ProgressRenderer::Plain => {}
+            },
             AgentEvent::CompactionCompleted {
                 original_turn_count,
                 preserved_turn_count,
@@ -807,9 +813,7 @@ impl ProgressUI {
                     ),
                 );
             }
-            AgentEvent::SubAgentSpawned {
-                agent_id, task, ..
-            } if self.verbose => {
+            AgentEvent::SubAgentSpawned { agent_id, task, .. } if self.verbose => {
                 let dim = Style::new().dim();
                 let short_id = &agent_id[..agent_id.len().min(8)];
                 self.insert_info_line_for_stage(
@@ -828,11 +832,7 @@ impl ProgressUI {
                 ..
             } if self.verbose => {
                 let short_id = &agent_id[..agent_id.len().min(8)];
-                let glyph = if *success {
-                    green_check()
-                } else {
-                    red_cross()
-                };
+                let glyph = if *success { green_check() } else { red_cross() };
                 self.insert_info_line_for_stage(
                     stage_node_id,
                     &format!("{glyph} subagent[{short_id}] ({turns_used} turns)"),
@@ -864,10 +864,9 @@ impl ProgressUI {
                         evicted.bar.finish_and_clear();
                     }
                 }
-                let bar = tty.multi.insert_after(
-                    stage.last_bar(),
-                    ProgressBar::new_spinner(),
-                );
+                let bar = tty
+                    .multi
+                    .insert_after(stage.last_bar(), ProgressBar::new_spinner());
                 bar.set_style(style_tool_running());
                 bar.set_message(display_name.clone());
                 bar.enable_steady_tick(Duration::from_millis(100));
@@ -892,10 +891,9 @@ impl ProgressUI {
 
         if let ProgressRenderer::Tty(tty) = &self.renderer {
             if let Some(stage) = self.active_stages.get_mut(&parent_id) {
-                let bar = tty.multi.insert_after(
-                    stage.last_bar(),
-                    ProgressBar::new_spinner(),
-                );
+                let bar = tty
+                    .multi
+                    .insert_after(stage.last_bar(), ProgressBar::new_spinner());
                 bar.set_style(style_tool_running());
                 bar.set_message(branch.to_string());
                 bar.enable_steady_tick(Duration::from_millis(100));
@@ -912,7 +910,11 @@ impl ProgressUI {
 
     fn on_parallel_branch_completed(&mut self, branch: &str, duration_ms: u64, status: &str) {
         let succeeded = matches!(status, "success" | "partial_success");
-        let glyph = if succeeded { green_check() } else { red_cross() };
+        let glyph = if succeeded {
+            green_check()
+        } else {
+            red_cross()
+        };
         let dur = format_duration_ms(duration_ms);
 
         let parent_id = match &self.parallel_parent {
@@ -1102,7 +1104,10 @@ mod tests {
         let stage = ui.active_stages.get("fork1").unwrap();
         assert_eq!(stage.tool_calls.len(), 1);
         assert_eq!(stage.tool_calls[0].tool_call_id, "security");
-        assert!(matches!(stage.tool_calls[0].status, ToolCallStatus::Running));
+        assert!(matches!(
+            stage.tool_calls[0].status,
+            ToolCallStatus::Running
+        ));
 
         // Branch completed → marks entry as succeeded
         ui.handle_event(&WorkflowRunEvent::ParallelBranchCompleted {
@@ -1162,10 +1167,7 @@ mod tests {
         });
 
         let stage = ui.active_stages.get("fork1").unwrap();
-        assert!(matches!(
-            stage.tool_calls[0].status,
-            ToolCallStatus::Failed
-        ));
+        assert!(matches!(stage.tool_calls[0].status, ToolCallStatus::Failed));
     }
 
     #[test]

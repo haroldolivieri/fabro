@@ -57,8 +57,13 @@ impl Handler for PromptHandler {
                 .llm_provider()
                 .and_then(|s| s.parse::<Provider>().ok())
                 .unwrap_or(Provider::Anthropic);
-            let docs =
-                arc_agent::discover_project_docs(&*services.sandbox, working_dir, working_dir, provider).await;
+            let docs = arc_agent::discover_project_docs(
+                &*services.sandbox,
+                working_dir,
+                working_dir,
+                provider,
+            )
+            .await;
             tracing::debug!(node = %node.id, doc_count = docs.len(), "Project docs discovered for prompt node");
             if docs.is_empty() {
                 None
@@ -279,8 +284,7 @@ mod tests {
             _stage_dir: &Path,
         ) -> Result<CodergenResult, ArcError> {
             *self.captured_prompt.lock().unwrap() = Some(prompt.to_string());
-            *self.captured_system_prompt.lock().unwrap() =
-                Some(system_prompt.map(String::from));
+            *self.captured_system_prompt.lock().unwrap() = Some(system_prompt.map(String::from));
             Ok(CodergenResult::Text {
                 text: "classified".to_string(),
                 usage: None,
@@ -306,7 +310,10 @@ mod tests {
             AttrValue::String("Classify this".to_string()),
         );
         let context = Context::new();
-        context.set(keys::CURRENT_PREAMBLE, serde_json::json!("Prior output here"));
+        context.set(
+            keys::CURRENT_PREAMBLE,
+            serde_json::json!("Prior output here"),
+        );
         let graph = Graph::new("test");
         let tmp = TempDir::new().unwrap();
 
@@ -371,10 +378,8 @@ mod tests {
             "prompt".to_string(),
             AttrValue::String("Classify this".to_string()),
         );
-        node.attrs.insert(
-            "project_memory".to_string(),
-            AttrValue::Boolean(false),
-        );
+        node.attrs
+            .insert("project_memory".to_string(), AttrValue::Boolean(false));
         let context = Context::new();
         let graph = Graph::new("test");
         let tmp = TempDir::new().unwrap();
@@ -385,6 +390,10 @@ mod tests {
             .unwrap();
 
         let sys = captured_sys.lock().unwrap().clone();
-        assert_eq!(sys, Some(None), "system_prompt should be None when project_memory=false");
+        assert_eq!(
+            sys,
+            Some(None),
+            "system_prompt should be None when project_memory=false"
+        );
     }
 }

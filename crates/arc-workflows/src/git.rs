@@ -36,7 +36,6 @@ impl GitAuthor {
     }
 }
 
-
 fn git_error(msg: impl Into<String>) -> ArcError {
     ArcError::engine(msg.into())
 }
@@ -413,7 +412,10 @@ impl MetadataStore {
     }
 
     /// Read the manifest from the metadata branch. Returns `None` if not found.
-    pub fn read_manifest(repo_path: &Path, run_id: &str) -> Result<Option<crate::manifest::Manifest>> {
+    pub fn read_manifest(
+        repo_path: &Path,
+        run_id: &str,
+    ) -> Result<Option<crate::manifest::Manifest>> {
         match Self::read_file(repo_path, run_id, "manifest.json")? {
             Some(bytes) => {
                 let manifest: crate::manifest::Manifest = serde_json::from_slice(&bytes)
@@ -563,7 +565,17 @@ mod tests {
         let wt = dir.path().join("ff-wt");
         add_worktree(dir.path(), &wt, "ff-branch").unwrap();
         fs::write(wt.join("new.txt"), "data").unwrap();
-        checkpoint_commit(&wt, "run", "node", "ok", 1, None, &[], &GitAuthor::default()).unwrap();
+        checkpoint_commit(
+            &wt,
+            "run",
+            "node",
+            "ok",
+            1,
+            None,
+            &[],
+            &GitAuthor::default(),
+        )
+        .unwrap();
         let advanced_sha = head_sha(&wt).unwrap();
         remove_worktree(dir.path(), &wt).unwrap();
 
@@ -634,8 +646,17 @@ mod tests {
 
         // Simulate a shadow commit SHA
         let shadow_sha = "abcdef1234567890abcdef1234567890abcdef12";
-        let sha =
-            checkpoint_commit(&wt_path, "run1", "nodeA", "success", 3, Some(shadow_sha), &[], &GitAuthor::default()).unwrap();
+        let sha = checkpoint_commit(
+            &wt_path,
+            "run1",
+            "nodeA",
+            "success",
+            3,
+            Some(shadow_sha),
+            &[],
+            &GitAuthor::default(),
+        )
+        .unwrap();
         assert_eq!(sha.len(), 40);
         assert!(sha.chars().all(|c| c.is_ascii_hexdigit()));
 
@@ -674,7 +695,17 @@ mod tests {
         let wt_path = dir.path().join("worktree");
         add_worktree(dir.path(), &wt_path, "run-branch2").unwrap();
 
-        let sha = checkpoint_commit(&wt_path, "run2", "nodeB", "completed", 1, None, &[], &GitAuthor::default()).unwrap();
+        let sha = checkpoint_commit(
+            &wt_path,
+            "run2",
+            "nodeB",
+            "completed",
+            1,
+            None,
+            &[],
+            &GitAuthor::default(),
+        )
+        .unwrap();
         assert_eq!(sha.len(), 40);
 
         // Verify Arc-Completed trailer present but no Arc-Meta
@@ -718,7 +749,17 @@ mod tests {
         let wt_path = dir.path().join("worktree");
         add_worktree(dir.path(), &wt_path, "fallback-branch").unwrap();
 
-        let sha = checkpoint_commit(&wt_path, "run2", "nodeB", "completed", 0, None, &[], &GitAuthor::default()).unwrap();
+        let sha = checkpoint_commit(
+            &wt_path,
+            "run2",
+            "nodeB",
+            "completed",
+            0,
+            None,
+            &[],
+            &GitAuthor::default(),
+        )
+        .unwrap();
         assert_eq!(sha.len(), 40);
 
         remove_worktree(dir.path(), &wt_path).unwrap();
@@ -1003,7 +1044,17 @@ mod tests {
         fs::write(wt_path.join("node_modules/pkg/index.js"), "module").unwrap();
 
         let excludes = vec!["**/node_modules/**".to_string()];
-        checkpoint_commit(&wt_path, "run", "node", "ok", 1, None, &excludes, &GitAuthor::default()).unwrap();
+        checkpoint_commit(
+            &wt_path,
+            "run",
+            "node",
+            "ok",
+            1,
+            None,
+            &excludes,
+            &GitAuthor::default(),
+        )
+        .unwrap();
 
         // Verify kept.txt was committed
         let output = Command::new("git")
@@ -1036,14 +1087,34 @@ mod tests {
         // Create and commit a file in the excluded dir first
         fs::create_dir_all(wt_path.join(".cache")).unwrap();
         fs::write(wt_path.join(".cache/data.bin"), "v1").unwrap();
-        checkpoint_commit(&wt_path, "run", "setup", "ok", 0, None, &[], &GitAuthor::default()).unwrap();
+        checkpoint_commit(
+            &wt_path,
+            "run",
+            "setup",
+            "ok",
+            0,
+            None,
+            &[],
+            &GitAuthor::default(),
+        )
+        .unwrap();
 
         // Now modify the tracked excluded file and add a new non-excluded file
         fs::write(wt_path.join(".cache/data.bin"), "v2").unwrap();
         fs::write(wt_path.join("result.txt"), "done").unwrap();
 
         let excludes = vec!["**/.cache/**".to_string()];
-        checkpoint_commit(&wt_path, "run", "step", "ok", 1, None, &excludes, &GitAuthor::default()).unwrap();
+        checkpoint_commit(
+            &wt_path,
+            "run",
+            "step",
+            "ok",
+            1,
+            None,
+            &excludes,
+            &GitAuthor::default(),
+        )
+        .unwrap();
 
         let output = Command::new("git")
             .args(["show", "--name-only", "--format=", "HEAD"])
@@ -1090,9 +1161,14 @@ mod tests {
             .unwrap();
         Command::new("git")
             .args([
-                "-c", "user.name=test",
-                "-c", "user.email=test@test",
-                "commit", "--allow-empty", "-m", "init",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
             ])
             .current_dir(&repo_dir)
             .output()
@@ -1110,7 +1186,10 @@ mod tests {
             .output()
             .unwrap();
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("test-push"), "remote should have test-push branch");
+        assert!(
+            stdout.contains("test-push"),
+            "remote should have test-push branch"
+        );
     }
 
     #[test]
@@ -1126,9 +1205,13 @@ mod tests {
             .unwrap();
         Command::new("git")
             .args([
-                "-c", "user.name=test",
-                "-c", "user.email=test@test",
-                "commit", "-m", "add file",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "-m",
+                "add file",
             ])
             .current_dir(dir.path())
             .output()

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arc_agent::Sandbox;
 
 use super::config::{HookConfig, HookDefinition};
-use super::executor::{HookExecutorImpl, HookExecutor};
+use super::executor::{HookExecutor, HookExecutorImpl};
 use super::types::{HookContext, HookDecision};
 
 /// Central orchestrator: filters matching hooks, executes them, merges decisions.
@@ -234,7 +234,9 @@ mod tests {
     }
 
     fn make_sandbox() -> Arc<dyn Sandbox> {
-        Arc::new(arc_agent::LocalSandbox::new(std::env::current_dir().unwrap()))
+        Arc::new(arc_agent::LocalSandbox::new(
+            std::env::current_dir().unwrap(),
+        ))
     }
 
     fn make_context(event: HookEvent) -> HookContext {
@@ -287,9 +289,7 @@ mod tests {
     async fn matcher_filters_by_node_id() {
         let mut hook = make_hook(HookEvent::StageStart, "filtered");
         hook.matcher = Some("agent".into());
-        let config = HookConfig {
-            hooks: vec![hook],
-        };
+        let config = HookConfig { hooks: vec![hook] };
         let runner = HookRunner::with_executor(
             config,
             Arc::new(MockExecutor {
@@ -316,9 +316,7 @@ mod tests {
     async fn matcher_filters_by_handler_type() {
         let mut hook = make_hook(HookEvent::StageStart, "filtered");
         hook.matcher = Some("^agent$".into());
-        let config = HookConfig {
-            hooks: vec![hook],
-        };
+        let config = HookConfig { hooks: vec![hook] };
         let runner = HookRunner::with_executor(
             config,
             Arc::new(MockExecutor {
@@ -358,9 +356,7 @@ mod tests {
     async fn blocking_hook_skip_decision() {
         let mut hook = make_hook(HookEvent::StageStart, "skipper");
         hook.blocking = Some(true);
-        let config = HookConfig {
-            hooks: vec![hook],
-        };
+        let config = HookConfig { hooks: vec![hook] };
         let runner = HookRunner::with_executor(
             config,
             Arc::new(MockExecutor {
@@ -379,9 +375,7 @@ mod tests {
     async fn non_blocking_hook_doesnt_block() {
         let mut hook = make_hook(HookEvent::StageComplete, "observer");
         hook.blocking = Some(false);
-        let config = HookConfig {
-            hooks: vec![hook],
-        };
+        let config = HookConfig { hooks: vec![hook] };
         let runner = HookRunner::with_executor(
             config,
             Arc::new(MockExecutor {

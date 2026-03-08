@@ -592,10 +592,7 @@ mod tests {
                 id: "gate".into(),
                 attrs: Some(vec![
                     ("type".into(), AstValue::Str("human".into())),
-                    (
-                        "codergen_mode".into(),
-                        AstValue::Str("one_shot".into()),
-                    ),
+                    ("codergen_mode".into(), AstValue::Str("one_shot".into())),
                 ]),
             })],
         };

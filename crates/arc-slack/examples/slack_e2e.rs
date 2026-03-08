@@ -104,9 +104,7 @@ async fn ask_question(
     let question_text = test_case.question.text.clone();
     let is_freeform = test_case.question.question_type == QuestionType::Freeform;
     let interviewer_clone = Arc::clone(interviewer);
-    let ask_handle = tokio::spawn(async move {
-        interviewer_clone.ask(test_case.question).await
-    });
+    let ask_handle = tokio::spawn(async move { interviewer_clone.ask(test_case.question).await });
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
@@ -190,7 +188,14 @@ async fn main() {
 
     let cases = test_cases();
     for case in cases {
-        ask_question(case, &interviewer, &thread_registry, &slack_client, &channel).await;
+        ask_question(
+            case,
+            &interviewer,
+            &thread_registry,
+            &slack_client,
+            &channel,
+        )
+        .await;
     }
 
     eprintln!("\nAll question types tested!");

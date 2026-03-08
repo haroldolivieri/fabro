@@ -2,7 +2,6 @@
 ///
 /// All context keys used across the engine, handlers, and preamble are
 /// defined here to prevent typos and improve discoverability.
-
 use std::fmt;
 use std::str::FromStr;
 
@@ -160,10 +159,7 @@ mod tests {
 
     #[test]
     fn thread_current_node_key_formats_correctly() {
-        assert_eq!(
-            thread_current_node_key("main"),
-            "thread.main.current_node"
-        );
+        assert_eq!(thread_current_node_key("main"), "thread.main.current_node");
     }
 
     #[test]

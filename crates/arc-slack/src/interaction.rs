@@ -46,8 +46,7 @@ fn extract_checkbox_selections(question_id: &str, payload: &Value) -> Answer {
     let block_id = format!("{question_id}:checkboxes");
     let action_id = format!("{question_id}:select");
 
-    let selected = payload["state"]["values"][&block_id][&action_id]["selected_options"]
-        .as_array();
+    let selected = payload["state"]["values"][&block_id][&action_id]["selected_options"].as_array();
 
     match selected {
         Some(options) if !options.is_empty() => {

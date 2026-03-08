@@ -123,14 +123,10 @@ pub fn default_registry(
     interviewer: Arc<dyn Interviewer>,
     make_backend: impl Fn() -> Option<Box<dyn agent::CodergenBackend>>,
 ) -> HandlerRegistry {
-    let mut registry =
-        HandlerRegistry::new(Box::new(agent::AgentHandler::new(make_backend())));
+    let mut registry = HandlerRegistry::new(Box::new(agent::AgentHandler::new(make_backend())));
     registry.register("start", Box::new(start::StartHandler));
     registry.register("exit", Box::new(exit::ExitHandler));
-    registry.register(
-        "agent",
-        Box::new(agent::AgentHandler::new(make_backend())),
-    );
+    registry.register("agent", Box::new(agent::AgentHandler::new(make_backend())));
     // Legacy alias
     registry.register(
         "agent_loop",
@@ -146,10 +142,7 @@ pub fn default_registry(
         Box::new(prompt::PromptHandler::new(make_backend())),
     );
     registry.register("conditional", Box::new(conditional::ConditionalHandler));
-    registry.register(
-        "human",
-        Box::new(human::HumanHandler::new(interviewer)),
-    );
+    registry.register("human", Box::new(human::HumanHandler::new(interviewer)));
     registry.register("command", Box::new(command::CommandHandler));
     registry.register("tool", Box::new(command::CommandHandler));
     registry.register("parallel", Box::new(parallel::ParallelHandler));
@@ -201,10 +194,8 @@ mod tests {
         );
 
         let mut node = Node::new("gate");
-        node.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("human".to_string()),
-        );
+        node.attrs
+            .insert("type".to_string(), AttrValue::String("human".to_string()));
         let handler = registry.resolve(&node);
         // We can verify it returns the right handler by checking it doesn't panic
         // and returns a valid reference

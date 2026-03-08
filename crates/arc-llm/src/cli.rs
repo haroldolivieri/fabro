@@ -512,7 +512,12 @@ pub async fn run_prompt_via_server(args: PromptArgs, server: &ServerConnection) 
         if args.usage {
             let input = result["usage"]["input_tokens"].as_i64().unwrap_or(0);
             let output = result["usage"]["output_tokens"].as_i64().unwrap_or(0);
-            eprintln!("Tokens: {} input, {} output, {} total", input, output, input + output);
+            eprintln!(
+                "Tokens: {} input, {} output, {} total",
+                input,
+                output,
+                input + output
+            );
         }
     }
 
@@ -635,9 +640,7 @@ pub async fn run_chat_via_server(args: ChatArgs, server: &ServerConnection) -> R
                 .json(&body)
                 .send()
                 .await
-                .with_context(|| {
-                    format!("Failed to connect to server at {}", server.base_url)
-                })?;
+                .with_context(|| format!("Failed to connect to server at {}", server.base_url))?;
 
             let status = response.status();
             if !status.is_success() {
@@ -654,9 +657,7 @@ pub async fn run_chat_via_server(args: ChatArgs, server: &ServerConnection) -> R
                 .as_str()
                 .context("Missing session id in response")?
                 .to_string();
-            let model_id = create_resp["model"]["id"]
-                .as_str()
-                .unwrap_or("unknown");
+            let model_id = create_resp["model"]["id"].as_str().unwrap_or("unknown");
             eprintln!("Using model: {model_id}");
 
             // Stream events
@@ -686,9 +687,7 @@ pub async fn run_chat_via_server(args: ChatArgs, server: &ServerConnection) -> R
                 .json(&body)
                 .send()
                 .await
-                .with_context(|| {
-                    format!("Failed to connect to server at {}", server.base_url)
-                })?;
+                .with_context(|| format!("Failed to connect to server at {}", server.base_url))?;
 
             let status = response.status();
             if !status.is_success() {
@@ -818,8 +817,7 @@ async fn test_models_via_server(
 
     let mut failures = 0u32;
     for info in &models_to_test {
-        let result =
-            test_model_via_server(&server.client, &server.base_url, &info.id).await;
+        let result = test_model_via_server(&server.client, &server.base_url, &info.id).await;
 
         let (status_color, status) = match result {
             Ok(resp) if resp.status == "ok" => (&s.green, "ok".to_string()),
@@ -1160,15 +1158,20 @@ mod tests {
     #[tokio::test]
     async fn test_model_via_server_parses_ok() {
         let server = httpmock::MockServer::start_async().await;
-        server.mock_async(|when, then| {
-            when.method("POST").path("/models/test-model/test");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .body(serde_json::json!({
-                    "model_id": "test-model",
-                    "status": "ok"
-                }).to_string());
-        }).await;
+        server
+            .mock_async(|when, then| {
+                when.method("POST").path("/models/test-model/test");
+                then.status(200)
+                    .header("Content-Type", "application/json")
+                    .body(
+                        serde_json::json!({
+                            "model_id": "test-model",
+                            "status": "ok"
+                        })
+                        .to_string(),
+                    );
+            })
+            .await;
 
         let client = reqwest::Client::new();
         let resp = test_model_via_server(&client, &server.url(""), "test-model")
@@ -1182,16 +1185,21 @@ mod tests {
     #[tokio::test]
     async fn test_model_via_server_parses_error() {
         let server = httpmock::MockServer::start_async().await;
-        server.mock_async(|when, then| {
-            when.method("POST").path("/models/test-model/test");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .body(serde_json::json!({
-                    "model_id": "test-model",
-                    "status": "error",
-                    "error_message": "timeout"
-                }).to_string());
-        }).await;
+        server
+            .mock_async(|when, then| {
+                when.method("POST").path("/models/test-model/test");
+                then.status(200)
+                    .header("Content-Type", "application/json")
+                    .body(
+                        serde_json::json!({
+                            "model_id": "test-model",
+                            "status": "error",
+                            "error_message": "timeout"
+                        })
+                        .to_string(),
+                    );
+            })
+            .await;
 
         let client = reqwest::Client::new();
         let resp = test_model_via_server(&client, &server.url(""), "test-model")
@@ -1205,14 +1213,16 @@ mod tests {
     #[tokio::test]
     async fn test_model_via_server_404() {
         let server = httpmock::MockServer::start_async().await;
-        server.mock_async(|when, then| {
-            when.method("POST").path("/models/bad-model/test");
-            then.status(404)
+        server
+            .mock_async(|when, then| {
+                when.method("POST").path("/models/bad-model/test");
+                then.status(404)
                 .header("Content-Type", "application/json")
                 .body(serde_json::json!({
                     "errors": [{"status": "404", "title": "Not Found", "detail": "Model not found"}]
                 }).to_string());
-        }).await;
+            })
+            .await;
 
         let client = reqwest::Client::new();
         let result = test_model_via_server(&client, &server.url(""), "bad-model").await;
@@ -1260,38 +1270,43 @@ mod tests {
     #[tokio::test]
     async fn fetch_models_from_server_filters_by_provider() {
         let server = httpmock::MockServer::start_async().await;
-        server.mock_async(|when, then| {
-            when.method("GET").path("/models");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .body(serde_json::json!({
-                    "data": [
-                        {
-                            "id": "model-a",
-                            "provider": "alpha",
-                            "family": "a",
-                            "display_name": "Model A",
-                            "limits": { "context_window": 8000 },
-                            "features": { "tools": false, "vision": false, "reasoning": false },
-                            "costs": {},
-                            "aliases": [],
-                            "default": false
-                        },
-                        {
-                            "id": "model-b",
-                            "provider": "beta",
-                            "family": "b",
-                            "display_name": "Model B",
-                            "limits": { "context_window": 8000 },
-                            "features": { "tools": false, "vision": false, "reasoning": false },
-                            "costs": {},
-                            "aliases": [],
-                            "default": false
-                        }
-                    ],
-                    "meta": { "has_more": false }
-                }).to_string());
-        }).await;
+        server
+            .mock_async(|when, then| {
+                when.method("GET").path("/models");
+                then.status(200)
+                    .header("Content-Type", "application/json")
+                    .body(
+                    serde_json::json!({
+                        "data": [
+                            {
+                                "id": "model-a",
+                                "provider": "alpha",
+                                "family": "a",
+                                "display_name": "Model A",
+                                "limits": { "context_window": 8000 },
+                                "features": { "tools": false, "vision": false, "reasoning": false },
+                                "costs": {},
+                                "aliases": [],
+                                "default": false
+                            },
+                            {
+                                "id": "model-b",
+                                "provider": "beta",
+                                "family": "b",
+                                "display_name": "Model B",
+                                "limits": { "context_window": 8000 },
+                                "features": { "tools": false, "vision": false, "reasoning": false },
+                                "costs": {},
+                                "aliases": [],
+                                "default": false
+                            }
+                        ],
+                        "meta": { "has_more": false }
+                    })
+                    .to_string(),
+                );
+            })
+            .await;
 
         let client = reqwest::Client::new();
         let models = fetch_models_from_server(&client, &server.url(""), Some("alpha"))
@@ -1305,10 +1320,12 @@ mod tests {
     #[tokio::test]
     async fn fetch_models_from_server_error_on_failure() {
         let server = httpmock::MockServer::start_async().await;
-        server.mock_async(|when, then| {
-            when.method("GET").path("/models");
-            then.status(500).body("internal error");
-        }).await;
+        server
+            .mock_async(|when, then| {
+                when.method("GET").path("/models");
+                then.status(500).body("internal error");
+            })
+            .await;
 
         let client = reqwest::Client::new();
         let result = fetch_models_from_server(&client, &server.url(""), None).await;
@@ -1320,18 +1337,23 @@ mod tests {
     #[tokio::test]
     async fn run_prompt_via_server_non_streaming() {
         let mock_server = httpmock::MockServer::start_async().await;
-        let mock = mock_server.mock_async(|when, then| {
-            when.method("POST").path("/completions");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .body(serde_json::json!({
-                    "id": "msg_123",
-                    "model": "test-model",
-                    "content": "Hello world",
-                    "stop_reason": "end_turn",
-                    "usage": {"input_tokens": 10, "output_tokens": 5}
-                }).to_string());
-        }).await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("POST").path("/completions");
+                then.status(200)
+                    .header("Content-Type", "application/json")
+                    .body(
+                        serde_json::json!({
+                            "id": "msg_123",
+                            "model": "test-model",
+                            "content": "Hello world",
+                            "stop_reason": "end_turn",
+                            "usage": {"input_tokens": 10, "output_tokens": 5}
+                        })
+                        .to_string(),
+                    );
+            })
+            .await;
 
         let server = ServerConnection {
             client: reqwest::Client::new(),
@@ -1367,12 +1389,14 @@ event: message_stop\n\
 data: {\"type\":\"message_stop\"}\n\
 \n";
 
-        let mock = mock_server.mock_async(|when, then| {
-            when.method("POST").path("/completions");
-            then.status(200)
-                .header("Content-Type", "text/event-stream")
-                .body(sse_body);
-        }).await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("POST").path("/completions");
+                then.status(200)
+                    .header("Content-Type", "text/event-stream")
+                    .body(sse_body);
+            })
+            .await;
 
         let server = ServerConnection {
             client: reqwest::Client::new(),

@@ -54,17 +54,17 @@ enum Op {
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
     Word(String),
-    OpEq,       // =
-    OpNotEq,    // !=
-    OpGt,       // >
-    OpLt,       // <
-    OpGte,      // >=
-    OpLte,      // <=
-    And,        // &&
-    Or,         // ||
-    Not,        // !
-    Contains,   // contains
-    Matches,    // matches
+    OpEq,     // =
+    OpNotEq,  // !=
+    OpGt,     // >
+    OpLt,     // <
+    OpGte,    // >=
+    OpLte,    // <=
+    And,      // &&
+    Or,       // ||
+    Not,      // !
+    Contains, // contains
+    Matches,  // matches
 }
 
 fn tokenize(input: &str) -> Result<Vec<Token>, ArcError> {
@@ -89,21 +89,57 @@ fn tokenize(input: &str) -> Result<Vec<Token>, ArcError> {
         if i + 1 < len {
             let two = format!("{}{}", chars[i], chars[i + 1]);
             match two.as_str() {
-                "&&" => { tokens.push(Token::And); i += 2; continue; }
-                "||" => { tokens.push(Token::Or); i += 2; continue; }
-                "!=" => { tokens.push(Token::OpNotEq); i += 2; continue; }
-                ">=" => { tokens.push(Token::OpGte); i += 2; continue; }
-                "<=" => { tokens.push(Token::OpLte); i += 2; continue; }
+                "&&" => {
+                    tokens.push(Token::And);
+                    i += 2;
+                    continue;
+                }
+                "||" => {
+                    tokens.push(Token::Or);
+                    i += 2;
+                    continue;
+                }
+                "!=" => {
+                    tokens.push(Token::OpNotEq);
+                    i += 2;
+                    continue;
+                }
+                ">=" => {
+                    tokens.push(Token::OpGte);
+                    i += 2;
+                    continue;
+                }
+                "<=" => {
+                    tokens.push(Token::OpLte);
+                    i += 2;
+                    continue;
+                }
                 _ => {}
             }
         }
 
         // Single-char operators
         match chars[i] {
-            '=' => { tokens.push(Token::OpEq); i += 1; continue; }
-            '>' => { tokens.push(Token::OpGt); i += 1; continue; }
-            '<' => { tokens.push(Token::OpLt); i += 1; continue; }
-            '!' => { tokens.push(Token::Not); i += 1; continue; }
+            '=' => {
+                tokens.push(Token::OpEq);
+                i += 1;
+                continue;
+            }
+            '>' => {
+                tokens.push(Token::OpGt);
+                i += 1;
+                continue;
+            }
+            '<' => {
+                tokens.push(Token::OpLt);
+                i += 1;
+                continue;
+            }
+            '!' => {
+                tokens.push(Token::Not);
+                i += 1;
+                continue;
+            }
             _ => {}
         }
 
@@ -264,18 +300,15 @@ impl Parser {
                 if op == Op::Eq || op == Op::NotEq {
                     String::new()
                 } else {
-                    return Err(ArcError::Parse(
-                        "expected value after operator".to_string(),
-                    ));
+                    return Err(ArcError::Parse("expected value after operator".to_string()));
                 }
             }
         };
 
         // Validate regex at parse time
         if op == Op::Matches {
-            regex::Regex::new(&value).map_err(|e| {
-                ArcError::Parse(format!("invalid regex pattern '{value}': {e}"))
-            })?;
+            regex::Regex::new(&value)
+                .map_err(|e| ArcError::Parse(format!("invalid regex pattern '{value}': {e}")))?;
         }
 
         Ok(ConditionExpr::Clause(Clause { key, op, value }))
@@ -333,11 +366,7 @@ fn resolve_key(key: &str, outcome: &Outcome, context: &Context) -> String {
         .map_or_else(String::new, |val| json_value_to_string(&val))
 }
 
-fn resolve_key_value(
-    key: &str,
-    outcome: &Outcome,
-    context: &Context,
-) -> serde_json::Value {
+fn resolve_key_value(key: &str, outcome: &Outcome, context: &Context) -> serde_json::Value {
     if key == keys::OUTCOME {
         return serde_json::Value::String(outcome.status.to_string());
     }
@@ -383,9 +412,7 @@ fn eval_expr(expr: &ConditionExpr, outcome: &Outcome, context: &Context) -> bool
             }
             children.iter().all(|c| eval_expr(c, outcome, context))
         }
-        ConditionExpr::Or(children) => {
-            children.iter().any(|c| eval_expr(c, outcome, context))
-        }
+        ConditionExpr::Or(children) => children.iter().any(|c| eval_expr(c, outcome, context)),
         ConditionExpr::Not(inner) => !eval_expr(inner, outcome, context),
         ConditionExpr::Clause(clause) => eval_clause(clause, outcome, context),
     }
@@ -426,9 +453,9 @@ fn eval_clause(clause: &Clause, outcome: &Outcome, context: &Context) -> bool {
         Op::Contains => {
             let raw = resolve_key_value(&clause.key, outcome, context);
             match &raw {
-                serde_json::Value::Array(arr) => arr.iter().any(|elem| {
-                    json_value_to_string(elem) == clause.value
-                }),
+                serde_json::Value::Array(arr) => arr
+                    .iter()
+                    .any(|elem| json_value_to_string(elem) == clause.value),
                 _ => {
                     let s = json_value_to_string(&raw);
                     s.contains(&clause.value)
@@ -747,7 +774,11 @@ mod tests {
         context.set("score", serde_json::json!(90));
         assert!(evaluate_condition("context.score > 80", &outcome, &context));
         context.set("score", serde_json::json!(70));
-        assert!(!evaluate_condition("context.score > 80", &outcome, &context));
+        assert!(!evaluate_condition(
+            "context.score > 80",
+            &outcome,
+            &context
+        ));
     }
 
     #[test]
@@ -755,7 +786,11 @@ mod tests {
         let outcome = make_outcome(StageStatus::Success);
         let context = Context::new();
         context.set("score", serde_json::json!(80));
-        assert!(evaluate_condition("context.score >= 80", &outcome, &context));
+        assert!(evaluate_condition(
+            "context.score >= 80",
+            &outcome,
+            &context
+        ));
     }
 
     #[test]
@@ -763,7 +798,11 @@ mod tests {
         let outcome = make_outcome(StageStatus::Success);
         let context = Context::new();
         context.set("score", serde_json::json!(80));
-        assert!(evaluate_condition("context.score <= 80", &outcome, &context));
+        assert!(evaluate_condition(
+            "context.score <= 80",
+            &outcome,
+            &context
+        ));
     }
 
     #[test]
@@ -924,11 +963,7 @@ mod tests {
         context.set("b", serde_json::json!("2"));
         context.set("c", serde_json::json!("3"));
         // a=1 is false, b=2 is true => AND is false; c=3 is true => OR is true
-        assert!(evaluate_condition(
-            "a=1 && b=2 || c=3",
-            &outcome,
-            &context
-        ));
+        assert!(evaluate_condition("a=1 && b=2 || c=3", &outcome, &context));
     }
 
     #[test]
@@ -940,11 +975,7 @@ mod tests {
         context.set("b", serde_json::json!("2"));
         context.set("c", serde_json::json!("0"));
         // a=1 false; b=2 true, c=3 false => AND false; OR false
-        assert!(!evaluate_condition(
-            "a=1 || b=2 && c=3",
-            &outcome,
-            &context
-        ));
+        assert!(!evaluate_condition("a=1 || b=2 && c=3", &outcome, &context));
     }
 
     #[test]

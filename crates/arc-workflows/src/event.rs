@@ -520,13 +520,7 @@ impl WorkflowRunEvent {
                 error,
                 duration_ms,
             } => {
-                error!(
-                    cli_name,
-                    provider,
-                    error,
-                    duration_ms,
-                    "CLI ensure failed"
-                );
+                error!(cli_name, provider, error, duration_ms, "CLI ensure failed");
             }
         }
     }

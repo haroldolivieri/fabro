@@ -643,18 +643,19 @@ mod tests {
             .unwrap();
         std::process::Command::new("git")
             .args([
-                "-c", "user.name=test",
-                "-c", "user.email=test@test",
-                "commit", "-m", "add",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "-m",
+                "add",
             ])
             .current_dir(dir.path())
             .output()
             .unwrap();
 
-        assert_eq!(
-            resolve_file_ref("@tracked.md", dir.path()),
-            "@tracked.md"
-        );
+        assert_eq!(resolve_file_ref("@tracked.md", dir.path()), "@tracked.md");
     }
 
     #[test]
@@ -668,9 +669,14 @@ mod tests {
             .unwrap();
         std::process::Command::new("git")
             .args([
-                "-c", "user.name=test",
-                "-c", "user.email=test@test",
-                "commit", "--allow-empty", "-m", "init",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
             ])
             .current_dir(dir.path())
             .output()
@@ -678,10 +684,7 @@ mod tests {
 
         std::fs::write(dir.path().join("local.md"), "inlined content").unwrap();
 
-        assert_eq!(
-            resolve_file_ref("@local.md", dir.path()),
-            "inlined content"
-        );
+        assert_eq!(resolve_file_ref("@local.md", dir.path()), "inlined content");
     }
 
     // -----------------------------------------------------------------------
@@ -699,9 +702,14 @@ mod tests {
             .unwrap();
         std::process::Command::new("git")
             .args([
-                "-c", "user.name=test",
-                "-c", "user.email=test@test",
-                "commit", "--allow-empty", "-m", "init",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
             ])
             .current_dir(dir.path())
             .output()
@@ -756,9 +764,14 @@ mod tests {
             .unwrap();
         std::process::Command::new("git")
             .args([
-                "-c", "user.name=test",
-                "-c", "user.email=test@test",
-                "commit", "--allow-empty", "-m", "init",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
             ])
             .current_dir(dir.path())
             .output()
@@ -781,9 +794,14 @@ mod tests {
             .unwrap();
         std::process::Command::new("git")
             .args([
-                "-c", "user.name=test",
-                "-c", "user.email=test@test",
-                "commit", "--allow-empty", "-m", "init",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
             ])
             .current_dir(dir.path())
             .output()
@@ -814,9 +832,13 @@ mod tests {
             .unwrap();
         std::process::Command::new("git")
             .args([
-                "-c", "user.name=test",
-                "-c", "user.email=test@test",
-                "commit", "-m", "add",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "-m",
+                "add",
             ])
             .current_dir(dir.path())
             .output()

@@ -42,7 +42,11 @@ async fn run_operations(sandbox: &SpritesSandbox) -> Result<(), String> {
     let result = sandbox
         .exec_command("echo hello", 30_000, None, None, None)
         .await?;
-    assert_eq!(result.exit_code, 0, "exec_command failed: {}", result.stderr);
+    assert_eq!(
+        result.exit_code, 0,
+        "exec_command failed: {}",
+        result.stderr
+    );
     assert_eq!(result.stdout.trim(), "hello");
     assert!(!result.timed_out);
 
@@ -67,9 +71,7 @@ async fn run_operations(sandbox: &SpritesSandbox) -> Result<(), String> {
         .write_file("test-e2e/hello.txt", "Hello, Sprites!\nSecond line\n")
         .await?;
 
-    let content = sandbox
-        .read_file("test-e2e/hello.txt", None, None)
-        .await?;
+    let content = sandbox.read_file("test-e2e/hello.txt", None, None).await?;
     assert!(
         content.contains("Hello, Sprites!"),
         "read_file missing content: {content}",
@@ -118,12 +120,8 @@ async fn run_operations(sandbox: &SpritesSandbox) -> Result<(), String> {
     );
 
     // --- list_directory ---
-    sandbox
-        .write_file("test-e2e/sub/a.txt", "aaa")
-        .await?;
-    sandbox
-        .write_file("test-e2e/sub/b.txt", "bbb")
-        .await?;
+    sandbox.write_file("test-e2e/sub/a.txt", "aaa").await?;
+    sandbox.write_file("test-e2e/sub/b.txt", "bbb").await?;
     let entries = sandbox.list_directory("test-e2e/sub", None).await?;
     assert_eq!(entries.len(), 2, "expected 2 entries, got: {entries:?}");
     assert_eq!(entries[0].name, "a.txt");
@@ -132,7 +130,10 @@ async fn run_operations(sandbox: &SpritesSandbox) -> Result<(), String> {
 
     // --- grep ---
     sandbox
-        .write_file("test-e2e/search/code.rs", "fn main() {\n    println!(\"hello\");\n}\n")
+        .write_file(
+            "test-e2e/search/code.rs",
+            "fn main() {\n    println!(\"hello\");\n}\n",
+        )
         .await?;
     sandbox
         .write_file("test-e2e/search/data.txt", "no match here\n")
@@ -188,10 +189,7 @@ async fn run_operations(sandbox: &SpritesSandbox) -> Result<(), String> {
     let downloaded = tokio::fs::read_to_string(&local_path)
         .await
         .map_err(|e| format!("read local: {e}"))?;
-    assert_eq!(
-        downloaded, download_content,
-        "download content mismatch",
-    );
+    assert_eq!(downloaded, download_content, "download content mismatch",);
 
     Ok(())
 }

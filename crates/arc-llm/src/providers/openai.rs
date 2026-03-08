@@ -1364,8 +1364,12 @@ mod tests {
         assert!(has_tool_calls);
         // reasoning + openai_message + text + function_call
         assert_eq!(parts.len(), 4);
-        assert!(matches!(&parts[0], ContentPart::Other { kind, .. } if kind == ContentPart::OPENAI_REASONING));
-        assert!(matches!(&parts[1], ContentPart::Other { kind, data } if kind == ContentPart::OPENAI_MESSAGE && data["id"] == "msg_xyz"));
+        assert!(
+            matches!(&parts[0], ContentPart::Other { kind, .. } if kind == ContentPart::OPENAI_REASONING)
+        );
+        assert!(
+            matches!(&parts[1], ContentPart::Other { kind, data } if kind == ContentPart::OPENAI_MESSAGE && data["id"] == "msg_xyz")
+        );
         assert!(matches!(&parts[2], ContentPart::Text(t) if t == "Hello"));
         assert!(matches!(&parts[3], ContentPart::ToolCall(_)));
     }
@@ -1521,10 +1525,7 @@ mod tests {
     }
 
     fn empty_sse_state() -> SseStreamState {
-        let http_resp = http::Response::builder()
-            .status(200)
-            .body("")
-            .unwrap();
+        let http_resp = http::Response::builder().status(200).body("").unwrap();
         let response = reqwest::Response::from(http_resp);
         SseStreamState {
             line_reader: crate::providers::common::LineReader::new(response, None),
@@ -1556,7 +1557,9 @@ mod tests {
         );
         assert_eq!(events.len(), 2);
         assert!(matches!(events[0], StreamEvent::ReasoningStart));
-        assert!(matches!(events[1], StreamEvent::ReasoningDelta { ref delta } if delta == "Let me think"));
+        assert!(
+            matches!(events[1], StreamEvent::ReasoningDelta { ref delta } if delta == "Let me think")
+        );
     }
 
     #[test]
@@ -1565,24 +1568,20 @@ mod tests {
 
         // First delta: should emit ReasoningStart + ReasoningDelta
         let data1 = r#"{"type":"response.reasoning_text.delta","delta":"Step 1"}"#;
-        let events1 = process_sse_event(
-            &mut state,
-            Some("response.reasoning_text.delta"),
-            data1,
-        );
+        let events1 = process_sse_event(&mut state, Some("response.reasoning_text.delta"), data1);
         assert_eq!(events1.len(), 2);
         assert!(matches!(events1[0], StreamEvent::ReasoningStart));
-        assert!(matches!(events1[1], StreamEvent::ReasoningDelta { ref delta } if delta == "Step 1"));
+        assert!(
+            matches!(events1[1], StreamEvent::ReasoningDelta { ref delta } if delta == "Step 1")
+        );
 
         // Second delta: should NOT emit duplicate ReasoningStart
         let data2 = r#"{"type":"response.reasoning_text.delta","delta":"Step 2"}"#;
-        let events2 = process_sse_event(
-            &mut state,
-            Some("response.reasoning_text.delta"),
-            data2,
-        );
+        let events2 = process_sse_event(&mut state, Some("response.reasoning_text.delta"), data2);
         assert_eq!(events2.len(), 1);
-        assert!(matches!(events2[0], StreamEvent::ReasoningDelta { ref delta } if delta == "Step 2"));
+        assert!(
+            matches!(events2[0], StreamEvent::ReasoningDelta { ref delta } if delta == "Step 2")
+        );
     }
 
     #[test]
@@ -1591,11 +1590,7 @@ mod tests {
         state.emitted_reasoning_start = true;
 
         let data = r#"{"item":{"type":"reasoning","id":"rs_abc","summary":[]}}"#;
-        let events = process_sse_event(
-            &mut state,
-            Some("response.output_item.done"),
-            data,
-        );
+        let events = process_sse_event(&mut state, Some("response.output_item.done"), data);
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], StreamEvent::ReasoningEnd));
         assert!(!state.emitted_reasoning_start);

@@ -137,11 +137,7 @@ pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
         let demo = demo_router.clone();
         let real = real_router.clone();
         async move {
-            if req
-                .headers()
-                .get("x-arc-demo")
-                .map_or(false, |v| v == "1")
-            {
+            if req.headers().get("x-arc-demo").map_or(false, |v| v == "1") {
                 demo.oneshot(req).await
             } else {
                 real.oneshot(req).await
@@ -267,26 +263,34 @@ fn real_routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/preview", post(not_implemented))
         .route("/workflows", get(not_implemented))
         .route("/workflows/{name}", get(not_implemented))
-        .route(
-            "/workflows/{name}/runs",
-            get(not_implemented),
-        )
+        .route("/workflows/{name}/runs", get(not_implemented))
         .route("/verification/criteria", get(not_implemented))
         .route("/verification/criteria/{id}", get(not_implemented))
         .route("/verification/controls", get(not_implemented))
         .route("/verification/controls/{id}", get(not_implemented))
         .route("/retros", get(not_implemented))
-        .route("/sessions", get(crate::sessions::list_sessions).post(crate::sessions::create_session))
+        .route(
+            "/sessions",
+            get(crate::sessions::list_sessions).post(crate::sessions::create_session),
+        )
         .route("/sessions/{id}", get(crate::sessions::retrieve_session))
-        .route("/sessions/{id}/messages", post(crate::sessions::send_message))
-        .route("/sessions/{id}/events", get(crate::sessions::stream_session_events))
+        .route(
+            "/sessions/{id}/messages",
+            post(crate::sessions::send_message),
+        )
+        .route(
+            "/sessions/{id}/events",
+            get(crate::sessions::stream_session_events),
+        )
         .route(
             "/insights/queries",
             get(not_implemented).post(not_implemented),
         )
         .route(
             "/insights/queries/{id}",
-            get(not_implemented).put(not_implemented).delete(not_implemented),
+            get(not_implemented)
+                .put(not_implemented)
+                .delete(not_implemented),
         )
         .route("/insights/execute", post(not_implemented))
         .route("/insights/history", get(not_implemented))
@@ -318,7 +322,8 @@ async fn health() -> Response {
 
 async fn openapi_spec() -> Response {
     let yaml = include_str!("../../../docs/api-reference/arc-api.yaml");
-    let value: serde_json::Value = serde_yaml::from_str(yaml).expect("embedded OpenAPI YAML is invalid");
+    let value: serde_json::Value =
+        serde_yaml::from_str(yaml).expect("embedded OpenAPI YAML is invalid");
     Json(value).into_response()
 }
 
@@ -330,7 +335,10 @@ async fn get_aggregate_usage(
     _auth: AuthenticatedService,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    let agg = state.aggregate_usage.lock().expect("aggregate_usage lock poisoned");
+    let agg = state
+        .aggregate_usage
+        .lock()
+        .expect("aggregate_usage lock poisoned");
     let by_model: Vec<arc_types::UsageByModel> = agg
         .by_model
         .iter()
@@ -365,7 +373,13 @@ pub fn create_app_state(
     db: sqlx::SqlitePool,
     registry_factory: impl Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync + 'static,
 ) -> Arc<AppState> {
-    create_app_state_with_options(db, registry_factory, false, 5, arc_workflows::git::GitAuthor::default())
+    create_app_state_with_options(
+        db,
+        registry_factory,
+        false,
+        5,
+        arc_workflows::git::GitAuthor::default(),
+    )
 }
 
 /// Create an `AppState` with the given database pool, registry factory, dry-run flag, and concurrency limit.
@@ -404,7 +418,9 @@ async fn list_runs(
         .map(|(id, managed_run)| RunStatusResponse {
             id: id.clone(),
             status: managed_run.status,
-            error: managed_run.error.as_ref().map(|msg| arc_types::RunError { message: msg.clone() }),
+            error: managed_run.error.as_ref().map(|msg| arc_types::RunError {
+                message: msg.clone(),
+            }),
             queue_position: queue_positions.get(id).copied(),
             created_at: managed_run.created_at,
         })
@@ -485,7 +501,6 @@ async fn start_run(
             queue_position: None,
             created_at,
         }),
-
     )
         .into_response()
 }
@@ -680,7 +695,9 @@ pub fn spawn_scheduler(state: Arc<AppState>) {
                     let runs = state.runs.lock().expect("runs lock poisoned");
                     let active = runs
                         .values()
-                        .filter(|r| r.status == RunStatus::Starting || r.status == RunStatus::Running)
+                        .filter(|r| {
+                            r.status == RunStatus::Starting || r.status == RunStatus::Running
+                        })
                         .count();
                     if active >= state.max_concurrent_runs {
                         break;
@@ -721,7 +738,9 @@ async fn get_run_status(
                 Json(RunStatusResponse {
                     id: id.clone(),
                     status: managed_run.status,
-                    error: managed_run.error.as_ref().map(|msg| arc_types::RunError { message: msg.clone() }),
+                    error: managed_run.error.as_ref().map(|msg| arc_types::RunError {
+                        message: msg.clone(),
+                    }),
                     created_at: managed_run.created_at,
                     queue_position,
                 }),
@@ -742,7 +761,13 @@ async fn get_questions(
         Some(managed_run) => {
             let interviewer = match &managed_run.interviewer {
                 Some(i) => i,
-                None => return (StatusCode::OK, Json(ListResponse::new(Vec::<ApiQuestion>::new()))).into_response(),
+                None => {
+                    return (
+                        StatusCode::OK,
+                        Json(ListResponse::new(Vec::<ApiQuestion>::new())),
+                    )
+                        .into_response()
+                }
             };
             let pending = interviewer.pending_questions();
             let questions: Vec<ApiQuestion> = pending
@@ -809,9 +834,8 @@ async fn submit_answer(
                 let pq = pending.iter().find(|pq| pq.id == qid);
                 let mut options = Vec::new();
                 for key in &req.selected_option_keys {
-                    let opt = pq.and_then(|pq| {
-                        pq.question.options.iter().find(|o| o.key == *key).cloned()
-                    });
+                    let opt = pq
+                        .and_then(|pq| pq.question.options.iter().find(|o| o.key == *key).cloned());
                     match opt {
                         Some(o) => options.push(o),
                         None => {
@@ -853,7 +877,9 @@ async fn get_events(
         match runs.get(&id) {
             Some(managed_run) => match &managed_run.event_tx {
                 Some(tx) => tx.subscribe(),
-                None => return ApiError::new(StatusCode::GONE, "Event stream closed.").into_response(),
+                None => {
+                    return ApiError::new(StatusCode::GONE, "Event stream closed.").into_response()
+                }
             },
             None => return ApiError::not_found("Run not found.").into_response(),
         }
@@ -1033,9 +1059,8 @@ async fn create_completion(
         if use_stream {
             let sse_stream = futures_util::stream::iter(vec![
                 Ok::<_, std::convert::Infallible>(
-                    Event::default()
-                        .event("message_start")
-                        .data(serde_json::json!({
+                    Event::default().event("message_start").data(
+                        serde_json::json!({
                             "type": "message_start",
                             "message": {
                                 "id": msg_id,
@@ -1046,7 +1071,9 @@ async fn create_completion(
                                 "stop_reason": null,
                                 "usage": {"input_tokens": 0}
                             }
-                        }).to_string()),
+                        })
+                        .to_string(),
+                    ),
                 ),
                 Ok(Event::default()
                     .event("message_stop")
@@ -1081,10 +1108,12 @@ async fn create_completion(
         let msg_id = ulid::Ulid::new().to_string();
         let model_for_stream = model_id.clone();
 
-        let sse_stream = futures_util::stream::once(futures_util::future::ready(Ok::<_, std::convert::Infallible>(
-            Event::default()
-                .event("message_start")
-                .data(serde_json::json!({
+        let sse_stream = futures_util::stream::once(futures_util::future::ready(Ok::<
+            _,
+            std::convert::Infallible,
+        >(
+            Event::default().event("message_start").data(
+                serde_json::json!({
                     "type": "message_start",
                     "message": {
                         "id": msg_id,
@@ -1095,69 +1124,74 @@ async fn create_completion(
                         "stop_reason": null,
                         "usage": {"input_tokens": 0}
                     }
-                }).to_string()),
+                })
+                .to_string(),
+            ),
         )))
         .chain(futures_util::stream::once(futures_util::future::ready(Ok(
-            Event::default()
-                .event("content_block_start")
-                .data(serde_json::json!({
+            Event::default().event("content_block_start").data(
+                serde_json::json!({
                     "type": "content_block_start",
                     "index": 0,
                     "content_block": {"type": "text", "text": ""}
-                }).to_string()),
+                })
+                .to_string(),
+            ),
         ))))
         .chain(futures_util::stream::once(futures_util::future::ready(Ok(
             Event::default()
                 .event("ping")
                 .data(serde_json::json!({"type": "ping"}).to_string()),
         ))))
-        .chain(
-            tokio_stream::StreamExt::map(stream_result, |event| {
-                match event {
-                    Ok(arc_llm::types::StreamEvent::TextDelta { delta, .. }) => Ok(
-                        Event::default()
-                            .event("content_block_delta")
-                            .data(serde_json::json!({
-                                "type": "content_block_delta",
-                                "index": 0,
-                                "delta": {"type": "text_delta", "text": delta}
-                            }).to_string()),
-                    ),
-                    Ok(arc_llm::types::StreamEvent::TextEnd { .. }) => Ok(
-                        Event::default()
-                            .event("content_block_stop")
-                            .data(serde_json::json!({"type": "content_block_stop", "index": 0}).to_string()),
-                    ),
-                    Ok(arc_llm::types::StreamEvent::Finish { finish_reason, usage, .. }) => Ok(
-                        Event::default()
-                            .event("message_delta")
-                            .data(serde_json::json!({
-                                "type": "message_delta",
-                                "delta": {"stop_reason": finish_reason_to_stop_reason(&finish_reason)},
-                                "usage": {"output_tokens": usage.output_tokens}
-                            }).to_string()),
-                    ),
-                    Ok(arc_llm::types::StreamEvent::Error { error, .. }) => Ok(
-                        Event::default()
-                            .event("error")
-                            .data(serde_json::json!({
-                                "type": "error",
-                                "error": {"type": "server_error", "message": error.to_string()}
-                            }).to_string()),
-                    ),
-                    Err(e) => Ok(
-                        Event::default()
-                            .event("error")
-                            .data(serde_json::json!({
-                                "type": "error",
-                                "error": {"type": "server_error", "message": e.to_string()}
-                            }).to_string()),
-                    ),
-                    // Skip events we don't map (StreamStart, TextStart, reasoning, tool calls, etc.)
-                    _ => Ok(Event::default().comment("ignored")),
+        .chain(tokio_stream::StreamExt::map(stream_result, |event| {
+            match event {
+                Ok(arc_llm::types::StreamEvent::TextDelta { delta, .. }) => {
+                    Ok(Event::default().event("content_block_delta").data(
+                        serde_json::json!({
+                            "type": "content_block_delta",
+                            "index": 0,
+                            "delta": {"type": "text_delta", "text": delta}
+                        })
+                        .to_string(),
+                    ))
                 }
-            }),
-        )
+                Ok(arc_llm::types::StreamEvent::TextEnd { .. }) => {
+                    Ok(Event::default().event("content_block_stop").data(
+                        serde_json::json!({"type": "content_block_stop", "index": 0}).to_string(),
+                    ))
+                }
+                Ok(arc_llm::types::StreamEvent::Finish {
+                    finish_reason,
+                    usage,
+                    ..
+                }) => Ok(Event::default().event("message_delta").data(
+                    serde_json::json!({
+                        "type": "message_delta",
+                        "delta": {"stop_reason": finish_reason_to_stop_reason(&finish_reason)},
+                        "usage": {"output_tokens": usage.output_tokens}
+                    })
+                    .to_string(),
+                )),
+                Ok(arc_llm::types::StreamEvent::Error { error, .. }) => {
+                    Ok(Event::default().event("error").data(
+                        serde_json::json!({
+                            "type": "error",
+                            "error": {"type": "server_error", "message": error.to_string()}
+                        })
+                        .to_string(),
+                    ))
+                }
+                Err(e) => Ok(Event::default().event("error").data(
+                    serde_json::json!({
+                        "type": "error",
+                        "error": {"type": "server_error", "message": e.to_string()}
+                    })
+                    .to_string(),
+                )),
+                // Skip events we don't map (StreamStart, TextStart, reasoning, tool calls, etc.)
+                _ => Ok(Event::default().comment("ignored")),
+            }
+        }))
         .chain(futures_util::stream::once(futures_util::future::ready(Ok(
             Event::default()
                 .event("message_stop")
@@ -1193,10 +1227,8 @@ async fn create_completion(
                     output: result.output,
                 })
                 .into_response(),
-                Err(e) => {
-                    ApiError::new(StatusCode::BAD_GATEWAY, format!("LLM error: {e}"))
-                        .into_response()
-                }
+                Err(e) => ApiError::new(StatusCode::BAD_GATEWAY, format!("LLM error: {e}"))
+                    .into_response(),
             }
         } else {
             match arc_llm::generate::generate(params).await {
@@ -1212,10 +1244,8 @@ async fn create_completion(
                     output: None,
                 })
                 .into_response(),
-                Err(e) => {
-                    ApiError::new(StatusCode::BAD_GATEWAY, format!("LLM error: {e}"))
-                        .into_response()
-                }
+                Err(e) => ApiError::new(StatusCode::BAD_GATEWAY, format!("LLM error: {e}"))
+                    .into_response(),
             }
         }
     }
@@ -1266,7 +1296,11 @@ async fn get_graph(
     {
         Ok(child) => child,
         Err(_) => {
-            return ApiError::new(StatusCode::BAD_GATEWAY, "Graphviz dot command not available.").into_response();
+            return ApiError::new(
+                StatusCode::BAD_GATEWAY,
+                "Graphviz dot command not available.",
+            )
+            .into_response();
         }
     };
 
@@ -1287,9 +1321,8 @@ async fn get_graph(
             let stderr = String::from_utf8_lossy(&output.stderr);
             ApiError::new(StatusCode::BAD_GATEWAY, format!("dot failed: {stderr}")).into_response()
         }
-        Err(e) => {
-            ApiError::new(StatusCode::BAD_GATEWAY, format!("dot process error: {e}")).into_response()
-        }
+        Err(e) => ApiError::new(StatusCode::BAD_GATEWAY, format!("dot process error: {e}"))
+            .into_response(),
     }
 }
 
@@ -1376,7 +1409,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_model_dry_run_returns_ok() {
-        let state = create_app_state_with_options(test_db().await, test_registry, true, 5, arc_workflows::git::GitAuthor::default());
+        let state = create_app_state_with_options(
+            test_db().await,
+            test_registry,
+            true,
+            5,
+            arc_workflows::git::GitAuthor::default(),
+        );
         let app = build_router(state, AuthMode::Disabled);
 
         let req = Request::builder()
@@ -1396,7 +1435,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_model_dry_run_unknown_returns_404() {
-        let state = create_app_state_with_options(test_db().await, test_registry, true, 5, arc_workflows::git::GitAuthor::default());
+        let state = create_app_state_with_options(
+            test_db().await,
+            test_registry,
+            true,
+            5,
+            arc_workflows::git::GitAuthor::default(),
+        );
         let app = build_router(state, AuthMode::Disabled);
 
         let req = Request::builder()
@@ -1484,7 +1529,10 @@ mod tests {
         assert_eq!(body["id"].as_str().unwrap(), run_id);
         let status = body["status"].as_str().unwrap();
         assert!(
-            status == "queued" || status == "starting" || status == "running" || status == "completed",
+            status == "queued"
+                || status == "starting"
+                || status == "running"
+                || status == "completed",
             "unexpected status: {status}"
         );
     }
@@ -2077,7 +2125,13 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn concurrency_limit_respected() {
-        let state = create_app_state_with_options(test_db().await, test_registry, false, 1, arc_workflows::git::GitAuthor::default());
+        let state = create_app_state_with_options(
+            test_db().await,
+            test_registry,
+            false,
+            1,
+            arc_workflows::git::GitAuthor::default(),
+        );
         let app = test_app_with_scheduler(state);
 
         // Submit two runs with max_concurrent_runs=1

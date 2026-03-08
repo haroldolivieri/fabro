@@ -34,7 +34,9 @@ fn parse_execution_mode(s: &str) -> Result<cli_config::ExecutionMode, String> {
     match s {
         "standalone" => Ok(cli_config::ExecutionMode::Standalone),
         "server" => Ok(cli_config::ExecutionMode::Server),
-        _ => Err(format!("invalid mode '{s}', expected 'standalone' or 'server'")),
+        _ => Err(format!(
+            "invalid mode '{s}', expected 'standalone' or 'server'"
+        )),
     }
 }
 
@@ -138,15 +140,18 @@ async fn main() -> Result<()> {
     };
 
     let config_log_level = if let Command::Serve(ref args) = cli.command {
-        let server_config =
-            arc_api::server_config::load_server_config(args.config.as_deref())?;
+        let server_config = arc_api::server_config::load_server_config(args.config.as_deref())?;
         server_config.log.level
     } else {
         let cli_config = cli_config::load_cli_config(None)?;
         cli_config.log.level
     };
 
-    let log_prefix = if command_name == "serve" { "serve" } else { "cli" };
+    let log_prefix = if command_name == "serve" {
+        "serve"
+    } else {
+        "cli"
+    };
     if let Err(err) = logging::init_tracing(cli.debug, config_log_level.as_deref(), log_prefix) {
         eprintln!("Warning: failed to initialize logging: {err:#}");
     }
@@ -162,15 +167,11 @@ async fn main() -> Result<()> {
                     if args.model.is_none() {
                         args.model = llm_defaults.and_then(|l| l.model.clone());
                     }
-                    let resolved = cli_config::resolve_mode(
-                        cli.mode,
-                        cli.server_url.as_deref(),
-                        &cli_config,
-                    );
+                    let resolved =
+                        cli_config::resolve_mode(cli.mode, cli.server_url.as_deref(), &cli_config);
                     match resolved.mode {
                         cli_config::ExecutionMode::Server => {
-                            let client =
-                                cli_config::build_server_client(resolved.tls.as_ref())?;
+                            let client = cli_config::build_server_client(resolved.tls.as_ref())?;
                             let server = arc_llm::cli::ServerConnection {
                                 client,
                                 base_url: resolved.server_base_url,
@@ -186,15 +187,11 @@ async fn main() -> Result<()> {
                     if args.model.is_none() {
                         args.model = llm_defaults.and_then(|l| l.model.clone());
                     }
-                    let resolved = cli_config::resolve_mode(
-                        cli.mode,
-                        cli.server_url.as_deref(),
-                        &cli_config,
-                    );
+                    let resolved =
+                        cli_config::resolve_mode(cli.mode, cli.server_url.as_deref(), &cli_config);
                     match resolved.mode {
                         cli_config::ExecutionMode::Server => {
-                            let client =
-                                cli_config::build_server_client(resolved.tls.as_ref())?;
+                            let client = cli_config::build_server_client(resolved.tls.as_ref())?;
                             let server = arc_llm::cli::ServerConnection {
                                 client,
                                 base_url: resolved.server_base_url,
@@ -262,11 +259,8 @@ async fn main() -> Result<()> {
         }
         Command::Model { command } => {
             let cli_config = cli_config::load_cli_config(None)?;
-            let resolved = cli_config::resolve_mode(
-                cli.mode,
-                cli.server_url.as_deref(),
-                &cli_config,
-            );
+            let resolved =
+                cli_config::resolve_mode(cli.mode, cli.server_url.as_deref(), &cli_config);
             let server = match resolved.mode {
                 cli_config::ExecutionMode::Server => {
                     let client = cli_config::build_server_client(resolved.tls.as_ref())?;

@@ -624,10 +624,7 @@ impl LintRule for PromptOnLlmNodesRule {
                     diagnostics.push(Diagnostic {
                         rule: self.name().to_string(),
                         severity: Severity::Warning,
-                        message: format!(
-                            "LLM node '{}' has no prompt or label attribute",
-                            node.id
-                        ),
+                        message: format!("LLM node '{}' has no prompt or label attribute", node.id),
                         node_id: Some(node.id.clone()),
                         edge: None,
                         fix: Some("Add a prompt or label attribute".to_string()),
@@ -1263,10 +1260,8 @@ mod tests {
     fn type_known_rule_known_type() {
         let mut g = minimal_graph();
         let mut node = Node::new("gate");
-        node.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("human".to_string()),
-        );
+        node.attrs
+            .insert("type".to_string(), AttrValue::String("human".to_string()));
         g.nodes.insert("gate".to_string(), node);
         let rule = TypeKnownRule;
         let d = rule.apply(&g);
@@ -1925,10 +1920,8 @@ mod tests {
     fn freeform_edge_count_rule_zero_freeform() {
         let mut g = minimal_graph();
         let mut gate = Node::new("gate");
-        gate.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("human".to_string()),
-        );
+        gate.attrs
+            .insert("type".to_string(), AttrValue::String("human".to_string()));
         g.nodes.insert("gate".to_string(), gate);
         g.nodes.insert("a".to_string(), Node::new("a"));
         g.edges.push(Edge::new("gate", "a"));
@@ -2074,10 +2067,8 @@ mod tests {
         let mut g = minimal_graph();
 
         let mut n1 = Node::new("n1");
-        n1.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("agent".to_string()),
-        );
+        n1.attrs
+            .insert("type".to_string(), AttrValue::String("agent".to_string()));
         g.nodes.insert("n1".to_string(), n1);
 
         let mut n2 = Node::new("n2");
@@ -2124,10 +2115,8 @@ mod tests {
     fn prompt_on_llm_nodes_rule_explicit_agent_type_no_prompt() {
         let mut g = minimal_graph();
         let mut node = Node::new("work");
-        node.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("agent".to_string()),
-        );
+        node.attrs
+            .insert("type".to_string(), AttrValue::String("agent".to_string()));
         // No shape=box, but explicit type=agent
         node.attrs.insert(
             "shape".to_string(),
@@ -2164,10 +2153,8 @@ mod tests {
     fn freeform_edge_count_rule_explicit_type_two_freeform() {
         let mut g = minimal_graph();
         let mut gate = Node::new("gate");
-        gate.attrs.insert(
-            "type".to_string(),
-            AttrValue::String("human".to_string()),
-        );
+        gate.attrs
+            .insert("type".to_string(), AttrValue::String("human".to_string()));
         g.nodes.insert("gate".to_string(), gate);
         g.nodes.insert("a".to_string(), Node::new("a"));
         g.nodes.insert("b".to_string(), Node::new("b"));

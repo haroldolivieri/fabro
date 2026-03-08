@@ -73,7 +73,13 @@ async fn ensure_cli(
 
     // Check if the CLI is already installed (include ~/.local/bin for npm-installed CLIs)
     let version_check = sandbox
-        .exec_command(&format!("PATH=\"$HOME/.local/bin:$PATH\" {cli_name} --version"), 30_000, None, None, None)
+        .exec_command(
+            &format!("PATH=\"$HOME/.local/bin:$PATH\" {cli_name} --version"),
+            30_000,
+            None,
+            None,
+            None,
+        )
         .await
         .map_err(|e| ArcError::handler(format!("Failed to check {cli_name} version: {e}")))?;
 
@@ -105,9 +111,23 @@ async fn ensure_cli(
     let node_installed = true;
     if install_result.exit_code != 0 {
         let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-        let output = if install_result.stderr.is_empty() { &install_result.stdout } else { &install_result.stderr };
-        let detail: String = output.chars().rev().take(500).collect::<Vec<_>>().into_iter().rev().collect();
-        let error_msg = format!("{cli_name} install exited with code {}: {detail}", install_result.exit_code);
+        let output = if install_result.stderr.is_empty() {
+            &install_result.stdout
+        } else {
+            &install_result.stderr
+        };
+        let detail: String = output
+            .chars()
+            .rev()
+            .take(500)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let error_msg = format!(
+            "{cli_name} install exited with code {}: {detail}",
+            install_result.exit_code
+        );
         emitter.emit(&WorkflowRunEvent::CliEnsureFailed {
             cli_name: cli_name.to_string(),
             provider: provider_str.to_string(),
@@ -508,9 +528,8 @@ impl CodergenBackend for AgentCliBackend {
         tracing::info!(pid, "CLI process launched in background");
 
         // 3c. Poll for completion
-        let poll_command = format!(
-            "[ -f {exit_code_path} ] && cat {exit_code_path} || echo running"
-        );
+        let poll_command =
+            format!("[ -f {exit_code_path} ] && cat {exit_code_path} || echo running");
         let poll_interval = std::time::Duration::from_secs(5);
         let exit_code: i32 = loop {
             tokio::time::sleep(poll_interval).await;
@@ -542,8 +561,7 @@ impl CodergenBackend for AgentCliBackend {
         };
 
         // 3d. Read results
-        let duration_ms =
-            u64::try_from(launch_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let duration_ms = u64::try_from(launch_start.elapsed().as_millis()).unwrap_or(u64::MAX);
         let stdout_result = sandbox
             .exec_command(&format!("cat {stdout_path}"), 60_000, None, None, None)
             .await
@@ -563,13 +581,7 @@ impl CodergenBackend for AgentCliBackend {
 
         // 3e. Cleanup temp files
         let _ = sandbox
-            .exec_command(
-                &format!("rm -f {tmp_prefix}_*"),
-                30_000,
-                None,
-                None,
-                None,
-            )
+            .exec_command(&format!("rm -f {tmp_prefix}_*"), 30_000, None, None, None)
             .await;
 
         if let Ok(json) = serde_json::to_string_pretty(&serde_json::json!({
@@ -585,11 +597,27 @@ impl CodergenBackend for AgentCliBackend {
             let _ = tokio::fs::write(stage_dir.join("cli_stdout.log"), &result.stdout).await;
             let _ = tokio::fs::write(stage_dir.join("cli_stderr.log"), &result.stderr).await;
 
-            let stderr: String = result.stderr.chars().rev().take(500).collect::<Vec<_>>().into_iter().rev().collect();
+            let stderr: String = result
+                .stderr
+                .chars()
+                .rev()
+                .take(500)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
             let detail = if !stderr.is_empty() {
                 stderr
             } else {
-                let stdout: String = result.stdout.chars().rev().take(500).collect::<Vec<_>>().into_iter().rev().collect();
+                let stdout: String = result
+                    .stdout
+                    .chars()
+                    .rev()
+                    .take(500)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
                 if !stdout.is_empty() {
                     format!("stdout: {stdout}")
                 } else {
@@ -715,7 +743,10 @@ mod tests {
 
     #[test]
     fn agent_cli_for_provider() {
-        assert_eq!(AgentCli::for_provider(Provider::Anthropic), AgentCli::Claude);
+        assert_eq!(
+            AgentCli::for_provider(Provider::Anthropic),
+            AgentCli::Claude
+        );
         assert_eq!(AgentCli::for_provider(Provider::OpenAi), AgentCli::Codex);
         assert_eq!(AgentCli::for_provider(Provider::Gemini), AgentCli::Gemini);
         assert_eq!(AgentCli::for_provider(Provider::Kimi), AgentCli::Codex);
@@ -740,9 +771,9 @@ mod tests {
 
     // -- ensure_cli --
 
+    use arc_agent::sandbox::{DirEntry, GrepOptions};
     use std::collections::VecDeque;
     use std::sync::Mutex;
-    use arc_agent::sandbox::{DirEntry, GrepOptions};
 
     /// Mock sandbox that returns pre-configured ExecResults in FIFO order.
     struct CliMockSandbox {
@@ -765,13 +796,30 @@ mod tests {
 
     #[async_trait]
     impl Sandbox for CliMockSandbox {
-        async fn read_file(&self, _path: &str, _offset: Option<usize>, _limit: Option<usize>) -> Result<String, String> {
+        async fn read_file(
+            &self,
+            _path: &str,
+            _offset: Option<usize>,
+            _limit: Option<usize>,
+        ) -> Result<String, String> {
             Ok(String::new())
         }
-        async fn write_file(&self, _path: &str, _content: &str) -> Result<(), String> { Ok(()) }
-        async fn delete_file(&self, _path: &str) -> Result<(), String> { Ok(()) }
-        async fn file_exists(&self, _path: &str) -> Result<bool, String> { Ok(false) }
-        async fn list_directory(&self, _path: &str, _depth: Option<usize>) -> Result<Vec<DirEntry>, String> { Ok(vec![]) }
+        async fn write_file(&self, _path: &str, _content: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn delete_file(&self, _path: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn file_exists(&self, _path: &str) -> Result<bool, String> {
+            Ok(false)
+        }
+        async fn list_directory(
+            &self,
+            _path: &str,
+            _depth: Option<usize>,
+        ) -> Result<Vec<DirEntry>, String> {
+            Ok(vec![])
+        }
         async fn exec_command(
             &self,
             command: &str,
@@ -781,25 +829,64 @@ mod tests {
             _cancel_token: Option<tokio_util::sync::CancellationToken>,
         ) -> Result<ExecResult, String> {
             self.commands.lock().unwrap().push(command.to_string());
-            self.results.lock().unwrap().pop_front().ok_or_else(|| "no more mock results".to_string())
+            self.results
+                .lock()
+                .unwrap()
+                .pop_front()
+                .ok_or_else(|| "no more mock results".to_string())
         }
-        async fn grep(&self, _pattern: &str, _path: &str, _options: &GrepOptions) -> Result<Vec<String>, String> { Ok(vec![]) }
-        async fn glob(&self, _pattern: &str, _path: Option<&str>) -> Result<Vec<String>, String> { Ok(vec![]) }
-        async fn download_file_to_local(&self, _remote: &str, _local: &Path) -> Result<(), String> { Ok(()) }
-        async fn initialize(&self) -> Result<(), String> { Ok(()) }
-        async fn cleanup(&self) -> Result<(), String> { Ok(()) }
-        fn working_directory(&self) -> &str { "/workspace" }
-        fn platform(&self) -> &str { "linux" }
-        fn os_version(&self) -> String { "Ubuntu 22.04".to_string() }
-        async fn set_autostop_interval(&self, _minutes: i32) -> Result<(), String> { Ok(()) }
+        async fn grep(
+            &self,
+            _pattern: &str,
+            _path: &str,
+            _options: &GrepOptions,
+        ) -> Result<Vec<String>, String> {
+            Ok(vec![])
+        }
+        async fn glob(&self, _pattern: &str, _path: Option<&str>) -> Result<Vec<String>, String> {
+            Ok(vec![])
+        }
+        async fn download_file_to_local(&self, _remote: &str, _local: &Path) -> Result<(), String> {
+            Ok(())
+        }
+        async fn initialize(&self) -> Result<(), String> {
+            Ok(())
+        }
+        async fn cleanup(&self) -> Result<(), String> {
+            Ok(())
+        }
+        fn working_directory(&self) -> &str {
+            "/workspace"
+        }
+        fn platform(&self) -> &str {
+            "linux"
+        }
+        fn os_version(&self) -> String {
+            "Ubuntu 22.04".to_string()
+        }
+        async fn set_autostop_interval(&self, _minutes: i32) -> Result<(), String> {
+            Ok(())
+        }
     }
 
     fn ok_result() -> ExecResult {
-        ExecResult { exit_code: 0, stdout: String::new(), stderr: String::new(), timed_out: false, duration_ms: 10 }
+        ExecResult {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+            timed_out: false,
+            duration_ms: 10,
+        }
     }
 
     fn fail_result(code: i32) -> ExecResult {
-        ExecResult { exit_code: code, stdout: String::new(), stderr: "error".to_string(), timed_out: false, duration_ms: 10 }
+        ExecResult {
+            exit_code: code,
+            stdout: String::new(),
+            stderr: "error".to_string(),
+            timed_out: false,
+            duration_ms: 10,
+        }
     }
 
     #[tokio::test]
@@ -820,8 +907,8 @@ mod tests {
     async fn ensure_cli_installs_when_missing() {
         // version check fails, combined install succeeds
         let sandbox: Arc<dyn Sandbox> = Arc::new(CliMockSandbox::new(vec![
-            fail_result(127),  // claude --version
-            ok_result(),       // combined node + npm install
+            fail_result(127), // claude --version
+            ok_result(),      // combined node + npm install
         ]));
         let emitter = Arc::new(EventEmitter::new());
 
@@ -837,14 +924,17 @@ mod tests {
     #[tokio::test]
     async fn ensure_cli_fails_on_install_failure() {
         let sandbox: Arc<dyn Sandbox> = Arc::new(CliMockSandbox::new(vec![
-            fail_result(127),  // claude --version
-            fail_result(1),    // combined install fails
+            fail_result(127), // claude --version
+            fail_result(1),   // combined install fails
         ]));
         let emitter = Arc::new(EventEmitter::new());
 
         let result = ensure_cli(AgentCli::Claude, Provider::Anthropic, &sandbox, &emitter).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("install exited with code"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("install exited with code"));
     }
 
     // -- Cycle 1: cli_command_for_provider --

@@ -43,10 +43,7 @@ async fn get_json(app: axum::Router, uri: &str) -> serde_json::Value {
 /// Assert that a value has the paginated shape: `{ data: [...], meta: { has_more: bool } }`
 fn assert_paginated_shape(json: &serde_json::Value, context: &str) {
     assert!(json.get("data").is_some(), "{context}: missing 'data' key");
-    assert!(
-        json["data"].is_array(),
-        "{context}: 'data' is not an array"
-    );
+    assert!(json["data"].is_array(), "{context}: 'data' is not an array");
     assert!(json.get("meta").is_some(), "{context}: missing 'meta' key");
     assert!(
         json["meta"].get("has_more").is_some(),

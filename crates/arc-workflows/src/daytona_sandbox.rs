@@ -103,9 +103,7 @@ impl<'de> Deserialize<'de> for DaytonaNetwork {
                 let cidrs: Vec<String> = map.next_value()?;
 
                 if cidrs.is_empty() {
-                    return Err(de::Error::custom(
-                        "allow_list must not be empty",
-                    ));
+                    return Err(de::Error::custom("allow_list must not be empty"));
                 }
 
                 if let Some(extra) = map.next_key::<String>()? {
@@ -481,8 +479,8 @@ impl Sandbox for DaytonaSandbox {
                 // Resolve clone credentials via GitHub App or fall back to no auth
                 let (username, password) = match &self.github_app {
                     Some(creds) => {
-                        let (owner, repo) =
-                            crate::github_app::parse_github_owner_repo(&url).map_err(|e| {
+                        let (owner, repo) = crate::github_app::parse_github_owner_repo(&url)
+                            .map_err(|e| {
                                 let err = format!("Failed to parse GitHub URL for clone: {e}");
                                 self.emit(SandboxEvent::GitCloneFailed {
                                     url: url.clone(),
@@ -721,11 +719,8 @@ impl Sandbox for DaytonaSandbox {
                 .map_err(|e| format!("Failed to refresh GitHub App token: {e}"))?;
 
         if let Some(token) = password {
-            let auth_url = origin_url.replacen(
-                "https://",
-                &format!("https://x-access-token:{token}@"),
-                1,
-            );
+            let auth_url =
+                origin_url.replacen("https://", &format!("https://x-access-token:{token}@"), 1);
             let cmd = format!(
                 "git -c maintenance.auto=0 remote set-url origin '{}'",
                 auth_url.replace('\'', "'\\''"),
@@ -920,12 +915,12 @@ impl Sandbox for DaytonaSandbox {
         // Wrap with `bash -c` so pipes, env vars, and shell features work.
         // The Daytona API uses direct exec, not a shell.
         let wrapped = wrap_bash_command(&command_with_env);
-        
+
         let timeout_duration = std::time::Duration::from_millis(timeout_ms + 5000); // 5s grace period
         let token = cancel_token.unwrap_or_default();
-        
+
         let exec_future = process_svc.execute_command(&wrapped, options);
-        
+
         let result = tokio::select! {
             res = exec_future => {
                 res.map_err(|e| format!("Failed to execute command: {e}"))?
@@ -1215,8 +1210,7 @@ mod tests {
 
     #[test]
     fn network_unknown_key_error() {
-        let err =
-            toml::from_str::<DaytonaConfig>(r#"network = { mode = "block" }"#).unwrap_err();
+        let err = toml::from_str::<DaytonaConfig>(r#"network = { mode = "block" }"#).unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains(r#"unknown key "mode""#),
@@ -1228,16 +1222,12 @@ mod tests {
     fn network_empty_table_error() {
         let err = toml::from_str::<DaytonaConfig>("network = {}").unwrap_err();
         let msg = err.to_string();
-        assert!(
-            msg.contains("empty table"),
-            "unexpected error: {msg}"
-        );
+        assert!(msg.contains("empty table"), "unexpected error: {msg}");
     }
 
     #[test]
     fn network_empty_allow_list_error() {
-        let err =
-            toml::from_str::<DaytonaConfig>("network = { allow_list = [] }").unwrap_err();
+        let err = toml::from_str::<DaytonaConfig>("network = { allow_list = [] }").unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("allow_list must not be empty"),

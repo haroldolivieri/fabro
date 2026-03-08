@@ -223,7 +223,7 @@ These attributes can be set on any node type:
 | Preset | Attempts | Backoff | Description |
 |---|---|---|---|
 | `none` | 1 | — | No retries, fail immediately |
-| `standard` | 5 | 200ms initial, 2x exponential | Good default for transient failures |
+| `standard` | 5 | 5s initial, 2x exponential | Good default for transient failures |
 | `aggressive` | 5 | 500ms initial, 2x exponential | Longer initial delay for rate limits |
 | `linear` | 3 | 500ms fixed | Constant delay between attempts |
 | `patient` | 3 | 2s initial, 3x exponential | Slow ramp for unreliable services |

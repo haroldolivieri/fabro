@@ -185,7 +185,7 @@ fn resolve_dockerfile(config: &mut WorkflowRunConfig, config_dir: &Path) -> anyh
         .and_then(|d| d.snapshot.as_mut())
         .and_then(|snap| snap.dockerfile.as_mut());
 
-    if let Some(DockerfileSource::Path(ref rel)) = source {
+    if let Some(DockerfileSource::Path { path: ref rel }) = source {
         let path = config_dir.join(rel);
         let contents = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read dockerfile at {}", path.display()))?;
@@ -569,7 +569,9 @@ dockerfile = { path = "./Dockerfile" }
         let snapshot = config.sandbox.unwrap().daytona.unwrap().snapshot.unwrap();
         assert_eq!(
             snapshot.dockerfile,
-            Some(DockerfileSource::Path("./Dockerfile".into()))
+            Some(DockerfileSource::Path {
+                path: "./Dockerfile".into()
+            })
         );
     }
 

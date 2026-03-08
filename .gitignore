@@ -3,3 +3,4 @@ target
 .entire
 .claude
 node_modules
+tmp

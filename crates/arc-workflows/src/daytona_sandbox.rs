@@ -133,77 +133,11 @@ impl<'de> Deserialize<'de> for DaytonaNetwork {
 /// `Path` variants are resolved to `Inline` during config loading
 /// (see `run_config::resolve_dockerfile`), so downstream consumers
 /// should only ever see `Inline`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum DockerfileSource {
     Inline(String),
-    Path(String),
-}
-
-impl Serialize for DockerfileSource {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            DockerfileSource::Inline(s) => serializer.serialize_str(s),
-            DockerfileSource::Path(p) => {
-                use serde::ser::SerializeMap;
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("path", p)?;
-                map.end()
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for DockerfileSource {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct DockerfileSourceVisitor;
-
-        impl<'de> Visitor<'de> for DockerfileSourceVisitor {
-            type Value = DockerfileSource;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(formatter, r#"a string or {{ path = "..." }}"#)
-            }
-
-            fn visit_str<E: de::Error>(self, value: &str) -> Result<DockerfileSource, E> {
-                Ok(DockerfileSource::Inline(value.to_owned()))
-            }
-
-            fn visit_map<M: MapAccess<'de>>(
-                self,
-                mut map: M,
-            ) -> Result<DockerfileSource, M::Error> {
-                let Some(key) = map.next_key::<String>()? else {
-                    return Err(de::Error::custom(
-                        r#"empty table: expected { path = "..." }"#,
-                    ));
-                };
-
-                if key != "path" {
-                    return Err(de::Error::custom(format!(
-                        r#"unknown key "{key}": expected "path""#
-                    )));
-                }
-
-                let path: String = map.next_value()?;
-
-                if let Some(extra) = map.next_key::<String>()? {
-                    return Err(de::Error::custom(format!(
-                        r#"unexpected key "{extra}": path table must have exactly one key"#
-                    )));
-                }
-
-                Ok(DockerfileSource::Path(path))
-            }
-        }
-
-        deserializer.deserialize_any(DockerfileSourceVisitor)
-    }
+    Path { path: String },
 }
 
 /// Snapshot configuration: when present, the sandbox is created from a snapshot
@@ -335,7 +269,7 @@ impl DaytonaSandbox {
             Err(daytona_sdk::DaytonaError::NotFound { .. }) => {
                 let dockerfile = match &snap_cfg.dockerfile {
                     Some(DockerfileSource::Inline(s)) => s.as_str(),
-                    Some(DockerfileSource::Path(_)) => {
+                    Some(DockerfileSource::Path { .. }) => {
                         return Err(format!(
                             "Snapshot '{}': dockerfile path should have been resolved to inline content before sandbox creation",
                             snap_cfg.name

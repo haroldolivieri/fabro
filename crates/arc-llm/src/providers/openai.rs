@@ -259,10 +259,7 @@ fn translate_input(messages: &[Message]) -> (Option<String>, Vec<serde_json::Val
                                 "arguments": args,
                             }));
                         }
-                        // Round-trip opaque items back to the API
-                        ContentPart::Other { kind, data }
-                            if kind == ContentPart::OPENAI_REASONING || kind == ContentPart::OPENAI_MESSAGE =>
-                        {
+                        ContentPart::Other { data, .. } if part.is_opaque_openai() => {
                             input.push(data.clone());
                         }
                         _ => {}
@@ -825,17 +822,17 @@ fn handle_response_completed(
 
     let mut content_parts = Vec::new();
     // Reasoning items must precede function calls for Responses API round-trip
-    for item in &state.reasoning_items {
+    for item in std::mem::take(&mut state.reasoning_items) {
         content_parts.push(ContentPart::Other {
             kind: ContentPart::OPENAI_REASONING.to_string(),
-            data: item.clone(),
+            data: item,
         });
     }
     // Preserve full message output items for Responses API round-tripping
-    for item in &state.message_items {
+    for item in std::mem::take(&mut state.message_items) {
         content_parts.push(ContentPart::Other {
             kind: ContentPart::OPENAI_MESSAGE.to_string(),
-            data: item.clone(),
+            data: item,
         });
     }
     if !state.accumulated_text.is_empty() {

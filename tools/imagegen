@@ -35,7 +35,7 @@ API_URL="https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:genera
 echo "Generating image for: ${PROMPT}" >&2
 echo "Model: ${MODEL}" >&2
 
-RESPONSE=$(curl -s -X POST "$API_URL" \
+RESPONSE=$(curl -s --fail-with-body -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg prompt "$PROMPT" '{
     contents: [{ parts: [{ text: $prompt }] }],

@@ -27,7 +27,7 @@ impl History {
             timestamp: std::time::SystemTime::now(),
         });
         self.turns.extend(preserved);
-        self.strip_opaque_reasoning();
+        self.strip_opaque_provider_items();
     }
 
     /// Remove provider-specific opaque items that are no longer valid after compaction.
@@ -35,12 +35,10 @@ impl History {
     /// responses; after compaction replaces their surrounding context with a summary, they
     /// serve no purpose and can violate API constraints (reasoning must be followed by its
     /// output, identified by the message item's `id`).
-    fn strip_opaque_reasoning(&mut self) {
+    fn strip_opaque_provider_items(&mut self) {
         for turn in &mut self.turns {
             if let Turn::Assistant { provider_parts, .. } = turn {
-                provider_parts.retain(|p| {
-                    !matches!(p, ContentPart::Other { kind, .. } if kind == ContentPart::OPENAI_REASONING || kind == ContentPart::OPENAI_MESSAGE)
-                });
+                provider_parts.retain(|p| !p.is_opaque_openai());
             }
         }
     }

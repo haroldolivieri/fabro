@@ -33,9 +33,9 @@ Unknown tools (including MCP tools) default to the `shell` category, requiring `
 ### CLI flag
 
 ```bash
-arc agent --permissions read-only
-arc agent --permissions read-write
-arc agent --permissions full
+arc exec --permissions read-only
+arc exec --permissions read-write
+arc exec --permissions full
 ```
 
 ### Non-interactive mode
@@ -44,7 +44,7 @@ When running non-interactively (no TTY or `--auto-approve` flag), tools outside 
 
 ```bash
 # In CI: only allow read and write tools, deny shell
-arc agent --permissions read-write --auto-approve
+arc exec --permissions read-write --auto-approve
 ```
 
 ### Interactive escalation

@@ -291,12 +291,12 @@ fn chat_multi_turn_with_system_prompt() {
     );
 }
 
-// == Agent ====================================================================
+// == Exec =====================================================================
 
 #[test]
-fn agent_no_prompt_prints_usage() {
+fn exec_no_prompt_prints_usage() {
     arc()
-        .args(["agent"])
+        .args(["exec"])
         .env_clear()
         .assert()
         .failure()
@@ -304,19 +304,19 @@ fn agent_no_prompt_prints_usage() {
 }
 
 #[test]
-fn agent_help_flag_prints_help() {
+fn exec_help_flag_prints_help() {
     arc()
-        .args(["agent", "--help"])
+        .args(["exec", "--help"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Task prompt"));
 }
 
 #[test]
-fn agent_missing_api_key_exits_with_error() {
+fn exec_missing_api_key_exits_with_error() {
     let tmp = std::env::temp_dir();
     arc()
-        .args(["--no-dotenv", "agent", "test prompt"])
+        .args(["--no-dotenv", "exec", "test prompt"])
         .env_clear()
         .current_dir(&tmp)
         .assert()
@@ -325,9 +325,9 @@ fn agent_missing_api_key_exits_with_error() {
 }
 
 #[test]
-fn agent_invalid_permissions_value() {
+fn exec_invalid_permissions_value() {
     arc()
-        .args(["agent", "--permissions", "bogus", "test prompt"])
+        .args(["exec", "--permissions", "bogus", "test prompt"])
         .env_clear()
         .assert()
         .failure()

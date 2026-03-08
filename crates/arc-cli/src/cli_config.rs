@@ -26,7 +26,7 @@ pub struct ServerDefaults {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-pub struct AgentDefaults {
+pub struct ExecDefaults {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub permissions: Option<PermissionLevel>,
@@ -48,7 +48,7 @@ pub struct CliGitConfig {
 pub struct CliConfig {
     pub mode: Option<ExecutionMode>,
     pub server: Option<ServerDefaults>,
-    pub agent: Option<AgentDefaults>,
+    pub exec: Option<ExecDefaults>,
     pub llm: Option<LlmDefaults>,
     pub git: Option<CliGitConfig>,
 }
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn parse_full_config() {
         let toml = r#"
-[agent]
+[exec]
 provider = "anthropic"
 model = "claude-opus-4-6"
 permissions = "read-write"
@@ -163,7 +163,7 @@ output_format = "text"
 model = "claude-sonnet-4-5"
 "#;
         let config: CliConfig = toml::from_str(toml).unwrap();
-        let agent = config.agent.unwrap();
+        let agent = config.exec.unwrap();
         assert_eq!(agent.provider.as_deref(), Some("anthropic"));
         assert_eq!(agent.model.as_deref(), Some("claude-opus-4-6"));
         assert_eq!(agent.permissions, Some(PermissionLevel::ReadWrite));
@@ -173,13 +173,13 @@ model = "claude-sonnet-4-5"
     }
 
     #[test]
-    fn parse_partial_agent_config() {
+    fn parse_partial_exec_config() {
         let toml = r#"
-[agent]
+[exec]
 provider = "openai"
 "#;
         let config: CliConfig = toml::from_str(toml).unwrap();
-        let agent = config.agent.unwrap();
+        let agent = config.exec.unwrap();
         assert_eq!(agent.provider.as_deref(), Some("openai"));
         assert_eq!(agent.model, None);
         assert_eq!(agent.permissions, None);
@@ -194,14 +194,14 @@ provider = "openai"
         std::fs::write(
             &path,
             r#"
-[agent]
+[exec]
 provider = "gemini"
 model = "gemini-pro"
 "#,
         )
         .unwrap();
         let config = load_cli_config(Some(&path)).unwrap();
-        let agent = config.agent.unwrap();
+        let agent = config.exec.unwrap();
         assert_eq!(agent.provider.as_deref(), Some("gemini"));
         assert_eq!(agent.model.as_deref(), Some("gemini-pro"));
     }

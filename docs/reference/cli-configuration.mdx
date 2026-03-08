@@ -30,7 +30,7 @@ cert = "~/.arc/tls/client.crt"
 key = "~/.arc/tls/client.key"
 ca = "~/.arc/tls/ca.crt"
 
-[agent]
+[exec]
 provider = "anthropic"
 model = "claude-opus-4-6"
 permissions = "read-write"
@@ -42,9 +42,9 @@ model = "claude-sonnet-4-5"
 
 All fields are optional. You can include just the sections and keys you want to override.
 
-## `[agent]` section
+## `[exec]` section
 
-Defaults for `arc agent` sessions.
+Defaults for `arc exec` sessions.
 
 | Key | Description | Values | Default |
 |---|---|---|---|
@@ -75,7 +75,7 @@ Defaults for `arc llm prompt` and `arc llm chat`.
 | `model` | Model name | Any model ID from `arc model list` | Per provider |
 
 <Note>
-The `[llm]` section only sets the default model. Use `[agent]` to configure provider, permissions, and output format for `arc agent`.
+The `[llm]` section only sets the default model. Use `[exec]` to configure provider, permissions, and output format for `arc exec`.
 </Note>
 
 ## `mode`

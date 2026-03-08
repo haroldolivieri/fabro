@@ -46,7 +46,7 @@ enum Command {
         command: LlmCommand,
     },
     /// Run an agentic coding session
-    Agent(arc_agent::cli::AgentArgs),
+    Exec(arc_agent::cli::AgentArgs),
     /// Launch and manage workflow runs
     Run {
         #[command(subcommand)]
@@ -127,7 +127,7 @@ async fn main() -> Result<()> {
 
     let command_name = match &cli.command {
         Command::Llm { .. } => "llm",
-        Command::Agent(_) => "agent",
+        Command::Exec(_) => "exec",
         Command::Run { .. } => "run",
         Command::Validate(_) => "validate",
         Command::Parse(_) => "parse",
@@ -199,14 +199,14 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Command::Agent(mut args) => {
+        Command::Exec(mut args) => {
             let cli_config = cli_config::load_cli_config(None)?;
-            let agent_defaults = cli_config.agent.as_ref();
+            let exec_defaults = cli_config.exec.as_ref();
             args.apply_cli_defaults(
-                agent_defaults.and_then(|a| a.provider.as_deref()),
-                agent_defaults.and_then(|a| a.model.as_deref()),
-                agent_defaults.and_then(|a| a.permissions),
-                agent_defaults.and_then(|a| a.output_format),
+                exec_defaults.and_then(|a| a.provider.as_deref()),
+                exec_defaults.and_then(|a| a.model.as_deref()),
+                exec_defaults.and_then(|a| a.permissions),
+                exec_defaults.and_then(|a| a.output_format),
             );
             arc_agent::cli::run_with_args(args).await?
         }

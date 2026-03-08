@@ -21,7 +21,7 @@ Arc loads environment variables from `.env` in the current directory and `~/.arc
 CLI defaults can be set in `~/.arc/cli.toml` so you don't have to pass common flags every time:
 
 ```toml title="cli.toml"
-[agent]
+[exec]
 provider = "anthropic"
 model = "claude-opus-4-6"
 permissions = "read-write"
@@ -105,14 +105,14 @@ arc run prune --orphans --yes
 
 ---
 
-## `arc agent`
+## `arc exec`
 
 Run an agentic coding session. The agent operates in the current directory using file, search, and shell tools.
 
 ```bash
-arc agent "Add input validation to the signup form"
-arc agent "Fix the failing test" --provider openai --model gpt-5.2-codex
-arc agent "Refactor the auth module" --permissions full --auto-approve
+arc exec "Add input validation to the signup form"
+arc exec "Fix the failing test" --provider openai --model gpt-5.2-codex
+arc exec "Refactor the auth module" --permissions full --auto-approve
 ```
 
 | Argument / Flag | Description | Default |

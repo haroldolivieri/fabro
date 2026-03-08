@@ -1,0 +1,11 @@
+digraph ImageGen {
+    graph [goal="A cute robot painting a landscape"]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    generate [label="Generate Image", prompt="Generate an image of: $goal\n\nUse the shell tool to call the Gemini image generation API.\nThe GEMINI_API_KEY env var is already set in your environment.\n\nRun this curl command (substituting $$GEMINI_API_KEY from env):\n\ncurl -s --fail-with-body -X POST \"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=$$GEMINI_API_KEY\" -H 'Content-Type: application/json' -d '{\"contents\": [{\"parts\": [{\"text\": \"A cute robot painting a landscape\"}]}], \"generationConfig\": {\"responseModalities\": [\"TEXT\", \"IMAGE\"]}}' | jq -r '.candidates[0].content.parts[] | select(.inlineData) | .inlineData.data' | head -1 | base64 -d > generated.png\n\nThen verify the file was created with ls -la generated.png"]
+
+    start -> generate -> exit
+}

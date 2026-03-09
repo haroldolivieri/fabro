@@ -12961,7 +12961,7 @@ async fn asset_collection_local_sandbox_success() {
         git_author: arc_workflows::git::GitAuthor::default(),
         base_branch: None,
         pull_request_enabled: false,
-        asset_globs: Vec::new(),
+        asset_globs: vec!["test-results/**".to_string()],
     };
 
     let outcome = engine
@@ -13073,7 +13073,7 @@ async fn asset_collection_local_sandbox_on_failure() {
         git_author: arc_workflows::git::GitAuthor::default(),
         base_branch: None,
         pull_request_enabled: false,
-        asset_globs: Vec::new(),
+        asset_globs: vec!["test-results/**".to_string()],
     };
 
     let outcome = engine

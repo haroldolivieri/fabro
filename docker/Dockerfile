@@ -25,6 +25,6 @@ RUN bun install --frozen-lockfile
 COPY apps/arc-web apps/arc-web
 COPY packages/arc-api-client packages/arc-api-client
 COPY docs docs
-COPY entrypoint.ts .
+COPY docker/entrypoint.ts .
 
 ENTRYPOINT ["bun", "run", "entrypoint.ts"]

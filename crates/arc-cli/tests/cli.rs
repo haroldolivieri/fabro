@@ -6,6 +6,12 @@ fn arc() -> Command {
     Command::cargo_bin("arc").unwrap()
 }
 
+/// Load .env into the process so subprocess inherits API keys
+/// even when current_dir is set to a tempdir.
+fn load_dotenv() {
+    dotenvy::dotenv().ok();
+}
+
 // == Models ===================================================================
 
 #[test]
@@ -332,6 +338,154 @@ fn exec_invalid_permissions_value() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("invalid value"));
+}
+
+#[test]
+#[ignore = "requires API key"]
+fn exec_creates_file() {
+    load_dotenv();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    arc()
+        .args([
+            "exec",
+            "--auto-approve",
+            "--permissions",
+            "full",
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-haiku-4-5",
+            "Create a file called hello.txt containing exactly 'Hello'",
+        ])
+        .current_dir(tmp.path())
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+    let path = tmp.path().join("hello.txt");
+    assert!(path.exists(), "hello.txt should have been created");
+    let content = std::fs::read_to_string(&path).expect("read hello.txt");
+    assert!(
+        content.contains("Hello"),
+        "Expected 'Hello' in hello.txt, got: {content}"
+    );
+}
+
+#[test]
+#[ignore = "requires API key"]
+fn exec_shell_command() {
+    load_dotenv();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    arc()
+        .args([
+            "exec",
+            "--auto-approve",
+            "--permissions",
+            "full",
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-haiku-4-5",
+            "Run the shell command `echo arc_test_marker_42` and tell me what it printed",
+        ])
+        .current_dir(tmp.path())
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+}
+
+#[test]
+#[ignore = "requires API key"]
+fn exec_read_only_blocks_write() {
+    load_dotenv();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    arc()
+        .args([
+            "exec",
+            "--auto-approve",
+            "--permissions",
+            "read-only",
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-haiku-4-5",
+            "Create a file called forbidden.txt containing 'should not exist'",
+        ])
+        .current_dir(tmp.path())
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+    assert!(
+        !tmp.path().join("forbidden.txt").exists(),
+        "forbidden.txt should NOT exist under read-only permissions"
+    );
+}
+
+#[test]
+#[ignore = "requires API key"]
+fn exec_json_output_format() {
+    load_dotenv();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let output = arc()
+        .args([
+            "exec",
+            "--auto-approve",
+            "--permissions",
+            "full",
+            "--output-format",
+            "json",
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-haiku-4-5",
+            "Create a file called test.txt containing 'test'",
+        ])
+        .current_dir(tmp.path())
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8(output).expect("valid utf8");
+    assert!(!stdout.trim().is_empty(), "json output should not be empty");
+    // Every non-empty line should be valid JSON
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert!(!lines.is_empty(), "should have at least one NDJSON line");
+    let first: serde_json::Value =
+        serde_json::from_str(lines[0]).expect("first line should be valid JSON");
+    assert!(
+        first.get("event").is_some() || first.get("type").is_some(),
+        "NDJSON line should have an event or type field, got: {first}"
+    );
+}
+
+#[test]
+#[ignore = "requires API key"]
+fn exec_read_and_edit() {
+    load_dotenv();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(tmp.path().join("data.txt"), "old content").expect("write data.txt");
+    arc()
+        .args([
+            "exec",
+            "--auto-approve",
+            "--permissions",
+            "full",
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-haiku-4-5",
+            "Read data.txt then replace its entire content with 'new content'",
+        ])
+        .current_dir(tmp.path())
+        .timeout(std::time::Duration::from_secs(120))
+        .assert()
+        .success();
+    let content = std::fs::read_to_string(tmp.path().join("data.txt")).expect("read data.txt");
+    assert!(
+        content.contains("new content"),
+        "Expected 'new content' in data.txt, got: {content}"
+    );
 }
 
 // == Arc: validate ======================================================

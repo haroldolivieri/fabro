@@ -91,10 +91,8 @@ pub struct ExeConfig {
 /// Parameters for cloning a git repo into the sandbox during initialization.
 #[derive(Clone, Debug)]
 pub struct GitCloneParams {
-    /// HTTPS URL with embedded token (or without for public repos).
-    pub clone_url: String,
-    /// Clean URL for events/logging (no embedded credentials).
-    pub display_url: String,
+    /// Clean HTTPS URL (no embedded credentials).
+    pub url: String,
     /// Branch to clone. If None, uses the remote's default.
     pub branch: Option<String>,
 }
@@ -119,6 +117,7 @@ pub struct ExeSandbox {
     clone_params: Option<GitCloneParams>,
     run_id: Option<String>,
     origin_url: tokio::sync::OnceCell<String>,
+    github_app: Option<arc_github::GitHubAppCredentials>,
 }
 
 impl ExeSandbox {
@@ -128,6 +127,7 @@ impl ExeSandbox {
         config: ExeConfig,
         clone_params: Option<GitCloneParams>,
         run_id: Option<String>,
+        github_app: Option<arc_github::GitHubAppCredentials>,
     ) -> Self {
         Self {
             mgmt_ssh,
@@ -148,6 +148,7 @@ impl ExeSandbox {
             clone_params,
             run_id,
             origin_url: tokio::sync::OnceCell::new(),
+            github_app,
         }
     }
 
@@ -172,6 +173,7 @@ impl ExeSandbox {
             clone_params: None,
             run_id: None,
             origin_url: tokio::sync::OnceCell::new(),
+            github_app: None,
         }
     }
 
@@ -221,15 +223,37 @@ impl ExeSandbox {
         format!("echo '{encoded}' | base64 -d | sh")
     }
 
+    /// Resolve an authenticated clone URL from the clean URL and github_app credentials.
+    async fn resolve_clone_url(&self, url: &str) -> Result<String, String> {
+        let creds = match &self.github_app {
+            Some(c) => c,
+            None => return Ok(url.to_string()),
+        };
+        let (owner, repo) = match arc_github::parse_github_owner_repo(url) {
+            Ok(pair) => pair,
+            Err(_) => return Ok(url.to_string()),
+        };
+        let (_username, password) =
+            arc_github::resolve_clone_credentials(creds, &owner, &repo).await?;
+        match password {
+            Some(token) => {
+                Ok(url.replacen("https://", &format!("https://x-access-token:{token}@"), 1))
+            }
+            None => Ok(url.to_string()),
+        }
+    }
+
     /// Clone a git repo into the sandbox working directory.
     async fn clone_repo(&self, params: &GitCloneParams) -> Result<(), String> {
         let ssh = self.data_ssh()?;
 
         self.emit(SandboxEvent::GitCloneStarted {
-            url: params.display_url.clone(),
+            url: params.url.clone(),
             branch: params.branch.clone(),
         });
         let clone_start = Instant::now();
+
+        let clone_url = self.resolve_clone_url(&params.url).await?;
 
         let branch_flag = params
             .branch
@@ -239,7 +263,7 @@ impl ExeSandbox {
 
         let clone_script = format!(
             "git clone{branch_flag} {} {WORKING_DIRECTORY}",
-            shell_quote(&params.clone_url)
+            shell_quote(&clone_url)
         );
         let clone_cmd = Self::wrap_bash_command(&clone_script);
         let clone_timeout = std::time::Duration::from_secs(300);
@@ -249,7 +273,7 @@ impl ExeSandbox {
             .map_err(|e| {
                 let err = format!("git clone failed: {e}");
                 self.emit(SandboxEvent::GitCloneFailed {
-                    url: params.display_url.clone(),
+                    url: params.url.clone(),
                     error: err.clone(),
                 });
                 err
@@ -265,7 +289,7 @@ impl ExeSandbox {
                 let branch = params.branch.as_deref().unwrap_or("main");
                 let fallback_script = format!(
                     "cd {WORKING_DIRECTORY} && git init && git remote add origin {} && git fetch origin && git checkout {}",
-                    shell_quote(&params.clone_url),
+                    shell_quote(&clone_url),
                     shell_quote(branch),
                 );
                 let fallback_cmd = Self::wrap_bash_command(&fallback_script);
@@ -275,7 +299,7 @@ impl ExeSandbox {
                     .map_err(|e| {
                         let err = format!("git fallback clone failed: {e}");
                         self.emit(SandboxEvent::GitCloneFailed {
-                            url: params.display_url.clone(),
+                            url: params.url.clone(),
                             error: err.clone(),
                         });
                         err
@@ -288,7 +312,7 @@ impl ExeSandbox {
                         fallback_output.exit_code,
                     );
                     self.emit(SandboxEvent::GitCloneFailed {
-                        url: params.display_url.clone(),
+                        url: params.url.clone(),
                         error: err.clone(),
                     });
                     return Err(err);
@@ -299,29 +323,19 @@ impl ExeSandbox {
                     clone_output.exit_code,
                 );
                 self.emit(SandboxEvent::GitCloneFailed {
-                    url: params.display_url.clone(),
+                    url: params.url.clone(),
                     error: err.clone(),
                 });
                 return Err(err);
             }
         }
 
-        // Set remote URL with auth credentials
-        let set_url_script = format!(
-            "cd {WORKING_DIRECTORY} && git remote set-url origin {}",
-            shell_quote(&params.clone_url),
-        );
-        let set_url_cmd = Self::wrap_bash_command(&set_url_script);
-        let _ = ssh
-            .run_command_with_timeout(&set_url_cmd, std::time::Duration::from_secs(10))
-            .await;
-
-        // Store the display URL
-        let _ = self.origin_url.set(params.display_url.clone());
+        // Store the clean URL as origin_url for credential refresh
+        let _ = self.origin_url.set(params.url.clone());
 
         let duration_ms = u64::try_from(clone_start.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.emit(SandboxEvent::GitCloneCompleted {
-            url: params.display_url.clone(),
+            url: params.url.clone(),
             duration_ms,
         });
 
@@ -807,6 +821,38 @@ impl Sandbox for ExeSandbox {
         }
     }
 
+    async fn refresh_push_credentials(&self) -> Result<(), String> {
+        let origin_url = match self.origin_url() {
+            Some(url) => url,
+            None => return Ok(()),
+        };
+        let creds = match &self.github_app {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let (owner, repo) = arc_github::parse_github_owner_repo(origin_url)
+            .map_err(|e| format!("Failed to parse origin URL for credential refresh: {e}"))?;
+
+        let (_username, password) = arc_github::resolve_clone_credentials(creds, &owner, &repo)
+            .await
+            .map_err(|e| format!("Failed to refresh GitHub App token: {e}"))?;
+
+        if let Some(token) = password {
+            let auth_url =
+                origin_url.replacen("https://", &format!("https://x-access-token:{token}@"), 1);
+            let cmd = format!(
+                "git -c maintenance.auto=0 remote set-url origin {}",
+                shell_quote(&auth_url)
+            );
+            self.exec_command(&cmd, 10_000, None, None, None)
+                .await
+                .map_err(|e| format!("Failed to set refreshed push credentials: {e}"))?;
+        }
+
+        Ok(())
+    }
+
     fn is_remote(&self) -> bool {
         true
     }
@@ -971,7 +1017,7 @@ mod tests {
     /// Helper: create an ExeSandbox with mock data SSH already initialized (skipping lifecycle).
     fn sandbox_with_mock_data(data_ssh: impl SshRunner + 'static) -> ExeSandbox {
         let mgmt = MockSshRunner::new();
-        let sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None);
+        let sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None, None);
         let _ = sandbox.vm_name.set("test-vm".to_string());
         let _ = sandbox.data_host.set("test-vm.exe.xyz".to_string());
         let _ = sandbox.data_ssh.set(Box::new(data_ssh));
@@ -1015,7 +1061,7 @@ mod tests {
     #[test]
     fn ssh_command_errors_before_init() {
         let mgmt = MockSshRunner::new();
-        let sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None);
+        let sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None, None);
         assert!(sandbox.ssh_command().is_err());
     }
 
@@ -1391,7 +1437,7 @@ mod tests {
 
         let data_for_init = MockSshRunner::new();
 
-        let mut sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None);
+        let mut sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None, None);
         // Override factory to return our mock data SSH
         let data_box: Arc<Mutex<Option<Box<dyn SshRunner>>>> =
             Arc::new(Mutex::new(Some(Box::new(data_for_init))));
@@ -1423,7 +1469,7 @@ mod tests {
         let events: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let events_cb = Arc::clone(&events);
 
-        let mut sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None);
+        let mut sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None, None);
         sandbox.set_event_callback(Arc::new(move |event| {
             events_cb.lock().unwrap().push(format!("{event:?}"));
         }));
@@ -1462,7 +1508,7 @@ mod tests {
         // Response for `rm <vm_name>`
         mgmt.queue_response("", "", 0);
 
-        let sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None);
+        let sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None, None);
         let _ = sandbox.vm_name.set("doomed-vm".to_string());
 
         sandbox.cleanup().await.unwrap();
@@ -1474,7 +1520,7 @@ mod tests {
     #[tokio::test]
     async fn cleanup_before_initialize_is_noop() {
         let mgmt = MockSshRunner::new();
-        let sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None);
+        let sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None, None);
         // Should not error — no VM to destroy
         sandbox.cleanup().await.unwrap();
     }
@@ -1494,21 +1540,19 @@ mod tests {
         let data_commands = data.commands.clone();
         // Response for git clone
         data.queue_response("", "", 0);
-        // Response for git remote set-url
-        data.queue_response("", "", 0);
 
         let data_box: Arc<Mutex<Option<Box<dyn SshRunner>>>> =
             Arc::new(Mutex::new(Some(Box::new(data))));
 
         let clone_params = GitCloneParams {
-            clone_url: "https://x-access-token:tok@github.com/org/repo.git".to_string(),
-            display_url: "https://github.com/org/repo.git".to_string(),
+            url: "https://github.com/org/repo.git".to_string(),
             branch: Some("main".to_string()),
         };
         let mut sandbox = ExeSandbox::new(
             Box::new(mgmt),
             ExeConfig::default(),
             Some(clone_params),
+            None,
             None,
         );
         sandbox.data_ssh_factory = Box::new(move |_host: &str| {
@@ -1555,7 +1599,7 @@ mod tests {
         let data_box: Arc<Mutex<Option<Box<dyn SshRunner>>>> =
             Arc::new(Mutex::new(Some(Box::new(data))));
 
-        let mut sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None);
+        let mut sandbox = ExeSandbox::new(Box::new(mgmt), ExeConfig::default(), None, None, None);
         sandbox.data_ssh_factory = Box::new(move |_host: &str| {
             let data_box = Arc::clone(&data_box);
             Box::pin(async move {
@@ -1597,14 +1641,14 @@ mod tests {
         let events_cb = Arc::clone(&events);
 
         let clone_params = GitCloneParams {
-            clone_url: "https://github.com/org/repo.git".to_string(),
-            display_url: "https://github.com/org/repo.git".to_string(),
+            url: "https://github.com/org/repo.git".to_string(),
             branch: None,
         };
         let mut sandbox = ExeSandbox::new(
             Box::new(mgmt),
             ExeConfig::default(),
             Some(clone_params),
+            None,
             None,
         );
         sandbox.set_event_callback(Arc::new(move |event| {
@@ -1639,12 +1683,9 @@ mod tests {
         let data_commands = data.commands.clone();
         // Response for git clone
         data.queue_response("", "", 0);
-        // Response for git remote set-url
-        data.queue_response("", "", 0);
 
         let clone_params = GitCloneParams {
-            clone_url: "https://github.com/org/repo.git".to_string(),
-            display_url: "https://github.com/org/repo.git".to_string(),
+            url: "https://github.com/org/repo.git".to_string(),
             branch: Some("feat;id".to_string()),
         };
         let sandbox = sandbox_with_mock_data(data);
@@ -1663,11 +1704,9 @@ mod tests {
         let data = MockSshRunner::new();
         let data_commands = data.commands.clone();
         data.queue_response("", "", 0);
-        data.queue_response("", "", 0);
 
         let clone_params = GitCloneParams {
-            clone_url: "https://example.com/has space/repo.git".to_string(),
-            display_url: "https://example.com/has space/repo.git".to_string(),
+            url: "https://example.com/has space/repo.git".to_string(),
             branch: None,
         };
         let sandbox = sandbox_with_mock_data(data);
@@ -1698,7 +1737,7 @@ mod tests {
         let config = ExeConfig {
             image: Some("ubuntu;evil".to_string()),
         };
-        let mut sandbox = ExeSandbox::new(Box::new(mgmt), config, None, None);
+        let mut sandbox = ExeSandbox::new(Box::new(mgmt), config, None, None, None);
         sandbox.data_ssh_factory = Box::new(move |_host: &str| {
             let data_box = Arc::clone(&data_box);
             Box::pin(async move {

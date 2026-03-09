@@ -286,6 +286,7 @@ fn fully_populated_server_config() -> ServerConfig {
             sandbox: Some(SandboxConfig {
                 provider: Some("daytona".into()),
                 preserve: Some(true),
+                local: None,
                 daytona: Some(DaytonaConfig {
                     auto_stop_interval: Some(60),
                     labels: Some(Default::default()),

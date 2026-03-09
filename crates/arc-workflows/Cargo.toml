@@ -18,6 +18,7 @@ anyhow.workspace = true
 dotenvy.workspace = true
 arc-agent = { path = "../arc-agent" }
 arc-exe = { path = "../arc-exe" }
+arc-github = { path = "../arc-github" }
 arc-util = { path = "../arc-util" }
 arc-git-storage = { path = "../arc-git-storage" }
 arc-llm = { path = "../arc-llm" }
@@ -47,7 +48,6 @@ indicatif.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 reqwest.workspace = true
-jsonwebtoken.workspace = true
 [dev-dependencies]
 mockito = "1"
 tokio = { workspace = true, features = ["test-util", "macros"] }

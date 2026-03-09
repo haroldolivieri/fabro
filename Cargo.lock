@@ -137,6 +137,7 @@ dependencies = [
  "arc-agent",
  "arc-db",
  "arc-exe",
+ "arc-github",
  "arc-llm",
  "arc-types",
  "arc-util",
@@ -184,6 +185,7 @@ dependencies = [
  "anyhow",
  "arc-agent",
  "arc-api",
+ "arc-github",
  "arc-llm",
  "arc-mcp",
  "arc-util",
@@ -248,9 +250,11 @@ name = "arc-exe"
 version = "0.1.0"
 dependencies = [
  "arc-agent",
+ "arc-github",
  "async-trait",
  "base64",
  "openssh",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "shlex",
@@ -269,6 +273,21 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "walkdir",
+]
+
+[[package]]
+name = "arc-github"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "jsonwebtoken",
+ "mockito",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -393,6 +412,7 @@ dependencies = [
  "arc-agent",
  "arc-exe",
  "arc-git-storage",
+ "arc-github",
  "arc-llm",
  "arc-util",
  "assert_cmd",
@@ -409,7 +429,6 @@ dependencies = [
  "futures",
  "git2",
  "indicatif",
- "jsonwebtoken",
  "mockito",
  "nom",
  "predicates",

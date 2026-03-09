@@ -256,8 +256,7 @@ async fn update_github_app_webhook(
     private_key_pem: &str,
     webhook_url: &str,
 ) -> anyhow::Result<()> {
-    let jwt = arc_workflows::github_app::sign_app_jwt(app_id, private_key_pem)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let jwt = arc_github::sign_app_jwt(app_id, private_key_pem).map_err(|e| anyhow::anyhow!(e))?;
 
     let client = reqwest::Client::new();
     let body = serde_json::json!({

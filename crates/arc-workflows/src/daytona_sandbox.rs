@@ -11,7 +11,7 @@ use rand::Rng;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
-use crate::github_app::GitHubAppCredentials;
+use arc_github::GitHubAppCredentials;
 
 const WORKING_DIRECTORY: &str = "/home/daytona/workspace";
 const DEFAULT_IMAGE: &str = "ubuntu:22.04";
@@ -371,7 +371,7 @@ impl DaytonaSandbox {
     }
 }
 
-use crate::github_app::ssh_url_to_https;
+use arc_github::ssh_url_to_https;
 
 /// Detect the git remote URL and current branch from a local repository.
 ///
@@ -541,8 +541,8 @@ impl Sandbox for DaytonaSandbox {
                 // Resolve clone credentials via GitHub App or fall back to no auth
                 let (username, password) = match &self.github_app {
                     Some(creds) => {
-                        let (owner, repo) = crate::github_app::parse_github_owner_repo(&url)
-                            .map_err(|e| {
+                        let (owner, repo) =
+                            arc_github::parse_github_owner_repo(&url).map_err(|e| {
                                 let err = format!("Failed to parse GitHub URL for clone: {e}");
                                 self.emit(SandboxEvent::GitCloneFailed {
                                     url: url.clone(),
@@ -550,7 +550,7 @@ impl Sandbox for DaytonaSandbox {
                                 });
                                 err
                             })?;
-                        crate::github_app::resolve_clone_credentials(creds, &owner, &repo)
+                        arc_github::resolve_clone_credentials(creds, &owner, &repo)
                             .await
                             .map_err(|e| {
                                 let err =
@@ -784,13 +784,12 @@ impl Sandbox for DaytonaSandbox {
             None => return Ok(()),
         };
 
-        let (owner, repo) = crate::github_app::parse_github_owner_repo(origin_url)
+        let (owner, repo) = arc_github::parse_github_owner_repo(origin_url)
             .map_err(|e| format!("Failed to parse origin URL for credential refresh: {e}"))?;
 
-        let (_username, password) =
-            crate::github_app::resolve_clone_credentials(creds, &owner, &repo)
-                .await
-                .map_err(|e| format!("Failed to refresh GitHub App token: {e}"))?;
+        let (_username, password) = arc_github::resolve_clone_credentials(creds, &owner, &repo)
+            .await
+            .map_err(|e| format!("Failed to refresh GitHub App token: {e}"))?;
 
         if let Some(token) = password {
             let auth_url =

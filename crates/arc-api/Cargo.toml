@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 arc-workflows = { path = "../arc-workflows" }
+arc-github = { path = "../arc-github" }
 arc-agent = { path = "../arc-agent" }
 arc-llm = { path = "../arc-llm" }
 arc-util = { path = "../arc-util" }

@@ -28,7 +28,7 @@ async fn create_env() -> DaytonaSandbox {
 }
 
 async fn create_env_with_github_app(
-    github_app: Option<arc_workflows::github_app::GitHubAppCredentials>,
+    github_app: Option<arc_github::GitHubAppCredentials>,
 ) -> DaytonaSandbox {
     dotenvy::dotenv().ok();
     let client = daytona_sdk::Client::new()
@@ -37,7 +37,7 @@ async fn create_env_with_github_app(
     DaytonaSandbox::new(client, DaytonaConfig::default(), github_app, None)
 }
 
-fn load_github_app_credentials() -> arc_workflows::github_app::GitHubAppCredentials {
+fn load_github_app_credentials() -> arc_github::GitHubAppCredentials {
     dotenvy::dotenv().ok();
 
     // Read app_id from ~/.arc/server.toml
@@ -70,7 +70,7 @@ fn load_github_app_credentials() -> arc_workflows::github_app::GitHubAppCredenti
             .expect("GITHUB_APP_PRIVATE_KEY is not valid base64");
         String::from_utf8(bytes).expect("GITHUB_APP_PRIVATE_KEY decoded to invalid UTF-8")
     };
-    arc_workflows::github_app::GitHubAppCredentials {
+    arc_github::GitHubAppCredentials {
         app_id,
         private_key_pem,
     }
@@ -1436,10 +1436,9 @@ async fn daytona_clone_public_repo_gets_credentials() {
     let creds = load_github_app_credentials();
 
     // Directly test resolve_clone_credentials against a repo in an org where the app is installed
-    let (username, password) =
-        arc_workflows::github_app::resolve_clone_credentials(&creds, "brynary", "arc")
-            .await
-            .unwrap();
+    let (username, password) = arc_github::resolve_clone_credentials(&creds, "brynary", "arc")
+        .await
+        .unwrap();
 
     assert_eq!(
         username.as_deref(),
@@ -1459,8 +1458,7 @@ async fn daytona_clone_public_repo_gets_credentials() {
 async fn daytona_iat_not_installed_gives_clear_error() {
     let creds = load_github_app_credentials();
 
-    let result =
-        arc_workflows::github_app::resolve_clone_credentials(&creds, "torvalds", "linux").await;
+    let result = arc_github::resolve_clone_credentials(&creds, "torvalds", "linux").await;
 
     assert!(
         result.is_err(),

@@ -1,6 +1,6 @@
 use tracing::{debug, info};
 
-use crate::github_app::{self, ssh_url_to_https, GitHubAppCredentials};
+use arc_github::{self as github_app, ssh_url_to_https, GitHubAppCredentials};
 
 /// Generate a PR body from the diff and goal using an LLM.
 pub async fn generate_pr_body(diff: &str, goal: &str, model: &str) -> Result<String, String> {

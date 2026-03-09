@@ -37,8 +37,6 @@ pub mod engine;
 pub mod error;
 pub mod event;
 pub mod git;
-pub(crate) mod git_credential_sandbox;
-pub mod github_app;
 pub mod graph;
 pub mod handler;
 pub mod hook;

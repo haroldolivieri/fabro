@@ -686,7 +686,7 @@ pub async fn git_checkpoint_remote(
 async fn git_push_meta_host(
     repo_path: PathBuf,
     meta_branch: String,
-    github_app: Option<crate::github_app::GitHubAppCredentials>,
+    github_app: Option<arc_github::GitHubAppCredentials>,
 ) {
     let (origin_url, _) = match crate::daytona_sandbox::detect_repo_info(&repo_path) {
         Ok(info) => info,
@@ -696,17 +696,17 @@ async fn git_push_meta_host(
         }
     };
 
-    let https_url = crate::github_app::ssh_url_to_https(&origin_url);
+    let https_url = arc_github::ssh_url_to_https(&origin_url);
     let push_url = match &github_app {
         Some(creds) => {
-            let (owner, repo) = match crate::github_app::parse_github_owner_repo(&https_url) {
+            let (owner, repo) = match arc_github::parse_github_owner_repo(&https_url) {
                 Ok(pair) => pair,
                 Err(e) => {
                     tracing::warn!(error = %e, "Cannot parse GitHub URL for metadata push");
                     return;
                 }
             };
-            match crate::github_app::resolve_clone_credentials(creds, &owner, &repo).await {
+            match arc_github::resolve_clone_credentials(creds, &owner, &repo).await {
                 Ok((_, Some(token))) => {
                     https_url.replacen("https://", &format!("https://x-access-token:{token}@"), 1)
                 }
@@ -848,7 +848,7 @@ pub struct RunConfig {
     #[allow(clippy::struct_field_names)]
     pub checkpoint_exclude_globs: Vec<String>,
     /// GitHub App credentials for pushing metadata branches to origin.
-    pub github_app: Option<crate::github_app::GitHubAppCredentials>,
+    pub github_app: Option<arc_github::GitHubAppCredentials>,
     /// Git author identity for checkpoint commits.
     pub git_author: crate::git::GitAuthor,
     /// Name of the branch the run was started from (for PR base).

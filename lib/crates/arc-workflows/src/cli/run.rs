@@ -950,7 +950,7 @@ pub async fn run_command(
         git_author,
         base_branch: detected_base_branch.or(remote_base_branch),
         pull_request_enabled: pr_cfg.is_some_and(|p| p.enabled),
-        pull_request_draft: pr_cfg.map_or(true, |p| p.draft),
+        pull_request_draft: pr_cfg.is_none_or(|p| p.draft),
         asset_globs: run_cfg
             .as_ref()
             .and_then(|c| c.assets.as_ref())

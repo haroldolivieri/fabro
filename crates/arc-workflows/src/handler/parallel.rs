@@ -231,7 +231,7 @@ impl Handler for ParallelHandler {
 
         // --- Git isolation: checkpoint "parallel base" before fan-out ---
         let base_sha: Option<String> = if let Some(ref gs) = git_state {
-            match &gs.mode {
+            let result = match &gs.mode {
                 GitCheckpointMode::Host(work_dir) => {
                     let wd = work_dir.clone();
                     let rid = gs.run_id.clone();
@@ -260,6 +260,13 @@ impl Handler for ParallelHandler {
                         &gs.git_author,
                     )
                     .await
+                }
+            };
+            match result {
+                Ok(sha) => Some(sha),
+                Err(e) => {
+                    tracing::warn!(error = %e, "parallel base checkpoint failed");
+                    None
                 }
             }
         } else {

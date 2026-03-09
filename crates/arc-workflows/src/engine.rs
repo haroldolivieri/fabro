@@ -549,7 +549,7 @@ pub async fn git_checkpoint_host(
     shadow_sha: Option<String>,
     exclude_globs: Vec<String>,
     author: crate::git::GitAuthor,
-) -> Option<String> {
+) -> std::result::Result<String, String> {
     match tokio::task::spawn_blocking(move || {
         crate::git::checkpoint_commit(
             &work_dir,
@@ -564,15 +564,9 @@ pub async fn git_checkpoint_host(
     })
     .await
     {
-        Ok(Ok(sha)) => Some(sha),
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "Git checkpoint commit failed");
-            None
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "Git checkpoint commit failed");
-            None
-        }
+        Ok(Ok(sha)) => Ok(sha),
+        Ok(Err(e)) => Err(format!("git checkpoint commit failed: {e}")),
+        Err(e) => Err(format!("git checkpoint task panicked: {e}")),
     }
 }
 
@@ -597,7 +591,7 @@ pub async fn git_checkpoint_remote(
     shadow_sha: Option<String>,
     exclude_globs: &[String],
     author: &crate::git::GitAuthor,
-) -> Option<String> {
+) -> std::result::Result<String, String> {
     // Stage everything (with optional excludes)
     let add_cmd = if exclude_globs.is_empty() {
         format!("{GIT_REMOTE} add -A")
@@ -611,8 +605,15 @@ pub async fn git_checkpoint_remote(
     let add_result = sandbox
         .exec_command(&add_cmd, 30_000, None, None, None)
         .await;
-    if add_result.as_ref().map_or(true, |r| r.exit_code != 0) {
-        return None;
+    match &add_result {
+        Ok(r) if r.exit_code == 0 => {}
+        Ok(r) => {
+            return Err(format!(
+                "git add failed (exit {}): {}{}",
+                r.exit_code, r.stdout, r.stderr
+            ));
+        }
+        Err(e) => return Err(format!("git add failed: {e}")),
     }
 
     // Build commit message with trailers (same format as checkpoint_commit in git.rs)
@@ -638,12 +639,11 @@ pub async fn git_checkpoint_remote(
     let message = trailerlink::format_message(&subject, "", &trailers);
 
     // Write message to temp file in sandbox to avoid shell escaping issues
-    if sandbox
+    if let Err(e) = sandbox
         .write_file("/tmp/arc-commit-msg", &message)
         .await
-        .is_err()
     {
-        return None;
+        return Err(format!("failed to write commit message file: {e}"));
     }
 
     // Commit with configured identity using the message file
@@ -655,8 +655,15 @@ pub async fn git_checkpoint_remote(
     let commit_result = sandbox
         .exec_command(&commit_cmd, 30_000, None, None, None)
         .await;
-    if commit_result.as_ref().map_or(true, |r| r.exit_code != 0) {
-        return None;
+    match &commit_result {
+        Ok(r) if r.exit_code == 0 => {}
+        Ok(r) => {
+            return Err(format!(
+                "git commit failed (exit {}): {}{}",
+                r.exit_code, r.stdout, r.stderr
+            ));
+        }
+        Err(e) => return Err(format!("git commit failed: {e}")),
     }
 
     // Get the new HEAD SHA
@@ -665,8 +672,12 @@ pub async fn git_checkpoint_remote(
         .exec_command(&sha_cmd, 10_000, None, None, None)
         .await;
     match sha_result {
-        Ok(r) if r.exit_code == 0 => Some(r.stdout.trim().to_string()),
-        _ => None,
+        Ok(r) if r.exit_code == 0 => Ok(r.stdout.trim().to_string()),
+        Ok(r) => Err(format!(
+            "git rev-parse HEAD failed (exit {}): {}{}",
+            r.exit_code, r.stdout, r.stderr
+        )),
+        Err(e) => Err(format!("git rev-parse HEAD failed: {e}")),
     }
 }
 
@@ -1977,63 +1988,74 @@ impl WorkflowRunEngine {
                         }
                     };
 
-                    if let Some(sha) = commit_result {
-                        checkpoint.git_commit_sha = Some(sha.clone());
-                        if let Err(e) = checkpoint.save(&checkpoint_path) {
-                            context.append_log(format!("checkpoint re-save with SHA failed: {e}"));
+                    match commit_result {
+                        Ok(sha) => {
+                            checkpoint.git_commit_sha = Some(sha.clone());
+                            if let Err(e) = checkpoint.save(&checkpoint_path) {
+                                context.append_log(format!(
+                                    "checkpoint re-save with SHA failed: {e}"
+                                ));
+                            }
+                            self.services
+                                .emitter
+                                .emit(&WorkflowRunEvent::GitCheckpoint {
+                                    run_id: run_id.clone(),
+                                    node_id: node.id.clone(),
+                                    status: outcome.status.to_string(),
+                                    git_commit_sha: sha.clone(),
+                                });
+
+                            // Push run branch and metadata branch to origin after remote checkpoint
+                            if let GitCheckpointMode::Remote(ref host_repo) = mode {
+                                if let Some(ref branch) = config.run_branch {
+                                    git_push_remote(&*self.services.sandbox, branch).await;
+                                }
+                                if let Some(ref meta_branch) = config.meta_branch {
+                                    git_push_meta_host(
+                                        host_repo.clone(),
+                                        meta_branch.clone(),
+                                        config.github_app.clone(),
+                                    )
+                                    .await;
+                                }
+                            }
+
+                            // Save diff.patch for this stage
+                            let prev = last_git_sha
+                                .as_deref()
+                                .or(config.base_sha.as_deref())
+                                .unwrap_or(&sha);
+                            let diff_base = prev.to_string();
+                            let diff_dest =
+                                node_dir(&config.logs_root, &node.id, visit).join("diff.patch");
+
+                            let diff_result = match mode {
+                                GitCheckpointMode::Host(work_dir) => {
+                                    git_diff_host(work_dir.clone(), diff_base).await
+                                }
+                                GitCheckpointMode::Remote(_) => {
+                                    git_diff_remote(&*self.services.sandbox, &diff_base).await
+                                }
+                            };
+                            if let Some(patch) = diff_result {
+                                if !patch.is_empty() {
+                                    let _ = std::fs::write(&diff_dest, patch);
+                                }
+                            } else {
+                                context.append_log("git diff failed".to_string());
+                            }
+
+                            last_git_sha = Some(sha);
                         }
-                        self.services
-                            .emitter
-                            .emit(&WorkflowRunEvent::GitCheckpoint {
-                                run_id: run_id.clone(),
-                                node_id: node.id.clone(),
-                                status: outcome.status.to_string(),
-                                git_commit_sha: sha.clone(),
+                        Err(e) => {
+                            return Err(ArcError::Engine {
+                                message: format!(
+                                    "git checkpoint commit failed for node '{}': {e}",
+                                    node.id
+                                ),
+                                failure_class: FailureClass::Deterministic,
                             });
-
-                        // Push run branch and metadata branch to origin after remote checkpoint
-                        if let GitCheckpointMode::Remote(ref host_repo) = mode {
-                            if let Some(ref branch) = config.run_branch {
-                                git_push_remote(&*self.services.sandbox, branch).await;
-                            }
-                            if let Some(ref meta_branch) = config.meta_branch {
-                                git_push_meta_host(
-                                    host_repo.clone(),
-                                    meta_branch.clone(),
-                                    config.github_app.clone(),
-                                )
-                                .await;
-                            }
                         }
-
-                        // Save diff.patch for this stage
-                        let prev = last_git_sha
-                            .as_deref()
-                            .or(config.base_sha.as_deref())
-                            .unwrap_or(&sha);
-                        let diff_base = prev.to_string();
-                        let diff_dest =
-                            node_dir(&config.logs_root, &node.id, visit).join("diff.patch");
-
-                        let diff_result = match mode {
-                            GitCheckpointMode::Host(work_dir) => {
-                                git_diff_host(work_dir.clone(), diff_base).await
-                            }
-                            GitCheckpointMode::Remote(_) => {
-                                git_diff_remote(&*self.services.sandbox, &diff_base).await
-                            }
-                        };
-                        if let Some(patch) = diff_result {
-                            if !patch.is_empty() {
-                                let _ = std::fs::write(&diff_dest, patch);
-                            }
-                        } else {
-                            context.append_log("git diff failed".to_string());
-                        }
-
-                        last_git_sha = Some(sha);
-                    } else {
-                        context.append_log("git checkpoint commit failed".to_string());
                     }
                 }
             }

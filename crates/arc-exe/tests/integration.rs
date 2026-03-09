@@ -12,7 +12,7 @@ async fn exe_sandbox_full_lifecycle() {
         .await
         .expect("SSH to exe.dev failed — is your SSH agent running?");
 
-    let sandbox = ExeSandbox::new(Box::new(mgmt_ssh));
+    let sandbox = ExeSandbox::new(Box::new(mgmt_ssh), None);
 
     // Initialize (creates VM)
     sandbox.initialize().await.unwrap();

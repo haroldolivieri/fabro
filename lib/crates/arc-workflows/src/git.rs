@@ -278,10 +278,21 @@ pub fn reset_hard(work_dir: &Path, sha: &str) -> Result<()> {
 /// Push a local ref to an explicit remote URL.
 ///
 /// Uses a URL (not a named remote) so the host repo's remote config is untouched.
+/// Disables credential helpers so only the inline URL credentials are used.
 pub fn push_ref(repo: &Path, url: &str, refname: &str) -> Result<()> {
-    tracing::debug!(path = %repo.display(), refname, "Pushing ref to remote");
+    let redacted_url = if let Some(at_pos) = url.find('@') {
+        format!("https://***@{}", &url[at_pos + 1..])
+    } else {
+        url.to_string()
+    };
+    tracing::info!(
+        repo_dir = %repo.display(),
+        url = %redacted_url,
+        refname,
+        "Pushing ref to remote"
+    );
     let output = git_cmd(repo)
-        .args(["push", url, refname])
+        .args(["-c", "credential.helper=", "push", url, refname])
         .output()
         .map_err(|e| git_error(format!("git push failed: {e}")))?;
     if !output.status.success() {

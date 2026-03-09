@@ -358,6 +358,22 @@ where
     }
 }
 
+/// Returns true if the local branch has commits not yet on the remote.
+/// On any git error (no remote ref, detached HEAD, etc.), returns true
+/// so the caller falls back to pushing.
+pub fn branch_needs_push(repo: &Path, remote: &str, branch: &str) -> bool {
+    let local = git_cmd(repo)
+        .args(["rev-parse", &format!("refs/heads/{branch}")])
+        .output();
+    let remote_ref = git_cmd(repo)
+        .args(["rev-parse", &format!("refs/remotes/{remote}/{branch}")])
+        .output();
+    match (local, remote_ref) {
+        (Ok(l), Ok(r)) if l.status.success() && r.status.success() => l.stdout != r.stdout,
+        _ => true,
+    }
+}
+
 /// Sanitize a string for use as a git ref component.
 /// Lowercases, replaces non-alphanumeric chars with dashes, collapses runs.
 pub fn sanitize_ref_component(s: &str) -> String {
@@ -1317,5 +1333,127 @@ mod tests {
         init_repo(dir.path());
         let result = push_branch(dir.path(), "nonexistent", "main");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_needs_push_when_ahead() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = dir.path().join("repo");
+        let remote_dir = dir.path().join("remote.git");
+
+        Command::new("git")
+            .args(["init", "--bare"])
+            .arg(&remote_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["init"])
+            .arg(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["remote", "add", "origin"])
+            .arg(&remote_dir)
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
+            ])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+
+        // Push once to establish remote tracking
+        push_branch(&repo_dir, "origin", "main").unwrap();
+
+        // Make another commit locally (now ahead of remote)
+        Command::new("git")
+            .args([
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "second",
+            ])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+
+        assert!(branch_needs_push(&repo_dir, "origin", "main"));
+    }
+
+    #[test]
+    fn branch_needs_push_when_in_sync() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = dir.path().join("repo");
+        let remote_dir = dir.path().join("remote.git");
+
+        Command::new("git")
+            .args(["init", "--bare"])
+            .arg(&remote_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["init"])
+            .arg(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["remote", "add", "origin"])
+            .arg(&remote_dir)
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
+            ])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+
+        push_branch(&repo_dir, "origin", "main").unwrap();
+
+        assert!(!branch_needs_push(&repo_dir, "origin", "main"));
+    }
+
+    #[test]
+    fn branch_needs_push_when_no_remote_ref() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = dir.path();
+
+        init_repo(repo_dir);
+
+        // No remote at all — should return true (safe default)
+        assert!(branch_needs_push(repo_dir, "origin", "main"));
     }
 }

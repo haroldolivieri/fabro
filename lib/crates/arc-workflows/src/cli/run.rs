@@ -531,27 +531,39 @@ pub async fn run_command(
 
     if should_create_worktree {
         if let Some(ref branch) = detected_base_branch {
-            let repo_path = original_cwd.clone();
-            let branch_owned = branch.clone();
-            let result = crate::git::blocking_push_with_timeout(60, move || {
-                crate::git::push_branch(&repo_path, "origin", &branch_owned)
+            let check_repo = original_cwd.clone();
+            let check_branch = branch.clone();
+            let needs_push = tokio::task::spawn_blocking(move || {
+                crate::git::branch_needs_push(&check_repo, "origin", &check_branch)
             })
-            .await;
-            match result {
-                Ok(()) => {
-                    tracing::info!(%branch, "Pushed current branch to origin");
-                    eprintln!(
-                        "{} {branch} (synced local commits to remote)",
-                        styles.bold.apply_to("Pushed branch:")
-                    );
+            .await
+            .unwrap_or(true);
+
+            if needs_push {
+                let repo_path = original_cwd.clone();
+                let branch_owned = branch.clone();
+                let result = crate::git::blocking_push_with_timeout(60, move || {
+                    crate::git::push_branch(&repo_path, "origin", &branch_owned)
+                })
+                .await;
+                match result {
+                    Ok(()) => {
+                        tracing::info!(%branch, "Pushed current branch to origin");
+                        eprintln!(
+                            "{} {branch} (synced local commits to remote)",
+                            styles.bold.apply_to("Pushed branch:")
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, %branch, "Failed to push current branch");
+                        eprintln!(
+                            "{} Failed to push {branch} to origin: {e}",
+                            styles.yellow.apply_to("Warning:")
+                        );
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(error = %e, %branch, "Failed to push current branch");
-                    eprintln!(
-                        "{} Failed to push {branch} to origin: {e}",
-                        styles.yellow.apply_to("Warning:")
-                    );
-                }
+            } else {
+                tracing::info!(%branch, "Branch already in sync with origin, skipping push");
             }
         }
     }

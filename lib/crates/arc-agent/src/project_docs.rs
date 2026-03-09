@@ -1,5 +1,6 @@
 use crate::sandbox::Sandbox;
 use arc_llm::provider::Provider;
+use std::collections::HashSet;
 use tracing::{debug, info, warn};
 
 const BUDGET_BYTES: usize = 32768;
@@ -26,6 +27,7 @@ pub async fn discover_project_docs(
 
     let mut results = Vec::new();
     let mut budget_remaining = BUDGET_BYTES;
+    let mut seen_content = HashSet::new();
 
     for dir in &directories {
         for filename in &candidate_filenames {
@@ -33,6 +35,10 @@ pub async fn discover_project_docs(
             if let Ok(content) = env.read_file(&path, None, None).await {
                 if content.is_empty() {
                     warn!(path = %path, "Project doc file empty, skipping");
+                    continue;
+                }
+                if !seen_content.insert(content.clone()) {
+                    debug!(path = %path, "Project doc duplicate content, skipping");
                     continue;
                 }
                 if content.len() <= budget_remaining {
@@ -182,6 +188,35 @@ mod tests {
         // Second doc should be truncated to fit remaining budget
         assert!(docs[1].ends_with("[Project instructions truncated at 32KB]"));
         assert!(docs[0].len() + docs[1].len() <= BUDGET_BYTES);
+    }
+
+    #[tokio::test]
+    async fn deduplicates_symlinked_files() {
+        let mut files = HashMap::new();
+        files.insert("/repo/AGENTS.md".into(), "shared instructions".into());
+        files.insert("/repo/CLAUDE.md".into(), "shared instructions".into());
+        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+            files,
+            ..Default::default()
+        });
+        let docs = discover_project_docs(env.as_ref(), "/repo", "/repo", Provider::Anthropic).await;
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0], "shared instructions");
+    }
+
+    #[tokio::test]
+    async fn deduplicates_across_directories() {
+        let mut files = HashMap::new();
+        files.insert("/repo/AGENTS.md".into(), "shared instructions".into());
+        files.insert("/repo/src/AGENTS.md".into(), "shared instructions".into());
+        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+            files,
+            ..Default::default()
+        });
+        let docs =
+            discover_project_docs(env.as_ref(), "/repo", "/repo/src", Provider::Anthropic).await;
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0], "shared instructions");
     }
 
     #[tokio::test]

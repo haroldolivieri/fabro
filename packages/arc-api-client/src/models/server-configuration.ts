@@ -18,6 +18,9 @@
 import type { ApiConfiguration } from './api-configuration';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { CheckpointConfiguration } from './checkpoint-configuration';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { FeatureFlags } from './feature-flags';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -28,6 +31,12 @@ import type { HookDefinition } from './hook-definition';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { LlmConfiguration } from './llm-configuration';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { LogConfiguration } from './log-configuration';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { PullRequestConfiguration } from './pull-request-configuration';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { SandboxConfiguration } from './sandbox-configuration';
@@ -54,6 +63,7 @@ export interface ServerConfiguration {
     'api'?: ApiConfiguration;
     'git'?: GitConfiguration;
     'feature_flags'?: FeatureFlags;
+    'log'?: LogConfiguration;
     /**
      * Default working directory.
      */
@@ -65,6 +75,8 @@ export interface ServerConfiguration {
      * Default variable map.
      */
     'vars'?: { [key: string]: string; };
+    'checkpoint'?: CheckpointConfiguration;
+    'pull_request'?: PullRequestConfiguration;
     'hooks'?: Array<HookDefinition>;
 }
 

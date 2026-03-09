@@ -30,5 +30,13 @@ export interface SandboxConfiguration {
      */
     'preserve'?: boolean;
     'daytona'?: DaytonaConfiguration;
+    /**
+     * exe.dev sandbox configuration.
+     */
+    'exe'?: object;
+    /**
+     * Environment variables injected into the sandbox.
+     */
+    'env'?: { [key: string]: string; };
 }
 

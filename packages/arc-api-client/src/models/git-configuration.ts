@@ -13,6 +13,12 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { GitAuthorConfiguration } from './git-author-configuration';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { WebhookConfiguration } from './webhook-configuration';
 
 /**
  * Git provider configuration.
@@ -30,6 +36,12 @@ export interface GitConfiguration {
      * GitHub App Client ID.
      */
     'client_id'?: string;
+    /**
+     * GitHub App slug.
+     */
+    'slug'?: string;
+    'author'?: GitAuthorConfiguration;
+    'webhooks'?: WebhookConfiguration;
 }
 
 export const GitConfigurationProviderEnum = {

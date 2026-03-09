@@ -15,17 +15,17 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { CompletionMessage } from './completion-message';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { CompletionUsage } from './completion-usage';
 
 export interface CompletionResponse {
     'id': string;
     'model': string;
+    'message': CompletionMessage;
     /**
-     * Generated text.
-     */
-    'content': string;
-    /**
-     * Why generation stopped (end_turn, max_tokens).
+     * Why generation stopped (end_turn, max_tokens, tool_calls).
      */
     'stop_reason': string;
     'usage': CompletionUsage;

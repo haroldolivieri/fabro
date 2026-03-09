@@ -28,8 +28,13 @@ models/auth-configuration.ts
 models/board-column.ts
 models/check-run-status.ts
 models/check-run.ts
+models/checkpoint-configuration.ts
 models/code-location.ts
+models/completion-content-part.ts
+models/completion-message.ts
 models/completion-response.ts
+models/completion-tool-choice.ts
+models/completion-tool-definition.ts
 models/completion-usage.ts
 models/control-detail.ts
 models/control-info.ts
@@ -54,6 +59,7 @@ models/file-checkpoint.ts
 models/file-diff.ts
 models/friction-kind.ts
 models/friction-point.ts
+models/git-author-configuration.ts
 models/git-configuration.ts
 models/health-response.ts
 models/history-entry.ts
@@ -62,6 +68,7 @@ models/index.ts
 models/learning-category.ts
 models/learning.ts
 models/llm-configuration.ts
+models/log-configuration.ts
 models/model-costs.ts
 models/model-features.ts
 models/model-limits.ts
@@ -87,6 +94,7 @@ models/paginated-workflow-list.ts
 models/pagination-meta.ts
 models/preview-url-request.ts
 models/preview-url-response.ts
+models/pull-request-configuration.ts
 models/question-type.ts
 models/recent-control-result.ts
 models/repository-reference.ts
@@ -150,6 +158,7 @@ models/verification-mode.ts
 models/verification-result.ts
 models/verification-type.ts
 models/web-configuration.ts
+models/webhook-configuration.ts
 models/workflow-detail.ts
 models/workflow-last-run.ts
 models/workflow-list-item.ts

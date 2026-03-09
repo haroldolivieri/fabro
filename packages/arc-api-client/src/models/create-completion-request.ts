@@ -13,27 +13,54 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { CompletionMessage } from './completion-message';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { CompletionToolChoice } from './completion-tool-choice';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { CompletionToolDefinition } from './completion-tool-definition';
 
 export interface CreateCompletionRequest {
     /**
-     * The user prompt text.
+     * The conversation messages.
      */
-    'prompt': string;
+    'messages': Array<CompletionMessage>;
     /**
      * Model ID or alias. Server picks default if omitted.
      */
     'model'?: string;
     /**
-     * System prompt.
+     * System prompt (convenience; prepended as a system message).
      */
     'system'?: string;
     /**
      * Stream response via SSE.
      */
     'stream'?: boolean;
+    /**
+     * Tool definitions available to the model.
+     */
+    'tools'?: Array<CompletionToolDefinition>;
+    'tool_choice'?: CompletionToolChoice;
     'schema'?: any;
     'temperature'?: number;
     'max_tokens'?: number;
     'top_p'?: number;
+    /**
+     * Stop sequences.
+     */
+    'stop_sequences'?: Array<string>;
+    /**
+     * Reasoning effort level.
+     */
+    'reasoning_effort'?: string;
+    /**
+     * Provider to route to.
+     */
+    'provider'?: string;
+    'provider_options'?: any;
 }
 

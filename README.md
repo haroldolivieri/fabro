@@ -99,13 +99,7 @@ arc install
 ### Run your first workflow
 
 ```bash
-arc run docs-internal/demo/01-hello.dot
-```
-
-Or try a multi-step workflow with a human approval gate:
-
-```bash
-arc run docs-internal/demo/10-plan-implement.dot
+arc run hello
 ```
 
 ---

@@ -206,7 +206,6 @@ Run `arc model list` for the full catalog. Provider fallback chains are configur
 - **macOS** (Apple Silicon) or **Linux** (x86_64)
 - **At least one LLM provider API key** (Anthropic, OpenAI, or Gemini)
 - **Git** (for checkpoint and resume)
-- **Docker** (optional, for Docker sandbox mode)
 - **Rust** (only if building from source)
 
 ---

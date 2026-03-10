@@ -1660,9 +1660,21 @@ fn print_assets(logs_dir: &std::path::Path, styles: &Styles) {
     if paths.is_empty() {
         return;
     }
+    let home = dirs::home_dir();
     eprintln!("\n{}", styles.bold.apply_to("=== Assets ==="));
     for path in &paths {
-        eprintln!("{path}");
+        let display = match &home {
+            Some(home_dir) => {
+                let home_str = home_dir.to_string_lossy();
+                if let Some(rest) = path.strip_prefix(home_str.as_ref()) {
+                    format!("~{rest}")
+                } else {
+                    path.clone()
+                }
+            }
+            None => path.clone(),
+        };
+        eprintln!("{display}");
     }
 }
 

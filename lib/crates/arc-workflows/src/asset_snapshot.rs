@@ -305,6 +305,8 @@ pub async fn collect_assets(
 }
 
 /// Collect all asset paths from manifest files under `{logs_dir}/artifacts/assets/*/retry_*/manifest.json`.
+///
+/// Returns the full on-disk paths to the downloaded asset files.
 pub fn collect_asset_paths(logs_dir: &Path) -> Vec<String> {
     let assets_dir = logs_dir.join("artifacts/assets");
     let Ok(nodes) = std::fs::read_dir(&assets_dir) else {
@@ -327,7 +329,11 @@ pub fn collect_asset_paths(logs_dir: &Path) -> Vec<String> {
             let Ok(summary) = serde_json::from_str::<AssetCollectionSummary>(&contents) else {
                 continue;
             };
-            all_paths.extend(summary.copied_paths);
+            let retry_dir = retry_entry.path();
+            for relative_path in &summary.copied_paths {
+                let full_path = retry_dir.join(relative_path);
+                all_paths.push(full_path.to_string_lossy().into_owned());
+            }
         }
     }
     all_paths
@@ -718,9 +724,16 @@ mod tests {
 
         let paths = collect_asset_paths(base);
         assert_eq!(paths.len(), 3);
-        assert!(paths.contains(&"test-results/report.xml".to_string()));
-        assert!(paths.contains(&"test-results/screenshot.png".to_string()));
-        assert!(paths.contains(&"coverage/lcov.info".to_string()));
+        let base_str = base.to_string_lossy();
+        assert!(paths.contains(&format!(
+            "{base_str}/artifacts/assets/node_a/retry_1/test-results/report.xml"
+        )));
+        assert!(paths.contains(&format!(
+            "{base_str}/artifacts/assets/node_a/retry_1/test-results/screenshot.png"
+        )));
+        assert!(paths.contains(&format!(
+            "{base_str}/artifacts/assets/node_b/retry_1/coverage/lcov.info"
+        )));
     }
 
     #[test]

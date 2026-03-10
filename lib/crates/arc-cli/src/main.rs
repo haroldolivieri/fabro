@@ -1,5 +1,6 @@
 mod cli_config;
 mod doctor;
+mod init;
 mod install;
 mod logging;
 
@@ -85,6 +86,8 @@ enum Command {
         #[arg(short, long)]
         live: bool,
     },
+    /// Initialize a new arc project
+    Init,
     /// Set up the Arc environment (LLMs, certs, GitHub)
     Install,
     /// List workflow runs
@@ -191,6 +194,7 @@ async fn main_inner() -> Result<()> {
         #[cfg(feature = "server")]
         Command::Serve(_) => "serve",
         Command::Doctor { .. } => "doctor",
+        Command::Init => "init",
         Command::Install => "install",
         Command::Ps(_) => "ps",
         Command::Pr { .. } => "pr",
@@ -395,6 +399,9 @@ async fn main_inner() -> Result<()> {
             let verbose = verbose || cli_config.verbose;
             let exit_code = doctor::run_doctor(verbose, live).await;
             std::process::exit(exit_code);
+        }
+        Command::Init => {
+            init::run_init().await?;
         }
         Command::Install => {
             install::run_install().await?;

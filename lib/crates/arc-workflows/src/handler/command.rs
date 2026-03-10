@@ -32,7 +32,7 @@ impl Handler for CommandHandler {
         node: &Node,
         context: &Context,
         _graph: &Graph,
-        logs_root: &Path,
+        run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         let script = node
@@ -59,7 +59,7 @@ impl Handler for CommandHandler {
         }
 
         let visit = crate::engine::visit_from_context(context);
-        let stage_dir = crate::engine::node_dir(logs_root, &node.id, visit);
+        let stage_dir = crate::engine::node_dir(run_dir, &node.id, visit);
         tokio::fs::create_dir_all(&stage_dir).await?;
 
         let invocation = serde_json::json!({
@@ -177,10 +177,10 @@ mod tests {
         let node = Node::new("script_node");
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -197,10 +197,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -219,10 +219,10 @@ mod tests {
             .insert("script".to_string(), AttrValue::String("false".to_string()));
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -242,10 +242,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let err = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap_err();
         let msg = err.to_string();
@@ -265,14 +265,14 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
 
-        let invocation_path = logs_root
+        let invocation_path = run_dir
             .path()
             .join("nodes")
             .join("script_node")
@@ -298,14 +298,14 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
 
-        let invocation_path = logs_root
+        let invocation_path = run_dir
             .path()
             .join("nodes")
             .join("script_node")
@@ -327,14 +327,14 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
 
-        let stage_dir = logs_root.path().join("nodes").join("script_node");
+        let stage_dir = run_dir.path().join("nodes").join("script_node");
         let stdout = std::fs::read_to_string(stage_dir.join("stdout.log")).unwrap();
         assert_eq!(stdout.trim(), "hello");
         let stderr = std::fs::read_to_string(stage_dir.join("stderr.log")).unwrap();
@@ -351,14 +351,14 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
 
-        let stage_dir = logs_root.path().join("nodes").join("script_node");
+        let stage_dir = run_dir.path().join("nodes").join("script_node");
         let stderr = std::fs::read_to_string(stage_dir.join("stderr.log")).unwrap();
         assert_eq!(stderr.trim(), "oops");
     }
@@ -373,14 +373,14 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
 
-        let timing_path = logs_root
+        let timing_path = run_dir
             .path()
             .join("nodes")
             .join("script_node")
@@ -400,14 +400,14 @@ mod tests {
             .insert("script".to_string(), AttrValue::String("false".to_string()));
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
 
-        let timing_path = logs_root
+        let timing_path = run_dir
             .path()
             .join("nodes")
             .join("script_node")
@@ -432,14 +432,14 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let _err = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap_err();
 
-        let timing_path = logs_root
+        let timing_path = run_dir
             .path()
             .join("nodes")
             .join("script_node")
@@ -465,10 +465,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -493,10 +493,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -516,10 +516,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -539,10 +539,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -560,10 +560,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -699,14 +699,14 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
             .execute(
                 &node,
                 &context,
                 &graph,
-                logs_root.path(),
+                run_dir.path(),
                 &make_spy_services(spy.clone()),
             )
             .await
@@ -748,14 +748,14 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
             .execute(
                 &node,
                 &context,
                 &graph,
-                logs_root.path(),
+                run_dir.path(),
                 &make_spy_services(spy.clone()),
             )
             .await
@@ -785,7 +785,7 @@ mod tests {
             .insert("script".to_string(), AttrValue::String("true".to_string()));
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let mut services = make_spy_services(spy.clone());
         services
@@ -793,7 +793,7 @@ mod tests {
             .insert("MY_VAR".to_string(), "my_value".to_string());
 
         handler
-            .execute(&node, &context, &graph, logs_root.path(), &services)
+            .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
 
@@ -814,10 +814,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -838,10 +838,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -885,10 +885,10 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = tempfile::tempdir().unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root.path(), &make_services())
+            .execute(&node, &context, &graph, run_dir.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);

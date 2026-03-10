@@ -19,7 +19,7 @@ impl Handler for WaitHandler {
         node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         let duration = node
@@ -70,9 +70,9 @@ mod tests {
         );
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageStatus::Success);
@@ -84,9 +84,9 @@ mod tests {
         let node = Node::new("wait_no_dur");
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
         let result = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await;
         assert!(result.is_err());
     }

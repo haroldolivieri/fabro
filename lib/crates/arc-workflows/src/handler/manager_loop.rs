@@ -86,7 +86,7 @@ impl Handler for SubWorkflowHandler {
         node: &Node,
         context: &Context,
         _graph: &Graph,
-        logs_root: &Path,
+        run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         let poll_interval = node
@@ -127,7 +127,7 @@ impl Handler for SubWorkflowHandler {
 
         // Build child RunConfig
         let visit = context.node_visit_count() as u64;
-        let child_logs = logs_root.join(format!("nodes/{}_{visit}/child", node.id));
+        let child_logs = run_dir.join(format!("nodes/{}_{visit}/child", node.id));
         let _ = std::fs::create_dir_all(&child_logs);
 
         let parent_run_id = context.run_id();
@@ -136,7 +136,7 @@ impl Handler for SubWorkflowHandler {
 
         let git_state = services.git_state();
         let child_config = RunConfig {
-            logs_root: child_logs,
+            run_dir: child_logs,
             cancel_token: Some(cancel_token),
             dry_run: false,
             run_id: format!("{parent_run_id}_child_{}", node.id),
@@ -375,7 +375,7 @@ mod tests {
                 _node: &Node,
                 context: &Context,
                 _graph: &Graph,
-                _logs_root: &Path,
+                _run_dir: &Path,
                 _services: &EngineServices,
             ) -> Result<Outcome, ArcError> {
                 let target = context.get_string("review.target", "");
@@ -491,7 +491,7 @@ mod tests {
                 _node: &Node,
                 _context: &Context,
                 _graph: &Graph,
-                _logs_root: &Path,
+                _run_dir: &Path,
                 _services: &EngineServices,
             ) -> Result<Outcome, ArcError> {
                 tokio::time::sleep(Duration::from_secs(10)).await;
@@ -552,7 +552,7 @@ mod tests {
                 _node: &Node,
                 _context: &Context,
                 _graph: &Graph,
-                _logs_root: &Path,
+                _run_dir: &Path,
                 _services: &EngineServices,
             ) -> Result<Outcome, ArcError> {
                 tokio::time::sleep(Duration::from_secs(10)).await;
@@ -712,7 +712,7 @@ mod tests {
                 _node: &Node,
                 context: &Context,
                 _graph: &Graph,
-                _logs_root: &Path,
+                _run_dir: &Path,
                 _services: &EngineServices,
             ) -> Result<Outcome, ArcError> {
                 let target = context.get_string("review.target", "");
@@ -798,7 +798,7 @@ mod tests {
                 _node: &Node,
                 context: &Context,
                 _graph: &Graph,
-                _logs_root: &Path,
+                _run_dir: &Path,
                 _services: &EngineServices,
             ) -> Result<Outcome, ArcError> {
                 let parent_preamble = context.get_string(keys::INTERNAL_PARENT_PREAMBLE, "");

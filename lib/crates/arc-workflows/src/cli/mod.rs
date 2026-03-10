@@ -99,9 +99,9 @@ pub struct RunArgs {
     #[arg(required_unless_present = "run_branch")]
     pub workflow: Option<PathBuf>,
 
-    /// Log/artifact directory
+    /// Run output directory
     #[arg(long)]
-    pub logs_dir: Option<PathBuf>,
+    pub run_dir: Option<PathBuf>,
 
     /// Execute with simulated LLM backend
     #[arg(long)]

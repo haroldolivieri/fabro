@@ -692,22 +692,22 @@ fn doctor_live_flag_accepted() {
 #[test]
 fn dry_run_writes_jsonl_and_live_json() {
     let tmp = tempfile::tempdir().unwrap();
-    let logs_dir = tmp.path().join("logs");
+    let run_dir = tmp.path().join("run");
 
     arc()
         .args([
             "run",
             "--dry-run",
             "--auto-approve",
-            "--logs-dir",
-            logs_dir.to_str().unwrap(),
+            "--run-dir",
+            run_dir.to_str().unwrap(),
             "../../../test/simple.dot",
         ])
         .assert()
         .success();
 
     // progress.jsonl must exist and contain valid JSON lines
-    let jsonl_path = logs_dir.join("progress.jsonl");
+    let jsonl_path = run_dir.join("progress.jsonl");
     assert!(jsonl_path.exists(), "progress.jsonl should exist");
     let jsonl_content = std::fs::read_to_string(&jsonl_path).unwrap();
     let lines: Vec<&str> = jsonl_content.lines().collect();
@@ -738,7 +738,7 @@ fn dry_run_writes_jsonl_and_live_json() {
     assert!(!run_id.is_empty(), "run_id should be non-empty");
 
     // live.json must exist and contain valid JSON matching the last JSONL line
-    let live_path = logs_dir.join("live.json");
+    let live_path = run_dir.join("live.json");
     assert!(live_path.exists(), "live.json should exist");
     let live_content: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&live_path).unwrap()).unwrap();

@@ -304,11 +304,11 @@ pub async fn collect_assets(
     Ok(summary)
 }
 
-/// Collect all asset paths from manifest files under `{logs_dir}/artifacts/assets/*/retry_*/manifest.json`.
+/// Collect all asset paths from manifest files under `{run_dir}/artifacts/assets/*/retry_*/manifest.json`.
 ///
 /// Returns the full on-disk paths to the downloaded asset files.
-pub fn collect_asset_paths(logs_dir: &Path) -> Vec<String> {
-    let assets_dir = logs_dir.join("artifacts/assets");
+pub fn collect_asset_paths(run_dir: &Path) -> Vec<String> {
+    let assets_dir = run_dir.join("artifacts/assets");
     let Ok(nodes) = std::fs::read_dir(&assets_dir) else {
         return Vec::new();
     };

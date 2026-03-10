@@ -79,7 +79,7 @@ registry.register("agent", Box::new(AgentHandler::new(None)));
 
 let engine = PipelineEngine::new(registry, EventEmitter::new());
 let config = RunConfig {
-    logs_root: "/tmp/pipeline-run".into(),
+    run_dir: "/tmp/pipeline-run".into(),
 };
 
 // engine.run(&graph, &config).await
@@ -107,7 +107,7 @@ impl Handler for MyHandler {
         node: &Node,
         context: &Context,
         graph: &Graph,
-        logs_root: &Path,
+        run_dir: &Path,
     ) -> Result<Outcome, ArcError> {
         // Custom logic here
         Ok(Outcome::success())

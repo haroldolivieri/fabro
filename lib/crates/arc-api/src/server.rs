@@ -76,7 +76,7 @@ struct ManagedRun {
     checkpoint: Option<Checkpoint>,
     cancel_tx: Option<tokio::sync::oneshot::Sender<()>>,
     cancel_token: Option<Arc<AtomicBool>>,
-    logs_root: Option<std::path::PathBuf>,
+    run_dir: Option<std::path::PathBuf>,
 }
 
 /// Per-model usage totals.
@@ -491,7 +491,7 @@ async fn start_run(
                 checkpoint: None,
                 cancel_tx: None,
                 cancel_token: None,
-                logs_root: None,
+                run_dir: None,
             },
         );
     }
@@ -591,10 +591,10 @@ async fn execute_run(state: Arc<AppState>, run_id: String) {
         }
     }
 
-    let logs_root = std::env::temp_dir().join(format!("arc-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&logs_root).expect("failed to create logs directory");
+    let run_dir = std::env::temp_dir().join(format!("arc-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&run_dir).expect("failed to create run directory");
     let config = RunConfig {
-        logs_root,
+        run_dir,
         cancel_token: Some(cancel_token),
         dry_run: state.dry_run,
         run_id: run_id.clone(),
@@ -626,7 +626,7 @@ async fn execute_run(state: Arc<AppState>, run_id: String) {
     };
 
     // Save final checkpoint
-    let checkpoint = Checkpoint::load(&config.logs_root.join("checkpoint.json")).ok();
+    let checkpoint = Checkpoint::load(&config.run_dir.join("checkpoint.json")).ok();
 
     // Auto-derive retro and accumulate aggregate usage
     if let Some(ref cp) = checkpoint {
@@ -634,7 +634,7 @@ async fn execute_run(state: Arc<AppState>, run_id: String) {
             Ok(_) => (false, None),
             Err(e) => (true, Some(e.to_string())),
         };
-        let stage_durations = arc_workflows::retro::extract_stage_durations(&config.logs_root);
+        let stage_durations = arc_workflows::retro::extract_stage_durations(&config.run_dir);
         let retro = arc_workflows::retro::derive_retro(
             &run_id,
             "workflow",
@@ -645,7 +645,7 @@ async fn execute_run(state: Arc<AppState>, run_id: String) {
             0,
             &stage_durations,
         );
-        let _ = retro.save(&config.logs_root);
+        let _ = retro.save(&config.run_dir);
 
         // Accumulate aggregate usage
         let mut agg = state
@@ -686,7 +686,7 @@ async fn execute_run(state: Arc<AppState>, run_id: String) {
             }
         }
         managed_run.checkpoint = checkpoint;
-        managed_run.logs_root = Some(config.logs_root.clone());
+        managed_run.run_dir = Some(config.run_dir.clone());
         managed_run.event_tx = None;
     }
     drop(runs);
@@ -1388,19 +1388,19 @@ async fn get_retro(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Response {
-    let logs_root = {
+    let run_dir = {
         let runs = state.runs.lock().expect("runs lock poisoned");
         match runs.get(&id) {
-            Some(managed_run) => managed_run.logs_root.clone(),
+            Some(managed_run) => managed_run.run_dir.clone(),
             None => return ApiError::not_found("Run not found.").into_response(),
         }
     };
 
-    let Some(logs_root) = logs_root else {
+    let Some(run_dir) = run_dir else {
         return (StatusCode::OK, Json(serde_json::json!(null))).into_response();
     };
 
-    match arc_workflows::retro::Retro::load(&logs_root) {
+    match arc_workflows::retro::Retro::load(&run_dir) {
         Ok(retro) => (StatusCode::OK, Json(retro)).into_response(),
         Err(_) => (StatusCode::OK, Json(serde_json::json!(null))).into_response(),
     }

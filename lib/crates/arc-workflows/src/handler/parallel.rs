@@ -210,7 +210,7 @@ impl Handler for ParallelHandler {
         node: &Node,
         context: &Context,
         graph: &Graph,
-        logs_root: &Path,
+        run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         let parallel_start = Instant::now();
@@ -323,7 +323,7 @@ impl Handler for ParallelHandler {
 
                 match &gs.mode {
                     GitCheckpointMode::Host(work_dir) => {
-                        let wt_path = logs_root
+                        let wt_path = run_dir
                             .join("parallel")
                             .join(&node.id)
                             .join(branch_key)
@@ -352,7 +352,7 @@ impl Handler for ParallelHandler {
                     }
                     GitCheckpointMode::Remote(_) => {
                         let wt_path_str = format!(
-                            "{}/.arc/logs/{}/parallel/{}/{}",
+                            "{}/.arc/runs/{}/parallel/{}/{}",
                             services.sandbox.working_directory(),
                             gs.run_id,
                             node.id,
@@ -422,7 +422,7 @@ impl Handler for ParallelHandler {
             let hook_runner = services.hook_runner.clone();
             let env = services.env.clone();
             let graph = graph.clone();
-            let logs_root = logs_root.to_path_buf();
+            let run_dir = run_dir.to_path_buf();
             let sem = Arc::clone(&semaphore);
             let has_git = git_state.is_some();
             let run_id = git_state.as_ref().map(|gs| gs.run_id.clone());
@@ -476,7 +476,7 @@ impl Handler for ParallelHandler {
                         target_node,
                         &setup.branch_context,
                         &graph,
-                        &logs_root,
+                        &run_dir,
                         &branch_services,
                     )
                     .await?;
@@ -676,7 +676,7 @@ impl Handler for ParallelHandler {
         context.set(keys::PARALLEL_BRANCH_COUNT, serde_json::json!(total));
 
         let visit = crate::engine::visit_from_context(context);
-        let node_dir = crate::engine::node_dir(logs_root, &node.id, visit);
+        let node_dir = crate::engine::node_dir(run_dir, &node.id, visit);
         let _ = tokio::fs::create_dir_all(&node_dir).await;
         if let Ok(json) = serde_json::to_string_pretty(&results_json) {
             let _ = tokio::fs::write(node_dir.join("parallel_results.json"), json).await;
@@ -812,10 +812,10 @@ mod tests {
         let node = Node::new("par");
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, logs_root, &services)
+            .execute(&node, &context, &graph, run_dir, &services)
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -889,9 +889,9 @@ mod tests {
             .insert("branch_a".to_string(), Node::new("branch_a"));
         graph.edges.push(Edge::new("par", "branch_a"));
 
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, logs_root, &services)
+            .execute(&node, &context, &graph, run_dir, &services)
             .await
             .unwrap();
 
@@ -922,9 +922,9 @@ mod tests {
         graph.edges.push(Edge::new("par", "branch_b"));
         graph.edges.push(Edge::new("par", "branch_c"));
 
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, logs_root, &services)
+            .execute(&node, &context, &graph, run_dir, &services)
             .await
             .unwrap();
 

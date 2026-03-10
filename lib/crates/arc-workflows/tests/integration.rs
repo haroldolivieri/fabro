@@ -190,7 +190,7 @@ async fn end_to_end_linear_pipeline() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -334,7 +334,7 @@ async fn end_to_end_branching_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -460,7 +460,7 @@ async fn end_to_end_human_gate_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -509,7 +509,7 @@ impl Handler for AlwaysFailHandler {
         node: &Node,
         _context: &arc_workflows::context::Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, arc_workflows::error::ArcError> {
         Ok(Outcome::fail_classify(format!(
@@ -576,7 +576,7 @@ async fn goal_gate_routes_to_retry_target_on_failure() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -639,7 +639,7 @@ async fn goal_gate_routes_to_retry_target_when_present() {
             _node: &Node,
             _context: &arc_workflows::context::Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, arc_workflows::error::ArcError> {
             let count = self
@@ -702,7 +702,7 @@ async fn goal_gate_routes_to_retry_target_when_present() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -959,7 +959,7 @@ async fn retry_on_failure_then_succeed() {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             let count = self
@@ -1015,7 +1015,7 @@ async fn retry_on_failure_then_succeed() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1095,7 +1095,7 @@ async fn pipeline_with_many_nodes() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1225,7 +1225,7 @@ impl Handler for CounterHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let count = self
@@ -1250,7 +1250,7 @@ impl Handler for LargeOutputHandler {
         node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let mut outcome = Outcome::success();
@@ -1274,7 +1274,7 @@ impl Handler for ContextSetterHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let mut outcome = Outcome::success();
@@ -1425,7 +1425,7 @@ async fn smoke_test_with_mock_codergen_backend() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1531,7 +1531,7 @@ async fn end_to_end_parallel_fan_out_fan_in() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1649,7 +1649,7 @@ async fn resume_from_checkpoint_completes_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1753,7 +1753,7 @@ async fn resume_from_checkpoint_preserves_goal_gate_outcomes() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1801,7 +1801,7 @@ async fn graph_goal_in_context() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1841,7 +1841,7 @@ async fn event_streaming_lifecycle() {
     let events = collect_events(&mut emitter);
     let engine = WorkflowRunEngine::new(make_linear_registry(), Arc::new(emitter), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1925,7 +1925,7 @@ async fn context_flow_between_stages() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -1982,7 +1982,7 @@ async fn tool_handler_e2e() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2056,7 +2056,7 @@ async fn auto_approve_interviewer_e2e() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2097,7 +2097,7 @@ async fn codergen_without_backend_simulated() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2147,7 +2147,7 @@ async fn branching_loop_back_on_failure() {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             let count = self
@@ -2206,7 +2206,7 @@ async fn branching_loop_back_on_failure() {
     );
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2295,7 +2295,7 @@ async fn human_gate_loops_back() {
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2357,7 +2357,7 @@ async fn scenario_ship_a_feature() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2447,7 +2447,7 @@ async fn scenario_parallel_expert_review() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2492,7 +2492,7 @@ async fn scenario_node_retries_on_retry_status() {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             let count = self
@@ -2531,7 +2531,7 @@ async fn scenario_node_retries_on_retry_status() {
     );
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2597,7 +2597,7 @@ async fn scenario_loop_restart_resets_context() {
     );
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2669,7 +2669,7 @@ async fn scenario_bug_triage_router() {
     registry.register("conditional", Box::new(ConditionalHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2732,7 +2732,7 @@ async fn scenario_crash_recovery() {
     registry.register("exit", Box::new(ExitHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2774,7 +2774,7 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             let mut outcome = Outcome::success();
@@ -2794,7 +2794,7 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
@@ -2845,7 +2845,7 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
     registry.register("stack.manager_loop", Box::new(SubWorkflowHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -2887,7 +2887,7 @@ async fn manager_loop_max_cycles_exceeded_e2e() {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
@@ -2926,7 +2926,7 @@ async fn manager_loop_max_cycles_exceeded_e2e() {
     registry.register("stack.manager_loop", Box::new(SubWorkflowHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3066,7 +3066,7 @@ async fn conditional_branching_success_fail_paths() {
     registry.register("always_fail", Box::new(AlwaysFailHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3123,7 +3123,7 @@ async fn edge_selection_condition_match_wins_over_weight() {
     registry.register("exit", Box::new(ExitHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3174,7 +3174,7 @@ async fn edge_selection_weight_breaks_ties() {
     registry.register("exit", Box::new(ExitHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3217,7 +3217,7 @@ async fn edge_selection_lexical_tiebreak() {
     registry.register("exit", Box::new(ExitHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3279,7 +3279,7 @@ async fn context_updates_visible_across_nodes() {
     registry.register("context_setter", Box::new(ContextSetterHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3327,7 +3327,7 @@ async fn stylesheet_applies_model_override() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3359,7 +3359,7 @@ async fn custom_handler_registration_and_execution() {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             let mut outcome = Outcome::success();
@@ -3387,7 +3387,7 @@ async fn custom_handler_registration_and_execution() {
     registry.register("my_custom", Box::new(CustomHandler));
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3462,7 +3462,7 @@ async fn integration_smoke_plan_implement_review_done() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3570,7 +3570,7 @@ async fn manager_loop_runs_child_engine_e2e() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3630,7 +3630,7 @@ async fn manager_loop_context_flows_e2e() {
             _node: &Node,
             context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             let target = context.get_string("review.target", "");
@@ -3656,7 +3656,7 @@ async fn manager_loop_context_flows_e2e() {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, ArcError> {
             let mut outcome = Outcome::success();
@@ -3709,7 +3709,7 @@ async fn manager_loop_context_flows_e2e() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3787,7 +3787,7 @@ async fn manager_loop_child_dotfile_e2e() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -3905,7 +3905,7 @@ async fn graph_merge_e2e_through_engine() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4004,7 +4004,7 @@ impl Handler for FidelityCapturingHandler {
         node: &Node,
         context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let fidelity = context.get_string("internal.fidelity", "none");
@@ -4060,7 +4060,7 @@ async fn fidelity_default_is_compact() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4121,7 +4121,7 @@ async fn fidelity_graph_default_applied() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4178,7 +4178,7 @@ async fn fidelity_node_overrides_graph_default() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4241,7 +4241,7 @@ async fn fidelity_edge_overrides_node_and_graph() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4294,7 +4294,7 @@ async fn fidelity_full_produces_empty_preamble() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4357,7 +4357,7 @@ async fn fidelity_truncate_preamble_minimal() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4433,7 +4433,7 @@ async fn fidelity_summary_low_mode() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4504,7 +4504,7 @@ async fn fidelity_summary_medium_mode() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4575,7 +4575,7 @@ async fn fidelity_summary_high_mode() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4639,7 +4639,7 @@ async fn fidelity_full_sets_thread_id_in_context() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4714,7 +4714,7 @@ async fn fidelity_full_nodes_share_thread_id() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4799,7 +4799,7 @@ async fn fidelity_resume_degrades_full_to_summary_high() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4900,7 +4900,7 @@ async fn fidelity_resume_degrade_only_affects_first_hop() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -4988,7 +4988,7 @@ async fn fidelity_resume_no_degrade_when_not_full() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5034,7 +5034,7 @@ async fn fidelity_stored_in_checkpoint_context() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5124,7 +5124,7 @@ async fn fidelity_precedence_multi_node_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5196,7 +5196,7 @@ async fn fidelity_compact_preamble_includes_completed_stages_and_context() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5276,7 +5276,7 @@ async fn fidelity_summary_low_excludes_context_values_in_pipeline() {
     let engine_low =
         WorkflowRunEngine::new(registry_low, Arc::new(EventEmitter::new()), local_env());
     let config_low = RunConfig {
-        logs_root: dir_low.path().to_path_buf(),
+        run_dir: dir_low.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5348,7 +5348,7 @@ async fn fidelity_summary_low_excludes_context_values_in_pipeline() {
     let engine_med =
         WorkflowRunEngine::new(registry_med, Arc::new(EventEmitter::new()), local_env());
     let config_med = RunConfig {
-        logs_root: dir_med.path().to_path_buf(),
+        run_dir: dir_med.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5423,7 +5423,7 @@ async fn fidelity_thread_id_fallback_to_previous_node_in_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5481,7 +5481,7 @@ async fn fidelity_thread_id_from_node_class_in_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5542,7 +5542,7 @@ async fn fidelity_edge_thread_id_override_in_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5604,7 +5604,7 @@ async fn fidelity_full_without_explicit_thread_id_uses_previous_node() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5676,7 +5676,7 @@ async fn fidelity_from_parsed_dot_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5728,7 +5728,7 @@ async fn fidelity_checkpoint_roundtrip_preserves_fidelity() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5802,7 +5802,7 @@ async fn fidelity_node_thread_id_overrides_edge_thread_id_in_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -5893,7 +5893,7 @@ async fn fidelity_resume_preserves_context_values_across_checkpoint() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -6108,7 +6108,7 @@ mod real_llm {
 
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -6227,7 +6227,7 @@ mod real_llm {
 
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -6371,7 +6371,7 @@ mod real_llm {
 
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -6483,7 +6483,7 @@ mod real_llm {
 
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -6584,7 +6584,7 @@ async fn human_gate_freeform_only_routes_text() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -6720,7 +6720,7 @@ async fn human_gate_freeform_with_fixed_choice_match() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -6840,7 +6840,7 @@ async fn human_gate_freeform_fallback_on_unmatched_text() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -6974,7 +6974,7 @@ async fn human_gate_freeform_sets_allow_freeform_on_question() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -7088,7 +7088,7 @@ async fn human_gate_without_freeform_sets_allow_freeform_false() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -7353,7 +7353,7 @@ fn engine_with_hooks_and_events(
 
 fn make_run_config(dir: &std::path::Path) -> RunConfig {
     RunConfig {
-        logs_root: dir.to_path_buf(),
+        run_dir: dir.to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "hook-test-run".into(),
@@ -8491,10 +8491,10 @@ async fn arc_e2e_with_real_llm() {
             as Box<dyn arc_workflows::handler::agent::CodergenBackend>)
     });
 
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_dir = tempfile::tempdir().unwrap();
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -8521,7 +8521,7 @@ async fn arc_e2e_with_real_llm() {
     assert_eq!(outcome.status, StageStatus::Success);
 
     // 2. Artifacts exist
-    let work_dir = logs_dir.path().join("nodes").join("work");
+    let work_dir = run_dir.path().join("nodes").join("work");
     assert!(
         work_dir.join("prompt.md").exists(),
         "prompt.md should exist"
@@ -8537,7 +8537,7 @@ async fn arc_e2e_with_real_llm() {
 
     // 3. Goal gate: check checkpoint node outcomes
     let checkpoint =
-        Checkpoint::load(&logs_dir.path().join("checkpoint.json")).expect("checkpoint should load");
+        Checkpoint::load(&run_dir.path().join("checkpoint.json")).expect("checkpoint should load");
     let work_outcome = checkpoint
         .node_outcomes
         .get("work")
@@ -8627,7 +8627,7 @@ async fn run_fidelity_prompt_pipeline(fidelity: &str) -> String {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -8831,7 +8831,7 @@ async fn large_context_values_are_offloaded_to_artifact_store() {
     let events = collect_events(&mut emitter);
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -9056,7 +9056,7 @@ async fn artifact_pointers_rewritten_for_remote_sandbox() {
     let engine =
         WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), remote_env.clone());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -9124,7 +9124,7 @@ async fn node_dir_uses_visit_count_on_revisit() {
             _node: &Node,
             _context: &arc_workflows::context::Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &arc_workflows::handler::EngineServices,
         ) -> Result<Outcome, arc_workflows::error::ArcError> {
             let n = self
@@ -9191,7 +9191,7 @@ async fn node_dir_uses_visit_count_on_revisit() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -10156,7 +10156,7 @@ async fn full_pipeline_with_cli_backend_node() {
     let dir = tempfile::tempdir().unwrap();
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), env);
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -10290,7 +10290,7 @@ async fn stylesheet_backend_property_routes_to_cli() {
     let dir = tempfile::tempdir().unwrap();
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), env);
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -10473,7 +10473,7 @@ impl Handler for FileWriterHandler {
         node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let work_dir = services.sandbox.working_directory().to_string();
@@ -10565,7 +10565,7 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
     graph.edges.push(Edge::new("work", "exit"));
 
     // 4. Set up event collection and engine
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_dir = tempfile::tempdir().unwrap();
     let mut emitter = EventEmitter::new();
     let events = collect_events(&mut emitter);
 
@@ -10577,7 +10577,7 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), env);
 
     let config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-docker".into(),
@@ -10638,7 +10638,7 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
     );
 
     // 7. diff.patch is NOT written for the start node (git checkpoint skipped)
-    let start_diff = logs_dir
+    let start_diff = run_dir
         .path()
         .join("nodes")
         .join("start")
@@ -10650,18 +10650,15 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
 
     // 8. Verify checkpoint.json has git_commit_sha
     let checkpoint =
-        Checkpoint::load(&logs_dir.path().join("checkpoint.json")).expect("checkpoint should load");
+        Checkpoint::load(&run_dir.path().join("checkpoint.json")).expect("checkpoint should load");
     assert!(
         checkpoint.git_commit_sha.is_some(),
         "checkpoint should have git_commit_sha"
     );
 
     // 9. Assert final.patch exists and contains the changes
-    let final_patch = logs_dir.path().join("final.patch");
-    assert!(
-        final_patch.exists(),
-        "final.patch should exist in logs_root"
-    );
+    let final_patch = run_dir.path().join("final.patch");
+    assert!(final_patch.exists(), "final.patch should exist in run_dir");
     let patch_content = std::fs::read_to_string(&final_patch).unwrap();
     assert!(
         patch_content.contains("hello.txt"),
@@ -10757,9 +10754,9 @@ async fn git_checkpoint_host_writes_shadow_branch() {
     graph.edges.push(Edge::new("work", "exit"));
 
     // 4. Set up engine with meta_branch
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_dir = tempfile::tempdir().unwrap();
     // Write graph.dot so init_run can read it
-    std::fs::write(logs_dir.path().join("graph.dot"), "digraph {}").unwrap();
+    std::fs::write(run_dir.path().join("graph.dot"), "digraph {}").unwrap();
     let emitter = EventEmitter::new();
 
     let env: Arc<dyn arc_agent::Sandbox> =
@@ -10771,7 +10768,7 @@ async fn git_checkpoint_host_writes_shadow_branch() {
 
     let meta_branch = MetadataStore::branch_name(run_id);
     let config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: run_id.into(),
@@ -10951,7 +10948,7 @@ async fn parallel_git_branching_host_e2e() {
     graph.edges.push(Edge::new("fan_in", "exit"));
 
     // 4. Set up engine with FileWriterHandler for branches
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_dir = tempfile::tempdir().unwrap();
     let mut emitter = EventEmitter::new();
     let events = collect_events(&mut emitter);
 
@@ -10970,7 +10967,7 @@ async fn parallel_git_branching_host_e2e() {
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), env);
 
     let config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: run_id.into(),
@@ -11002,7 +10999,7 @@ async fn parallel_git_branching_host_e2e() {
 
     // 6. Verify parallel.results has head_sha for each branch
     let checkpoint =
-        Checkpoint::load(&logs_dir.path().join("checkpoint.json")).expect("checkpoint should load");
+        Checkpoint::load(&run_dir.path().join("checkpoint.json")).expect("checkpoint should load");
     let parallel_results = checkpoint
         .context_values
         .get("parallel.results")
@@ -11108,11 +11105,8 @@ async fn parallel_git_branching_host_e2e() {
     );
 
     // 11. Verify final.patch contains the winner's changes
-    let final_patch = logs_dir.path().join("final.patch");
-    assert!(
-        final_patch.exists(),
-        "final.patch should exist in logs_root"
-    );
+    let final_patch = run_dir.path().join("final.patch");
+    assert!(final_patch.exists(), "final.patch should exist in run_dir");
     let patch_content = std::fs::read_to_string(&final_patch).unwrap();
     assert!(
         patch_content.contains(&format!("{best_id}.txt")),
@@ -11225,7 +11219,7 @@ async fn git_checkpoint_host_skips_empty_diff_patch() {
     graph.edges.push(Edge::new("start", "work"));
     graph.edges.push(Edge::new("work", "exit"));
 
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_dir = tempfile::tempdir().unwrap();
     let mut emitter = EventEmitter::new();
     let _events = collect_events(&mut emitter);
 
@@ -11237,7 +11231,7 @@ async fn git_checkpoint_host_skips_empty_diff_patch() {
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), env);
 
     let config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "empty-diff".into(),
@@ -11262,18 +11256,14 @@ async fn git_checkpoint_host_skips_empty_diff_patch() {
     assert_eq!(outcome.status, StageStatus::Success);
 
     // diff.patch should NOT exist for the "work" node (no file changes)
-    let work_diff = logs_dir
-        .path()
-        .join("nodes")
-        .join("work")
-        .join("diff.patch");
+    let work_diff = run_dir.path().join("nodes").join("work").join("diff.patch");
     assert!(
         !work_diff.exists(),
         "diff.patch should not exist when there are no changes"
     );
 
     // final.patch should NOT exist either
-    let final_patch = logs_dir.path().join("final.patch");
+    let final_patch = run_dir.path().join("final.patch");
     assert!(
         !final_patch.exists(),
         "final.patch should not exist when there are no changes"
@@ -11311,7 +11301,7 @@ impl Handler for DeterministicFailHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         Ok(Outcome::fail_classify(&self.reason))
@@ -11328,7 +11318,7 @@ impl Handler for TransientInfraFailHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         Ok(Outcome::fail_classify("connection refused"))
@@ -11345,7 +11335,7 @@ impl Handler for SignatureHintHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         Ok(
@@ -11380,7 +11370,7 @@ impl Handler for VaryingReasonFailHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let n = self
@@ -11405,7 +11395,7 @@ impl Handler for SucceedOnNthHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let n = self
@@ -11624,7 +11614,7 @@ async fn e2e_circuit_breaker_deterministic_self_loop() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-circuit-breaker".into(),
@@ -11676,7 +11666,7 @@ async fn e2e_circuit_breaker_custom_limit() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-custom-limit".into(),
@@ -11721,7 +11711,7 @@ async fn e2e_circuit_breaker_ignores_transient_failures() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-transient-no-breaker".into(),
@@ -11773,7 +11763,7 @@ async fn e2e_circuit_breaker_different_reasons_separate_counters() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-varying-reasons".into(),
@@ -11818,7 +11808,7 @@ async fn e2e_circuit_breaker_loop_restart() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-restart-breaker".into(),
@@ -11885,7 +11875,7 @@ async fn e2e_failure_signature_persisted_in_context() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-sig-context".into(),
@@ -11954,7 +11944,7 @@ async fn e2e_failure_signature_hint_overrides_reason_in_context() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-sig-hint".into(),
@@ -12015,7 +12005,7 @@ async fn e2e_signature_maps_persist_in_checkpoint() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-sig-persist".into(),
@@ -12147,7 +12137,7 @@ async fn e2e_circuit_breaker_emits_events_before_abort() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-events".into(),
@@ -12219,7 +12209,7 @@ async fn e2e_circuit_breaker_does_not_fire_below_limit() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-below-limit".into(),
@@ -12320,7 +12310,7 @@ async fn e2e_circuit_breaker_multi_stage_impl_verify_cycle() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-impl-verify-cycle".into(),
@@ -12388,7 +12378,7 @@ impl Handler for ClassifiedFailHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let n = self
@@ -12421,7 +12411,7 @@ async fn e2e_loop_restart_blocked_for_deterministic_failure() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-restart-blocked-det".into(),
@@ -12466,7 +12456,7 @@ async fn e2e_loop_restart_blocked_for_structural_failure() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-restart-blocked-struct".into(),
@@ -12511,7 +12501,7 @@ async fn e2e_loop_restart_blocked_for_budget_exhausted_failure() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-restart-blocked-budget".into(),
@@ -12556,7 +12546,7 @@ async fn e2e_loop_restart_blocked_for_canceled_failure() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-restart-blocked-canceled".into(),
@@ -12598,7 +12588,7 @@ async fn e2e_loop_restart_blocked_for_compilation_loop_failure() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-restart-blocked-comploop".into(),
@@ -12644,7 +12634,7 @@ async fn e2e_loop_restart_allowed_for_transient_infra() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "e2e-restart-allowed-transient".into(),
@@ -12684,7 +12674,7 @@ impl Handler for HangingHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
@@ -12705,7 +12695,7 @@ impl Handler for KeepaliveHandler {
         node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let start = std::time::Instant::now();
@@ -12753,7 +12743,7 @@ async fn e2e_stall_watchdog_triggers_from_dot_parsed_pipeline() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "stall-e2e".into(),
@@ -12814,7 +12804,7 @@ async fn e2e_stall_watchdog_kept_alive_by_handler_events() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "stall-alive-e2e".into(),
@@ -12865,7 +12855,7 @@ async fn e2e_stall_watchdog_disabled_with_zero_timeout() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "stall-disabled-e2e".into(),
@@ -12902,7 +12892,7 @@ impl Handler for SlowTestHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         tokio::time::sleep(std::time::Duration::from_millis(self.sleep_ms)).await;
@@ -12935,7 +12925,7 @@ async fn e2e_stall_watchdog_with_explicit_timeout_override() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "stall-override-e2e".into(),
@@ -12995,7 +12985,7 @@ impl Handler for AssetCreatorHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         // Create asset files via the sandbox's exec_command
@@ -13022,7 +13012,7 @@ impl Handler for AssetCreatorHandler {
 #[tokio::test]
 async fn asset_collection_local_sandbox_success() {
     let work_dir = tempfile::tempdir().unwrap();
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_dir = tempfile::tempdir().unwrap();
 
     let sandbox: Arc<dyn arc_agent::Sandbox> =
         Arc::new(arc_agent::LocalSandbox::new(work_dir.path().to_path_buf()));
@@ -13070,7 +13060,7 @@ async fn asset_collection_local_sandbox_success() {
     graph.edges.push(Edge::new("create_assets", "exit"));
 
     let config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "asset-test-local".into(),
@@ -13095,7 +13085,7 @@ async fn asset_collection_local_sandbox_success() {
     assert_eq!(outcome.status, StageStatus::Success);
 
     // Check that asset files were collected into the stage directory
-    let assets_dir = logs_dir
+    let assets_dir = run_dir
         .path()
         .join("artifacts")
         .join("assets")
@@ -13138,7 +13128,7 @@ async fn asset_collection_local_sandbox_success() {
 #[tokio::test]
 async fn asset_collection_local_sandbox_on_failure() {
     let work_dir = tempfile::tempdir().unwrap();
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_dir = tempfile::tempdir().unwrap();
 
     let sandbox: Arc<dyn arc_agent::Sandbox> =
         Arc::new(arc_agent::LocalSandbox::new(work_dir.path().to_path_buf()));
@@ -13183,7 +13173,7 @@ async fn asset_collection_local_sandbox_on_failure() {
     graph.edges.push(Edge::new("create_assets", "exit"));
 
     let config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "asset-test-fail".into(),
@@ -13208,7 +13198,7 @@ async fn asset_collection_local_sandbox_on_failure() {
     // The pipeline completes (handler returned Fail, not an error), but assets should still be collected
     assert_eq!(outcome.status, StageStatus::Fail);
 
-    let assets_dir = logs_dir
+    let assets_dir = run_dir
         .path()
         .join("artifacts")
         .join("assets")
@@ -13229,7 +13219,7 @@ async fn asset_collection_local_sandbox_on_failure() {
 #[ignore]
 async fn asset_collection_docker_sandbox() {
     let host_dir = tempfile::tempdir().unwrap();
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_dir = tempfile::tempdir().unwrap();
 
     let config = arc_agent::DockerSandboxConfig {
         host_working_directory: host_dir.path().to_str().unwrap().to_string(),
@@ -13279,7 +13269,7 @@ async fn asset_collection_docker_sandbox() {
     graph.edges.push(Edge::new("create_assets", "exit"));
 
     let run_config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "asset-test-docker".into(),
@@ -13303,7 +13293,7 @@ async fn asset_collection_docker_sandbox() {
         .expect("pipeline should succeed");
     assert_eq!(outcome.status, StageStatus::Success);
 
-    let assets_dir = logs_dir
+    let assets_dir = run_dir
         .path()
         .join("artifacts")
         .join("assets")
@@ -13353,7 +13343,7 @@ async fn wait_timer_e2e() {
         local_env(),
     );
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),

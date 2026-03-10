@@ -168,21 +168,21 @@ impl Retro {
         };
     }
 
-    /// Save the retro as JSON to `logs_root/retro.json`.
-    pub fn save(&self, logs_root: &Path) -> Result<()> {
-        crate::save_json(self, &logs_root.join("retro.json"), "retro")
+    /// Save the retro as JSON to `run_dir/retro.json`.
+    pub fn save(&self, run_dir: &Path) -> Result<()> {
+        crate::save_json(self, &run_dir.join("retro.json"), "retro")
     }
 
-    /// Load a retro from `logs_root/retro.json`.
-    pub fn load(logs_root: &Path) -> Result<Self> {
-        crate::load_json(&logs_root.join("retro.json"), "retro")
+    /// Load a retro from `run_dir/retro.json`.
+    pub fn load(run_dir: &Path) -> Result<Self> {
+        crate::load_json(&run_dir.join("retro.json"), "retro")
     }
 }
 
 /// Extract stage durations from `progress.jsonl` by reading `StageCompleted` events.
-pub fn extract_stage_durations(logs_root: &Path) -> HashMap<String, u64> {
+pub fn extract_stage_durations(run_dir: &Path) -> HashMap<String, u64> {
     let mut durations = HashMap::new();
-    let jsonl_path = logs_root.join("progress.jsonl");
+    let jsonl_path = run_dir.join("progress.jsonl");
     let Ok(data) = std::fs::read_to_string(&jsonl_path) else {
         return durations;
     };

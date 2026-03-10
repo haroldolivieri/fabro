@@ -641,16 +641,16 @@ impl ProgressUI {
 
     // ── Logs dir (called externally) ────────────────────────────────────
 
-    pub fn show_logs_dir(&mut self, logs_dir: &Path) {
-        let path_str = super::tilde_path(logs_dir);
+    pub fn show_run_dir(&mut self, run_dir: &Path) {
+        let path_str = super::tilde_path(run_dir);
         match &self.renderer {
             ProgressRenderer::Tty(tty) => {
                 let bar = tty.multi.add(ProgressBar::new_spinner());
                 bar.set_style(style_static_dim());
-                bar.finish_with_message(format!("Logs: {path_str}"));
+                bar.finish_with_message(format!("Run:  {path_str}"));
             }
             ProgressRenderer::Plain => {
-                eprintln!("    Logs: {path_str}");
+                eprintln!("    Run:  {path_str}");
             }
         }
     }

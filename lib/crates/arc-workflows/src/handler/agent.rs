@@ -202,7 +202,7 @@ impl Handler for AgentHandler {
         node: &Node,
         context: &Context,
         graph: &Graph,
-        logs_root: &Path,
+        run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         // 1. Build prompt (prepend fidelity preamble if present)
@@ -220,7 +220,7 @@ impl Handler for AgentHandler {
 
         // 2. Write prompt to logs
         let visit = crate::engine::visit_from_context(context);
-        let stage_dir = crate::engine::node_dir(logs_root, &node.id, visit);
+        let stage_dir = crate::engine::node_dir(run_dir, &node.id, visit);
         tokio::fs::create_dir_all(&stage_dir).await?;
         tokio::fs::write(stage_dir.join("prompt.md"), &prompt).await?;
 

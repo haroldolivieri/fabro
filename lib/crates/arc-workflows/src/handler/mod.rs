@@ -60,7 +60,7 @@ pub trait Handler: Send + Sync {
         node: &Node,
         context: &Context,
         graph: &Graph,
-        logs_root: &Path,
+        run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, ArcError>;
 
@@ -174,7 +174,7 @@ mod tests {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &EngineServices,
         ) -> Result<Outcome, ArcError> {
             Ok(Outcome::success())
@@ -251,7 +251,7 @@ mod tests {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &EngineServices,
         ) -> Result<Outcome, ArcError> {
             Ok(Outcome::success())

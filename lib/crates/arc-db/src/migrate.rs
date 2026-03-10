@@ -1,9 +1,10 @@
 use sqlx::SqlitePool;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: i64 = 1;
+const CURRENT_VERSION: i64 = 2;
 
 const MIGRATION_001: &str = include_str!("../migrations/001_create_workflow_runs.sql");
+const MIGRATION_002: &str = include_str!("../migrations/002_rename_logs_dir_to_run_dir.sql");
 
 /// Apply all pending migrations to the database.
 ///
@@ -24,6 +25,10 @@ pub async fn initialize_db(pool: &SqlitePool) -> Result<(), sqlx::Error> {
 
         if from_version < 1 {
             sqlx::query(MIGRATION_001).execute(&mut *tx).await?;
+        }
+
+        if from_version < 2 {
+            sqlx::query(MIGRATION_002).execute(&mut *tx).await?;
         }
 
         sqlx::query(&format!("PRAGMA user_version = {CURRENT_VERSION}"))

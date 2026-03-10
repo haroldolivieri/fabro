@@ -33,7 +33,7 @@ impl Handler for FanInHandler {
         node: &Node,
         context: &Context,
         _graph: &Graph,
-        logs_root: &Path,
+        run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         let results = context.get(keys::PARALLEL_RESULTS);
@@ -51,7 +51,7 @@ impl Handler for FanInHandler {
                 prompt_text,
                 &results,
                 context,
-                logs_root,
+                run_dir,
                 &node.id,
                 &services.emitter,
                 &services.sandbox,
@@ -196,7 +196,7 @@ async fn llm_evaluate(
     prompt: &str,
     results: &serde_json::Value,
     context: &Context,
-    logs_root: &Path,
+    run_dir: &Path,
     node_id: &str,
     emitter: &Arc<EventEmitter>,
     sandbox: &Arc<dyn Sandbox>,
@@ -211,7 +211,7 @@ async fn llm_evaluate(
 
     // Write prompt to logs
     let visit = crate::engine::visit_from_context(context);
-    let stage_dir = crate::engine::node_dir(logs_root, node_id, visit);
+    let stage_dir = crate::engine::node_dir(run_dir, node_id, visit);
     tokio::fs::create_dir_all(&stage_dir).await?;
     tokio::fs::write(stage_dir.join("prompt.md"), &full_prompt).await?;
 
@@ -318,10 +318,10 @@ mod tests {
         let node = Node::new("fan_in");
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -340,10 +340,10 @@ mod tests {
             ]),
         );
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -367,10 +367,10 @@ mod tests {
             ]),
         );
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(
@@ -404,10 +404,10 @@ mod tests {
             ]),
         );
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -501,10 +501,10 @@ mod tests {
             ]),
         );
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Fail);
@@ -528,10 +528,10 @@ mod tests {
             ]),
         );
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, StageStatus::Success);

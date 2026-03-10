@@ -101,7 +101,7 @@ impl Handler for HumanHandler {
         node: &Node,
         _context: &Context,
         graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         // 1. Derive choices from outgoing edges
@@ -353,10 +353,10 @@ mod tests {
         let graph = build_graph_with_human_gate();
         let node = graph.nodes.get("gate").unwrap();
         let context = Context::new();
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, logs_root, &make_services())
+            .execute(node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageStatus::Success);
@@ -377,10 +377,10 @@ mod tests {
         graph.nodes.insert("gate".to_string(), gate);
         let node = graph.nodes.get("gate").unwrap();
         let context = Context::new();
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, logs_root, &make_services())
+            .execute(node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageStatus::Fail);
@@ -409,10 +409,10 @@ mod tests {
 
         let node = graph.nodes.get("gate").unwrap();
         let context = Context::new();
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, logs_root, &make_services())
+            .execute(node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageStatus::Success);

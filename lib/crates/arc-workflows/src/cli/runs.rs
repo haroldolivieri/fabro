@@ -239,6 +239,10 @@ fn default_data_dir() -> PathBuf {
         .join(".arc")
 }
 
+pub(crate) fn default_runs_base() -> PathBuf {
+    default_data_dir().join("runs")
+}
+
 pub(crate) fn default_logs_base() -> PathBuf {
     default_data_dir().join("logs")
 }
@@ -272,7 +276,7 @@ pub fn find_run_by_prefix(base: &Path, prefix: &str) -> Result<PathBuf> {
 }
 
 pub fn list_command(args: &RunsListArgs) -> Result<()> {
-    let base = default_logs_base();
+    let base = default_runs_base();
     let runs = scan_runs(&base)?;
     let label_filters = parse_label_filters(&args.filter.label);
     let filtered = filter_runs(
@@ -362,13 +366,14 @@ fn format_size(bytes: u64) -> String {
 
 pub fn df_command(args: &DfArgs) -> Result<()> {
     let data_dir = default_data_dir();
-    let logs_base = data_dir.join("logs");
-    df_from(args, &data_dir, &logs_base)
+    let runs_base = default_runs_base();
+    let logs_base = default_logs_base();
+    df_from(args, &data_dir, &runs_base, &logs_base)
 }
 
-pub fn df_from(args: &DfArgs, data_dir: &Path, logs_base: &Path) -> Result<()> {
+pub fn df_from(args: &DfArgs, data_dir: &Path, runs_base: &Path, logs_base: &Path) -> Result<()> {
     // --- Runs ---
-    let runs = scan_runs(logs_base)?;
+    let runs = scan_runs(runs_base)?;
     let mut active_count = 0u64;
     let mut total_run_size = 0u64;
     let mut reclaimable_run_size = 0u64;
@@ -535,7 +540,7 @@ pub fn df_from(args: &DfArgs, data_dir: &Path, logs_base: &Path) -> Result<()> {
 }
 
 pub fn prune_command(args: &RunsPruneArgs) -> Result<()> {
-    let base = default_logs_base();
+    let base = default_runs_base();
     prune_from(args, &base)
 }
 
@@ -1043,12 +1048,14 @@ mod tests {
     fn df_reports_run_sizes() {
         let tmp = tempfile::tempdir().unwrap();
         let data_dir = tmp.path();
+        let runs_base = data_dir.join("runs");
+        fs::create_dir(&runs_base).unwrap();
         let logs_base = data_dir.join("logs");
         fs::create_dir(&logs_base).unwrap();
 
         // Running run
         make_run_dir(
-            &logs_base,
+            &runs_base,
             "20260308-RUNNING",
             Some(serde_json::json!({
                 "run_id": "running-1",
@@ -1063,14 +1070,14 @@ mod tests {
         );
         // Add a file to give it size
         fs::write(
-            logs_base.join("20260308-RUNNING").join("data.bin"),
+            runs_base.join("20260308-RUNNING").join("data.bin"),
             vec![0u8; 100],
         )
         .unwrap();
 
         // Completed run
         make_run_dir(
-            &logs_base,
+            &runs_base,
             "20260307-DONE",
             Some(serde_json::json!({
                 "run_id": "done-1",
@@ -1088,20 +1095,22 @@ mod tests {
             false,
         );
         fs::write(
-            logs_base.join("20260307-DONE").join("data.bin"),
+            runs_base.join("20260307-DONE").join("data.bin"),
             vec![0u8; 200],
         )
         .unwrap();
 
         let args = DfArgs { verbose: false };
         // Should not panic
-        df_from(&args, data_dir, &logs_base).unwrap();
+        df_from(&args, data_dir, &runs_base, &logs_base).unwrap();
     }
 
     #[test]
     fn df_reports_log_files() {
         let tmp = tempfile::tempdir().unwrap();
         let data_dir = tmp.path();
+        let runs_base = data_dir.join("runs");
+        fs::create_dir(&runs_base).unwrap();
         let logs_base = data_dir.join("logs");
         fs::create_dir(&logs_base).unwrap();
 
@@ -1109,13 +1118,15 @@ mod tests {
         fs::write(logs_base.join("serve-2026-03-08.log"), vec![0u8; 300]).unwrap();
 
         let args = DfArgs { verbose: false };
-        df_from(&args, data_dir, &logs_base).unwrap();
+        df_from(&args, data_dir, &runs_base, &logs_base).unwrap();
     }
 
     #[test]
     fn df_reports_database_files() {
         let tmp = tempfile::tempdir().unwrap();
         let data_dir = tmp.path();
+        let runs_base = data_dir.join("runs");
+        fs::create_dir(&runs_base).unwrap();
         let logs_base = data_dir.join("logs");
         fs::create_dir(&logs_base).unwrap();
 
@@ -1124,7 +1135,7 @@ mod tests {
         fs::write(data_dir.join("arc.db-shm"), vec![0u8; 32]).unwrap();
 
         let args = DfArgs { verbose: false };
-        df_from(&args, data_dir, &logs_base).unwrap();
+        df_from(&args, data_dir, &runs_base, &logs_base).unwrap();
     }
 
     #[test]

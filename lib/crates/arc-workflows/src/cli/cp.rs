@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use clap::Args;
 use tracing::{debug, info};
 
-use crate::cli::runs::{default_logs_base, find_run_by_prefix};
+use crate::cli::runs::{default_runs_base, find_run_by_prefix};
 use crate::sandbox_record::SandboxRecord;
 
 #[derive(Args)]
@@ -172,7 +172,7 @@ async fn load_sandbox(
 
 pub async fn cp_command(args: CpArgs) -> Result<()> {
     let direction = parse_direction(&args.src, &args.dst)?;
-    let base = default_logs_base();
+    let base = default_runs_base();
 
     match direction {
         CopyDirection::Download {

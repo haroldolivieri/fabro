@@ -1,9 +1,12 @@
 ---
-title: "Logs Directory"
-description: "Structure of Arc's local logs directory"
+title: "Logs & Runs Directories"
+description: "Structure of Arc's local logs and runs directories"
 ---
 
-Arc writes all local run data to `~/.arc/logs/`. This directory contains daily CLI log files and a subdirectory for each workflow run.
+Arc stores data in two directories under `~/.arc/`:
+
+- **`~/.arc/runs/`** — Per-run data. Each workflow run gets its own subdirectory containing event streams, checkpoints, artifacts, and worktrees.
+- **`~/.arc/logs/`** — Daily CLI log files. One `.log` file per day with aggregated tracing output.
 
 ## Daily log files
 
@@ -20,10 +23,10 @@ The log level defaults to `info`. Set `ARC_LOG=debug` or pass `--debug` for verb
 Each `arc run` invocation creates a timestamped directory:
 
 ```
-~/.arc/logs/20260307-01JQXYZ123ABC456DEF789/
+~/.arc/runs/20260307-01JQXYZ123ABC456DEF789/
 ```
 
-The naming format is `YYYYMMDD-{run_id}`, where `run_id` is the ULID assigned to the run. You can override the location with `--logs-dir`.
+The naming format is `YYYYMMDD-{run_id}`, where `run_id` is the ULID assigned to the run. You can override the location with `--run-dir`.
 
 ### Root-level files
 
@@ -81,7 +84,7 @@ Manager nodes that run sub-workflows write a nested `child/` directory containin
 
 ## Browsing runs
 
-Use `arc ps` to scan the logs directory and display a table of all runs with their status, workflow name, and timestamps. Pass `--json` for machine-readable output.
+Use `arc ps` to scan the runs directory and display a table of all runs with their status, workflow name, and timestamps. Pass `--json` for machine-readable output.
 
 ```bash
 arc ps
@@ -94,6 +97,8 @@ arc ps --filter workflow=my-workflow
 ```
 ~/.arc/logs/
 ├── 2026-03-07.log                    # Daily CLI log
+
+~/.arc/runs/
 ├── 20260307-01JQXYZ123ABC456DEF789/  # One directory per run
 │   ├── manifest.json
 │   ├── graph.dot

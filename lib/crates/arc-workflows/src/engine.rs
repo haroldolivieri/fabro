@@ -283,11 +283,7 @@ pub fn resolve_thread_id(
 // --- Run directory helpers (spec 5.6) ---
 
 /// Write manifest.json at the start of a workflow run. Returns the manifest.
-fn write_manifest(
-    logs_root: &Path,
-    graph: &Graph,
-    config: &RunConfig,
-) -> crate::manifest::Manifest {
+fn write_manifest(run_dir: &Path, graph: &Graph, config: &RunConfig) -> crate::manifest::Manifest {
     let workflow_name = if graph.name.is_empty() {
         "unnamed".to_string()
     } else {
@@ -305,20 +301,20 @@ fn write_manifest(
         labels: config.labels.clone(),
         base_branch: config.base_branch.clone(),
     };
-    let _ = std::fs::create_dir_all(logs_root);
-    let _ = manifest.save(&logs_root.join("manifest.json"));
+    let _ = std::fs::create_dir_all(run_dir);
+    let _ = manifest.save(&run_dir.join("manifest.json"));
     manifest
 }
 
 /// Return the directory for a node's logs.
 ///
-/// First visit (`visit <= 1`): `{logs_root}/nodes/{node_id}`
-/// Subsequent visits: `{logs_root}/nodes/{node_id}-visit_{visit}`
-pub fn node_dir(logs_root: &Path, node_id: &str, visit: usize) -> PathBuf {
+/// First visit (`visit <= 1`): `{run_dir}/nodes/{node_id}`
+/// Subsequent visits: `{run_dir}/nodes/{node_id}-visit_{visit}`
+pub fn node_dir(run_dir: &Path, node_id: &str, visit: usize) -> PathBuf {
     if visit <= 1 {
-        logs_root.join("nodes").join(node_id)
+        run_dir.join("nodes").join(node_id)
     } else {
-        logs_root
+        run_dir
             .join("nodes")
             .join(format!("{node_id}-visit_{visit}"))
     }
@@ -329,9 +325,9 @@ pub fn visit_from_context(context: &Context) -> usize {
     context.node_visit_count()
 }
 
-/// Write status.json for a completed node into {`logs_root}/nodes/{node_id}/status.json`.
-fn write_node_status(logs_root: &Path, node_id: &str, visit: usize, outcome: &Outcome) {
-    let node_dir = node_dir(logs_root, node_id, visit);
+/// Write status.json for a completed node into {`run_dir}/nodes/{node_id}/status.json`.
+fn write_node_status(run_dir: &Path, node_id: &str, visit: usize, outcome: &Outcome) {
+    let node_dir = node_dir(run_dir, node_id, visit);
     let _ = std::fs::create_dir_all(&node_dir);
     let status = serde_json::json!({
         "status": outcome.status.to_string(),
@@ -811,7 +807,7 @@ pub async fn git_replace_worktree_remote(sandbox: &dyn Sandbox, path: &str, bran
 
 /// Configuration for a workflow run.
 pub struct RunConfig {
-    pub logs_root: PathBuf,
+    pub run_dir: PathBuf,
     pub cancel_token: Option<Arc<AtomicBool>>,
     pub dry_run: bool,
     /// Unique identifier for this workflow run.
@@ -965,7 +961,7 @@ impl WorkflowRunEngine {
         node: &Node,
         context: &Context,
         graph: &Graph,
-        logs_root: &Path,
+        run_dir: &Path,
         policy: &RetryPolicy,
         stage_index: usize,
         visit: usize,
@@ -985,7 +981,7 @@ impl WorkflowRunEngine {
 
             // Gap #11: Panic safety -- catch panics from handler execution
             let result = {
-                let future = handler.execute(node, context, graph, logs_root, &self.services);
+                let future = handler.execute(node, context, graph, run_dir, &self.services);
                 let panic_safe = AssertUnwindSafe(future).catch_unwind();
                 // Gap #2: Timeout enforcement -- wrap with tokio::time::timeout
                 let timed_result = if let Some(duration) = node_timeout {
@@ -1009,7 +1005,7 @@ impl WorkflowRunEngine {
                         } else {
                             "handler panicked".to_string()
                         };
-                        let panic_dir = node_dir(logs_root, &node.id, visit);
+                        let panic_dir = node_dir(run_dir, &node.id, visit);
                         let _ = std::fs::create_dir_all(&panic_dir);
                         let _ = std::fs::write(panic_dir.join("panic.txt"), &msg);
                         Err(ArcError::handler(msg))
@@ -1024,7 +1020,7 @@ impl WorkflowRunEngine {
                 } else {
                     format!("{}-visit_{visit}", node.id)
                 };
-                let assets_dir = logs_root
+                let assets_dir = run_dir
                     .join("artifacts")
                     .join("assets")
                     .join(&node_slug)
@@ -1205,7 +1201,7 @@ impl WorkflowRunEngine {
     ) -> Result<(Outcome, Context)> {
         let run_start = Instant::now();
         let run_id = config.run_id.clone();
-        let artifact_store = ArtifactStore::new(Some(config.logs_root.clone()));
+        let artifact_store = ArtifactStore::new(Some(config.run_dir.clone()));
 
         // Populate git_state for handlers (parallel, fan_in) when checkpointing is active
         let git_state = match (&config.git_checkpoint, &config.base_sha) {
@@ -1253,7 +1249,7 @@ impl WorkflowRunEngine {
         }
 
         // Write manifest.json (spec 5.6)
-        let manifest = write_manifest(&config.logs_root, graph, config);
+        let manifest = write_manifest(&config.run_dir, graph, config);
 
         // Initialize metadata branch for git-native checkpoint storage (best-effort)
         if config.meta_branch.is_some() {
@@ -1267,7 +1263,7 @@ impl WorkflowRunEngine {
                 let store = crate::git::MetadataStore::new(repo_path, &config.git_author);
                 let manifest_bytes = serde_json::to_vec_pretty(&manifest).unwrap_or_default();
                 let dot_source =
-                    std::fs::read(config.logs_root.join("graph.dot")).unwrap_or_default();
+                    std::fs::read(config.run_dir.join("graph.dot")).unwrap_or_default();
                 if let Err(e) = store.init_run(&config.run_id, &manifest_bytes, &dot_source) {
                     tracing::warn!(run_id = %config.run_id, error = %e, "Metadata branch init failed");
                 }
@@ -1615,7 +1611,7 @@ impl WorkflowRunEngine {
             let (mut outcome, attempts_used) = if let Some((ref token, _)) = stall_token {
                 tokio::select! {
                     result = self.execute_with_retry(
-                        node, &context, graph, &config.logs_root, &retry_policy, stage_index, visit, &config.asset_globs,
+                        node, &context, graph, &config.run_dir, &retry_policy, stage_index, visit, &config.asset_globs,
                     ) => result?,
                     () = token.cancelled() => {
                         let idle_secs = graph.stall_timeout().map_or(0, |d| d.as_secs());
@@ -1634,7 +1630,7 @@ impl WorkflowRunEngine {
                     node,
                     &context,
                     graph,
-                    &config.logs_root,
+                    &config.run_dir,
                     &retry_policy,
                     stage_index,
                     visit,
@@ -1751,7 +1747,7 @@ impl WorkflowRunEngine {
             }
 
             // Write per-node status.json (spec 5.6)
-            write_node_status(&config.logs_root, &node.id, visit, &outcome);
+            write_node_status(&config.run_dir, &node.id, visit, &outcome);
 
             // Offload large context values to artifact store before recording
             if let Err(e) = offload_large_values(&mut outcome.context_updates, &artifact_store) {
@@ -1869,7 +1865,7 @@ impl WorkflowRunEngine {
                 loop_state.restart_failure_signatures.clone(),
                 loop_state.node_visits.clone(),
             );
-            let checkpoint_path = config.logs_root.join("checkpoint.json");
+            let checkpoint_path = config.run_dir.join("checkpoint.json");
             if let Err(e) = checkpoint.save(&checkpoint_path) {
                 context.append_log(format!("checkpoint save failed: {e}"));
             } else {
@@ -2010,7 +2006,7 @@ impl WorkflowRunEngine {
                                 .unwrap_or(&sha);
                             let diff_base = prev.to_string();
                             let diff_dest =
-                                node_dir(&config.logs_root, &node.id, visit).join("diff.patch");
+                                node_dir(&config.run_dir, &node.id, visit).join("diff.patch");
 
                             let diff_result = match mode {
                                 GitCheckpointMode::Host(work_dir) => {
@@ -2182,7 +2178,7 @@ impl WorkflowRunEngine {
             };
             if let Some(patch) = patch {
                 if !patch.is_empty() {
-                    let _ = std::fs::write(config.logs_root.join("final.patch"), patch);
+                    let _ = std::fs::write(config.run_dir.join("final.patch"), patch);
                 }
             }
         }
@@ -2223,7 +2219,7 @@ mod tests {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &crate::handler::EngineServices,
         ) -> std::result::Result<Outcome, ArcError> {
             Ok(Outcome::fail_classify("always fails"))
@@ -2242,7 +2238,7 @@ mod tests {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &crate::handler::EngineServices,
         ) -> std::result::Result<Outcome, ArcError> {
             tokio::time::sleep(Duration::from_millis(self.sleep_ms)).await;
@@ -2844,7 +2840,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -2872,7 +2868,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -2908,7 +2904,7 @@ mod tests {
 
         let engine = WorkflowRunEngine::new(make_registry(), Arc::new(emitter), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -2940,7 +2936,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -2968,7 +2964,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3009,7 +3005,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3074,7 +3070,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3166,7 +3162,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3201,7 +3197,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "labels-run".into(),
@@ -3231,7 +3227,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "no-labels-run".into(),
@@ -3261,7 +3257,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3295,7 +3291,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3457,7 +3453,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3502,7 +3498,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3565,7 +3561,7 @@ mod tests {
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3631,7 +3627,7 @@ mod tests {
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3701,7 +3697,7 @@ mod tests {
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 500 }));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3760,7 +3756,7 @@ mod tests {
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 10 }));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3820,7 +3816,7 @@ mod tests {
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 500 }));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3855,7 +3851,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -3886,7 +3882,7 @@ mod tests {
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let cancel_token = Arc::new(AtomicBool::new(true));
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: Some(cancel_token),
             dry_run: false,
             run_id: "test-run".into(),
@@ -3916,7 +3912,7 @@ mod tests {
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let cancel_token = Arc::new(AtomicBool::new(false));
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: Some(cancel_token),
             dry_run: false,
             run_id: "test-run".into(),
@@ -3959,7 +3955,7 @@ mod tests {
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 200 }));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: Some(cancel_token),
             dry_run: false,
             run_id: "test-run".into(),
@@ -4039,7 +4035,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4072,7 +4068,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: true,
             run_id: "test-run".into(),
@@ -4107,7 +4103,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: true,
             run_id: "test-run".into(),
@@ -4147,7 +4143,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4185,7 +4181,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: true,
             run_id: "test-run".into(),
@@ -4220,7 +4216,7 @@ mod tests {
         let engine =
             WorkflowRunEngine::new(make_registry(), Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4284,7 +4280,7 @@ mod tests {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &crate::handler::EngineServices,
         ) -> std::result::Result<Outcome, ArcError> {
             panic!("test panic message");
@@ -4316,7 +4312,7 @@ mod tests {
         registry.register("panicker", Box::new(PanickingHandler));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4481,7 +4477,7 @@ mod tests {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &crate::handler::EngineServices,
         ) -> std::result::Result<Outcome, ArcError> {
             Ok(Outcome::fail_classify("connection refused"))
@@ -4509,7 +4505,7 @@ mod tests {
             _node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             _services: &crate::handler::EngineServices,
         ) -> std::result::Result<Outcome, ArcError> {
             let n = self.counter.fetch_add(1, Ordering::Relaxed);
@@ -4527,7 +4523,7 @@ mod tests {
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4565,7 +4561,7 @@ mod tests {
         registry.register("always_fail", Box::new(TransientFailHandler));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4610,7 +4606,7 @@ mod tests {
         );
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4695,7 +4691,7 @@ mod tests {
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4737,7 +4733,7 @@ mod tests {
             node: &Node,
             _context: &Context,
             _graph: &Graph,
-            _logs_root: &Path,
+            _run_dir: &Path,
             services: &crate::handler::EngineServices,
         ) -> std::result::Result<Outcome, ArcError> {
             let start = Instant::now();
@@ -4791,7 +4787,7 @@ mod tests {
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 60_000 }));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4864,7 +4860,7 @@ mod tests {
         );
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4924,7 +4920,7 @@ mod tests {
         registry.register("slow", Box::new(SlowHandler { sleep_ms: 50 }));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -4985,7 +4981,7 @@ mod tests {
         registry.register("always_fail", Box::new(AlwaysFailHandler));
         let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), local_env());
         let config = RunConfig {
-            logs_root: dir.path().to_path_buf(),
+            run_dir: dir.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "test-run".into(),
@@ -5054,7 +5050,7 @@ mod tests {
         .trim()
         .to_string();
 
-        let logs_dir = tempfile::tempdir().unwrap();
+        let run_tmp = tempfile::tempdir().unwrap();
 
         // Build start -> work -> exit graph so work node produces a git checkpoint
         let mut g = simple_graph();
@@ -5073,7 +5069,7 @@ mod tests {
 
         let engine = WorkflowRunEngine::new(make_registry(), Arc::new(emitter), local_env());
         let config = RunConfig {
-            logs_root: logs_dir.path().to_path_buf(),
+            run_dir: run_tmp.path().to_path_buf(),
             cancel_token: None,
             dry_run: false,
             run_id: "git-cp-test".into(),

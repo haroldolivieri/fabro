@@ -73,7 +73,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(row.0, 1);
+        assert_eq!(row.0, 2);
     }
 
     #[tokio::test]
@@ -86,7 +86,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(row.0, 1);
+        assert_eq!(row.0, 2);
     }
 
     #[tokio::test]
@@ -98,7 +98,7 @@ mod tests {
         let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
         sqlx::query(
-            "INSERT INTO workflow_runs (id, title, logs_dir, work_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO workflow_runs (id, title, run_dir, work_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind("run-1")
         .bind("My Run")
@@ -118,7 +118,7 @@ mod tests {
 
         assert_eq!(run.id, "run-1");
         assert_eq!(run.title, "My Run");
-        assert_eq!(run.logs_dir, "/tmp/logs");
+        assert_eq!(run.run_dir, "/tmp/logs");
         assert_eq!(run.work_dir, "/tmp/work");
     }
 }

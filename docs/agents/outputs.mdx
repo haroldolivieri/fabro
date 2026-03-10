@@ -7,7 +7,7 @@ When an agent or prompt node finishes, Arc captures its response text and produc
 
 ## Response capture
 
-After an agent or prompt node completes, Arc captures the full response text and writes it to the run logs at `{logs_root}/nodes/{node_id}/response.md`. It also writes the final outcome (status, context updates, routing directives) to `{logs_root}/nodes/{node_id}/status.json`.
+After an agent or prompt node completes, Arc captures the full response text and writes it to the run logs at `{run_dir}/nodes/{node_id}/response.md`. It also writes the final outcome (status, context updates, routing directives) to `{run_dir}/nodes/{node_id}/status.json`.
 
 ## Context updates
 
@@ -92,7 +92,7 @@ review -> approve [label="Approve"]
 
 ## Output logging
 
-Arc writes several files per stage to `{logs_root}/nodes/{node_id}/`:
+Arc writes several files per stage to `{run_dir}/nodes/{node_id}/`:
 
 | File | Contents |
 |---|---|
@@ -147,10 +147,10 @@ Values under 100KB remain in the context as-is.
 
 ### Artifact storage layout
 
-Offloaded artifacts are written to the run's logs directory:
+Offloaded artifacts are written to the run's directory:
 
 ```
-~/.arc/logs/{run_id}/
+~/.arc/runs/{run_id}/
   artifacts/
     values/
       response.plan.json
@@ -206,7 +206,7 @@ For each pointer in the context updates:
 
 ```
 # Before sync (host path)
-file:///home/user/.arc/logs/01JK.../artifacts/values/response.plan.json
+file:///home/user/.arc/runs/01JK.../artifacts/values/response.plan.json
 
 # After sync (sandbox path)
 file:///workspace/.arc/artifacts/response.plan.json
@@ -220,7 +220,7 @@ For local sandboxes, syncing is a no-op since the agent can already access the h
 
 ## Automatic asset capture
 
-After each node executes a command, Arc automatically scans the sandbox for test artifacts — screenshots, videos, reports, and traces — and copies any new or changed files to the run's logs directory. This happens without any agent or workflow configuration.
+After each node executes a command, Arc automatically scans the sandbox for test artifacts — screenshots, videos, reports, and traces — and copies any new or changed files to the run's directory. This happens without any agent or workflow configuration.
 
 ### How asset capture works
 
@@ -252,10 +252,10 @@ Tool caches and dependency directories (`node_modules`, `.cache/ms-playwright`, 
 
 ### Asset storage layout
 
-Collected assets are written to the run's logs directory, organized by node and retry attempt:
+Collected assets are written to the run's directory, organized by node and retry attempt:
 
 ```
-~/.arc/logs/{run_id}/
+~/.arc/runs/{run_id}/
   assets/
     {node_slug}/
       retry_1/
@@ -291,4 +291,4 @@ Outputs and artifacts appear in several observability surfaces:
 | `WorkflowRunCompleted` event | `artifact_count` -- total number of offloaded artifacts across the run |
 | [Retros](/execution/retros) | Per-stage `files_touched` and aggregate `files_touched` across all stages |
 | [Preambles](/execution/context#preamble-construction) | File list and artifact pointer references for completed stages |
-| Stage logs | `status.json` in each stage's logs directory contains the full outcome including `files_touched` |
+| Stage logs | `status.json` in each stage's run directory contains the full outcome including `files_touched` |

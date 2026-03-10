@@ -392,21 +392,21 @@ pub async fn run_command(
 
     // 3. Create logs directory
     let run_id = ulid::Ulid::new().to_string();
-    let logs_dir = args.logs_dir.unwrap_or_else(|| {
+    let run_dir = args.run_dir.unwrap_or_else(|| {
         let base = dirs::home_dir()
             .expect("could not determine home directory")
             .join(".arc")
-            .join("logs");
+            .join("runs");
         base.join(format!("{}-{}", Local::now().format("%Y%m%d"), run_id))
     });
-    tokio::fs::create_dir_all(&logs_dir).await?;
-    arc_util::run_log::activate(&logs_dir.join("cli.log"))
+    tokio::fs::create_dir_all(&run_dir).await?;
+    arc_util::run_log::activate(&run_dir.join("cli.log"))
         .context("Failed to activate per-run log")?;
-    tokio::fs::write(logs_dir.join("graph.dot"), &source).await?;
-    tokio::fs::write(logs_dir.join("run.pid"), std::process::id().to_string()).await?;
+    tokio::fs::write(run_dir.join("graph.dot"), &source).await?;
+    tokio::fs::write(run_dir.join("run.pid"), std::process::id().to_string()).await?;
     if workflow_path.extension().is_some_and(|ext| ext == "toml") {
         if let Ok(toml_contents) = tokio::fs::read(workflow_path).await {
-            tokio::fs::write(logs_dir.join("run.toml"), toml_contents).await?;
+            tokio::fs::write(run_dir.join("run.toml"), toml_contents).await?;
         }
     }
 
@@ -418,7 +418,7 @@ pub async fn run_command(
         ui.show_version();
         ui.show_run_id(&run_id);
         ui.show_time(&Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
-        ui.show_logs_dir(&logs_dir);
+        ui.show_run_dir(&run_dir);
     }
 
     // 3. Build event emitter
@@ -455,8 +455,8 @@ pub async fn run_command(
 
     // JSONL progress log + live.json snapshot
     {
-        let jsonl_path = logs_dir.join("progress.jsonl");
-        let live_path = logs_dir.join("live.json");
+        let jsonl_path = run_dir.join("progress.jsonl");
+        let live_path = run_dir.join("live.json");
         let run_id = Arc::new(Mutex::new(String::new()));
         let run_id_clone = Arc::clone(&run_id);
         emitter.on_event(move |event| {
@@ -575,7 +575,7 @@ pub async fn run_command(
 
     let (worktree_work_dir, worktree_path, worktree_branch, worktree_base_sha) =
         if should_create_worktree {
-            match setup_worktree(&original_cwd, &logs_dir, &run_id) {
+            match setup_worktree(&original_cwd, &run_dir, &run_id) {
                 Ok((wd, wt, branch, base)) => (Some(wd), Some(wt), Some(branch), Some(base)),
                 Err(e) => {
                     eprintln!(
@@ -733,7 +733,7 @@ pub async fn run_command(
                 }
             }
         };
-        if let Err(e) = record.save(&logs_dir.join("sandbox.json")) {
+        if let Err(e) = record.save(&run_dir.join("sandbox.json")) {
             tracing::warn!(error = %e, "Failed to save sandbox record");
         }
     }
@@ -957,7 +957,7 @@ pub async fn run_command(
         .unwrap_or_default();
     let pr_cfg = run_cfg.as_ref().and_then(|c| c.pull_request.as_ref());
     let config = RunConfig {
-        logs_root: logs_dir.clone(),
+        run_dir: run_dir.clone(),
         cancel_token: None,
         dry_run: dry_run_mode,
         run_id: run_id.clone(),
@@ -1016,7 +1016,7 @@ pub async fn run_command(
             failure_reason,
             final_git_commit_sha: last_git_sha.lock().unwrap().clone(),
         };
-        let _ = conclusion.save(&logs_dir.join("conclusion.json"));
+        let _ = conclusion.save(&run_dir.join("conclusion.json"));
     }
 
     // Finish progress bars before printing summary
@@ -1035,7 +1035,7 @@ pub async fn run_command(
             &config.run_id,
             &graph.name,
             graph.goal(),
-            &logs_dir,
+            &run_dir,
             failed,
             failure_reason.as_deref(),
             run_duration_ms,
@@ -1058,7 +1058,7 @@ pub async fn run_command(
                 outcome.status,
                 StageStatus::Success | StageStatus::PartialSuccess
             ) {
-                let diff = tokio::fs::read_to_string(logs_dir.join("final.patch"))
+                let diff = tokio::fs::read_to_string(run_dir.join("final.patch"))
                     .await
                     .unwrap_or_default();
                 if let (
@@ -1119,7 +1119,7 @@ pub async fn run_command(
                         &diff,
                         &model,
                         config.pull_request_draft,
-                        &logs_dir,
+                        &run_dir,
                     )
                     .await
                     {
@@ -1130,7 +1130,7 @@ pub async fn run_command(
                                 draft: config.pull_request_draft,
                             });
                             pr_url = Some(record.html_url.clone());
-                            if let Err(e) = record.save(&logs_dir.join("pull_request.json")) {
+                            if let Err(e) = record.save(&run_dir.join("pull_request.json")) {
                                 tracing::warn!(error = %e, "Failed to save pull_request.json");
                             }
                         }
@@ -1214,7 +1214,7 @@ pub async fn run_command(
         "{}",
         styles
             .dim
-            .apply_to(format!("Logs:      {}", tilde_path(&logs_dir)))
+            .apply_to(format!("Run:       {}", tilde_path(&run_dir)))
     );
 
     if let Some(failure) = outcome.failure_reason() {
@@ -1231,8 +1231,8 @@ pub async fn run_command(
         }
     }
 
-    print_final_output(&logs_dir, styles);
-    print_assets(&logs_dir, styles);
+    print_final_output(&run_dir, styles);
+    print_assets(&run_dir, styles);
 
     // 9. Cleanup sandbox (defuse the scopeguard so we await properly)
     scopeguard::ScopeGuard::into_inner(cleanup_guard);
@@ -1269,14 +1269,14 @@ pub async fn run_command(
 /// Returns (work_dir, worktree_path, branch_name, base_sha) on success.
 fn setup_worktree(
     original_cwd: &std::path::Path,
-    logs_dir: &std::path::Path,
+    run_dir: &std::path::Path,
     run_id: &str,
 ) -> anyhow::Result<(PathBuf, PathBuf, String, String)> {
     let base_sha = crate::git::head_sha(original_cwd).map_err(|e| anyhow::anyhow!("{e}"))?;
     let branch_name = format!("arc/run/{run_id}");
     crate::git::create_branch(original_cwd, &branch_name).map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let worktree_path = logs_dir.join("worktree");
+    let worktree_path = run_dir.join("worktree");
     crate::git::replace_worktree(original_cwd, &worktree_path, &branch_name)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
@@ -1401,21 +1401,21 @@ async fn run_from_branch(
     }
 
     // Set up logs directory
-    let logs_dir = args.logs_dir.unwrap_or_else(|| {
+    let run_dir = args.run_dir.unwrap_or_else(|| {
         let base = dirs::home_dir()
             .expect("could not determine home directory")
             .join(".arc")
-            .join("logs");
+            .join("runs");
         base.join(format!(
             "{}-{}",
             chrono::Local::now().format("%Y%m%d"),
             run_id
         ))
     });
-    tokio::fs::create_dir_all(&logs_dir).await?;
-    arc_util::run_log::activate(&logs_dir.join("cli.log"))
+    tokio::fs::create_dir_all(&run_dir).await?;
+    arc_util::run_log::activate(&run_dir.join("cli.log"))
         .context("Failed to activate per-run log")?;
-    tokio::fs::write(logs_dir.join("graph.dot"), &source).await?;
+    tokio::fs::write(run_dir.join("graph.dot"), &source).await?;
 
     let base_sha =
         crate::git::MetadataStore::read_manifest(&original_cwd, &run_id)?.and_then(|m| m.base_sha);
@@ -1432,7 +1432,7 @@ async fn run_from_branch(
         match sandbox_provider {
             SandboxProvider::Local | SandboxProvider::Docker => {
                 // Re-attach worktree to the existing run branch
-                let wt = logs_dir.join("worktree");
+                let wt = run_dir.join("worktree");
                 crate::git::replace_worktree(&original_cwd, &wt, run_branch).map_err(|e| {
                     anyhow::anyhow!("failed to attach worktree to {run_branch}: {e}")
                 })?;
@@ -1540,7 +1540,7 @@ async fn run_from_branch(
 
     let meta_branch = Some(crate::git::MetadataStore::branch_name(&run_id));
     let config = RunConfig {
-        logs_root: logs_dir.clone(),
+        run_dir: run_dir.clone(),
         cancel_token: None,
         dry_run: dry_run_mode,
         run_id: run_id.clone(),
@@ -1594,7 +1594,7 @@ async fn run_from_branch(
             &config.run_id,
             &graph.name,
             graph.goal(),
-            &logs_dir,
+            &run_dir,
             failed,
             failure_reason.as_deref(),
             run_duration_ms,
@@ -1626,11 +1626,11 @@ async fn run_from_branch(
         "{}",
         styles
             .dim
-            .apply_to(format!("Logs:      {}", tilde_path(&logs_dir)))
+            .apply_to(format!("Run:       {}", tilde_path(&run_dir)))
     );
 
-    print_final_output(&logs_dir, styles);
-    print_assets(&logs_dir, styles);
+    print_final_output(&run_dir, styles);
+    print_assets(&run_dir, styles);
 
     arc_util::run_log::deactivate();
     match outcome.status {
@@ -1640,8 +1640,8 @@ async fn run_from_branch(
 }
 
 /// Print the final stage output from the checkpoint, if available.
-fn print_final_output(logs_dir: &std::path::Path, styles: &Styles) {
-    let Ok(checkpoint) = Checkpoint::load(&logs_dir.join("checkpoint.json")) else {
+fn print_final_output(run_dir: &std::path::Path, styles: &Styles) {
+    let Ok(checkpoint) = Checkpoint::load(&run_dir.join("checkpoint.json")) else {
         return;
     };
 
@@ -1661,8 +1661,8 @@ fn print_final_output(logs_dir: &std::path::Path, styles: &Styles) {
 }
 
 /// Print collected asset paths, if any.
-fn print_assets(logs_dir: &std::path::Path, styles: &Styles) {
-    let paths = crate::asset_snapshot::collect_asset_paths(logs_dir);
+fn print_assets(run_dir: &std::path::Path, styles: &Styles) {
+    let paths = crate::asset_snapshot::collect_asset_paths(run_dir);
     if paths.is_empty() {
         return;
     }
@@ -1934,7 +1934,7 @@ async fn generate_retro(
     run_id: &str,
     workflow_name: &str,
     goal: &str,
-    logs_dir: &std::path::Path,
+    run_dir: &std::path::Path,
     failed: bool,
     failure_reason: Option<&str>,
     run_duration_ms: u64,
@@ -1945,7 +1945,7 @@ async fn generate_retro(
     model: &str,
     styles: &'static Styles,
 ) {
-    let cp = match Checkpoint::load(&logs_dir.join("checkpoint.json")) {
+    let cp = match Checkpoint::load(&run_dir.join("checkpoint.json")) {
         Ok(cp) => cp,
         Err(e) => {
             eprintln!(
@@ -1956,7 +1956,7 @@ async fn generate_retro(
         }
     };
 
-    let stage_durations = crate::retro::extract_stage_durations(logs_dir);
+    let stage_durations = crate::retro::extract_stage_durations(run_dir);
     let mut retro = crate::retro::derive_retro(
         run_id,
         workflow_name,
@@ -1968,7 +1968,7 @@ async fn generate_retro(
         &stage_durations,
     );
 
-    match retro.save(logs_dir) {
+    match retro.save(run_dir) {
         Ok(()) => {}
         Err(e) => {
             eprintln!(
@@ -1988,7 +1988,7 @@ async fn generate_retro(
     let narrative_result = if dry_run_mode {
         Ok(crate::retro_agent::dry_run_narrative())
     } else if let Some(client) = llm_client {
-        crate::retro_agent::run_retro_agent(sandbox, logs_dir, client, provider_enum, model).await
+        crate::retro_agent::run_retro_agent(sandbox, run_dir, client, provider_enum, model).await
     } else {
         Err(anyhow::anyhow!("No LLM client available"))
     };
@@ -1997,7 +1997,7 @@ async fn generate_retro(
     match narrative_result {
         Ok(narrative) => {
             retro.apply_narrative(narrative);
-            match retro.save(logs_dir) {
+            match retro.save(run_dir) {
                 Ok(()) => {
                     // Line 1: smoothness + outcome with right-aligned duration
                     let smoothness_str = retro
@@ -2046,7 +2046,7 @@ async fn generate_retro(
                     }
 
                     // Line 3: file path
-                    let retro_path = format!("{}/retro.json", super::tilde_path(logs_dir));
+                    let retro_path = format!("{}/retro.json", super::tilde_path(run_dir));
                     eprintln!(
                         "  {} {}",
                         styles.dim.apply_to("Retro saved to"),

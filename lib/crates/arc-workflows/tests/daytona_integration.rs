@@ -331,7 +331,7 @@ impl Handler for LargeOutputHandler {
         node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let mut outcome = Outcome::success();
@@ -389,7 +389,7 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), env.clone());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "test-run".into(),
@@ -464,7 +464,7 @@ impl Handler for FileWriterHandler {
         node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let content = format!("output from {}", node.id);
@@ -587,7 +587,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), env.clone());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id,
@@ -659,10 +659,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
 
     // Assert final.patch exists and contains changes from the run
     let final_patch = dir.path().join("final.patch");
-    assert!(
-        final_patch.exists(),
-        "final.patch should exist in logs_root"
-    );
+    assert!(final_patch.exists(), "final.patch should exist in run_dir");
     let patch_content = std::fs::read_to_string(&final_patch).unwrap();
     assert!(!patch_content.is_empty(), "final.patch should not be empty");
 
@@ -758,7 +755,7 @@ async fn daytona_parallel_git_branching_e2e() {
     graph.edges.push(Edge::new("branch_b", "fan_in"));
     graph.edges.push(Edge::new("fan_in", "exit"));
 
-    let logs_dir = tempfile::tempdir().unwrap();
+    let run_tmp = tempfile::tempdir().unwrap();
     let mut emitter = EventEmitter::new();
     let events = Arc::new(std::sync::Mutex::new(Vec::new()));
     {
@@ -777,11 +774,11 @@ async fn daytona_parallel_git_branching_e2e() {
     let engine = WorkflowRunEngine::new(registry, Arc::new(emitter), Arc::clone(&env));
 
     let config = RunConfig {
-        logs_root: logs_dir.path().to_path_buf(),
+        run_dir: run_tmp.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: run_id.clone(),
-        git_checkpoint: Some(GitCheckpointMode::Remote(logs_dir.path().to_path_buf())),
+        git_checkpoint: Some(GitCheckpointMode::Remote(run_tmp.path().to_path_buf())),
         base_sha: Some(base_sha),
         run_branch: Some(branch_name),
         meta_branch: None,
@@ -808,7 +805,7 @@ async fn daytona_parallel_git_branching_e2e() {
 
     // Verify parallel.results has head_sha for each branch
     let checkpoint =
-        Checkpoint::load(&logs_dir.path().join("checkpoint.json")).expect("checkpoint should load");
+        Checkpoint::load(&run_tmp.path().join("checkpoint.json")).expect("checkpoint should load");
     let parallel_results = checkpoint
         .context_values
         .get("parallel.results")
@@ -1155,7 +1152,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
     let meta_branch = MetadataStore::branch_name(&run_id);
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), env.clone());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: run_id.clone(),
@@ -1210,10 +1207,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
 
     // Assert final.patch exists
     let final_patch = dir.path().join("final.patch");
-    assert!(
-        final_patch.exists(),
-        "final.patch should exist in logs_root"
-    );
+    assert!(final_patch.exists(), "final.patch should exist in run_dir");
 
     env.cleanup().await.unwrap();
 }
@@ -1232,7 +1226,7 @@ impl Handler for AssetCreatorHandler {
         _node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         services: &arc_workflows::handler::EngineServices,
     ) -> Result<Outcome, ArcError> {
         let script = concat!(
@@ -1299,7 +1293,7 @@ async fn daytona_asset_collection() {
     graph.edges.push(Edge::new("create_assets", "exit"));
 
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: "asset-test-daytona".into(),
@@ -1555,7 +1549,7 @@ async fn daytona_git_push_run_branch_to_origin() {
 
     let engine = WorkflowRunEngine::new(registry, Arc::new(EventEmitter::new()), env.clone());
     let config = RunConfig {
-        logs_root: dir.path().to_path_buf(),
+        run_dir: dir.path().to_path_buf(),
         cancel_token: None,
         dry_run: false,
         run_id: run_id.clone(),

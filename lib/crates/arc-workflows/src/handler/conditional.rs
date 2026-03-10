@@ -20,7 +20,7 @@ impl Handler for ConditionalHandler {
         node: &Node,
         _context: &Context,
         _graph: &Graph,
-        _logs_root: &Path,
+        _run_dir: &Path,
         _services: &EngineServices,
     ) -> Result<Outcome, ArcError> {
         let mut outcome = Outcome::success();
@@ -55,9 +55,9 @@ mod tests {
         let node = Node::new("gate");
         let context = Context::new();
         let graph = Graph::new("test");
-        let logs_root = Path::new("/tmp/test");
+        let run_dir = Path::new("/tmp/test");
         let outcome = handler
-            .execute(&node, &context, &graph, logs_root, &make_services())
+            .execute(&node, &context, &graph, run_dir, &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageStatus::Success);

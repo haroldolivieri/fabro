@@ -48,7 +48,7 @@ arc run --run-branch arc/run/abc123
 | Argument / Flag | Description |
 |---|---|
 | `<WORKFLOW>` | Path to a `.dot` workflow file or `.toml` task config. Not required when using `--run-branch`. |
-| `--logs-dir <DIR>` | Log and artifact directory |
+| `--run-dir <DIR>` | Run output directory |
 | `--dry-run` | Execute with a simulated LLM backend |
 | `--preflight` | Validate run configuration without executing |
 | `--auto-approve` | Auto-approve all human gates |
@@ -71,7 +71,7 @@ arc run --run-branch arc/run/abc123
 
 ## `arc ps`
 
-List workflow runs stored in `~/.arc/logs`.
+List workflow runs stored in `~/.arc/runs`.
 
 ```bash
 arc ps

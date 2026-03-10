@@ -9,7 +9,7 @@ Arc captures a structured event for every significant action during a workflow r
 
 The event stream is the foundation of Arc's observability. Every workflow run emits a sequence of `WorkflowRunEvent` records that are:
 
-- **Written to `progress.jsonl`** in the run's logs directory (one JSON object per line)
+- **Written to `progress.jsonl`** in the run's directory (one JSON object per line)
 - **Broadcast via SSE** to connected API clients in real time
 - **Logged via `tracing`** to the daily log file at `~/.arc/logs/`
 
@@ -114,17 +114,17 @@ Arc writes two kinds of logs:
 
 ### Run logs (`progress.jsonl`)
 
-Every run writes its event stream to `{logs_dir}/progress.jsonl`. This is the primary data source for post-run analysis — [retros](/execution/retros) read it, and you can query it directly with standard tools:
+Every run writes its event stream to `{run_dir}/progress.jsonl`. This is the primary data source for post-run analysis — [retros](/execution/retros) read it, and you can query it directly with standard tools:
 
 ```bash
 # Count tool calls in a run
-grep "ToolCallStarted" ~/.arc/logs/01JKXYZ.../progress.jsonl | wc -l
+grep "ToolCallStarted" ~/.arc/runs/01JKXYZ.../progress.jsonl | wc -l
 
 # Find all failures
-grep -E "StageFailed|WorkflowRunFailed" ~/.arc/logs/01JKXYZ.../progress.jsonl | jq .
+grep -E "StageFailed|WorkflowRunFailed" ~/.arc/runs/01JKXYZ.../progress.jsonl | jq .
 
 # See which edges were taken
-grep "EdgeSelected" ~/.arc/logs/01JKXYZ.../progress.jsonl | jq '{from: .from_node, to: .to_node}'
+grep "EdgeSelected" ~/.arc/runs/01JKXYZ.../progress.jsonl | jq '{from: .from_node, to: .to_node}'
 ```
 
 ### Live snapshot (`live.json`)
@@ -132,7 +132,7 @@ grep "EdgeSelected" ~/.arc/logs/01JKXYZ.../progress.jsonl | jq '{from: .from_nod
 During execution, Arc also writes `live.json` — a pretty-printed copy of the most recent event. This is useful for quick status checks while a run is in progress:
 
 ```bash
-cat ~/.arc/logs/01JKXYZ.../live.json
+cat ~/.arc/runs/01JKXYZ.../live.json
 ```
 
 ### Application logs
@@ -178,11 +178,11 @@ arc ps --label team=platform
 arc ps --json
 ```
 
-This scans `~/.arc/logs/` and displays each run's ID, workflow name, status, and start time. Use `--json` for machine-readable output.
+This scans `~/.arc/runs/` and displays each run's ID, workflow name, status, and start time. Use `--json` for machine-readable output.
 
 ### Run artifacts
 
-Each run's logs directory contains a standard set of files:
+Each run's directory contains a standard set of files:
 
 | File | Description |
 |---|---|

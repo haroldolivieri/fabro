@@ -189,9 +189,9 @@ fn parse_dot_summary(dot: &str) -> (String, usize, usize) {
     }
 }
 
-/// Read the DOT graph source from `logs_dir/graph.dot`.
-fn read_dot_source(logs_dir: &Path) -> Option<String> {
-    let path = logs_dir.join("graph.dot");
+/// Read the DOT graph source from `run_dir/graph.dot`.
+fn read_dot_source(run_dir: &Path) -> Option<String> {
+    let path = run_dir.join("graph.dot");
     match std::fs::read_to_string(&path) {
         Ok(content) => {
             debug!(path = %path.display(), "Read DOT graph for PR body");
@@ -201,11 +201,11 @@ fn read_dot_source(logs_dir: &Path) -> Option<String> {
     }
 }
 
-/// Read plan text from the first `nodes/plan*/response.md` found in logs_dir.
+/// Read plan text from the first `nodes/plan*/response.md` found in run_dir.
 ///
 /// Entries are sorted alphabetically so `plan` is preferred over `planning`.
-fn read_plan_text(logs_dir: &Path) -> Option<String> {
-    let nodes_dir = logs_dir.join("nodes");
+fn read_plan_text(run_dir: &Path) -> Option<String> {
+    let nodes_dir = run_dir.join("nodes");
     let mut entries: Vec<_> = std::fs::read_dir(&nodes_dir).ok()?.flatten().collect();
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
@@ -264,13 +264,13 @@ pub async fn build_pr_body(
     diff: &str,
     goal: &str,
     model: &str,
-    logs_dir: &Path,
+    run_dir: &Path,
 ) -> Result<String, String> {
     debug!("Building PR body");
 
-    let plan_text = read_plan_text(logs_dir);
-    let retro = Retro::load(logs_dir).ok();
-    let dot_source = read_dot_source(logs_dir);
+    let plan_text = read_plan_text(run_dir);
+    let retro = Retro::load(run_dir).ok();
+    let dot_source = read_dot_source(run_dir);
 
     // Build LLM prompt
     let system = if plan_text.is_some() {
@@ -342,7 +342,7 @@ pub async fn maybe_open_pull_request(
     diff: &str,
     model: &str,
     draft: bool,
-    logs_dir: &Path,
+    run_dir: &Path,
 ) -> Result<Option<PullRequestRecord>, String> {
     if diff.is_empty() {
         debug!("Empty diff, skipping pull request creation");
@@ -352,7 +352,7 @@ pub async fn maybe_open_pull_request(
     let https_url = ssh_url_to_https(origin_url);
     let (owner, repo) = github_app::parse_github_owner_repo(&https_url)?;
 
-    let body = build_pr_body(diff, goal, model, logs_dir).await?;
+    let body = build_pr_body(diff, goal, model, run_dir).await?;
     let body = truncate_pr_body(&body);
 
     let title = pr_title_from_goal(goal);

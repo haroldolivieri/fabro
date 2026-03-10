@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use clap::Args;
 use tracing::info;
 
-use crate::cli::runs::{default_logs_base, find_run_by_prefix};
+use crate::cli::runs::{default_runs_base, find_run_by_prefix};
 use crate::conclusion::Conclusion;
 use crate::manifest::Manifest;
 use crate::outcome::StageStatus;
@@ -22,7 +22,7 @@ pub async fn pr_create_command(
     args: PrCreateArgs,
     github_app: Option<arc_github::GitHubAppCredentials>,
 ) -> Result<()> {
-    let base = default_logs_base();
+    let base = default_runs_base();
     pr_create_from(&base, args, github_app).await
 }
 

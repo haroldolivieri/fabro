@@ -114,7 +114,7 @@ const SUBMIT_RETRO_SCHEMA: &str = r#"{
 /// files via tool access, then calls `submit_retro` with its analysis.
 pub async fn run_retro_agent(
     sandbox: &Arc<dyn Sandbox>,
-    logs_root: &Path,
+    run_dir: &Path,
     llm_client: &Client,
     provider: Provider,
     model: &str,
@@ -122,7 +122,7 @@ pub async fn run_retro_agent(
     // Upload data files into sandbox (needed for Daytona; no-op effect for local
     // since the agent can also read from the original paths via tools).
     let retro_data_dir = "/tmp/retro_data";
-    upload_data_files(sandbox, logs_root, retro_data_dir).await?;
+    upload_data_files(sandbox, run_dir, retro_data_dir).await?;
 
     // Build provider profile with the submit_retro tool
     let captured: Arc<Mutex<Option<RetroNarrative>>> = Arc::new(Mutex::new(None));
@@ -165,7 +165,7 @@ pub async fn run_retro_agent(
     let mut session = Session::new(llm_client.clone(), profile, Arc::clone(sandbox), config);
 
     // Set up event writer before initialize (which emits SessionStarted)
-    let retro_dir = logs_root.join("retro");
+    let retro_dir = run_dir.join("retro");
     std::fs::create_dir_all(&retro_dir)?;
     let rx = session.subscribe();
     let event_writer_handle = spawn_retro_event_writer(rx, retro_dir.join("retro_session.jsonl"));
@@ -316,7 +316,7 @@ fn build_profile(provider: Provider, model: &str) -> Box<dyn ProviderProfile> {
 
 async fn upload_data_files(
     sandbox: &Arc<dyn Sandbox>,
-    logs_root: &Path,
+    run_dir: &Path,
     target_dir: &str,
 ) -> anyhow::Result<()> {
     // Create target directory
@@ -327,7 +327,7 @@ async fn upload_data_files(
 
     let files = ["progress.jsonl", "checkpoint.json", "manifest.json"];
     for filename in &files {
-        let source = logs_root.join(filename);
+        let source = run_dir.join(filename);
         if source.exists() {
             let content = std::fs::read_to_string(&source)?;
             sandbox

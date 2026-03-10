@@ -351,6 +351,42 @@ pub async fn branch_exists(
     }
 }
 
+/// Check whether a GitHub App is installed for a specific repository.
+///
+/// Uses the App JWT to query `GET /repos/{owner}/{repo}/installation`.
+/// Returns `Ok(true)` on 200, `Ok(false)` on 404.
+pub async fn check_app_installed(
+    client: &reqwest::Client,
+    jwt: &str,
+    owner: &str,
+    repo: &str,
+    base_url: &str,
+) -> Result<bool, String> {
+    let url = format!("{base_url}/repos/{owner}/{repo}/installation");
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {jwt}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "arc")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to check GitHub App installation: {e}"))?;
+
+    match resp.status().as_u16() {
+        200 => Ok(true),
+        404 => Ok(false),
+        401 => Err("GitHub App authentication failed. \
+             Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
+            .to_string()),
+        403 => Err("GitHub App installation is suspended. \
+             Re-enable it in your organization's GitHub App settings."
+            .to_string()),
+        status => Err(format!(
+            "Unexpected status {status} checking GitHub App installation"
+        )),
+    }
+}
+
 /// Resolve git clone credentials for a GitHub repository.
 ///
 /// Returns `(username, password)` for authenticated cloning.
@@ -793,5 +829,60 @@ mod tests {
         };
         let result = branch_exists(&creds, "owner", "repo", "broken", &server.url()).await;
         assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // check_app_installed
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn check_app_installed_returns_true_on_200() {
+        let mut server = mockito::Server::new_async().await;
+
+        server
+            .mock("GET", "/repos/owner/repo/installation")
+            .match_header("Authorization", "Bearer test-jwt")
+            .with_status(200)
+            .with_body(r#"{"id": 1}"#)
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = check_app_installed(&client, "test-jwt", "owner", "repo", &server.url()).await;
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[tokio::test]
+    async fn check_app_installed_returns_false_on_404() {
+        let mut server = mockito::Server::new_async().await;
+
+        server
+            .mock("GET", "/repos/owner/repo/installation")
+            .with_status(404)
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = check_app_installed(&client, "test-jwt", "owner", "repo", &server.url()).await;
+        assert_eq!(result.unwrap(), false);
+    }
+
+    #[tokio::test]
+    async fn check_app_installed_returns_error_on_401() {
+        let mut server = mockito::Server::new_async().await;
+
+        server
+            .mock("GET", "/repos/owner/repo/installation")
+            .with_status(401)
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = check_app_installed(&client, "test-jwt", "owner", "repo", &server.url()).await;
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().contains("authentication failed"),
+            "expected auth error"
+        );
     }
 }

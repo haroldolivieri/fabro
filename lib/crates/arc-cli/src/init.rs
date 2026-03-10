@@ -104,5 +104,138 @@ root = \"arc/\"
             .apply_to("arc run hello")
     );
 
+    check_github_app_installation().await;
+
     Ok(())
+}
+
+async fn check_github_app_installation() {
+    // Get the git remote origin URL
+    let output = match std::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return, // No origin remote — skip silently
+    };
+
+    let remote_url = match String::from_utf8(output.stdout) {
+        Ok(s) => s.trim().to_string(),
+        Err(_) => return,
+    };
+
+    // Convert SSH URL to HTTPS and parse owner/repo
+    let https_url = arc_github::ssh_url_to_https(&remote_url);
+    let (owner, repo) = match arc_github::parse_github_owner_repo(&https_url) {
+        Ok(pair) => pair,
+        Err(_) => return, // Not a GitHub repo — skip silently
+    };
+
+    // Load CLI config to get app_id and slug
+    let cli_config = match crate::cli_config::load_cli_config(None) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let app_id = match cli_config.app_id() {
+        Some(id) => id.to_string(),
+        None => {
+            eprintln!(
+                "\n  Run {} to set up the GitHub App",
+                console::Style::new().cyan().bold().apply_to("arc install")
+            );
+            return;
+        }
+    };
+
+    let slug = cli_config.slug().map(String::from);
+
+    // Build GitHub App credentials
+    let creds = match crate::build_github_app_credentials(Some(&app_id)) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "\n  Set {} to enable GitHub App integration",
+                console::Style::new()
+                    .cyan()
+                    .bold()
+                    .apply_to("GITHUB_APP_PRIVATE_KEY")
+            );
+            return;
+        }
+    };
+
+    let jwt = match arc_github::sign_app_jwt(&creds.app_id, &creds.private_key_pem) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("\n  Warning: failed to sign GitHub App JWT: {e}");
+            return;
+        }
+    };
+
+    let client = reqwest::Client::new();
+
+    match arc_github::check_app_installed(&client, &jwt, &owner, &repo, "https://api.github.com")
+        .await
+    {
+        Ok(true) => {
+            let green = console::Style::new().green();
+            eprintln!(
+                "\n  {} GitHub App is installed for {owner}/{repo}",
+                green.apply_to("✔")
+            );
+        }
+        Ok(false) => {
+            let install_url = match &slug {
+                Some(s) => format!("https://github.com/apps/{s}/installations/new"),
+                None => format!("https://github.com/organizations/{owner}/settings/installations"),
+            };
+
+            let yellow = console::Style::new().yellow();
+            eprintln!(
+                "\n  {} GitHub App is not installed for {owner}/{repo}",
+                yellow.apply_to("!")
+            );
+            eprintln!("  Install at: {install_url}");
+
+            // Only prompt if stdin is a terminal
+            if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                eprintln!("  Press Enter to continue after installing...");
+                let _ = tokio::task::spawn_blocking(|| {
+                    let mut buf = String::new();
+                    let _ = std::io::stdin().read_line(&mut buf);
+                })
+                .await;
+
+                // Re-check after user presses Enter
+                match arc_github::check_app_installed(
+                    &client,
+                    &jwt,
+                    &owner,
+                    &repo,
+                    "https://api.github.com",
+                )
+                .await
+                {
+                    Ok(true) => {
+                        let green = console::Style::new().green();
+                        eprintln!(
+                            "  {} GitHub App is installed for {owner}/{repo}",
+                            green.apply_to("✔")
+                        );
+                    }
+                    Ok(false) => {
+                        eprintln!("  GitHub App is still not installed.");
+                        eprintln!("  Install at: {install_url}");
+                    }
+                    Err(e) => {
+                        eprintln!("  Warning: could not re-check GitHub App installation: {e}");
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("\n  Warning: could not check GitHub App installation: {e}");
+        }
+    }
 }

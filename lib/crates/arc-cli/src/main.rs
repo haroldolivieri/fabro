@@ -127,7 +127,9 @@ enum LlmCommand {
     Chat(arc_llm::cli::ChatArgs),
 }
 
-fn build_github_app_credentials(app_id: Option<&str>) -> Option<arc_github::GitHubAppCredentials> {
+pub(crate) fn build_github_app_credentials(
+    app_id: Option<&str>,
+) -> Option<arc_github::GitHubAppCredentials> {
     let app_id = app_id?;
     let raw = std::env::var("GITHUB_APP_PRIVATE_KEY").ok()?;
     let private_key_pem = if raw.starts_with("-----") {

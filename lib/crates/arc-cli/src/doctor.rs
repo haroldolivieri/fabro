@@ -200,9 +200,9 @@ pub fn check_config(path: Option<PathBuf>) -> CheckResult {
             status: CheckStatus::Warning,
             summary: "no config file found".to_string(),
             details: vec![CheckDetail {
-                text: "Create ~/.arc/server.toml to configure Arc".to_string(),
+                text: "Create ~/.arc/cli.toml to configure Arc".to_string(),
             }],
-            remediation: Some("Create ~/.arc/server.toml".to_string()),
+            remediation: Some("Create ~/.arc/cli.toml".to_string()),
         },
     }
 }
@@ -989,7 +989,9 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
     let styles = Styles::detect_stdout();
 
     // Gather state
-    let config_path = dirs::home_dir().map(|h| h.join(".arc").join("server.toml"));
+    let cli_config = arc_config::cli::load_cli_config(None).unwrap_or_default();
+
+    let config_path = dirs::home_dir().map(|h| h.join(".arc").join("cli.toml"));
     let config_exists = config_path.as_ref().is_some_and(|p| p.exists());
 
     let llm_statuses: Vec<(Provider, bool)> = Provider::ALL
@@ -1001,6 +1003,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
 
     let daytona_configured = std::env::var("DAYTONA_API_KEY").is_ok();
 
+    #[cfg(feature = "server")]
     let server_config = arc_config::server::load_server_config(None).unwrap_or_default();
 
     #[cfg(feature = "server")]
@@ -1016,7 +1019,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
         allowed_usernames_count: server_config.web.auth.allowed_usernames.len(),
     };
 
-    let git_app_id = server_config.git.app_id.clone();
+    let git_app_id = cli_config.git.as_ref().and_then(|g| g.app_id.clone());
     let private_key_raw = std::env::var("GITHUB_APP_PRIVATE_KEY").ok();
     let sign_result = match (&git_app_id, &private_key_raw) {
         (Some(app_id), Some(raw)) => {
@@ -1043,7 +1046,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
     };
     let github_status = GithubAppStatus {
         app_id: git_app_id,
-        slug: server_config.git.slug.clone(),
+        slug: cli_config.git.as_ref().and_then(|g| g.slug.clone()),
         private_key_set: private_key_raw.is_some(),
         sign_result,
         #[cfg(feature = "server")]
@@ -1219,9 +1222,9 @@ mod tests {
 
     #[test]
     fn check_config_pass_with_path() {
-        let result = check_config(Some(PathBuf::from("/home/user/.arc/server.toml")));
+        let result = check_config(Some(PathBuf::from("/home/user/.arc/cli.toml")));
         assert_eq!(result.status, CheckStatus::Pass);
-        assert!(result.summary.contains(".arc/server.toml"));
+        assert!(result.summary.contains(".arc/cli.toml"));
     }
 
     #[test]

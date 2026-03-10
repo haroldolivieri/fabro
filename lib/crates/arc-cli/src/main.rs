@@ -127,10 +127,8 @@ enum LlmCommand {
     Chat(arc_llm::cli::ChatArgs),
 }
 
-fn build_github_app_credentials(
-    config: &arc_config::server::ServerConfig,
-) -> Option<arc_github::GitHubAppCredentials> {
-    let app_id = config.git.app_id.as_ref()?;
+fn build_github_app_credentials(app_id: Option<&str>) -> Option<arc_github::GitHubAppCredentials> {
+    let app_id = app_id?;
     let raw = std::env::var("GITHUB_APP_PRIVATE_KEY").ok()?;
     let private_key_pem = if raw.starts_with("-----") {
         raw
@@ -140,7 +138,7 @@ fn build_github_app_credentials(
         String::from_utf8(pem_bytes).ok()?
     };
     Some(arc_github::GitHubAppCredentials {
-        app_id: app_id.clone(),
+        app_id: app_id.to_string(),
         private_key_pem,
     })
 }
@@ -231,7 +229,7 @@ async fn main_inner() -> Result<()> {
     match cli.command {
         Command::Llm { command } => {
             let cli_config = cli_config::load_cli_config(None)?;
-            let llm_defaults = cli_config.llm.as_ref();
+            let llm_defaults = cli_config.run_defaults.llm.as_ref();
             match command {
                 LlmCommand::Prompt(mut args) => {
                     if args.model.is_none() {
@@ -324,29 +322,21 @@ async fn main_inner() -> Result<()> {
         Command::Run(mut args) => {
             let styles: &'static arc_util::terminal::Styles =
                 Box::leak(Box::new(arc_util::terminal::Styles::detect_stderr()));
-            let server_config = arc_config::server::load_server_config(None)?;
             let cli_config = cli_config::load_cli_config(None)?;
             args.verbose = args.verbose || cli_config.verbose;
-            let github_app = build_github_app_credentials(&server_config);
+            let github_app = build_github_app_credentials(
+                cli_config.git.as_ref().and_then(|g| g.app_id.as_deref()),
+            );
 
             let cli_author = cli_config.git.as_ref().map(|g| &g.author);
             let git_author = arc_workflows::git::GitAuthor::from_options(
-                cli_author
-                    .and_then(|a| a.name.clone())
-                    .or_else(|| server_config.git.author.name.clone()),
-                cli_author
-                    .and_then(|a| a.email.clone())
-                    .or_else(|| server_config.git.author.email.clone()),
+                cli_author.and_then(|a| a.name.clone()),
+                cli_author.and_then(|a| a.email.clone()),
             );
-
-            let mut run_defaults = server_config.run_defaults;
-            if cli_config.pull_request.is_some() {
-                run_defaults.pull_request = cli_config.pull_request;
-            }
 
             arc_workflows::cli::run::run_command(
                 args,
-                run_defaults,
+                cli_config.run_defaults,
                 styles,
                 github_app,
                 git_author,
@@ -411,8 +401,10 @@ async fn main_inner() -> Result<()> {
         }
         Command::Pr { command } => match command {
             PrCommand::Create(args) => {
-                let server_config = arc_config::server::load_server_config(None)?;
-                let github_app = build_github_app_credentials(&server_config);
+                let cli_config = cli_config::load_cli_config(None)?;
+                let github_app = build_github_app_credentials(
+                    cli_config.git.as_ref().and_then(|g| g.app_id.as_deref()),
+                );
                 arc_workflows::cli::pr::pr_create_command(args, github_app).await?;
             }
         },

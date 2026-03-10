@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use arc_agent::cli::{OutputFormat, PermissionLevel};
 use arc_mcp::config::{McpServerConfig, McpTransport};
-use arc_workflows::cli::run_config::PullRequestConfig;
+use arc_workflows::cli::run_config::RunDefaults;
 use serde::Deserialize;
 use tracing::debug;
 
@@ -37,12 +37,9 @@ pub struct ExecDefaults {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-pub struct LlmDefaults {
-    pub model: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct CliGitConfig {
+    pub app_id: Option<String>,
+    pub slug: Option<String>,
     #[serde(default)]
     pub author: crate::server::GitAuthorConfig,
 }
@@ -73,13 +70,13 @@ pub struct CliConfig {
     pub mode: Option<ExecutionMode>,
     pub server: Option<ServerDefaults>,
     pub exec: Option<ExecDefaults>,
-    pub llm: Option<LlmDefaults>,
     pub git: Option<CliGitConfig>,
     #[serde(default)]
     pub verbose: bool,
     #[serde(default)]
     pub log: crate::server::LogConfig,
-    pub pull_request: Option<PullRequestConfig>,
+    #[serde(flatten)]
+    pub run_defaults: RunDefaults,
     #[serde(default)]
     pub mcp_servers: HashMap<String, McpServerEntry>,
 }
@@ -134,7 +131,7 @@ model = "claude-sonnet-4-5"
         assert_eq!(exec.model.as_deref(), Some("claude-opus-4-6"));
         assert_eq!(exec.permissions, Some(PermissionLevel::ReadWrite));
         assert_eq!(exec.output_format, Some(OutputFormat::Text));
-        let llm = config.llm.unwrap();
+        let llm = config.run_defaults.llm.unwrap();
         assert_eq!(llm.model.as_deref(), Some("claude-sonnet-4-5"));
     }
 
@@ -150,7 +147,7 @@ provider = "openai"
         assert_eq!(exec.model, None);
         assert_eq!(exec.permissions, None);
         assert_eq!(exec.output_format, None);
-        assert_eq!(config.llm, None);
+        assert_eq!(config.run_defaults.llm, None);
     }
 
     #[test]
@@ -272,14 +269,56 @@ email = "me@local"
 enabled = true
 "#;
         let config: CliConfig = toml::from_str(toml).unwrap();
-        let pr = config.pull_request.unwrap();
+        let pr = config.run_defaults.pull_request.unwrap();
         assert!(pr.enabled);
     }
 
     #[test]
     fn parse_pull_request_absent() {
         let config: CliConfig = toml::from_str("").unwrap();
-        assert_eq!(config.pull_request, None);
+        assert_eq!(config.run_defaults.pull_request, None);
+    }
+
+    #[test]
+    fn parse_git_config_with_app_id() {
+        let toml = r#"
+[git]
+app_id = "12345"
+slug = "my-app"
+
+[git.author]
+name = "arc-bot"
+email = "arc@test.com"
+"#;
+        let config: CliConfig = toml::from_str(toml).unwrap();
+        let git = config.git.unwrap();
+        assert_eq!(git.app_id.as_deref(), Some("12345"));
+        assert_eq!(git.slug.as_deref(), Some("my-app"));
+        assert_eq!(git.author.name.as_deref(), Some("arc-bot"));
+    }
+
+    #[test]
+    fn parse_llm_with_provider_and_fallbacks() {
+        let toml = r#"
+[llm]
+model = "claude-sonnet-4-5"
+provider = "anthropic"
+"#;
+        let config: CliConfig = toml::from_str(toml).unwrap();
+        let llm = config.run_defaults.llm.unwrap();
+        assert_eq!(llm.model.as_deref(), Some("claude-sonnet-4-5"));
+        assert_eq!(llm.provider.as_deref(), Some("anthropic"));
+    }
+
+    #[test]
+    fn parse_sandbox_config() {
+        let toml = r#"
+[sandbox]
+provider = "daytona"
+"#;
+        let config: CliConfig = toml::from_str(toml).unwrap();
+        let sandbox = config.run_defaults.sandbox.unwrap();
+        assert_eq!(sandbox.provider.as_deref(), Some("daytona"));
     }
 
     #[test]

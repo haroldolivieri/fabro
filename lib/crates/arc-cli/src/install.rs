@@ -378,9 +378,27 @@ async fn setup_github_app(arc_dir: &Path) -> Result<Vec<(String, String)>> {
                 if let Some(tx) = shutdown_tx.lock().unwrap().take() {
                     let _ = tx.send(());
                 }
-                Html(
-                    "<!DOCTYPE html><html><body><p>GitHub App created! You can close this tab.</p></body></html>".to_string(),
-                )
+                Html(r#"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Arc Setup</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f6f8fa; color: #1f2328; }
+  .card { text-align: center; background: #fff; border: 1px solid #d1d9e0; border-radius: 12px; padding: 48px; max-width: 420px; }
+  .check { font-size: 48px; margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+  p { font-size: 14px; color: #59636e; margin: 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="check">&#10003;</div>
+  <h1>GitHub App created</h1>
+  <p>You can close this tab and return to your terminal.</p>
+</div>
+</body>
+</html>"#.to_string())
             }),
         );
 
@@ -541,8 +559,38 @@ pub async fn run_install() -> Result<()> {
         eprintln!();
     }
 
-    // Step 1: GitHub App setup
-    eprintln!("[Step 1/4] GitHub App");
+    // Step 1: LLM providers
+    eprintln!("[Step 1/4] LLM providers");
+    let provider_labels: Vec<String> = Provider::ALL
+        .iter()
+        .map(|p| {
+            let env_vars = p.api_key_env_vars().join(" / ");
+            format!("{} ({})", provider_display_name(*p), env_vars)
+        })
+        .collect();
+
+    let selected_indices: Vec<usize> = tokio::task::spawn_blocking({
+        let labels = provider_labels.clone();
+        move || prompt_multiselect("Which LLM providers do you want to configure?", &labels)
+    })
+    .await??;
+
+    let mut env_pairs: Vec<(String, String)> = Vec::new();
+    for idx in selected_indices {
+        let provider = Provider::ALL[idx];
+        let env_var = provider.api_key_env_vars()[0];
+        let url = provider_key_url(provider);
+        eprintln!("  Get your API key at: {url}");
+
+        let prompt = env_var.to_string();
+        let key: String = tokio::task::spawn_blocking(move || prompt_input(&prompt)).await??;
+
+        env_pairs.push((env_var.to_string(), key));
+    }
+    eprintln!();
+
+    // Step 2: GitHub App setup
+    eprintln!("[Step 2/4] GitHub App");
     let mut github_env_pairs: Vec<(String, String)> = Vec::new();
     {
         let setup_github = tokio::task::spawn_blocking(|| {
@@ -610,36 +658,6 @@ pub async fn run_install() -> Result<()> {
         eprintln!("  [ok] mTLS CA + server certificates generated");
         eprintln!();
     }
-
-    // Step 2: LLM providers
-    eprintln!("[Step 2/4] LLM providers");
-    let provider_labels: Vec<String> = Provider::ALL
-        .iter()
-        .map(|p| {
-            let env_vars = p.api_key_env_vars().join(" / ");
-            format!("{} ({})", provider_display_name(*p), env_vars)
-        })
-        .collect();
-
-    let selected_indices: Vec<usize> = tokio::task::spawn_blocking({
-        let labels = provider_labels.clone();
-        move || prompt_multiselect("Which LLM providers do you want to configure?", &labels)
-    })
-    .await??;
-
-    let mut env_pairs: Vec<(String, String)> = Vec::new();
-    for idx in selected_indices {
-        let provider = Provider::ALL[idx];
-        let env_var = provider.api_key_env_vars()[0];
-        let url = provider_key_url(provider);
-        eprintln!("  Get your API key at: {url}");
-
-        let prompt = env_var.to_string();
-        let key: String = tokio::task::spawn_blocking(move || prompt_input(&prompt)).await??;
-
-        env_pairs.push((env_var.to_string(), key));
-    }
-    eprintln!();
 
     // Step 3: Writing ~/.arc/.env
     eprintln!("[Step 3/4] Writing ~/.arc/.env");

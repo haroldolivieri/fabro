@@ -217,7 +217,7 @@ pub fn check_llm_providers(
         })
         .collect();
 
-    let mut has_live_error = false;
+    let mut failed_providers: Vec<&Provider> = Vec::new();
     if let Some(results) = live_results {
         for (provider, result) in results {
             match result {
@@ -225,7 +225,7 @@ pub fn check_llm_providers(
                     text: format!("{provider} connectivity: OK"),
                 }),
                 Err(e) => {
-                    has_live_error = true;
+                    failed_providers.push(provider);
                     details.push(CheckDetail {
                         text: format!("{provider} connectivity: {e}"),
                     });
@@ -242,13 +242,14 @@ pub fn check_llm_providers(
             details,
             remediation: Some("Set at least one provider API key".to_string()),
         }
-    } else if has_live_error {
+    } else if !failed_providers.is_empty() {
+        let names: Vec<_> = failed_providers.iter().map(|p| p.to_string()).collect();
         CheckResult {
             name: "LLM providers".to_string(),
             status: CheckStatus::Warning,
             summary: format!("{count} of {total} configured (connectivity issues)"),
             details,
-            remediation: Some("Check provider API keys and network connectivity".to_string()),
+            remediation: Some(format!("Connectivity issues with: {}", names.join(", "))),
         }
     } else {
         CheckResult {
@@ -1271,6 +1272,11 @@ mod tests {
         let result = check_llm_providers(&statuses, Some(&live));
         assert_eq!(result.status, CheckStatus::Warning);
         assert!(result.details.iter().any(|d| d.text.contains("timeout")));
+        let rem = result.remediation.unwrap();
+        assert!(
+            rem.contains("anthropic"),
+            "remediation should name the failing provider: {rem}"
+        );
     }
 
     // -- check_brave_search --

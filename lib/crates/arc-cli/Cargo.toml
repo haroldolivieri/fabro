@@ -9,13 +9,18 @@ description = "Unified CLI for the Arc AI framework"
 name = "arc"
 path = "src/main.rs"
 
+[features]
+default = ["server"]
+server = ["dep:arc-api"]
+
 [dependencies]
+arc-config = { path = "../arc-config" }
 arc-llm = { path = "../arc-llm" }
 arc-github = { path = "../arc-github" }
 arc-agent = { path = "../arc-agent" }
 arc-mcp = { path = "../arc-mcp" }
 arc-workflows = { path = "../arc-workflows" }
-arc-api = { path = "../arc-api" }
+arc-api = { path = "../arc-api", optional = true }
 arc-util = { path = "../arc-util" }
 bollard.workspace = true
 clap.workspace = true

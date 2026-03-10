@@ -63,6 +63,7 @@ enum Command {
         command: Option<arc_llm::cli::ModelsCommand>,
     },
     /// Start the HTTP API server
+    #[cfg(feature = "server")]
     Serve(arc_api::serve::ServeArgs),
     /// Check environment and integration health
     Doctor {
@@ -113,7 +114,7 @@ enum LlmCommand {
 }
 
 fn build_github_app_credentials(
-    config: &arc_api::server_config::ServerConfig,
+    config: &arc_config::server::ServerConfig,
 ) -> Option<arc_github::GitHubAppCredentials> {
     let app_id = config.git.app_id.as_ref()?;
     let raw = std::env::var("GITHUB_APP_PRIVATE_KEY").ok()?;
@@ -173,6 +174,7 @@ async fn main_inner() -> Result<()> {
         Command::Parse(_) => "parse",
         Command::Cp(_) => "cp",
         Command::Model { .. } => "model",
+        #[cfg(feature = "server")]
         Command::Serve(_) => "serve",
         Command::Doctor { .. } => "doctor",
         Command::Setup => "setup",
@@ -181,12 +183,20 @@ async fn main_inner() -> Result<()> {
         Command::System { .. } => "system",
     };
 
-    let config_log_level = if let Command::Serve(ref args) = cli.command {
-        let server_config = arc_api::server_config::load_server_config(args.config.as_deref())?;
-        server_config.log.level
-    } else {
-        let cli_config = cli_config::load_cli_config(None)?;
-        cli_config.log.level
+    let config_log_level = {
+        #[cfg(feature = "server")]
+        {
+            if let Command::Serve(ref args) = cli.command {
+                let server_config = arc_config::server::load_server_config(args.config.as_deref())?;
+                server_config.log.level
+            } else {
+                arc_config::cli::load_cli_config(None)?.log.level
+            }
+        }
+        #[cfg(not(feature = "server"))]
+        {
+            arc_config::cli::load_cli_config(None)?.log.level
+        }
     };
 
     let log_prefix = if command_name == "serve" {
@@ -296,7 +306,7 @@ async fn main_inner() -> Result<()> {
         Command::Run(mut args) => {
             let styles: &'static arc_util::terminal::Styles =
                 Box::leak(Box::new(arc_util::terminal::Styles::detect_stderr()));
-            let server_config = arc_api::server_config::load_server_config(None)?;
+            let server_config = arc_config::server::load_server_config(None)?;
             let cli_config = cli_config::load_cli_config(None)?;
             args.verbose = args.verbose || cli_config.verbose;
             let github_app = build_github_app_credentials(&server_config);
@@ -351,6 +361,7 @@ async fn main_inner() -> Result<()> {
             };
             arc_llm::cli::run_models(command, server).await?
         }
+        #[cfg(feature = "server")]
         Command::Serve(args) => {
             let styles: &'static arc_util::terminal::Styles =
                 Box::leak(Box::new(arc_util::terminal::Styles::detect_stderr()));
@@ -370,7 +381,7 @@ async fn main_inner() -> Result<()> {
         }
         Command::Pr { command } => match command {
             PrCommand::Create(args) => {
-                let server_config = arc_api::server_config::load_server_config(None)?;
+                let server_config = arc_config::server::load_server_config(None)?;
                 let github_app = build_github_app_credentials(&server_config);
                 arc_workflows::cli::pr::pr_create_command(args, github_app).await?;
             }

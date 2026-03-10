@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use rustls::server::WebPkiClientVerifier;
@@ -7,8 +7,9 @@ use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::net::TcpListener;
 use tracing::error;
 
+use arc_config::server::TlsConfig;
+
 use crate::jwt_auth::PeerCertificates;
-use crate::server_config::TlsConfig;
 
 /// How client certificates should be verified.
 pub enum ClientAuth {
@@ -108,15 +109,7 @@ pub async fn serve_tls(
     }
 }
 
-/// Expand `~/` prefix to the user's home directory.
-pub fn expand_tilde(path: &Path) -> PathBuf {
-    if let Ok(rest) = path.strip_prefix("~") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
-        }
-    }
-    path.to_path_buf()
-}
+pub use arc_config::expand_tilde;
 
 fn load_certs(path: &Path) -> Vec<CertificateDer<'static>> {
     let path = expand_tilde(path);

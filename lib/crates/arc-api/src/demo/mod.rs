@@ -3054,7 +3054,7 @@ mod insights {
 }
 
 mod settings {
-    use crate::server_config::*;
+    use arc_config::server::*;
 
     pub fn server_config() -> serde_json::Value {
         serde_json::to_value(ServerConfig {

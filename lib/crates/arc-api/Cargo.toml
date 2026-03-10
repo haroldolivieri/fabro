@@ -9,6 +9,7 @@ description = "HTTP API server for Arc pipelines"
 doctest = false
 
 [dependencies]
+arc-config = { path = "../arc-config" }
 arc-workflows = { path = "../arc-workflows" }
 arc-github = { path = "../arc-github" }
 arc-agent = { path = "../arc-agent" }

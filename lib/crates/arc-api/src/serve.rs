@@ -9,9 +9,10 @@ use tracing::{error, info, warn};
 
 use clap::Args;
 
+use arc_config::server::ServerConfig;
+
 use crate::jwt_auth::{AuthMode, AuthStrategy};
 use crate::server::build_router;
-use crate::server_config::ServerConfig;
 use crate::tls::ClientAuth;
 use arc_workflows::cli::backend::AgentApiBackend;
 use arc_workflows::cli::SandboxProvider;
@@ -84,8 +85,8 @@ pub async fn serve_command(args: ServeArgs, styles: &'static Styles) -> anyhow::
 
     // Initialize data directory and SQLite database
     let config_path = args.config;
-    let server_config = crate::server_config::load_server_config(config_path.as_deref())?;
-    let data_dir = crate::server_config::resolve_data_dir(&server_config);
+    let server_config = arc_config::server::load_server_config(config_path.as_deref())?;
+    let data_dir = arc_config::server::resolve_data_dir(&server_config);
 
     // Shared config for live reloading
     let shared_config = Arc::new(RwLock::new(server_config));
@@ -212,7 +213,7 @@ pub async fn serve_command(args: ServeArgs, styles: &'static Styles) -> anyhow::
         interval.tick().await; // skip first immediate tick
         loop {
             interval.tick().await;
-            match crate::server_config::load_server_config(config_path_for_poll.as_deref()) {
+            match arc_config::server::load_server_config(config_path_for_poll.as_deref()) {
                 Ok(new_config) => {
                     let changed = {
                         let cfg = config_for_poll.read().expect("config lock poisoned");

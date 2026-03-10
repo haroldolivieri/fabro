@@ -591,7 +591,7 @@ mod tests {
     #[test]
     fn config_toml_roundtrips() {
         let toml_str = format_config_toml("brynary");
-        let config: arc_api::server_config::ServerConfig =
+        let config: arc_config::server::ServerConfig =
             toml::from_str(&toml_str).expect("config should parse");
         assert_eq!(config.web.auth.allowed_usernames, vec!["brynary"]);
     }
@@ -599,12 +599,12 @@ mod tests {
     #[test]
     fn config_toml_has_auth_strategies() {
         let toml_str = format_config_toml("alice");
-        let config: arc_api::server_config::ServerConfig = toml::from_str(&toml_str).unwrap();
+        let config: arc_config::server::ServerConfig = toml::from_str(&toml_str).unwrap();
         assert_eq!(
             config.api.authentication_strategies,
             vec![
-                arc_api::server_config::ApiAuthStrategy::Jwt,
-                arc_api::server_config::ApiAuthStrategy::Mtls,
+                arc_config::server::ApiAuthStrategy::Jwt,
+                arc_config::server::ApiAuthStrategy::Mtls,
             ]
         );
     }
@@ -612,7 +612,7 @@ mod tests {
     #[test]
     fn config_toml_has_tls_paths() {
         let toml_str = format_config_toml("bob");
-        let config: arc_api::server_config::ServerConfig = toml::from_str(&toml_str).unwrap();
+        let config: arc_config::server::ServerConfig = toml::from_str(&toml_str).unwrap();
         let tls = config.api.tls.expect("tls should be set");
         assert_eq!(tls.cert, PathBuf::from("~/.arc/certs/server.crt"));
         assert_eq!(tls.key, PathBuf::from("~/.arc/certs/server.key"));

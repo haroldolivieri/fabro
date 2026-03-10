@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::LazyLock;
 
-use arc_api::server_config::{ApiAuthStrategy, AuthProvider};
+use arc_config::server::{ApiAuthStrategy, AuthProvider};
 use arc_llm::provider::Provider;
 pub use arc_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckStatus};
 use arc_util::terminal::Styles;
@@ -890,7 +890,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
 
     let brave_key_set = std::env::var("BRAVE_SEARCH_API_KEY").is_ok();
 
-    let server_config = arc_api::server_config::load_server_config(None).unwrap_or_default();
+    let server_config = arc_config::server::load_server_config(None).unwrap_or_default();
 
     let api_status = ApiStatus {
         base_url: server_config.api.base_url.clone(),
@@ -921,7 +921,7 @@ pub async fn run_doctor(verbose: bool, live: bool) -> i32 {
     let tls_files = if has_mtls {
         server_config.api.tls.as_ref().map(|tls| {
             let read = |p: &std::path::Path| -> Result<String, String> {
-                let expanded = arc_api::tls::expand_tilde(p);
+                let expanded = arc_config::expand_tilde(p);
                 std::fs::read_to_string(&expanded)
                     .map_err(|e| format!("{}: {e}", expanded.display()))
             };

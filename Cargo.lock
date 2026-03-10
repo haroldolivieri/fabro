@@ -135,6 +135,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arc-agent",
+ "arc-config",
  "arc-db",
  "arc-exe",
  "arc-github",
@@ -185,6 +186,7 @@ dependencies = [
  "anyhow",
  "arc-agent",
  "arc-api",
+ "arc-config",
  "arc-github",
  "arc-llm",
  "arc-mcp",
@@ -219,6 +221,21 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "x509-parser",
+]
+
+[[package]]
+name = "arc-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arc-agent",
+ "arc-mcp",
+ "arc-workflows",
+ "dirs",
+ "serde",
+ "tempfile",
+ "toml",
+ "tracing",
 ]
 
 [[package]]

@@ -555,6 +555,7 @@ fn validate_invalid() {
 // == Arc: serve =========================================================
 
 #[test]
+#[cfg(feature = "server")]
 fn serve_help() {
     arc()
         .args(["serve", "--help"])

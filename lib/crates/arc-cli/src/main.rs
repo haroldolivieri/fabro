@@ -43,17 +43,20 @@ fn parse_execution_mode(s: &str) -> Result<cli_config::ExecutionMode, String> {
 #[derive(Subcommand)]
 enum Command {
     /// LLM prompt operations
+    #[command(hide = true)]
     Llm {
         #[command(subcommand)]
         command: LlmCommand,
     },
     /// Run an agentic coding session
+    #[command(hide = true)]
     Exec(arc_agent::cli::AgentArgs),
     /// Launch a workflow run
     Run(arc_workflows::cli::RunArgs),
     /// Validate a workflow
     Validate(arc_workflows::cli::ValidateArgs),
     /// Parse a DOT file and print its AST
+    #[command(hide = true)]
     Parse(arc_workflows::cli::ParseArgs),
     /// Copy files to/from a run's sandbox
     Cp(arc_workflows::cli::cp::CpArgs),

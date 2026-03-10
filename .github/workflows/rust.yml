@@ -67,7 +67,6 @@ jobs:
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_DIR: /home/bhelmkamp/.cache/sccache
-      CARGO_INCREMENTAL: "1"
     steps:
       - name: Add cargo bin to PATH
         run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH

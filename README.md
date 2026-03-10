@@ -26,6 +26,41 @@ AI coding agents are powerful but unpredictable. You either babysit every step o
 | 🦀  | Single binary, no runtime      | One compiled Rust executable with zero dependencies. No Python, no Node, no Docker required           |
 | ⚖️  | Open source (MIT)              | Full source code, no vendor lock-in. Self-host, fork, or extend to fit your workflow                  |
 
+---
+
+## Example Workflow
+
+A plan-approve-implement workflow where a human reviews the plan before the agent writes code:
+
+```dot
+digraph PlanImplement {
+    graph [
+        goal="Plan, approve, implement, and simplify a change"
+        model_stylesheet="
+            *        { llm_model: claude-haiku-4-5; reasoning_effort: low; }
+            .coding  { llm_model: claude-sonnet-4-5; reasoning_effort: high; }
+        "
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    plan      [label="Plan", prompt="Analyze the goal and codebase. Write a step-by-step plan.", reasoning_effort="high"]
+    approve   [shape=hexagon, label="Approve Plan"]
+    implement [label="Implement", class="coding", prompt="Read plan.md and implement every step."]
+    simplify  [label="Simplify", class="coding", prompt="Review the changes for clarity and correctness."]
+
+    start -> plan -> approve
+    approve -> implement [label="[A] Approve"]
+    approve -> plan      [label="[R] Revise"]
+    implement -> simplify -> exit
+}
+```
+
+Agents run as multi-turn LLM sessions with tool access. Human gates (`hexagon`) pause for approval. The stylesheet routes planning to a cheap model and coding to a frontier model. See the [DOT language reference](https://arc.dev/reference/dot-language) for the full syntax.
+
+---
+
 ## 📖 Documentation
 
 Arc ships with [comprehensive documentation](https://arc.dev) covering every feature in depth:
@@ -90,39 +125,6 @@ arc init
 ```bash
 arc run hello
 ```
-
----
-
-## Example Workflow
-
-A plan-approve-implement workflow where a human reviews the plan before the agent writes code:
-
-```dot
-digraph PlanImplement {
-    graph [
-        goal="Plan, approve, implement, and simplify a change"
-        model_stylesheet="
-            *        { llm_model: claude-haiku-4-5; reasoning_effort: low; }
-            .coding  { llm_model: claude-sonnet-4-5; reasoning_effort: high; }
-        "
-    ]
-
-    start [shape=Mdiamond, label="Start"]
-    exit  [shape=Msquare, label="Exit"]
-
-    plan      [label="Plan", prompt="Analyze the goal and codebase. Write a step-by-step plan.", reasoning_effort="high"]
-    approve   [shape=hexagon, label="Approve Plan"]
-    implement [label="Implement", class="coding", prompt="Read plan.md and implement every step."]
-    simplify  [label="Simplify", class="coding", prompt="Review the changes for clarity and correctness."]
-
-    start -> plan -> approve
-    approve -> implement [label="[A] Approve"]
-    approve -> plan      [label="[R] Revise"]
-    implement -> simplify -> exit
-}
-```
-
-Agents run as multi-turn LLM sessions with tool access. Human gates (`hexagon`) pause for approval. The stylesheet routes planning to a cheap model and coding to a frontier model. See the [DOT language reference](https://arc.dev/reference/dot-language) for the full syntax.
 
 ---
 

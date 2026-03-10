@@ -415,10 +415,12 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "tempfile",
  "termimad",
  "tokio",
  "toml",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 

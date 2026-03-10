@@ -400,6 +400,8 @@ pub async fn run_command(
         base.join(format!("{}-{}", Local::now().format("%Y%m%d"), run_id))
     });
     tokio::fs::create_dir_all(&logs_dir).await?;
+    arc_util::run_log::activate(&logs_dir.join("cli.log"))
+        .context("Failed to activate per-run log")?;
     tokio::fs::write(logs_dir.join("graph.dot"), &source).await?;
     tokio::fs::write(logs_dir.join("run.pid"), std::process::id().to_string()).await?;
     if workflow_path.extension().is_some_and(|ext| ext == "toml") {
@@ -1253,6 +1255,7 @@ pub async fn run_command(
     }
 
     // 10. Exit code
+    arc_util::run_log::deactivate();
     match outcome.status {
         StageStatus::Success | StageStatus::PartialSuccess => Ok(()),
         _ => {
@@ -1410,6 +1413,8 @@ async fn run_from_branch(
         ))
     });
     tokio::fs::create_dir_all(&logs_dir).await?;
+    arc_util::run_log::activate(&logs_dir.join("cli.log"))
+        .context("Failed to activate per-run log")?;
     tokio::fs::write(logs_dir.join("graph.dot"), &source).await?;
 
     let base_sha =
@@ -1627,6 +1632,7 @@ async fn run_from_branch(
     print_final_output(&logs_dir, styles);
     print_assets(&logs_dir, styles);
 
+    arc_util::run_log::deactivate();
     match outcome.status {
         StageStatus::Success | StageStatus::PartialSuccess => Ok(()),
         _ => std::process::exit(1),

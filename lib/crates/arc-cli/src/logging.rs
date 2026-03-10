@@ -22,11 +22,19 @@ pub fn init_tracing(debug: bool, config_log_level: Option<&str>, log_prefix: &st
         .to_string();
     let file_appender = tracing_appender::rolling::never(&log_dir, &filename);
 
+    let run_log_writer = arc_util::run_log::init();
+
     tracing_subscriber::registry()
         .with(filter)
         .with(
             fmt::layer()
                 .with_writer(file_appender)
+                .with_target(true)
+                .with_ansi(false),
+        )
+        .with(
+            fmt::layer()
+                .with_writer(run_log_writer)
                 .with_target(true)
                 .with_ansi(false),
         )

@@ -893,16 +893,28 @@ pub async fn run_command(
         .and_then(|c| c.sandbox.as_ref())
         .and_then(|s| s.env.clone())
         .unwrap_or_default();
+    let mcp_servers: Vec<arc_mcp::config::McpServerConfig> = run_cfg
+        .as_ref()
+        .map(|c| {
+            c.mcp_servers
+                .clone()
+                .into_iter()
+                .map(|(name, entry)| entry.into_config(name))
+                .collect()
+        })
+        .unwrap_or_default();
     let registry = default_registry(interviewer.clone(), {
         let sandbox_env = sandbox_env.clone();
         let model = model.clone();
+        let mcp_servers = mcp_servers.clone();
         move || {
             if dry_run_mode {
                 None
             } else {
                 let api =
                     AgentApiBackend::new(model.clone(), provider_enum, fallback_chain.clone())
-                        .with_env(sandbox_env.clone());
+                        .with_env(sandbox_env.clone())
+                        .with_mcp_servers(mcp_servers.clone());
                 let cli = AgentCliBackend::new(model.clone(), provider_enum)
                     .with_env(sandbox_env.clone());
                 Some(Box::new(BackendRouter::new(Box::new(api), cli)))
@@ -2119,6 +2131,7 @@ mod tests {
             checkpoint: Default::default(),
             pull_request: None,
             assets: None,
+            mcp_servers: Default::default(),
         };
         let (model, provider) = resolve_model_provider(
             Some("gpt-5.2"),
@@ -2162,6 +2175,7 @@ mod tests {
             checkpoint: Default::default(),
             pull_request: None,
             assets: None,
+            mcp_servers: Default::default(),
         };
         let (model, provider) = resolve_model_provider(None, None, Some(&cfg), &defaults, &graph);
         assert_eq!(model, "toml-model");
@@ -2240,6 +2254,7 @@ mod tests {
             checkpoint: Default::default(),
             pull_request: None,
             assets: None,
+            mcp_servers: Default::default(),
         };
         let (model, provider) = resolve_model_provider(None, None, Some(&cfg), &defaults, &graph);
         assert_eq!(model, "toml-model");
@@ -2268,6 +2283,7 @@ mod tests {
             checkpoint: Default::default(),
             pull_request: None,
             assets: None,
+            mcp_servers: Default::default(),
         };
         let defaults = RunDefaults::default();
         assert!(resolve_preserve_sandbox(true, Some(&cfg), &defaults));
@@ -2295,6 +2311,7 @@ mod tests {
             checkpoint: Default::default(),
             pull_request: None,
             assets: None,
+            mcp_servers: Default::default(),
         };
         let defaults = RunDefaults {
             sandbox: Some(run_config::SandboxConfig {
@@ -2365,6 +2382,7 @@ mod tests {
             checkpoint: Default::default(),
             pull_request: None,
             assets: None,
+            mcp_servers: Default::default(),
         };
         let defaults = RunDefaults::default();
         assert_eq!(
@@ -2418,6 +2436,7 @@ mod tests {
             checkpoint: Default::default(),
             pull_request: None,
             assets: None,
+            mcp_servers: Default::default(),
         };
         let defaults = RunDefaults {
             sandbox: Some(run_config::SandboxConfig {

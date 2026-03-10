@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use tracing::debug;
 
+use arc_mcp::config::{McpServerConfig, McpTransport};
+
 use crate::daytona_sandbox::{DaytonaConfig, DockerfileSource};
 
 const SUPPORTED_VERSION: u32 = 1;
@@ -51,6 +53,29 @@ pub struct WorkflowRunConfig {
     pub checkpoint: CheckpointConfig,
     pub pull_request: Option<PullRequestConfig>,
     pub assets: Option<AssetsConfig>,
+    #[serde(default)]
+    pub mcp_servers: HashMap<String, McpServerEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct McpServerEntry {
+    #[serde(flatten)]
+    pub transport: McpTransport,
+    #[serde(default = "arc_mcp::config::default_startup_timeout_secs")]
+    pub startup_timeout_secs: u64,
+    #[serde(default = "arc_mcp::config::default_tool_timeout_secs")]
+    pub tool_timeout_secs: u64,
+}
+
+impl McpServerEntry {
+    pub fn into_config(self, name: String) -> McpServerConfig {
+        McpServerConfig {
+            name,
+            transport: self.transport,
+            startup_timeout_secs: self.startup_timeout_secs,
+            tool_timeout_secs: self.tool_timeout_secs,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

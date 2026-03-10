@@ -109,6 +109,7 @@ pub struct AgentApiBackend {
     fallback_chain: Vec<FallbackTarget>,
     sessions: Mutex<HashMap<String, Session>>,
     env: HashMap<String, String>,
+    mcp_servers: Vec<arc_mcp::config::McpServerConfig>,
 }
 
 impl AgentApiBackend {
@@ -120,12 +121,19 @@ impl AgentApiBackend {
             fallback_chain,
             sessions: Mutex::new(HashMap::new()),
             env: HashMap::new(),
+            mcp_servers: Vec::new(),
         }
     }
 
     #[must_use]
     pub fn with_env(mut self, env: HashMap<String, String>) -> Self {
         self.env = env;
+        self
+    }
+
+    #[must_use]
+    pub fn with_mcp_servers(mut self, servers: Vec<arc_mcp::config::McpServerConfig>) -> Self {
+        self.mcp_servers = servers;
         self
     }
 
@@ -142,6 +150,7 @@ impl AgentApiBackend {
             sandbox,
             &self.env,
             tool_hooks,
+            self.mcp_servers.clone(),
         )
         .await
     }
@@ -153,6 +162,7 @@ impl AgentApiBackend {
         sandbox: &Arc<dyn Sandbox>,
         env: &HashMap<String, String>,
         tool_hooks: Option<Arc<dyn arc_agent::ToolHookCallback>>,
+        mcp_servers: Vec<arc_mcp::config::McpServerConfig>,
     ) -> Result<Session, ArcError> {
         let client = Client::from_env()
             .await
@@ -164,6 +174,7 @@ impl AgentApiBackend {
             max_tokens: node.max_tokens(),
             reasoning_effort: Some(node.reasoning_effort().to_string()),
             tool_hooks,
+            mcp_servers,
             ..SessionConfig::default()
         };
 
@@ -481,6 +492,7 @@ impl CodergenBackend for AgentApiBackend {
                         sandbox,
                         &self.env,
                         tool_hooks.clone(),
+                        self.mcp_servers.clone(),
                     )
                     .await
                     {

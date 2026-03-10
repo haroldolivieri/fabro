@@ -5,6 +5,7 @@ use tracing::{debug, info};
 
 use arc_github::{self as github_app, ssh_url_to_https, GitHubAppCredentials};
 
+use crate::conclusion::Conclusion;
 use crate::retro::Retro;
 
 /// Record of a pull request created for a workflow run.
@@ -120,15 +121,15 @@ fn format_retro_section(retro: &Retro) -> String {
 ///
 /// Renders a cost/duration table in a collapsible `<details>` block, and
 /// optionally a DOT graph in another `<details>` block.
-fn format_arc_details_section(retro: &Retro, dot_source: Option<&str>) -> String {
+fn format_arc_details_section(conclusion: &Conclusion, dot_source: Option<&str>) -> String {
     let mut parts = Vec::new();
     parts.push("### Arc Details".to_string());
     parts.push(String::new());
 
     // Cost table
-    let total_duration = format_duration_ms(retro.stats.total_duration_ms);
-    let total_cost_str = format_cost(retro.stats.total_cost);
-    let stage_count = retro.stages.len();
+    let total_duration = format_duration_ms(conclusion.duration_ms);
+    let total_cost_str = format_cost(conclusion.total_cost);
+    let stage_count = conclusion.stages.len();
     parts.push(format!(
         "<details>\n<summary>Ran {stage_count} {} in {total_duration} for {total_cost_str}</summary>",
         if stage_count == 1 { "stage" } else { "stages" }
@@ -137,7 +138,7 @@ fn format_arc_details_section(retro: &Retro, dot_source: Option<&str>) -> String
 
     parts.push("| Stage | Duration | Cost | Retries |".to_string());
     parts.push("|---|---|---|---|".to_string());
-    for stage in &retro.stages {
+    for stage in &conclusion.stages {
         let dur = format_duration_ms(stage.duration_ms);
         let cost = format_cost(stage.cost);
         parts.push(format!(
@@ -146,7 +147,7 @@ fn format_arc_details_section(retro: &Retro, dot_source: Option<&str>) -> String
         ));
     }
     // Total row
-    let total_retries = retro.stats.total_retries;
+    let total_retries = conclusion.total_retries;
     parts.push(format!(
         "| **Total** | **{total_duration}** | **{total_cost_str}** | **{total_retries}** |"
     ));
@@ -269,6 +270,7 @@ pub async fn build_pr_body(
     debug!("Building PR body");
 
     let plan_text = read_plan_text(run_dir);
+    let conclusion = Conclusion::load(&run_dir.join("conclusion.json")).ok();
     let retro = Retro::load(run_dir).ok();
     let dot_source = read_dot_source(run_dir);
 
@@ -311,9 +313,9 @@ pub async fn build_pr_body(
     let llm_output = result.response.text();
 
     let retro_section = retro.as_ref().map(format_retro_section).unwrap_or_default();
-    let arc_details_section = retro
+    let arc_details_section = conclusion
         .as_ref()
-        .map(|r| format_arc_details_section(r, dot_source.as_deref()))
+        .map(|c| format_arc_details_section(c, dot_source.as_deref()))
         .unwrap_or_default();
 
     let body = assemble_pr_body(
@@ -385,10 +387,46 @@ pub async fn maybe_open_pull_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::conclusion::StageSummary;
     use crate::retro::{
         AggregateStats, FrictionKind, FrictionPoint, OpenItem, OpenItemKind, StageRetro,
     };
     use chrono::Utc;
+
+    fn make_test_conclusion() -> Conclusion {
+        Conclusion {
+            timestamp: Utc::now(),
+            status: crate::outcome::StageStatus::Success,
+            duration_ms: 150_000,
+            failure_reason: None,
+            final_git_commit_sha: None,
+            stages: vec![
+                StageSummary {
+                    stage_id: "plan".to_string(),
+                    stage_label: "plan".to_string(),
+                    duration_ms: 45_000,
+                    cost: Some(0.12),
+                    retries: 0,
+                },
+                StageSummary {
+                    stage_id: "implement".to_string(),
+                    stage_label: "implement".to_string(),
+                    duration_ms: 90_000,
+                    cost: Some(0.25),
+                    retries: 0,
+                },
+                StageSummary {
+                    stage_id: "simplify".to_string(),
+                    stage_label: "simplify".to_string(),
+                    duration_ms: 15_000,
+                    cost: Some(0.05),
+                    retries: 0,
+                },
+            ],
+            total_cost: Some(0.42),
+            total_retries: 0,
+        }
+    }
 
     fn make_test_retro() -> Retro {
         Retro {
@@ -525,8 +563,8 @@ mod tests {
 
     #[test]
     fn format_arc_details_cost_table() {
-        let retro = make_test_retro();
-        let section = format_arc_details_section(&retro, None);
+        let conclusion = make_test_conclusion();
+        let section = format_arc_details_section(&conclusion, None);
 
         assert!(section.contains("### Arc Details"));
         assert!(section.contains("Ran 3 stages in 2m 30s for $0.42"));
@@ -538,12 +576,12 @@ mod tests {
 
     #[test]
     fn format_arc_details_no_cost() {
-        let mut retro = make_test_retro();
-        for stage in &mut retro.stages {
+        let mut conclusion = make_test_conclusion();
+        for stage in &mut conclusion.stages {
             stage.cost = None;
         }
-        retro.stats.total_cost = None;
-        let section = format_arc_details_section(&retro, None);
+        conclusion.total_cost = None;
+        let section = format_arc_details_section(&conclusion, None);
 
         // En-dash for missing costs
         assert!(section.contains("| plan | 45s | \u{2013} | 0 |"));
@@ -552,9 +590,9 @@ mod tests {
 
     #[test]
     fn format_arc_details_with_dot_graph() {
-        let retro = make_test_retro();
+        let conclusion = make_test_conclusion();
         let dot = "digraph implement {\n  plan [type=\"agent\"]\n  code [type=\"agent\"]\n  plan -> code\n}\n";
-        let section = format_arc_details_section(&retro, Some(dot));
+        let section = format_arc_details_section(&conclusion, Some(dot));
 
         assert!(section.contains("<code>implement.dot</code>"));
         assert!(section.contains("2 nodes and 1 edge"));
@@ -653,6 +691,29 @@ mod tests {
         let body = assemble_pr_body("Just the narrative.", None, "", "");
 
         assert_eq!(body, "Just the narrative.");
+    }
+
+    #[test]
+    fn assemble_conclusion_without_retro() {
+        let conclusion = make_test_conclusion();
+        let arc_details = format_arc_details_section(&conclusion, None);
+        let body = assemble_pr_body("Narrative.", None, "", &arc_details);
+
+        assert!(body.contains("### Arc Details"));
+        assert!(body.contains("Ran 3 stages"));
+        assert!(!body.contains("### Retro"));
+    }
+
+    #[test]
+    fn assemble_both_conclusion_and_retro() {
+        let conclusion = make_test_conclusion();
+        let retro = make_test_retro();
+        let retro_section = format_retro_section(&retro);
+        let arc_details = format_arc_details_section(&conclusion, None);
+        let body = assemble_pr_body("Narrative.", None, &retro_section, &arc_details);
+
+        assert!(body.contains("### Retro"));
+        assert!(body.contains("### Arc Details"));
     }
 
     // ── parse_dot_summary tests ─────────────────────────────────────────

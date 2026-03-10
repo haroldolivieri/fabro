@@ -7,6 +7,16 @@ use crate::error::Result;
 use crate::outcome::StageStatus;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StageSummary {
+    pub stage_id: String,
+    pub stage_label: String,
+    pub duration_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
+    pub retries: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conclusion {
     pub timestamp: DateTime<Utc>,
     pub status: StageStatus,
@@ -15,6 +25,12 @@ pub struct Conclusion {
     pub failure_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub final_git_commit_sha: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stages: Vec<StageSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_cost: Option<f64>,
+    #[serde(default)]
+    pub total_retries: u32,
 }
 
 impl Conclusion {
@@ -38,6 +54,24 @@ mod tests {
             duration_ms: 12345,
             failure_reason: None,
             final_git_commit_sha: Some("deadbeef".to_string()),
+            stages: vec![
+                StageSummary {
+                    stage_id: "plan".to_string(),
+                    stage_label: "plan".to_string(),
+                    duration_ms: 5000,
+                    cost: Some(0.05),
+                    retries: 0,
+                },
+                StageSummary {
+                    stage_id: "code".to_string(),
+                    stage_label: "code".to_string(),
+                    duration_ms: 7345,
+                    cost: Some(0.10),
+                    retries: 1,
+                },
+            ],
+            total_cost: Some(0.15),
+            total_retries: 1,
         }
     }
 
@@ -54,6 +88,13 @@ mod tests {
         assert_eq!(loaded.duration_ms, 12345);
         assert!(loaded.failure_reason.is_none());
         assert_eq!(loaded.final_git_commit_sha.as_deref(), Some("deadbeef"));
+        assert_eq!(loaded.stages.len(), 2);
+        assert_eq!(loaded.stages[0].stage_id, "plan");
+        assert_eq!(loaded.stages[0].duration_ms, 5000);
+        assert!((loaded.stages[0].cost.unwrap() - 0.05).abs() < f64::EPSILON);
+        assert_eq!(loaded.stages[1].retries, 1);
+        assert!((loaded.total_cost.unwrap() - 0.15).abs() < f64::EPSILON);
+        assert_eq!(loaded.total_retries, 1);
     }
 
     #[test]
@@ -83,6 +124,9 @@ mod tests {
             duration_ms: 500,
             failure_reason: None,
             final_git_commit_sha: None,
+            stages: vec![],
+            total_cost: None,
+            total_retries: 0,
         };
         conclusion.save(&path).unwrap();
 
@@ -90,6 +134,8 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(raw.get("failure_reason").is_none());
         assert!(raw.get("final_git_commit_sha").is_none());
+        assert!(raw.get("stages").is_none());
+        assert!(raw.get("total_cost").is_none());
     }
 
     #[test]
@@ -103,10 +149,28 @@ mod tests {
             duration_ms: 100,
             failure_reason: Some("timeout".to_string()),
             final_git_commit_sha: None,
+            stages: vec![],
+            total_cost: None,
+            total_retries: 0,
         };
         conclusion.save(&path).unwrap();
         let loaded = Conclusion::load(&path).unwrap();
 
         assert_eq!(loaded.failure_reason.as_deref(), Some("timeout"));
+    }
+
+    #[test]
+    fn backward_compat_old_json_without_new_fields() {
+        let json = r#"{
+            "timestamp": "2025-01-01T00:00:00Z",
+            "status": "success",
+            "duration_ms": 5000,
+            "final_git_commit_sha": "abc123"
+        }"#;
+        let loaded: Conclusion = serde_json::from_str(json).unwrap();
+        assert_eq!(loaded.duration_ms, 5000);
+        assert!(loaded.stages.is_empty());
+        assert!(loaded.total_cost.is_none());
+        assert_eq!(loaded.total_retries, 0);
     }
 }

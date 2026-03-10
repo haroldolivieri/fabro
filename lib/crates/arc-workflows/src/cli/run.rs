@@ -1023,12 +1023,53 @@ pub async fn run_command(
             Ok(o) => (o.status.clone(), o.failure_reason().map(String::from)),
             Err(e) => (crate::outcome::StageStatus::Fail, Some(e.to_string())),
         };
+
+        // Load checkpoint and stage durations to populate per-stage data
+        let checkpoint = Checkpoint::load(&run_dir.join("checkpoint.json")).ok();
+        let stage_durations = crate::retro::extract_stage_durations(&run_dir);
+
+        let (stages, total_cost, total_retries) = if let Some(ref cp) = checkpoint {
+            let mut stages = Vec::new();
+            let mut cost_sum: Option<f64> = None;
+            let mut retries_sum: u32 = 0;
+
+            for node_id in &cp.completed_nodes {
+                let outcome = cp.node_outcomes.get(node_id);
+                let retries = cp
+                    .node_retries
+                    .get(node_id)
+                    .copied()
+                    .unwrap_or(1)
+                    .saturating_sub(1);
+                retries_sum += retries;
+
+                let cost = outcome.and_then(|o| o.usage.as_ref()).and_then(|u| u.cost);
+                if let Some(c) = cost {
+                    *cost_sum.get_or_insert(0.0) += c;
+                }
+
+                stages.push(crate::conclusion::StageSummary {
+                    stage_id: node_id.clone(),
+                    stage_label: node_id.clone(),
+                    duration_ms: stage_durations.get(node_id).copied().unwrap_or(0),
+                    cost,
+                    retries,
+                });
+            }
+            (stages, cost_sum, retries_sum)
+        } else {
+            (vec![], None, 0)
+        };
+
         let conclusion = crate::conclusion::Conclusion {
             timestamp: Utc::now(),
             status,
             duration_ms: run_duration_ms,
             failure_reason,
             final_git_commit_sha: last_git_sha.lock().unwrap().clone(),
+            stages,
+            total_cost,
+            total_retries,
         };
         let _ = conclusion.save(&run_dir.join("conclusion.json"));
     }

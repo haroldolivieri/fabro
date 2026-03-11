@@ -234,6 +234,25 @@ pub fn branch_needs_push(repo: &Path, remote: &str, branch: &str) -> bool {
     }
 }
 
+/// Assert the repo is clean and the current branch is pushed to the remote.
+/// This is the check for remote sandboxes that clone from origin.
+pub fn ensure_clean_and_pushed(repo: &Path, remote: &str, branch: Option<&str>) -> Result<()> {
+    ensure_clean(repo)?;
+    match branch {
+        Some(b) => {
+            tracing::debug!(path = %repo.display(), remote, branch = b, "Checking branch is pushed");
+            if branch_needs_push(repo, remote, b) {
+                Err(git_error(format!(
+                    "branch '{b}' has unpushed commits (not in sync with '{remote}/{b}')"
+                )))
+            } else {
+                Ok(())
+            }
+        }
+        None => Err(git_error("detached HEAD, cannot verify branch is pushed")),
+    }
+}
+
 /// Sanitize a string for use as a git ref component.
 /// Lowercases, replaces non-alphanumeric chars with dashes, collapses runs.
 pub fn sanitize_ref_component(s: &str) -> String {
@@ -899,5 +918,99 @@ mod tests {
 
         // No remote at all — should return true (safe default)
         assert!(branch_needs_push(repo_dir, "origin", "main"));
+    }
+
+    /// Helper: create a local repo with a bare remote and push main.
+    fn init_repo_with_remote(dir: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+        let repo_dir = dir.join("repo");
+        let remote_dir = dir.join("remote.git");
+
+        Command::new("git")
+            .args(["init", "--bare"])
+            .arg(&remote_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["init"])
+            .arg(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["remote", "add", "origin"])
+            .arg(&remote_dir)
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init",
+            ])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+        push_branch(&repo_dir, "origin", "main").unwrap();
+
+        (repo_dir, remote_dir)
+    }
+
+    #[test]
+    fn ensure_clean_and_pushed_when_clean_and_pushed() {
+        let dir = tempfile::tempdir().unwrap();
+        let (repo_dir, _) = init_repo_with_remote(dir.path());
+        assert!(ensure_clean_and_pushed(&repo_dir, "origin", Some("main")).is_ok());
+    }
+
+    #[test]
+    fn ensure_clean_and_pushed_when_dirty() {
+        let dir = tempfile::tempdir().unwrap();
+        let (repo_dir, _) = init_repo_with_remote(dir.path());
+        fs::write(repo_dir.join("dirty.txt"), "hello").unwrap();
+        let err = ensure_clean_and_pushed(&repo_dir, "origin", Some("main")).unwrap_err();
+        assert!(err.to_string().contains("uncommitted changes"));
+    }
+
+    #[test]
+    fn ensure_clean_and_pushed_when_not_pushed() {
+        let dir = tempfile::tempdir().unwrap();
+        let (repo_dir, _) = init_repo_with_remote(dir.path());
+
+        // Make another commit locally (now ahead of remote)
+        Command::new("git")
+            .args([
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "unpushed",
+            ])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+
+        let err = ensure_clean_and_pushed(&repo_dir, "origin", Some("main")).unwrap_err();
+        assert!(err.to_string().contains("unpushed commits"));
+    }
+
+    #[test]
+    fn ensure_clean_and_pushed_when_no_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        let (repo_dir, _) = init_repo_with_remote(dir.path());
+        let err = ensure_clean_and_pushed(&repo_dir, "origin", None).unwrap_err();
+        assert!(err.to_string().contains("detached HEAD"));
     }
 }

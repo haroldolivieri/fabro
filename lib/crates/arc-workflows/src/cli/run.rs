@@ -386,7 +386,12 @@ pub async fn run_command(
             .map(|(url, branch)| (Some(url), branch))
             .unwrap_or((None, None));
     let git_clean = if sandbox_provider.is_remote() {
-        false
+        crate::git::ensure_clean_and_pushed(
+            &original_cwd,
+            "origin",
+            detected_base_branch.as_deref(),
+        )
+        .is_ok()
     } else {
         crate::git::ensure_clean(&original_cwd).is_ok()
     };

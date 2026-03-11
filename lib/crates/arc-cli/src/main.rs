@@ -3,6 +3,7 @@ mod doctor;
 mod init;
 mod install;
 mod logging;
+mod skill;
 
 use std::path::PathBuf;
 
@@ -99,6 +100,11 @@ enum Command {
         #[command(subcommand)]
         command: PrCommand,
     },
+    /// Skill management
+    Skill {
+        #[command(subcommand)]
+        command: SkillCommand,
+    },
     /// System maintenance commands
     System {
         #[command(subcommand)]
@@ -132,6 +138,12 @@ enum SystemCommand {
     Prune(arc_workflows::cli::runs::RunsPruneArgs),
     /// Show disk usage
     Df(arc_workflows::cli::runs::DfArgs),
+}
+
+#[derive(Subcommand)]
+enum SkillCommand {
+    /// Install a built-in skill
+    Install(skill::SkillInstallArgs),
 }
 
 #[derive(Subcommand)]
@@ -275,6 +287,9 @@ async fn main_inner() -> (String, Result<()>) {
             PrCommand::View(_) => "pr view",
             PrCommand::Merge(_) => "pr merge",
             PrCommand::Close(_) => "pr close",
+        },
+        Command::Skill { command } => match command {
+            SkillCommand::Install(_) => "skill install",
         },
         Command::System { command } => match command {
             SystemCommand::Prune(_) => "system prune",
@@ -562,6 +577,11 @@ async fn main_inner() -> (String, Result<()>) {
                     }
                 }
             }
+            Command::Skill { command } => match command {
+                SkillCommand::Install(args) => {
+                    skill::run_skill_install(&args)?;
+                }
+            },
             Command::System { command } => match command {
                 SystemCommand::Prune(args) => {
                     arc_workflows::cli::runs::prune_command(&args)?;

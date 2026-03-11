@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(openai.len(), 7);
 
         let gemini = list_models(Some("gemini"));
-        assert_eq!(gemini.len(), 3);
+        assert_eq!(gemini.len(), 4);
 
         let unknown = list_models(Some("unknown"));
         assert!(unknown.is_empty());

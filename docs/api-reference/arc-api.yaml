@@ -4073,6 +4073,9 @@ components:
         preserve:
           type: boolean
           description: Whether to preserve the sandbox after the run.
+        devcontainer:
+          type: boolean
+          description: Whether to use a devcontainer for the sandbox.
         daytona:
           $ref: "#/components/schemas/DaytonaConfiguration"
         exe:

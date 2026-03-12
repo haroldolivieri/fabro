@@ -52,7 +52,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 export const handle = { wide: true };
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Controls — Verification — Arc" }];
+  return [{ title: "Controls — Verification — Fabro" }];
 }
 
 type IconComponent = React.ComponentType<{ className?: string }>;

@@ -17,7 +17,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
 export function meta({ data }: Route.MetaArgs) {
   const retro = data?.retro;
-  return [{ title: retro ? `Retro: ${retro.goal} \u2014 Arc` : "Retro \u2014 Arc" }];
+  return [{ title: retro ? `Retro: ${retro.goal} \u2014 Fabro` : "Retro \u2014 Fabro" }];
 }
 
 function formatCost(cost: number | undefined): string {

@@ -13,7 +13,7 @@ export function loader({ request }: Route.LoaderArgs) {
   const suffix = Math.random().toString(16).slice(2, 8);
 
   const manifest = {
-    name: `Arc-${suffix}`,
+    name: `Fabro-${suffix}`,
     url: baseUrl,
     redirect_url: `${baseUrl}/setup/callback`,
     callback_urls: [`${baseUrl}/auth/callback`],
@@ -39,7 +39,7 @@ export default function Setup({ loaderData }: Route.ComponentProps) {
   return (
     <AuthLayout>
       <h1 className="text-center text-lg font-semibold text-fg">
-        Set up Arc
+        Set up Fabro
       </h1>
       <p className="mt-2 text-center text-sm text-fg-3">
         Register a GitHub App to enable OAuth login and repository access.

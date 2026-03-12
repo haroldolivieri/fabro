@@ -4,7 +4,7 @@ import type { ServerConfiguration } from "@qltysh/arc-api-client";
 import type { Route } from "./+types/settings";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Settings — Arc" }];
+  return [{ title: "Settings — Fabro" }];
 }
 
 export const handle = { hideHeader: true };

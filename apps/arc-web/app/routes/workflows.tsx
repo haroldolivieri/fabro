@@ -19,7 +19,7 @@ import type { PaginatedWorkflowList } from "@qltysh/arc-api-client";
 import type { Route } from "./+types/workflows";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Workflows — Arc" }];
+  return [{ title: "Workflows — Fabro" }];
 }
 
 export const handle = {

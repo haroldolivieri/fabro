@@ -32,7 +32,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Retros \u2014 Arc" }];
+  return [{ title: "Retros \u2014 Fabro" }];
 }
 
 const smoothnessOptions: Array<{ value: SmoothnessRating; label: string }> = [

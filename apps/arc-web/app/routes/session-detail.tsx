@@ -17,7 +17,7 @@ import type { Route } from "./+types/session-detail";
 export const handle = { hideHeader: true, wide: true };
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Session — Arc" }];
+  return [{ title: "Session — Fabro" }];
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {

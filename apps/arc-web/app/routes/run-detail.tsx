@@ -49,7 +49,7 @@ export async function action({ params, request }: Route.ActionArgs) {
 
 export function meta({ data }: Route.MetaArgs) {
   const run = data?.run;
-  return [{ title: run ? `${run.title} — Arc` : "Run — Arc" }];
+  return [{ title: run ? `${run.title} — Fabro` : "Run — Fabro" }];
 }
 
 export default function RunDetail({ loaderData, params }: Route.ComponentProps) {

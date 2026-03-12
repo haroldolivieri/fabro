@@ -29,7 +29,7 @@ import type { Route } from "./+types/start";
 export const handle = { hideHeader: true, wide: true };
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Start — Arc" }];
+  return [{ title: "Start — Fabro" }];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

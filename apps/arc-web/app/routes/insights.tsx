@@ -6,7 +6,7 @@ import type { PaginatedSavedQueryList, PaginatedHistoryEntryList } from "@qltysh
 import type { Route } from "./+types/insights";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Insights — Arc" }];
+  return [{ title: "Insights — Fabro" }];
 }
 
 export const handle = {

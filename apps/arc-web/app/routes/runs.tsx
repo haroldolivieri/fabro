@@ -25,7 +25,7 @@ import type { PaginatedRunList } from "@qltysh/arc-api-client";
 import type { Route } from "./+types/runs";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Runs — Arc" }];
+  return [{ title: "Runs — Fabro" }];
 }
 
 const columnConfig: {

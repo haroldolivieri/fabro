@@ -38,7 +38,7 @@ export default function AuthLogin({ loaderData }: Route.ComponentProps) {
   return (
     <AuthLayout>
       <h1 className="text-center text-lg font-semibold text-fg">
-        Sign in to Arc
+        Sign in to Fabro
       </h1>
       <p className="mt-2 text-center text-sm text-fg-3">
         Authenticate with your GitHub account to continue.

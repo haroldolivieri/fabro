@@ -224,7 +224,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
 export function meta({ data }: Route.MetaArgs) {
   const title = data?.workflow?.name ?? "Workflow";
-  return [{ title: `${title} — Arc` }];
+  return [{ title: `${title} — Fabro` }];
 }
 
 export default function WorkflowDetail({ loaderData }: Route.ComponentProps) {

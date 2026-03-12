@@ -63,7 +63,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
 export function meta({ data }: Route.MetaArgs) {
   const name = data?.data?.name ?? "Criterion";
-  return [{ title: `${name} — Verification — Arc` }];
+  return [{ title: `${name} — Verification — Fabro` }];
 }
 
 type IconComponent = React.ComponentType<{ className?: string }>;

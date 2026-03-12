@@ -113,8 +113,8 @@ fabro run hello
 
 ## Help or Feedback
 
-- [Bug reports](https://github.com/brynary/arc/issues) via GitHub Issues
-- [Feature requests](https://github.com/brynary/arc/issues) via GitHub Issues
+- [Bug reports](https://github.com/fabro-sh/fabro/issues) via GitHub Issues
+- [Feature requests](https://github.com/fabro-sh/fabro/issues) via GitHub Issues
 - Email [bryan@qlty.sh](mailto:bryan@qlty.sh) for questions
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development workflow
 

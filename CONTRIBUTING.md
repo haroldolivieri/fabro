@@ -43,7 +43,7 @@ bun run typecheck  # type check
 
 ## Reporting bugs
 
-Open an issue on [GitHub Issues](https://github.com/brynary/arc/issues) with steps to reproduce the problem.
+Open an issue on [GitHub Issues](https://github.com/fabro-sh/fabro/issues) with steps to reproduce the problem.
 
 ## License
 

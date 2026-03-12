@@ -1,0 +1,19 @@
+[package]
+name = "arc-linear"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "Linear issue tracker API helpers for Arc"
+
+[lib]
+doctest = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+mockito = "1"
+tokio = { workspace = true, features = ["test-util", "macros"] }

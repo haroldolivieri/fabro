@@ -1452,7 +1452,22 @@ mod workflows {
     fn run_config_to_api(
         cfg: arc_workflows::cli::run_config::WorkflowRunConfig,
     ) -> RunConfiguration {
-        serde_json::from_value(serde_json::to_value(cfg).unwrap()).unwrap()
+        fn strip_nulls(val: serde_json::Value) -> serde_json::Value {
+            match val {
+                serde_json::Value::Object(map) => serde_json::Value::Object(
+                    map.into_iter()
+                        .filter(|(_, v)| !v.is_null())
+                        .map(|(k, v)| (k, strip_nulls(v)))
+                        .collect(),
+                ),
+                serde_json::Value::Array(arr) => {
+                    serde_json::Value::Array(arr.into_iter().map(strip_nulls).collect())
+                }
+                other => other,
+            }
+        }
+        let val = strip_nulls(serde_json::to_value(cfg).unwrap());
+        serde_json::from_value(val).unwrap()
     }
 
     pub fn detail(name: &str) -> Option<WorkflowDetail> {

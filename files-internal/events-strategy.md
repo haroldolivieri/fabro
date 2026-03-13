@@ -286,7 +286,7 @@ Error information is stored as plain strings. The `error` field contains the hum
 | `failure_reason` | string? | StageFailed, StageCompleted | Outcome-level failure description |
 | `failure_class` | string? | StageFailed, StageCompleted | Machine classification: `transient_infra`, `deterministic`, `budget_exhausted`, `compilation_loop`, `canceled`, `structural` |
 
-`failure_class` is derived from `ArcError::failure_class()` for handler errors, or from handler hints in `context_updates["failure_class"]` for outcome-based failures. See `error.rs` for the classification logic.
+`failure_class` is derived from `FabroError::failure_class()` for handler errors, or from handler hints in `context_updates["failure_class"]` for outcome-based failures. See `error.rs` for the classification logic.
 
 ## Consumers
 

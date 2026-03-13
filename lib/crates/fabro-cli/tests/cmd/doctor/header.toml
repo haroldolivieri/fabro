@@ -1,6 +1,5 @@
 bin.name = "fabro"
 args = ["doctor"]
-status.code = 1
 
 [env]
 inherit = false

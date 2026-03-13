@@ -364,6 +364,7 @@ pub struct AgentCliBackend {
     model: String,
     provider: Provider,
     env: HashMap<String, String>,
+    poll_interval: std::time::Duration,
 }
 
 impl AgentCliBackend {
@@ -373,12 +374,19 @@ impl AgentCliBackend {
             model,
             provider,
             env: HashMap::new(),
+            poll_interval: std::time::Duration::from_secs(5),
         }
     }
 
     #[must_use]
     pub fn with_env(mut self, env: HashMap<String, String>) -> Self {
         self.env = env;
+        self
+    }
+
+    #[must_use]
+    pub fn with_poll_interval(mut self, interval: std::time::Duration) -> Self {
+        self.poll_interval = interval;
         self
     }
 
@@ -568,7 +576,7 @@ impl CodergenBackend for AgentCliBackend {
         // 3c. Poll for completion
         let poll_command =
             format!("[ -f {exit_code_path} ] && cat {exit_code_path} || echo running");
-        let poll_interval = std::time::Duration::from_secs(5);
+        let poll_interval = self.poll_interval;
         let exit_code: i32 = loop {
             tokio::time::sleep(poll_interval).await;
             emitter.touch(); // keep the stall watchdog alive while polling

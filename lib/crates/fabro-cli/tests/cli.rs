@@ -352,7 +352,7 @@ fn serve_help() {
 #[test]
 fn doctor_no_color_when_no_color_set() {
     arc()
-        .args(["doctor"])
+        .args(["doctor", "--dry-run"])
         .env_clear()
         .env("NO_COLOR", "1")
         .assert()

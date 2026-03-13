@@ -1058,7 +1058,7 @@ async fn daytona_cli_gemini() {
 use fabro_workflows::git::MetadataStore;
 
 /// End-to-end test: pipeline with git checkpointing enabled + `meta_branch`
-/// writes shadow branch on the host repo and includes `Arc-Checkpoint` trailer in sandbox commits.
+/// writes shadow branch on the host repo and includes `Fabro-Checkpoint` trailer in sandbox commits.
 #[tokio::test]
 #[ignore]
 async fn daytona_git_checkpoint_with_shadow_branch() {
@@ -1191,7 +1191,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
         "checkpoint should contain the 'work' node"
     );
 
-    // Assert sandbox commit has Arc-Checkpoint trailer
+    // Assert sandbox commit has Fabro-Checkpoint trailer
     let log_result = env
         .exec_command("git log --format=%B -1", 10_000, None, None, None)
         .await
@@ -1199,12 +1199,12 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
     assert_eq!(log_result.exit_code, 0);
     let commit_msg = log_result.stdout.trim().to_string();
     assert!(
-        commit_msg.contains("Arc-Checkpoint:"),
-        "sandbox commit should have Arc-Checkpoint trailer, got:\n{commit_msg}"
+        commit_msg.contains("Fabro-Checkpoint:"),
+        "sandbox commit should have Fabro-Checkpoint trailer, got:\n{commit_msg}"
     );
     assert!(
-        commit_msg.contains("Arc-Run:"),
-        "sandbox commit should have Arc-Run trailer, got:\n{commit_msg}"
+        commit_msg.contains("Fabro-Run:"),
+        "sandbox commit should have Fabro-Run trailer, got:\n{commit_msg}"
     );
 
     // Assert final.patch exists

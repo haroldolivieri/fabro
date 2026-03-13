@@ -10760,7 +10760,7 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
 }
 
 /// End-to-end test: pipeline with git checkpointing enabled + `meta_branch` writes
-/// shadow branch with checkpoint data and includes `Arc-Checkpoint` trailer in run-branch commits.
+/// shadow branch with checkpoint data and includes `Fabro-Checkpoint` trailer in run-branch commits.
 #[tokio::test]
 async fn git_checkpoint_host_writes_shadow_branch() {
     use fabro_workflows::git::MetadataStore;
@@ -10893,7 +10893,7 @@ async fn git_checkpoint_host_writes_shadow_branch() {
         "checkpoint should contain the 'work' node"
     );
 
-    // 7. Assert run-branch commit has Arc-Checkpoint trailer pointing to shadow SHA
+    // 7. Assert run-branch commit has Fabro-Checkpoint trailer pointing to shadow SHA
     let output = std::process::Command::new("git")
         .args(["log", "--format=%B", "-1"])
         .current_dir(&worktree_path)
@@ -10901,16 +10901,16 @@ async fn git_checkpoint_host_writes_shadow_branch() {
         .unwrap();
     let commit_msg = String::from_utf8_lossy(&output.stdout).trim().to_string();
     assert!(
-        commit_msg.contains("Arc-Checkpoint:"),
-        "run-branch commit should have Arc-Checkpoint trailer, got:\n{commit_msg}"
+        commit_msg.contains("Fabro-Checkpoint:"),
+        "run-branch commit should have Fabro-Checkpoint trailer, got:\n{commit_msg}"
     );
     assert!(
-        commit_msg.contains("Arc-Run:"),
-        "run-branch commit should have Arc-Run trailer, got:\n{commit_msg}"
+        commit_msg.contains("Fabro-Run:"),
+        "run-branch commit should have Fabro-Run trailer, got:\n{commit_msg}"
     );
     assert!(
-        commit_msg.contains("Arc-Completed:"),
-        "run-branch commit should have Arc-Completed trailer, got:\n{commit_msg}"
+        commit_msg.contains("Fabro-Completed:"),
+        "run-branch commit should have Fabro-Completed trailer, got:\n{commit_msg}"
     );
 
     // 8. Verify round-trip: shadow checkpoint's completed_nodes matches expected

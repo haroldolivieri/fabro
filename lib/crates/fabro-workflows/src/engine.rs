@@ -571,22 +571,22 @@ pub async fn git_checkpoint(
     }
 
     // Build commit message with trailers (same format as checkpoint_commit in git.rs)
-    let subject = format!("arc({run_id}): {node_id} ({status})");
+    let subject = format!("fabro({run_id}): {node_id} ({status})");
     let completed_str = completed_count.to_string();
     let mut trailers = vec![
         Trailer {
-            key: "Arc-Run",
+            key: "Fabro-Run",
             value: run_id,
         },
         Trailer {
-            key: "Arc-Completed",
+            key: "Fabro-Completed",
             value: &completed_str,
         },
     ];
     let shadow_sha_ref = shadow_sha.as_deref().unwrap_or("");
     if shadow_sha.is_some() {
         trailers.push(Trailer {
-            key: "Arc-Checkpoint",
+            key: "Fabro-Checkpoint",
             value: shadow_sha_ref,
         });
     }

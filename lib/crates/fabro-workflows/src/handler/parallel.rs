@@ -457,7 +457,7 @@ impl Handler for ParallelHandler {
                         .exec_command(&add_cmd, 30_000, None, None, None)
                         .await;
                     if add_result.as_ref().is_ok_and(|r| r.exit_code == 0) {
-                        let msg = format!("arc({rid}): {nid} ({status_str})");
+                        let msg = format!("fabro({rid}): {nid} ({status_str})");
                         let commit_cmd = format!(
                             "{git_r} -c 'user.name={name}' -c 'user.email={email}' commit --allow-empty -m '{msg}'",
                             name = git_author.name,

@@ -1,0 +1,12 @@
+{
+  "run_id": "01KKQ2KT7BXF9ZPV03J7HMCH4F",
+  "workflow_name": "Simple",
+  "goal": "Run tests and report results",
+  "start_time": "2026-03-14T21:04:10.856205Z",
+  "node_count": 4,
+  "edge_count": 3,
+  "run_branch": "fabro/run/01KKQ2KT7BXF9ZPV03J7HMCH4F",
+  "base_sha": "312bef9b877f49abf4a2f34679f564826061b0d9",
+  "base_branch": "main",
+  "workflow_slug": "test"
+}

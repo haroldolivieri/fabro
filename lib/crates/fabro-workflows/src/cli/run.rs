@@ -507,7 +507,7 @@ pub async fn run_command(
     {
         let jsonl_path = run_dir.join("progress.jsonl");
         let live_path = run_dir.join("live.json");
-        let run_id = Arc::new(Mutex::new(String::new()));
+        let run_id = Arc::new(Mutex::new(run_id.clone()));
         let run_id_clone = Arc::clone(&run_id);
         emitter.on_event(move |event| {
             if let crate::event::WorkflowRunEvent::WorkflowRunStarted { run_id, .. } = event {

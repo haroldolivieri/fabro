@@ -300,6 +300,7 @@ fn write_manifest(run_dir: &Path, graph: &Graph, config: &RunConfig) -> crate::m
         base_sha: config.base_sha.clone(),
         labels: config.labels.clone(),
         base_branch: config.base_branch.clone(),
+        workflow_slug: config.workflow_slug.clone(),
     };
     let _ = std::fs::create_dir_all(run_dir);
     let _ = manifest.save(&run_dir.join("manifest.json"));
@@ -785,6 +786,8 @@ pub struct RunConfig {
     pub pull_request_draft: bool,
     /// Glob patterns for asset collection. Empty = no asset collection.
     pub asset_globs: Vec<String>,
+    /// Workflow directory slug (e.g. "smoke" from `fabro/workflows/smoke/`).
+    pub workflow_slug: Option<String>,
 }
 
 /// The workflow run execution engine.
@@ -2795,6 +2798,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -2824,6 +2828,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
         let checkpoint_path = dir.path().join("checkpoint.json");
@@ -2861,6 +2866,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -2894,6 +2900,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -2923,6 +2930,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -2965,6 +2973,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -3031,6 +3040,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -3124,6 +3134,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -3160,6 +3171,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -3191,6 +3203,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -3222,6 +3235,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -3257,6 +3271,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -3420,6 +3435,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -3466,6 +3482,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 
@@ -3530,6 +3547,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
 
@@ -3597,6 +3615,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
 
@@ -3668,6 +3687,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_ok());
@@ -3728,6 +3748,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -3789,6 +3810,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
 
@@ -3825,6 +3847,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -3857,6 +3880,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -3888,6 +3912,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -3932,6 +3957,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
 
         // Set cancel after a short delay (while the slow handler is running)
@@ -4013,6 +4039,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4047,6 +4074,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4083,6 +4111,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4124,6 +4153,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4163,6 +4193,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4199,6 +4230,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4296,6 +4328,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
 
         // The engine returns Err because the Fail outcome has no outgoing fail edge,
@@ -4508,6 +4541,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4547,6 +4581,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4593,6 +4628,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4679,6 +4715,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4776,6 +4813,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let result = engine.run(&g, &config).await;
         assert!(result.is_err());
@@ -4850,6 +4888,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -4911,6 +4950,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let outcome = engine.run(&g, &config).await.unwrap();
         assert_eq!(outcome.status, StageStatus::Success);
@@ -4973,6 +5013,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         let _outcome = engine.run(&g, &config).await.unwrap();
 
@@ -5065,6 +5106,7 @@ mod tests {
             pull_request_enabled: false,
             pull_request_draft: false,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
         engine.run(&g, &config).await.unwrap();
 

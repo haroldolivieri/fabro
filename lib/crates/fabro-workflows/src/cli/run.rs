@@ -326,6 +326,18 @@ pub async fn run_command(
         }
     };
 
+    // Extract workflow slug from the workflow path argument.
+    // If bare name (no extension, e.g. "smoke"), use it directly.
+    // Otherwise derive from the parent directory of the resolved .toml path.
+    let workflow_slug: Option<String> = if workflow_path.extension().is_none() {
+        Some(workflow_path.to_string_lossy().into_owned())
+    } else {
+        workflow_path
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+    };
+
     let directory = run_cfg
         .as_ref()
         .and_then(|c| c.work_dir.as_deref())
@@ -1180,6 +1192,7 @@ pub async fn run_command(
             .and_then(|c| c.assets.as_ref())
             .map(|a| a.include.clone())
             .unwrap_or_default(),
+        workflow_slug: workflow_slug.clone(),
     };
 
     let run_start = Instant::now();
@@ -1786,6 +1799,7 @@ async fn run_from_branch(
         pull_request_enabled: false,
         pull_request_draft: false,
         asset_globs: Vec::new(),
+        workflow_slug: None,
     };
 
     let run_start = Instant::now();

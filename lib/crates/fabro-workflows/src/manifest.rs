@@ -22,6 +22,8 @@ pub struct Manifest {
     pub labels: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_slug: Option<String>,
 }
 
 impl Manifest {
@@ -50,6 +52,7 @@ mod tests {
             base_sha: Some("abc123".to_string()),
             labels: HashMap::from([("env".into(), "test".into())]),
             base_branch: None,
+            workflow_slug: None,
         }
     }
 
@@ -89,6 +92,19 @@ mod tests {
     }
 
     #[test]
+    fn save_and_load_roundtrip_with_slug() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("manifest.json");
+
+        let mut manifest = sample_manifest();
+        manifest.workflow_slug = Some("smoke".to_string());
+        manifest.save(&path).unwrap();
+        let loaded = Manifest::load(&path).unwrap();
+
+        assert_eq!(loaded.workflow_slug.as_deref(), Some("smoke"));
+    }
+
+    #[test]
     fn labels_omitted_when_empty() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("manifest.json");
@@ -104,5 +120,6 @@ mod tests {
         assert!(raw.get("labels").is_none());
         assert!(raw.get("run_branch").is_none());
         assert!(raw.get("base_sha").is_none());
+        assert!(raw.get("workflow_slug").is_none());
     }
 }

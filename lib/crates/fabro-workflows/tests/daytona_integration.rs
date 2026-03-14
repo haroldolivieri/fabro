@@ -406,6 +406,7 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
         pull_request_enabled: false,
         pull_request_draft: false,
         asset_globs: Vec::new(),
+        workflow_slug: None,
     };
 
     let outcome = engine
@@ -603,6 +604,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
         pull_request_enabled: false,
         pull_request_draft: false,
         asset_globs: Vec::new(),
+        workflow_slug: None,
     };
 
     let outcome = engine
@@ -791,6 +793,7 @@ async fn daytona_parallel_git_branching_e2e() {
         pull_request_enabled: false,
         pull_request_draft: false,
         asset_globs: Vec::new(),
+        workflow_slug: None,
     };
 
     let outcome = engine
@@ -1170,6 +1173,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
         pull_request_enabled: false,
         pull_request_draft: false,
         asset_globs: Vec::new(),
+        workflow_slug: None,
     };
 
     let outcome = engine
@@ -1312,6 +1316,7 @@ async fn daytona_asset_collection() {
         pull_request_enabled: false,
         pull_request_draft: false,
         asset_globs: Vec::new(),
+        workflow_slug: None,
     };
 
     let outcome = engine
@@ -1569,6 +1574,7 @@ async fn daytona_git_push_run_branch_to_origin() {
         pull_request_enabled: false,
         pull_request_draft: false,
         asset_globs: Vec::new(),
+        workflow_slug: None,
     };
 
     let outcome = engine

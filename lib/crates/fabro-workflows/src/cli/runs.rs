@@ -91,6 +91,8 @@ pub struct RunInfo {
     pub run_id: String,
     pub dir_name: String,
     pub workflow_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_slug: Option<String>,
     pub status: RunStatus,
     pub start_time: String,
     pub labels: HashMap<String, String>,
@@ -130,6 +132,7 @@ pub fn scan_runs(base: &Path) -> Result<Vec<RunInfo>> {
 
             let run_id = manifest.run_id;
             let workflow_name = manifest.workflow_name;
+            let workflow_slug = manifest.workflow_slug;
             let start_time_dt = manifest.start_time;
             let start_time = start_time_dt.to_rfc3339();
             let labels = manifest.labels;
@@ -140,6 +143,7 @@ pub fn scan_runs(base: &Path) -> Result<Vec<RunInfo>> {
                 run_id,
                 dir_name,
                 workflow_name,
+                workflow_slug,
                 status,
                 start_time,
                 labels,
@@ -161,6 +165,7 @@ pub fn scan_runs(base: &Path) -> Result<Vec<RunInfo>> {
                 run_id: dir_name.clone(),
                 dir_name,
                 workflow_name: "[no manifest]".to_string(),
+                workflow_slug: None,
                 status: RunStatus::Unknown,
                 start_time: mtime,
                 labels: HashMap::new(),
@@ -306,12 +311,18 @@ pub fn resolve_run(base: &Path, identifier: &str) -> Result<RunInfo> {
         _ => {}
     }
 
-    // Step 2: try workflow name match, return most recent (runs are sorted newest-first).
-    // Supports both display names ("LegacyTool") and slugs ("legacy-tool") by comparing
-    // case-insensitively first, then with separators stripped (hyphens/underscores removed).
+    // Step 2: try workflow slug (exact, case-insensitive) then workflow name match.
+    // Returns the most recent run (runs are sorted newest-first).
     let id_lower = identifier.to_lowercase();
     let id_collapsed = collapse_separators(&id_lower);
     let wf_match = runs.iter().filter(|r| !r.is_orphan).find(|r| {
+        // Exact slug match (case-insensitive)
+        if let Some(slug) = &r.workflow_slug {
+            if slug.to_lowercase() == id_lower {
+                return true;
+            }
+        }
+        // Fuzzy workflow name match (substring, separator-collapsed)
         let name_lower = r.workflow_name.to_lowercase();
         name_lower.contains(&id_lower) || collapse_separators(&name_lower).contains(&id_collapsed)
     });
@@ -815,6 +826,7 @@ mod tests {
                 run_id: "old".into(),
                 dir_name: "d1".into(),
                 workflow_name: "p".into(),
+                workflow_slug: None,
                 status: RunStatus::Concluded(crate::outcome::StageStatus::Success),
                 start_time: "2025-06-01T00:00:00Z".into(),
                 labels: HashMap::new(),
@@ -827,6 +839,7 @@ mod tests {
                 run_id: "new".into(),
                 dir_name: "d2".into(),
                 workflow_name: "p".into(),
+                workflow_slug: None,
                 status: RunStatus::Concluded(crate::outcome::StageStatus::Success),
                 start_time: "2026-03-01T00:00:00Z".into(),
                 labels: HashMap::new(),
@@ -848,6 +861,7 @@ mod tests {
                 run_id: "a".into(),
                 dir_name: "d1".into(),
                 workflow_name: "deploy-prod".into(),
+                workflow_slug: None,
                 status: RunStatus::Concluded(crate::outcome::StageStatus::Success),
                 start_time: "2026-01-01T00:00:00Z".into(),
                 labels: HashMap::new(),
@@ -860,6 +874,7 @@ mod tests {
                 run_id: "b".into(),
                 dir_name: "d2".into(),
                 workflow_name: "test-suite".into(),
+                workflow_slug: None,
                 status: RunStatus::Concluded(crate::outcome::StageStatus::Success),
                 start_time: "2026-01-01T00:00:00Z".into(),
                 labels: HashMap::new(),
@@ -881,6 +896,7 @@ mod tests {
                 run_id: "a".into(),
                 dir_name: "d1".into(),
                 workflow_name: "p".into(),
+                workflow_slug: None,
                 status: RunStatus::Concluded(crate::outcome::StageStatus::Success),
                 start_time: "2026-01-01T00:00:00Z".into(),
                 labels: HashMap::from([("env".into(), "prod".into())]),
@@ -893,6 +909,7 @@ mod tests {
                 run_id: "b".into(),
                 dir_name: "d2".into(),
                 workflow_name: "p".into(),
+                workflow_slug: None,
                 status: RunStatus::Concluded(crate::outcome::StageStatus::Success),
                 start_time: "2026-01-01T00:00:00Z".into(),
                 labels: HashMap::from([("env".into(), "staging".into())]),
@@ -919,6 +936,7 @@ mod tests {
             run_id: "orphan".into(),
             dir_name: "d1".into(),
             workflow_name: "[no manifest]".into(),
+            workflow_slug: None,
             status: RunStatus::Unknown,
             start_time: "".into(),
             labels: HashMap::new(),
@@ -1449,6 +1467,31 @@ mod tests {
 
         let info = resolve_run(dir.path(), "smoke").unwrap();
         assert_eq!(info.run_id, "aaa111-full");
+    }
+
+    #[test]
+    fn resolve_run_matches_by_workflow_slug() {
+        let dir = tempfile::tempdir().unwrap();
+        // Graph name is "Bar" but slug is "foo" — resolve_run("foo") should match via slug
+        make_run_dir(
+            dir.path(),
+            "20260101-AAA111",
+            Some(serde_json::json!({
+                "run_id": "aaa111-full",
+                "workflow_name": "Bar",
+                "workflow_slug": "foo",
+                "goal": "",
+                "start_time": "2026-01-01T12:00:00Z",
+                "node_count": 1,
+                "edge_count": 0
+            })),
+            None,
+            false,
+        );
+
+        let info = resolve_run(dir.path(), "foo").unwrap();
+        assert_eq!(info.run_id, "aaa111-full");
+        assert_eq!(info.workflow_slug.as_deref(), Some("foo"));
     }
 
     // === Step 1: end_time tests ===

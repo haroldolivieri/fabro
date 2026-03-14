@@ -993,7 +993,7 @@ mod tests {
 
     #[test]
     fn detect_binary_finds_existing_command() {
-        assert!(detect_binary_on_path("sh"));
+        assert!(detect_binary_on_path("git"));
     }
 
     #[test]

@@ -159,6 +159,7 @@ impl Handler for SubWorkflowHandler {
             pull_request_enabled: false,
             pull_request_draft: true,
             asset_globs: Vec::new(),
+            workflow_slug: None,
         };
 
         // Clone parent context for child; inject parent preamble

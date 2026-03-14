@@ -626,6 +626,7 @@ async fn execute_run(state: Arc<AppState>, run_id: String) {
         pull_request_enabled: false,
         pull_request_draft: true,
         asset_globs: Vec::new(),
+        workflow_slug: None,
     };
 
     let result = tokio::select! {

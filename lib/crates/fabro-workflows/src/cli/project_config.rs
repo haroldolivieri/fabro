@@ -116,12 +116,8 @@ fn resolve_workflow_arg_impl(
                 return Ok(project_candidate);
             }
 
-            if let Some(user_wf) = user_workflows {
-                let user_candidate = user_wf.join(&*name).join("workflow.toml");
-                if user_candidate.is_file() {
-                    tracing::debug!(arg = %arg.display(), resolved = %user_candidate.display(), "Resolved workflow name via user workflows");
-                    return Ok(user_candidate);
-                }
+            if let Some(resolved) = resolve_user_workflow(user_workflows, &name, arg) {
+                return Ok(resolved);
             }
 
             let project_wf_dir = fabro_root.join("workflows");
@@ -142,12 +138,8 @@ fn resolve_workflow_arg_impl(
             bail!("{msg}");
         }
         Ok(None) => {
-            if let Some(user_wf) = user_workflows {
-                let user_candidate = user_wf.join(&*name).join("workflow.toml");
-                if user_candidate.is_file() {
-                    tracing::debug!(arg = %arg.display(), resolved = %user_candidate.display(), "Resolved workflow name via user workflows (no project config)");
-                    return Ok(user_candidate);
-                }
+            if let Some(resolved) = resolve_user_workflow(user_workflows, &name, arg) {
+                return Ok(resolved);
             }
             tracing::debug!(arg = %arg.display(), "No project config found, returning literal");
             Ok(arg.to_path_buf())
@@ -156,6 +148,18 @@ fn resolve_workflow_arg_impl(
             tracing::debug!(arg = %arg.display(), error = %err, "Error discovering project config, returning literal");
             Ok(arg.to_path_buf())
         }
+    }
+}
+
+/// Check if a workflow exists in the user-level workflows directory.
+fn resolve_user_workflow(user_workflows: Option<&Path>, name: &str, arg: &Path) -> Option<PathBuf> {
+    let user_wf = user_workflows?;
+    let candidate = user_wf.join(name).join("workflow.toml");
+    if candidate.is_file() {
+        tracing::debug!(arg = %arg.display(), resolved = %candidate.display(), "Resolved workflow name via user workflows");
+        Some(candidate)
+    } else {
+        None
     }
 }
 
@@ -490,12 +494,9 @@ mod tests {
         assert_eq!(result, wf_dir.join("workflow.toml"));
     }
 
-    /// Helper: create a temp dir with fabro.toml + workflows/{name}/{workflow.toml, workflow.fabro}
-    /// and chdir into it so `resolve_workflow` (which uses cwd) can find the config.
-    fn setup_workflow_project(name: &str) -> (TempDir, PathBuf) {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join("fabro.toml"), "version = 1\n").unwrap();
-        let wf_dir = tmp.path().join("workflows").join(name);
+    /// Helper: create a workflow dir with workflow.toml + workflow.fabro inside `base/workflows/{name}/`
+    fn create_workflow_in(base: &Path, name: &str) {
+        let wf_dir = base.join("workflows").join(name);
         fs::create_dir_all(&wf_dir).unwrap();
         fs::write(
             wf_dir.join("workflow.toml"),
@@ -507,7 +508,18 @@ mod tests {
             "digraph G { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit }",
         )
         .unwrap();
-        let dot_path = wf_dir.join("workflow.fabro");
+    }
+
+    /// Helper: create a temp dir with fabro.toml + workflows/{name}/{workflow.toml, workflow.fabro}
+    fn setup_workflow_project(name: &str) -> (TempDir, PathBuf) {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("fabro.toml"), "version = 1\n").unwrap();
+        create_workflow_in(tmp.path(), name);
+        let dot_path = tmp
+            .path()
+            .join("workflows")
+            .join(name)
+            .join("workflow.fabro");
         (tmp, dot_path)
     }
 
@@ -537,22 +549,6 @@ mod tests {
         let (dot_path, cfg) = resolve_workflow_from(&expected_dot, tmp.path()).unwrap();
         assert_eq!(dot_path, expected_dot);
         assert!(cfg.is_none(), "expected None for .fabro path");
-    }
-
-    /// Helper: create a workflow dir with workflow.toml + workflow.fabro inside `base/workflows/{name}/`
-    fn create_workflow_in(base: &Path, name: &str) {
-        let wf_dir = base.join("workflows").join(name);
-        fs::create_dir_all(&wf_dir).unwrap();
-        fs::write(
-            wf_dir.join("workflow.toml"),
-            "version = 1\ngraph = \"workflow.fabro\"\n",
-        )
-        .unwrap();
-        fs::write(
-            wf_dir.join("workflow.fabro"),
-            "digraph G { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit }",
-        )
-        .unwrap();
     }
 
     #[test]

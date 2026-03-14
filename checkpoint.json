@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-03-14T21:04:10.877302Z",
+  "current_node": "echo_task",
+  "completed_nodes": [
+    "start",
+    "echo_task"
+  ],
+  "node_retries": {
+    "start": 1,
+    "echo_task": 1
+  },
+  "context_values": {
+    "command.output": "hello\n",
+    "internal.retry_count.echo_task": 1,
+    "internal.fidelity": "compact",
+    "internal.node_visit_count": 1,
+    "current_node": "echo_task",
+    "thread.start.current_node": "echo_task",
+    "internal.run_id": "01KKQ2KT7AHQEXE1JAZHQZ9EHF",
+    "command.stderr": "",
+    "internal.work_dir": "/Users/bhelmkamp/.fabro/runs/20260314-01KKQ2KT7AHQEXE1JAZHQZ9EHF/worktree",
+    "graph.goal": "Verify backwards compatibility with old tool naming",
+    "current.preamble": "Goal: Verify backwards compatibility with old tool naming\n",
+    "internal.retry_count.start": 1,
+    "failure_signature": "",
+    "internal.thread_id": "start",
+    "graph.rankdir": "LR",
+    "outcome": "success",
+    "failure_class": ""
+  },
+  "logs": [],
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    },
+    "echo_task": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "hello\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: echo hello",
+      "duration_ms": 12
+    }
+  },
+  "next_node_id": "exit",
+  "node_visits": {
+    "echo_task": 1,
+    "start": 1
+  }
+}

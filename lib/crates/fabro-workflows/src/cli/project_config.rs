@@ -188,7 +188,7 @@ fn list_workflows_in(workflows_dir: &Path) -> Vec<String> {
 
 /// List workflow names by scanning project and user workflow directories.
 /// Project workflows appear first; user workflows are deduplicated.
-fn list_available_workflows(
+pub fn list_available_workflows(
     project_workflows_dir: Option<&Path>,
     user_workflows_dir: Option<&Path>,
 ) -> Vec<String> {

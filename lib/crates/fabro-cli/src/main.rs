@@ -116,6 +116,11 @@ enum Command {
         #[command(subcommand)]
         command: SkillCommand,
     },
+    /// Workflow operations
+    Workflow {
+        #[command(subcommand)]
+        command: WorkflowCommand,
+    },
     /// System maintenance commands
     System {
         #[command(subcommand)]
@@ -155,6 +160,12 @@ enum SystemCommand {
 enum SkillCommand {
     /// Install a built-in skill
     Install(skill::SkillInstallArgs),
+}
+
+#[derive(Subcommand)]
+enum WorkflowCommand {
+    /// List available workflows
+    List(fabro_workflows::cli::workflow::WorkflowListArgs),
 }
 
 #[derive(Subcommand)]
@@ -299,6 +310,9 @@ async fn main_inner() -> (String, Result<()>) {
             PrCommand::View(_) => "pr view",
             PrCommand::Merge(_) => "pr merge",
             PrCommand::Close(_) => "pr close",
+        },
+        Command::Workflow { command } => match command {
+            WorkflowCommand::List(_) => "workflow list",
         },
         Command::Skill { command } => match command {
             SkillCommand::Install(_) => "skill install",
@@ -593,6 +607,11 @@ async fn main_inner() -> (String, Result<()>) {
                     }
                 }
             }
+            Command::Workflow { command } => match command {
+                WorkflowCommand::List(args) => {
+                    fabro_workflows::cli::workflow::workflow_list_command(&args)?;
+                }
+            },
             Command::Skill { command } => match command {
                 SkillCommand::Install(args) => {
                     skill::run_skill_install(&args)?;

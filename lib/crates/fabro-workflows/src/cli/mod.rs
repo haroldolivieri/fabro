@@ -13,6 +13,7 @@ pub mod run_config;
 pub mod runs;
 pub mod ssh;
 pub mod validate;
+pub mod workflow;
 
 use std::path::Path;
 

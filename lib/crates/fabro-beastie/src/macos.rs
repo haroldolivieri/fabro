@@ -10,7 +10,7 @@ pub(crate) struct MacOsGuard {
 impl MacOsGuard {
     pub(crate) fn acquire() -> Option<Self> {
         let assertion_type = CFString::from_static_string("PreventUserIdleSystemSleep");
-        let reason = CFString::new("fabro workflow in progress");
+        let reason = CFString::new("Workflow in progress");
 
         let mut assertion_id: IOPMAssertionID = 0;
         let result = unsafe {

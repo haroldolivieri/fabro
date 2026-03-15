@@ -1,0 +1,546 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index b4498b4..67b5269 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1218,6 +1218,15 @@ dependencies = [
+  "x509-parser",
+ ]
+ 
++[[package]]
++name = "fabro-beastie"
++version = "0.4.0"
++dependencies = [
++ "core-foundation 0.9.4",
++ "libc",
++ "tracing",
++]
++
+ [[package]]
+ name = "fabro-cli"
+ version = "0.4.0"
+@@ -1235,6 +1244,7 @@ dependencies = [
+  "dotenvy",
+  "fabro-agent",
+  "fabro-api",
++ "fabro-beastie",
+  "fabro-config",
+  "fabro-github",
+  "fabro-llm",
+@@ -1550,6 +1560,7 @@ dependencies = [
+  "dirs",
+  "dotenvy",
+  "fabro-agent",
++ "fabro-beastie",
+  "fabro-devcontainer",
+  "fabro-exe",
+  "fabro-git-storage",
+diff --git a/Cargo.toml b/Cargo.toml
+index b52b6ea..8116cb3 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -69,4 +69,4 @@ opt-level = 2
+ [profile.dev.package.regex-automata]
+ opt-level = 2
+ [profile.dev.package.regex-syntax]
+-opt-level = 2
++opt-level = 2
+\ No newline at end of file
+diff --git a/lib/crates/fabro-beastie/Cargo.toml b/lib/crates/fabro-beastie/Cargo.toml
+new file mode 100644
+index 0000000..0b9c942
+--- /dev/null
++++ b/lib/crates/fabro-beastie/Cargo.toml
+@@ -0,0 +1,18 @@
++[package]
++name = "fabro-beastie"
++edition.workspace = true
++version.workspace = true
++license.workspace = true
++description = "Cross-platform idle sleep prevention (No Sleep Till Brooklyn)"
++
++[lib]
++doctest = false
++
++[dependencies]
++tracing.workspace = true
++
++[target.'cfg(target_os = "macos")'.dependencies]
++core-foundation = "0.9"
++
++[target.'cfg(target_os = "linux")'.dependencies]
++libc = "0.2"
+diff --git a/lib/crates/fabro-beastie/src/dummy.rs b/lib/crates/fabro-beastie/src/dummy.rs
+new file mode 100644
+index 0000000..88b60cb
+--- /dev/null
++++ b/lib/crates/fabro-beastie/src/dummy.rs
+@@ -0,0 +1,16 @@
++use tracing::debug;
++
++pub(crate) struct DummySleepInhibitor;
++
++impl DummySleepInhibitor {
++    pub(crate) fn acquire() -> Option<Self> {
++        debug!("Sleep inhibitor: using dummy backend (no-op)");
++        Some(DummySleepInhibitor)
++    }
++}
++
++impl Drop for DummySleepInhibitor {
++    fn drop(&mut self) {
++        debug!("Sleep inhibitor: dummy backend released");
++    }
++}
+diff --git a/lib/crates/fabro-beastie/src/iokit_bindings.rs b/lib/crates/fabro-beastie/src/iokit_bindings.rs
+new file mode 100644
+index 0000000..df20f91
+--- /dev/null
++++ b/lib/crates/fabro-beastie/src/iokit_bindings.rs
+@@ -0,0 +1,36 @@
++#![allow(non_upper_case_globals, dead_code)]
++
++use core_foundation::base::TCFType;
++use core_foundation::string::CFString;
++
++// IOKit power management assertion types
++pub type IOPMAssertionID = u32;
++pub const kIOPMAssertionIDInvalid: IOPMAssertionID = 0;
++
++// IOReturn type
++pub type IOReturn = i32;
++pub const kIOReturnSuccess: IOReturn = 0;
++
++extern "C" {
++    pub fn IOPMAssertionCreateWithName(
++        assertion_type: core_foundation::string::CFStringRef,
++        assertion_level: u32,
++        reason_for_activity: core_foundation::string::CFStringRef,
++        assertion_id: *mut IOPMAssertionID,
++    ) -> IOReturn;
++
++    pub fn IOPMAssertionRelease(assertion_id: IOPMAssertionID) -> IOReturn;
++}
++
++// Assertion level
++pub const kIOPMAssertionLevelOn: u32 = 255;
++
++/// Create the CFString for "PreventUserIdleSystemSleep".
++pub fn prevent_idle_sleep_type() -> CFString {
++    CFString::new("PreventUserIdleSystemSleep")
++}
++
++/// Create a CFString reason.
++pub fn assertion_reason() -> CFString {
++    CFString::new("Fabro workflow running")
++}
+diff --git a/lib/crates/fabro-beastie/src/lib.rs b/lib/crates/fabro-beastie/src/lib.rs
+new file mode 100644
+index 0000000..70bc6a7
+--- /dev/null
++++ b/lib/crates/fabro-beastie/src/lib.rs
+@@ -0,0 +1,90 @@
++//! Cross-platform idle sleep prevention (No Sleep Till Brooklyn).
++//!
++//! Call [`guard(true)`] to acquire a sleep inhibitor that prevents the system
++//! from idle-sleeping while Fabro is working. The guard is released on drop.
++
++#[cfg(target_os = "macos")]
++mod iokit_bindings;
++#[cfg(target_os = "macos")]
++mod macos;
++
++#[cfg(target_os = "linux")]
++mod linux;
++
++mod dummy;
++
++use tracing::debug;
++
++/// RAII guard that prevents idle system sleep while held.
++pub struct SleepInhibitorGuard {
++    _inner: InnerGuard,
++}
++
++// Fields are held for their Drop implementations, not read directly.
++#[allow(dead_code)]
++enum InnerGuard {
++    #[cfg(target_os = "macos")]
++    MacOS(macos::MacOSSleepInhibitor),
++    #[cfg(target_os = "linux")]
++    Linux(linux::LinuxSleepInhibitor),
++    Dummy(dummy::DummySleepInhibitor),
++}
++
++/// Acquire a sleep inhibitor guard.
++///
++/// If `enabled` is `false`, returns `None` immediately.
++/// If `enabled` is `true`, attempts to acquire a platform-specific sleep
++/// inhibitor. Falls back to a dummy (no-op) backend if the platform backend
++/// is unavailable.
++pub fn guard(enabled: bool) -> Option<SleepInhibitorGuard> {
++    if !enabled {
++        debug!("Sleep inhibitor: disabled by configuration");
++        return None;
++    }
++
++    #[cfg(target_os = "macos")]
++    {
++        if let Some(inner) = macos::MacOSSleepInhibitor::acquire() {
++            return Some(SleepInhibitorGuard {
++                _inner: InnerGuard::MacOS(inner),
++            });
++        }
++    }
++
++    #[cfg(target_os = "linux")]
++    {
++        if let Some(inner) = linux::LinuxSleepInhibitor::acquire() {
++            return Some(SleepInhibitorGuard {
++                _inner: InnerGuard::Linux(inner),
++            });
++        }
++    }
++
++    // Fallback to dummy
++    dummy::DummySleepInhibitor::acquire().map(|inner| SleepInhibitorGuard {
++        _inner: InnerGuard::Dummy(inner),
++    })
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn guard_enabled_returns_some() {
++        let g = guard(true);
++        assert!(g.is_some(), "guard(true) should return Some");
++    }
++
++    #[test]
++    fn guard_disabled_returns_none() {
++        let g = guard(false);
++        assert!(g.is_none(), "guard(false) should return None");
++    }
++
++    #[test]
++    fn guard_drop_does_not_panic() {
++        let g = guard(true);
++        drop(g);
++    }
++}
+diff --git a/lib/crates/fabro-beastie/src/linux.rs b/lib/crates/fabro-beastie/src/linux.rs
+new file mode 100644
+index 0000000..fe56f20
+--- /dev/null
++++ b/lib/crates/fabro-beastie/src/linux.rs
+@@ -0,0 +1,124 @@
++use std::process::{Child, Command};
++use tracing::{debug, warn};
++
++pub(crate) struct LinuxSleepInhibitor {
++    child: Child,
++}
++
++impl LinuxSleepInhibitor {
++    pub(crate) fn acquire() -> Option<Self> {
++        // Try systemd-inhibit first, then gnome-session-inhibit as fallback
++        if let Some(inhibitor) = Self::try_systemd_inhibit() {
++            return Some(inhibitor);
++        }
++        if let Some(inhibitor) = Self::try_gnome_inhibit() {
++            return Some(inhibitor);
++        }
++        warn!("Sleep inhibitor: no supported inhibitor found on this system");
++        None
++    }
++
++    fn try_systemd_inhibit() -> Option<Self> {
++        let result = Command::new("systemd-inhibit")
++            .args([
++                "--what=idle",
++                "--mode=block",
++                "--who=fabro",
++                "--reason=Fabro workflow running",
++                "sleep",
++                "infinity",
++            ])
++            .stdin(std::process::Stdio::null())
++            .stdout(std::process::Stdio::null())
++            .stderr(std::process::Stdio::null())
++            .spawn();
++        match result {
++            Ok(mut child) => {
++                // Set PR_SET_PDEATHSIG so the child is killed if the parent dies
++                #[cfg(target_os = "linux")]
++                {
++                    use std::os::unix::process::CommandExt;
++                    // The child is already spawned, but we can set pdeathsig via /proc
++                    // Actually, PR_SET_PDEATHSIG must be set from within the child process.
++                    // For a pre-spawned child, we rely on explicit Drop cleanup.
++                    // The safer approach is to use pre_exec, so let's re-spawn.
++                    let _ = child.kill();
++                    let _ = child.wait();
++
++                    let result = unsafe {
++                        Command::new("systemd-inhibit")
++                            .args([
++                                "--what=idle",
++                                "--mode=block",
++                                "--who=fabro",
++                                "--reason=Fabro workflow running",
++                                "sleep",
++                                "infinity",
++                            ])
++                            .stdin(std::process::Stdio::null())
++                            .stdout(std::process::Stdio::null())
++                            .stderr(std::process::Stdio::null())
++                            .pre_exec(|| {
++                                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
++                                Ok(())
++                            })
++                            .spawn()
++                    };
++                    match result {
++                        Ok(child) => {
++                            debug!("Sleep inhibitor: acquired via systemd-inhibit");
++                            Some(Self { child })
++                        }
++                        Err(e) => {
++                            warn!("Sleep inhibitor: failed to respawn systemd-inhibit: {e}");
++                            None
++                        }
++                    }
++                }
++
++                #[cfg(not(target_os = "linux"))]
++                {
++                    debug!("Sleep inhibitor: acquired via systemd-inhibit");
++                    Some(Self { child })
++                }
++            }
++            Err(e) => {
++                debug!("Sleep inhibitor: systemd-inhibit not available: {e}");
++                None
++            }
++        }
++    }
++
++    fn try_gnome_inhibit() -> Option<Self> {
++        let result = Command::new("gnome-session-inhibit")
++            .args([
++                "--inhibit=idle",
++                "--reason",
++                "Fabro workflow running",
++                "sleep",
++                "infinity",
++            ])
++            .stdin(std::process::Stdio::null())
++            .stdout(std::process::Stdio::null())
++            .stderr(std::process::Stdio::null())
++            .spawn();
++        match result {
++            Ok(child) => {
++                debug!("Sleep inhibitor: acquired via gnome-session-inhibit");
++                Some(Self { child })
++            }
++            Err(e) => {
++                debug!("Sleep inhibitor: gnome-session-inhibit not available: {e}");
++                None
++            }
++        }
++    }
++}
++
++impl Drop for LinuxSleepInhibitor {
++    fn drop(&mut self) {
++        debug!("Sleep inhibitor: releasing (killing inhibitor child process)");
++        let _ = self.child.kill();
++        let _ = self.child.wait();
++    }
++}
+diff --git a/lib/crates/fabro-beastie/src/macos.rs b/lib/crates/fabro-beastie/src/macos.rs
+new file mode 100644
+index 0000000..38a0fcf
+--- /dev/null
++++ b/lib/crates/fabro-beastie/src/macos.rs
+@@ -0,0 +1,55 @@
++use core_foundation::base::TCFType;
++use tracing::{debug, warn};
++
++use crate::iokit_bindings::*;
++
++pub(crate) struct MacOSSleepInhibitor {
++    assertion_id: IOPMAssertionID,
++}
++
++impl MacOSSleepInhibitor {
++    pub(crate) fn acquire() -> Option<Self> {
++        let assertion_type = prevent_idle_sleep_type();
++        let reason = assertion_reason();
++        let mut assertion_id: IOPMAssertionID = kIOPMAssertionIDInvalid;
++
++        let result = unsafe {
++            IOPMAssertionCreateWithName(
++                assertion_type.as_concrete_TypeRef(),
++                kIOPMAssertionLevelOn,
++                reason.as_concrete_TypeRef(),
++                &mut assertion_id,
++            )
++        };
++
++        if result == kIOReturnSuccess {
++            debug!(
++                assertion_id,
++                "Sleep inhibitor: acquired IOKit power assertion"
++            );
++            Some(Self { assertion_id })
++        } else {
++            warn!(
++                result,
++                "Sleep inhibitor: failed to create IOKit power assertion"
++            );
++            None
++        }
++    }
++}
++
++impl Drop for MacOSSleepInhibitor {
++    fn drop(&mut self) {
++        debug!(
++            assertion_id = self.assertion_id,
++            "Sleep inhibitor: releasing IOKit power assertion"
++        );
++        let result = unsafe { IOPMAssertionRelease(self.assertion_id) };
++        if result != kIOReturnSuccess {
++            warn!(
++                result,
++                "Sleep inhibitor: failed to release IOKit power assertion"
++            );
++        }
++    }
++}
+diff --git a/lib/crates/fabro-cli/Cargo.toml b/lib/crates/fabro-cli/Cargo.toml
+index 745258e..2d7a6df 100644
+--- a/lib/crates/fabro-cli/Cargo.toml
++++ b/lib/crates/fabro-cli/Cargo.toml
+@@ -13,6 +13,7 @@ path = "src/main.rs"
+ default = []
+ server = ["dep:fabro-api"]
+ exedev = ["fabro-config/exedev", "fabro-workflows/exedev"]
++sleep_inhibitor = ["dep:fabro-beastie", "fabro-workflows/sleep_inhibitor"]
+ 
+ [dependencies]
+ fabro-config = { path = "../fabro-config" }
+@@ -23,6 +24,7 @@ fabro-agent = { path = "../fabro-agent" }
+ fabro-mcp = { path = "../fabro-mcp" }
+ fabro-workflows = { path = "../fabro-workflows" }
+ fabro-api = { path = "../fabro-api", optional = true }
++fabro-beastie = { path = "../fabro-beastie", optional = true }
+ fabro-util = { path = "../fabro-util" }
+ clap.workspace = true
+ console.workspace = true
+@@ -67,4 +69,4 @@ predicates = "3"
+ tempfile = "3"
+ serde_json.workspace = true
+ httpmock = "0.8"
+-trycmd = "0.15"
++trycmd = "0.15"
+\ No newline at end of file
+diff --git a/lib/crates/fabro-cli/src/main.rs b/lib/crates/fabro-cli/src/main.rs
+index 2411ead..04bd71a 100644
+--- a/lib/crates/fabro-cli/src/main.rs
++++ b/lib/crates/fabro-cli/src/main.rs
+@@ -522,6 +522,8 @@ async fn main_inner() -> (String, Result<()>) {
+             }
+             Command::Exec(mut args) => {
+                 let cli_config = cli_config::load_cli_config(None)?;
++                #[cfg(feature = "sleep_inhibitor")]
++                let _sleep_guard = fabro_beastie::guard(cli_config.prevent_idle_sleep);
+                 let exec_defaults = cli_config.exec.as_ref();
+                 args.apply_cli_defaults(
+                     exec_defaults.and_then(|a| a.provider.as_deref()),
+@@ -604,6 +606,7 @@ async fn main_inner() -> (String, Result<()>) {
+                     styles,
+                     github_app,
+                     git_author,
++                    cli_config.prevent_idle_sleep,
+                 )
+                 .await?;
+             }
+diff --git a/lib/crates/fabro-config/src/cli.rs b/lib/crates/fabro-config/src/cli.rs
+index 6b5d909..ecfd1e9 100644
+--- a/lib/crates/fabro-config/src/cli.rs
++++ b/lib/crates/fabro-config/src/cli.rs
+@@ -50,6 +50,8 @@ pub struct CliConfig {
+     pub exec: Option<ExecDefaults>,
+     pub git: Option<CliGitConfig>,
+     #[serde(default)]
++    pub prevent_idle_sleep: bool,
++    #[serde(default)]
+     pub verbose: bool,
+     #[serde(default)]
+     pub log: crate::server::LogConfig,
+@@ -246,6 +248,18 @@ email = "me@local"
+         assert_eq!(config.git, None);
+     }
+ 
++    #[test]
++    fn parse_prevent_idle_sleep_true() {
++        let config: CliConfig = toml::from_str("prevent_idle_sleep = true").unwrap();
++        assert!(config.prevent_idle_sleep);
++    }
++
++    #[test]
++    fn parse_prevent_idle_sleep_defaults_to_false() {
++        let config: CliConfig = toml::from_str("").unwrap();
++        assert!(!config.prevent_idle_sleep);
++    }
++
+     #[test]
+     fn parse_verbose_true() {
+         let config: CliConfig = toml::from_str("verbose = true").unwrap();
+diff --git a/lib/crates/fabro-workflows/Cargo.toml b/lib/crates/fabro-workflows/Cargo.toml
+index 93f4aea..8736eee 100644
+--- a/lib/crates/fabro-workflows/Cargo.toml
++++ b/lib/crates/fabro-workflows/Cargo.toml
+@@ -15,6 +15,7 @@ doctest = false
+ [features]
+ default = []
+ exedev = ["dep:fabro-exe"]
++sleep_inhibitor = ["dep:fabro-beastie"]
+ 
+ [dependencies]
+ clap.workspace = true
+@@ -22,6 +23,7 @@ anyhow.workspace = true
+ dotenvy.workspace = true
+ fabro-agent = { path = "../fabro-agent" }
+ fabro-devcontainer = { path = "../fabro-devcontainer" }
++fabro-beastie = { path = "../fabro-beastie", optional = true }
+ fabro-exe = { path = "../fabro-exe", optional = true }
+ fabro-ssh = { path = "../fabro-ssh" }
+ fabro-mcp = { path = "../fabro-mcp" }
+@@ -66,4 +68,4 @@ tokio = { workspace = true, features = ["test-util", "macros"] }
+ tempfile = "3"
+ dotenvy.workspace = true
+ assert_cmd = "2"
+-predicates = "3"
++predicates = "3"
+\ No newline at end of file
+diff --git a/lib/crates/fabro-workflows/src/cli/run.rs b/lib/crates/fabro-workflows/src/cli/run.rs
+index 86ad2fa..2c8a8e0 100644
+--- a/lib/crates/fabro-workflows/src/cli/run.rs
++++ b/lib/crates/fabro-workflows/src/cli/run.rs
+@@ -294,7 +294,12 @@ pub async fn run_command(
+     styles: &'static Styles,
+     github_app: Option<fabro_github::GitHubAppCredentials>,
+     git_author: crate::git::GitAuthor,
++    prevent_idle_sleep: bool,
+ ) -> anyhow::Result<()> {
++    #[cfg(feature = "sleep_inhibitor")]
++    let _sleep_guard = fabro_beastie::guard(prevent_idle_sleep);
++    #[cfg(not(feature = "sleep_inhibitor"))]
++    let _ = prevent_idle_sleep;
+     // Handle --run-branch resume: read everything from git metadata
+     if let Some(branch) = args.run_branch.clone() {
+         return run_from_branch(args, &branch, styles, git_author, run_defaults, github_app).await;

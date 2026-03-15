@@ -196,8 +196,38 @@ pub(crate) fn truncate(s: &str, max_chars: usize) -> &str {
     }
 }
 
+/// Shared simulate implementation for LLM-backed handlers (agent & prompt).
+/// Produces a simulated outcome with standard context updates.
+pub(crate) fn simulate_llm_handler(node: &Node) -> Outcome {
+    let simulated_text = format!("[Simulated] Response for stage: {}", node.id);
+    let mut outcome = Outcome::simulated(&node.id);
+    outcome
+        .context_updates
+        .insert(keys::LAST_STAGE.to_string(), serde_json::json!(node.id));
+    outcome.context_updates.insert(
+        keys::LAST_RESPONSE.to_string(),
+        serde_json::json!(truncate(&simulated_text, 200)),
+    );
+    outcome.context_updates.insert(
+        keys::response_key(&node.id),
+        serde_json::json!(&simulated_text),
+    );
+    outcome
+}
+
 #[async_trait]
 impl Handler for AgentHandler {
+    async fn simulate(
+        &self,
+        node: &Node,
+        _context: &Context,
+        _graph: &Graph,
+        _run_dir: &Path,
+        _services: &EngineServices,
+    ) -> Result<Outcome, FabroError> {
+        Ok(simulate_llm_handler(node))
+    }
+
     async fn execute(
         &self,
         node: &Node,
@@ -353,37 +383,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn codergen_handler_simulation_mode() {
+    async fn codergen_handler_simulate() {
         let handler = AgentHandler::new(None);
-        let mut node = Node::new("plan");
-        node.attrs.insert(
-            "prompt".to_string(),
-            AttrValue::String("Plan the implementation".to_string()),
-        );
+        let node = Node::new("plan");
         let context = Context::new();
         let graph = Graph::new("test");
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .simulate(&node, &context, &graph, tmp.path(), &make_services())
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageStatus::Success);
-        assert_eq!(outcome.notes.as_deref(), Some("Stage completed: plan"));
-
-        // Check files were written
-        let prompt_path = tmp.path().join("nodes").join("plan").join("prompt.md");
-        assert!(prompt_path.exists());
-        let prompt_content = std::fs::read_to_string(&prompt_path).unwrap();
-        assert_eq!(prompt_content, "Plan the implementation");
-
-        let response_path = tmp.path().join("nodes").join("plan").join("response.md");
-        assert!(response_path.exists());
-        let response_content = std::fs::read_to_string(&response_path).unwrap();
-        assert!(response_content.contains("[Simulated]"));
-
-        let status_path = tmp.path().join("nodes").join("plan").join("status.json");
-        assert!(status_path.exists());
+        assert_eq!(outcome.notes.as_deref(), Some("[Simulated] plan"));
+        assert_eq!(
+            outcome.context_updates.get(keys::LAST_STAGE),
+            Some(&serde_json::json!("plan"))
+        );
+        assert!(outcome.context_updates.contains_key(keys::LAST_RESPONSE));
+        assert_eq!(
+            outcome.context_updates.get(&keys::response_key("plan")),
+            Some(&serde_json::json!("[Simulated] Response for stage: plan"))
+        );
     }
 
     #[tokio::test]

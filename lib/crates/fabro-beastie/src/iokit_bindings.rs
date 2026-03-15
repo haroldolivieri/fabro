@@ -10,6 +10,7 @@ pub const kIOPMAssertionIDInvalid: IOPMAssertionID = 0;
 pub type IOReturn = i32;
 pub const kIOReturnSuccess: IOReturn = 0;
 
+#[link(name = "IOKit", kind = "framework")]
 extern "C" {
     pub fn IOPMAssertionCreateWithName(
         assertion_type: core_foundation::string::CFStringRef,

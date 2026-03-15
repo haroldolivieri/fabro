@@ -17,6 +17,8 @@ pub enum WorkflowRunEvent {
         run_branch: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         worktree_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        goal: Option<String>,
     },
     WorkflowRunCompleted {
         duration_ms: u64,
@@ -1013,6 +1015,7 @@ mod tests {
             base_sha: None,
             run_branch: None,
             worktree_dir: None,
+            goal: None,
         });
         let events = received.lock().unwrap();
         assert_eq!(events.len(), 1);
@@ -1510,6 +1513,7 @@ mod tests {
             base_sha: None,
             run_branch: None,
             worktree_dir: None,
+            goal: None,
         });
         assert!(emitter.last_event_at() > 0);
     }
@@ -1679,6 +1683,7 @@ mod tests {
             base_sha: None,
             run_branch: None,
             worktree_dir: None,
+            goal: None,
         };
         let (name, fields) = flatten_event(&event);
         assert_eq!(name, "WorkflowRunStarted");
@@ -2059,5 +2064,51 @@ mod tests {
         assert_eq!(name, "DevcontainerLifecycleFailed");
         assert_eq!(fields["command_index"], 1);
         assert!(!fields.contains_key("index"));
+    }
+
+    #[test]
+    fn workflow_run_started_with_goal_roundtrip() {
+        let event = WorkflowRunEvent::WorkflowRunStarted {
+            name: "deploy".to_string(),
+            run_id: "r42".to_string(),
+            base_sha: None,
+            run_branch: None,
+            worktree_dir: None,
+            goal: Some("Fix the bug".to_string()),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"goal\":\"Fix the bug\""));
+        let deserialized: WorkflowRunEvent = serde_json::from_str(&json).unwrap();
+        assert!(
+            matches!(deserialized, WorkflowRunEvent::WorkflowRunStarted { goal: Some(g), .. } if g == "Fix the bug")
+        );
+    }
+
+    #[test]
+    fn workflow_run_started_without_goal_backward_compat() {
+        // Old JSONL without `goal` field should deserialize with goal: None
+        let json = r#"{"WorkflowRunStarted":{"name":"smoke","run_id":"r1"}}"#;
+        let deserialized: WorkflowRunEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            deserialized,
+            WorkflowRunEvent::WorkflowRunStarted { goal: None, .. }
+        ));
+    }
+
+    #[test]
+    fn workflow_run_started_none_goal_omitted_from_json() {
+        let event = WorkflowRunEvent::WorkflowRunStarted {
+            name: "ci".to_string(),
+            run_id: "r2".to_string(),
+            base_sha: None,
+            run_branch: None,
+            worktree_dir: None,
+            goal: None,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(
+            !json.contains("goal"),
+            "goal should be omitted when None: {json}"
+        );
     }
 }

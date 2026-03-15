@@ -4,6 +4,9 @@ version = 1
 root = "fabro/"
 retro = false
 
+[pull_request]
+draft = false
+
 [sandbox]
 provider = "daytona"
 

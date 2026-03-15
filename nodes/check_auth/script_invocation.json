@@ -1,0 +1,5 @@
+{
+  "command": "echo '--- Checking gh auth status ---' && gh auth status && echo '--- Listing repo ---' && gh repo view fabro-sh/fabro --json name,owner -q '.owner.login + \"/\" + .name' && echo '--- Done ---'",
+  "language": "shell",
+  "timeout_ms": null
+}

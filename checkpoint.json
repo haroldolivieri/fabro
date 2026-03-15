@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-03-15T21:53:24.455202Z",
+  "current_node": "check_auth",
+  "completed_nodes": [
+    "start",
+    "check_auth"
+  ],
+  "node_retries": {
+    "check_auth": 1,
+    "start": 1
+  },
+  "context_values": {
+    "outcome": "success",
+    "thread.start.current_node": "check_auth",
+    "internal.work_dir": "/Users/bhelmkamp/.fabro/runs/20260315-01KKSQTN9WVY7YB8V1A1VQ9TAS/worktree",
+    "failure_class": "",
+    "graph.goal": "Verify GitHub CLI authentication works via GITHUB_TOKEN",
+    "internal.run_id": "01KKSQTN9WVY7YB8V1A1VQ9TAS",
+    "current_node": "check_auth",
+    "internal.retry_count.start": 1,
+    "failure_signature": "",
+    "graph.rankdir": "LR",
+    "internal.node_visit_count": 1,
+    "internal.fidelity": "compact",
+    "internal.retry_count.check_auth": 1,
+    "command.stderr": "",
+    "command.output": "--- Checking gh auth status ---\ngithub.com\n  ✓ Logged in to github.com account arc-1e68f1[bot] (GITHUB_TOKEN)\n  - Active account: true\n  - Git operations protocol: ssh\n  - Token: ghs_************************************\n\n  ✓ Logged in to github.com account brynary (keyring)\n  - Active account: false\n  - Git operations protocol: ssh\n  - Token: gho_************************************\n  - Token scopes: 'admin:public_key', 'gist', 'read:org', 'repo'\n--- Listing repo ---\nfabro-sh/fabro\n--- Done ---\n",
+    "internal.thread_id": "start",
+    "current.preamble": "Goal: Verify GitHub CLI authentication works via GITHUB_TOKEN\n"
+  },
+  "logs": [],
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    },
+    "check_auth": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": "--- Checking gh auth status ---\ngithub.com\n  ✓ Logged in to github.com account arc-1e68f1[bot] (GITHUB_TOKEN)\n  - Active account: true\n  - Git operations protocol: ssh\n  - Token: ghs_************************************\n\n  ✓ Logged in to github.com account brynary (keyring)\n  - Active account: false\n  - Git operations protocol: ssh\n  - Token: gho_************************************\n  - Token scopes: 'admin:public_key', 'gist', 'read:org', 'repo'\n--- Listing repo ---\nfabro-sh/fabro\n--- Done ---\n"
+      },
+      "notes": "Script completed: echo '--- Checking gh auth status ---' && gh auth status && echo '--- Listing repo ---' && gh repo view fabro-sh/fabro --json name,owner -q '.owner.login + \"/\" + .name' && echo '--- Done ---'",
+      "duration_ms": 526
+    }
+  },
+  "next_node_id": "exit",
+  "node_visits": {
+    "start": 1,
+    "check_auth": 1
+  }
+}

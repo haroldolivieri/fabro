@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-03-15T22:54:40.001585Z",
+  "current_node": "toolchain",
+  "completed_nodes": [
+    "start",
+    "toolchain"
+  ],
+  "node_retries": {
+    "toolchain": 1,
+    "start": 1
+  },
+  "context_values": {
+    "graph.rankdir": "LR",
+    "internal.retry_count.start": 1,
+    "internal.node_visit_count": 1,
+    "failure_class": "",
+    "failure_signature": "",
+    "command.stderr": "",
+    "internal.fidelity": "compact",
+    "internal.thread_id": "start",
+    "command.output": "cargo 1.94.0 (85eff7c80 2026-01-15)\n",
+    "internal.retry_count.toolchain": 1,
+    "current_node": "toolchain",
+    "graph.model_stylesheet": "\n            * { backend: api; model: claude-opus-4-6;}\n        ",
+    "graph.goal": "# Plan: `fabro asset` CLI subcommands\n\n## Context\n\nAfter a workflow run, assets (screenshots, test reports, traces) are collected to `~/.fabro/runs/{id}/artifacts/assets/` but there's no CLI for inspecting them. Users must browse the filesystem manually or read paths printed at run completion. We want dedicated subcommands for listing and copying assets.\n\n## Proposed CLI surface\n\n```\nfabro asset list <RUN_ID>                    # list all assets for a run\nfabro asset cp <RUN_ID> [DEST]               # copy all assets to DEST (default: cwd)\nfabro asset cp <RUN_ID>:<PATH> [DEST]        # copy a specific asset\n```\n\n### `fabro asset list <RUN_ID>`\n\n**Args:** `run_id` (positional), `--node <slug>` (filter), `--json`\n\n**Default output:**\n```\nNODE        RETRY  SIZE       PATH\nrun_tests   1      8.2 KB     test-results/report.xml\nrun_tests   1      3.1 KB     test-results/screenshot.png\nlint        1      2.1 KB     coverage/lcov.info\n\n3 asset(s), 13.4 KB total\n```\n\n**JSON output:** array of `{ node, retry, path, size, absolute_path }`\n\n### `fabro asset cp <RUN_ID>[:<PATH>] [DEST]`\n\n**Args:**\n- `source` (positional) — either `RUN_ID` (all assets) or `RUN_ID:path` (specific asset)\n- `dest` (positional, optional) — destination directory, defaults to `.` (cwd)\n- `--node <slug>` — filter to a specific node (for bulk) or disambiguate (for specific path)\n- `--tree` — preserve `{node_slug}/retry_{N}/` directory structure (default is flat)\n\n**Behavior:**\n- `fabro asset cp RUN_ID` — copies all assets flat into cwd\n- `fabro asset cp RUN_ID ./out` — copies all assets flat into `./out`\n- `fabro asset cp RUN_ID:report.xml` — copies that specific file to cwd\n- `fabro asset cp RUN_ID --tree ./out` — copies all assets preserving `{node}/retry_{N}/` structure\n- Flat mode errors on filename collision across nodes (suggests `--tree` or `--node`)\n- Uses local asset store (not sandbox). Distinct from `fabro cp` which talks to the live sandbox.\n\n**Parsing `source`:** Reuse the same `split on first colon` logic from `cp.rs:split_run_path()`. If no colon, it's a bare run ID. If colon present, everything after is the asset path.\n\n## Implementation\n\n### New file: `lib/crates/fabro-workflows/src/cli/asset.rs`\n\nCore struct and scanning function:\n\n```rust\npub struct AssetEntry {\n    pub node_slug: String,\n    pub retry: u32,\n    pub relative_path: String,\n    pub absolute_path: PathBuf,\n    pub size: u64,\n}\n\npub fn scan_assets(run_dir: &Path, node_filter: Option<&str>) -> Result<Vec<AssetEntry>>\n```\n\n`scan_assets` walks `{run_dir}/artifacts/assets/*/retry_*/manifest.json`, reads each `AssetCollectionSummary`, stats each file on disk, returns structured entries. Similar to existing `collect_asset_paths()` but returns richer data.\n\nTwo handler functions: `list_command`, `cp_command`.\n\n### Modified files\n\n1. **`lib/crates/fabro-workflows/src/cli/mod.rs`** — add `pub mod asset;`\n\n2. **`lib/crates/fabro-cli/src/main.rs`**:\n   - Add `AssetCommand` enum (List, Cp variants)\n   - Add `Asset { command: AssetCommand }` to `Command` enum\n   - Add `command_name` match arms (`\"asset list\"`, `\"asset cp\"`)\n   - Add `main_inner` match arms dispatching to handler functions\n\n3. **`lib/crates/fabro-workflows/src/cli/runs.rs`** — make `format_size` `pub(crate)`\n\n### Reuse\n\n- `runs::default_runs_base()` / `runs::find_run_by_prefix()` — run resolution\n- `asset_snapshot::AssetCollectionSummary` — manifest deserialization\n- `runs::format_size()` — human-readable byte formatting (change from `fn` to `pub(crate) fn`)\n- `cli::tilde_path()` — path display with `~` shortening\n- `cp::split_run_path()` pattern — parsing `RUN_ID:path` syntax\n\n## Verification\n\n1. `cargo build -p fabro-cli` — compiles\n2. `cargo test -p fabro-workflows` — existing tests pass\n3. `fabro asset list <recent-run-id>` — shows table\n4. `fabro asset list <recent-run-id> --json` — shows JSON\n5. `fabro asset cp <recent-run-id>` — copies all assets to cwd\n6. `fabro asset cp <recent-run-id>:test-results/report.xml` — copies specific file to cwd\n7. `fabro asset cp <recent-run-id> --tree ./out` — copies with directory structure\n",
+    "thread.start.current_node": "toolchain",
+    "internal.run_id": "01KKSVAP88XX3A8N06Y0YGXPGZ",
+    "current.preamble": "Goal: # Plan: `fabro asset` CLI subcommands\n\n## Context\n\nAfter a workflow run, assets (screenshots, test reports, traces) are collected to `~/.fabro/runs/{id}/artifacts/assets/` but there's no CLI for inspecting them. Users must browse the filesystem manually or read paths printed at run completion. We want dedicated subcommands for listing and copying assets.\n\n## Proposed CLI surface\n\n```\nfabro asset list <RUN_ID>                    # list all assets for a run\nfabro asset cp <RUN_ID> [DEST]               # copy all assets to DEST (default: cwd)\nfabro asset cp <RUN_ID>:<PATH> [DEST]        # copy a specific asset\n```\n\n### `fabro asset list <RUN_ID>`\n\n**Args:** `run_id` (positional), `--node <slug>` (filter), `--json`\n\n**Default output:**\n```\nNODE        RETRY  SIZE       PATH\nrun_tests   1      8.2 KB     test-results/report.xml\nrun_tests   1      3.1 KB     test-results/screenshot.png\nlint        1      2.1 KB     coverage/lcov.info\n\n3 asset(s), 13.4 KB total\n```\n\n**JSON output:** array of `{ node, retry, path, size, absolute_path }`\n\n### `fabro asset cp <RUN_ID>[:<PATH>] [DEST]`\n\n**Args:**\n- `source` (positional) — either `RUN_ID` (all assets) or `RUN_ID:path` (specific asset)\n- `dest` (positional, optional) — destination directory, defaults to `.` (cwd)\n- `--node <slug>` — filter to a specific node (for bulk) or disambiguate (for specific path)\n- `--tree` — preserve `{node_slug}/retry_{N}/` directory structure (default is flat)\n\n**Behavior:**\n- `fabro asset cp RUN_ID` — copies all assets flat into cwd\n- `fabro asset cp RUN_ID ./out` — copies all assets flat into `./out`\n- `fabro asset cp RUN_ID:report.xml` — copies that specific file to cwd\n- `fabro asset cp RUN_ID --tree ./out` — copies all assets preserving `{node}/retry_{N}/` structure\n- Flat mode errors on filename collision across nodes (suggests `--tree` or `--node`)\n- Uses local asset store (not sandbox). Distinct from `fabro cp` which talks to the live sandbox.\n\n**Parsing `source`:** Reuse the same `split on first colon` logic from `cp.rs:split_run_path()`. If no colon, it's a bare run ID. If colon present, everything after is the asset path.\n\n## Implementation\n\n### New file: `lib/crates/fabro-workflows/src/cli/asset.rs`\n\nCore struct and scanning function:\n\n```rust\npub struct AssetEntry {\n    pub node_slug: String,\n    pub retry: u32,\n    pub relative_path: String,\n    pub absolute_path: PathBuf,\n    pub size: u64,\n}\n\npub fn scan_assets(run_dir: &Path, node_filter: Option<&str>) -> Result<Vec<AssetEntry>>\n```\n\n`scan_assets` walks `{run_dir}/artifacts/assets/*/retry_*/manifest.json`, reads each `AssetCollectionSummary`, stats each file on disk, returns structured entries. Similar to existing `collect_asset_paths()` but returns richer data.\n\nTwo handler functions: `list_command`, `cp_command`.\n\n### Modified files\n\n1. **`lib/crates/fabro-workflows/src/cli/mod.rs`** — add `pub mod asset;`\n\n2. **`lib/crates/fabro-cli/src/main.rs`**:\n   - Add `AssetCommand` enum (List, Cp variants)\n   - Add `Asset { command: AssetCommand }` to `Command` enum\n   - Add `command_name` match arms (`\"asset list\"`, `\"asset cp\"`)\n   - Add `main_inner` match arms dispatching to handler functions\n\n3. **`lib/crates/fabro-workflows/src/cli/runs.rs`** — make `format_size` `pub(crate)`\n\n### Reuse\n\n- `runs::default_runs_base()` / `runs::find_run_by_prefix()` — run resolution\n- `asset_snapshot::AssetCollectionSummary` — manifest deserialization\n- `runs::format_size()` — human-readable byte formatting (change from `fn` to `pub(crate) fn`)\n- `cli::tilde_path()` — path display with `~` shortening\n- `cp::split_run_path()` pattern — parsing `RUN_ID:path` syntax\n\n## Verification\n\n1. `cargo build -p fabro-cli` — compiles\n2. `cargo test -p fabro-workflows` — existing tests pass\n3. `fabro asset list <recent-run-id>` — shows table\n4. `fabro asset list <recent-run-id> --json` — shows JSON\n5. `fabro asset cp <recent-run-id>` — copies all assets to cwd\n6. `fabro asset cp <recent-run-id>:test-results/report.xml` — copies specific file to cwd\n7. `fabro asset cp <recent-run-id> --tree ./out` — copies with directory structure\n\n",
+    "outcome": "success"
+  },
+  "logs": [],
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    },
+    "toolchain": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": "cargo 1.94.0 (85eff7c80 2026-01-15)\n"
+      },
+      "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+      "duration_ms": 68
+    }
+  },
+  "next_node_id": "preflight_compile",
+  "node_visits": {
+    "toolchain": 1,
+    "start": 1
+  }
+}

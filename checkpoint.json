@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-03-15T19:01:29.207033Z",
+  "current_node": "toolchain",
+  "completed_nodes": [
+    "start",
+    "toolchain"
+  ],
+  "node_retries": {
+    "toolchain": 1,
+    "start": 1
+  },
+  "context_values": {
+    "internal.fidelity": "compact",
+    "graph.model_stylesheet": "\n            * { backend: api; model: claude-opus-4-6;}\n        ",
+    "command.stderr": "",
+    "failure_class": "",
+    "failure_signature": "",
+    "graph.rankdir": "LR",
+    "internal.retry_count.toolchain": 1,
+    "internal.retry_count.start": 1,
+    "graph.goal": "# Plan: Inject GitHub App IAT into Sandbox as GITHUB_TOKEN\n\n## Context\n\nWorkflow authors need `gh` CLI (and other GitHub-authenticated tools) to work inside sandboxes. Like GitHub Actions, we'll mint a short-lived Installation Access Token (IAT) from our GitHub App with user-declared permissions and inject it as `GITHUB_TOKEN`.\n\n## Target UX\n\n**workflow.toml:**\n```toml\n[github]\npermissions = { contents = \"write\", pull_requests = \"read\", issues = \"write\" }\n```\n\n**fabro.toml (project-wide defaults):**\n```toml\n[github]\npermissions = { contents = \"read\" }\n```\n\nWorkflow-level `[github]` replaces project-level (not merged) — same as `[pull_request]`.\n\n## Decisions\n\n- **Token refresh:** Deferred. Mint once at startup for V1.\n- **Preflight check:** Yes — mint during preflight to validate credentials/permissions.\n- **Approach:** Red/green TDD.\n\n## Changes\n\n### 1. `run_config.rs` — Add `GitHubConfig` struct + wire through config\n\n- New struct:\n  ```rust\n  #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]\n  pub struct GitHubConfig {\n      pub permissions: HashMap<String, String>,\n  }\n  ```\n- Add `pub github: Option<GitHubConfig>` to `WorkflowRunConfig` and `RunDefaults`\n- In `apply_defaults()`: `if self.github.is_none() { self.github = defaults.github.clone(); }`\n- In `merge_overlay()`: `if overlay.github.is_some() { self.github = overlay.github; }`\n\n### 2. `project_config.rs` — Add `github` to `ProjectConfig`\n\n- Add `pub github: Option<GitHubConfig>` field\n- Add to `into_run_defaults()`: `github: self.github`\n- Import `GitHubConfig` from run_config\n\n### 3. `fabro-github/src/lib.rs` — Make `create_installation_access_token_with_permissions` pub\n\n- Change `async fn` → `pub async fn` (line 114)\n\n### 4. `run.rs` — Mint token and inject into sandbox env\n\n- Add `mint_github_token()` helper\n- After building `sandbox_env`, check `run_cfg.github.permissions`, mint + insert `GITHUB_TOKEN`\n- Add preflight check that mints a token to validate\n\n### 5. Tests (red/green TDD)\n\n- `run_config.rs`: parse `[github]`, `apply_defaults` fallthrough, `merge_overlay`\n- `project_config.rs`: parse `[github]` in fabro.toml, `into_run_defaults`\n\n## Files\n\n1. `lib/crates/fabro-workflows/src/cli/run_config.rs`\n2. `lib/crates/fabro-workflows/src/cli/project_config.rs`\n3. `lib/crates/fabro-github/src/lib.rs`\n4. `lib/crates/fabro-workflows/src/cli/run.rs`\n",
+    "internal.run_id": "01KKSDZQ2AHTFP2GQAQQW25MNP",
+    "thread.start.current_node": "toolchain",
+    "internal.node_visit_count": 1,
+    "outcome": "success",
+    "current_node": "toolchain",
+    "internal.thread_id": "start",
+    "command.output": "cargo 1.94.0 (85eff7c80 2026-01-15)\n",
+    "current.preamble": "Goal: # Plan: Inject GitHub App IAT into Sandbox as GITHUB_TOKEN\n\n## Context\n\nWorkflow authors need `gh` CLI (and other GitHub-authenticated tools) to work inside sandboxes. Like GitHub Actions, we'll mint a short-lived Installation Access Token (IAT) from our GitHub App with user-declared permissions and inject it as `GITHUB_TOKEN`.\n\n## Target UX\n\n**workflow.toml:**\n```toml\n[github]\npermissions = { contents = \"write\", pull_requests = \"read\", issues = \"write\" }\n```\n\n**fabro.toml (project-wide defaults):**\n```toml\n[github]\npermissions = { contents = \"read\" }\n```\n\nWorkflow-level `[github]` replaces project-level (not merged) — same as `[pull_request]`.\n\n## Decisions\n\n- **Token refresh:** Deferred. Mint once at startup for V1.\n- **Preflight check:** Yes — mint during preflight to validate credentials/permissions.\n- **Approach:** Red/green TDD.\n\n## Changes\n\n### 1. `run_config.rs` — Add `GitHubConfig` struct + wire through config\n\n- New struct:\n  ```rust\n  #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]\n  pub struct GitHubConfig {\n      pub permissions: HashMap<String, String>,\n  }\n  ```\n- Add `pub github: Option<GitHubConfig>` to `WorkflowRunConfig` and `RunDefaults`\n- In `apply_defaults()`: `if self.github.is_none() { self.github = defaults.github.clone(); }`\n- In `merge_overlay()`: `if overlay.github.is_some() { self.github = overlay.github; }`\n\n### 2. `project_config.rs` — Add `github` to `ProjectConfig`\n\n- Add `pub github: Option<GitHubConfig>` field\n- Add to `into_run_defaults()`: `github: self.github`\n- Import `GitHubConfig` from run_config\n\n### 3. `fabro-github/src/lib.rs` — Make `create_installation_access_token_with_permissions` pub\n\n- Change `async fn` → `pub async fn` (line 114)\n\n### 4. `run.rs` — Mint token and inject into sandbox env\n\n- Add `mint_github_token()` helper\n- After building `sandbox_env`, check `run_cfg.github.permissions`, mint + insert `GITHUB_TOKEN`\n- Add preflight check that mints a token to validate\n\n### 5. Tests (red/green TDD)\n\n- `run_config.rs`: parse `[github]`, `apply_defaults` fallthrough, `merge_overlay`\n- `project_config.rs`: parse `[github]` in fabro.toml, `into_run_defaults`\n\n## Files\n\n1. `lib/crates/fabro-workflows/src/cli/run_config.rs`\n2. `lib/crates/fabro-workflows/src/cli/project_config.rs`\n3. `lib/crates/fabro-github/src/lib.rs`\n4. `lib/crates/fabro-workflows/src/cli/run.rs`\n\n"
+  },
+  "logs": [],
+  "node_outcomes": {
+    "toolchain": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "cargo 1.94.0 (85eff7c80 2026-01-15)\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+      "duration_ms": 112
+    },
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    }
+  },
+  "next_node_id": "preflight_compile",
+  "node_visits": {
+    "start": 1,
+    "toolchain": 1
+  }
+}

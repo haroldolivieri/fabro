@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
@@ -387,9 +386,6 @@ fn format_relative_time(dt: &DateTime<Utc>) -> String {
     let now = Utc::now();
     let dur = now.signed_duration_since(*dt);
     let secs = dur.num_seconds();
-    if secs < 0 {
-        return "just now".to_string();
-    }
     if secs < 60 {
         return "just now".to_string();
     }
@@ -405,7 +401,7 @@ fn format_relative_time(dt: &DateTime<Utc>) -> String {
     format!("{days}d ago")
 }
 
-fn style_status<'a>(status: &'a RunStatus, styles: &'a Styles) -> String {
+fn style_status(status: &RunStatus, styles: &Styles) -> String {
     let text = status.to_string();
     match status {
         RunStatus::Concluded(StageStatus::Success | StageStatus::PartialSuccess) => {
@@ -451,7 +447,7 @@ pub fn list_command(args: &RunsListArgs, styles: &Styles) -> Result<()> {
         "RUN ID", "WORKFLOW", "STATUS", "STARTED", "DURATION", "COST"
     );
     println!("{}", styles.bold.apply_to(&header));
-    println!("{}", styles.dim.apply_to("-".repeat(110)));
+    println!("{}", styles.dim.apply_to("-".repeat(header.len())));
 
     for run in &display_runs {
         let labels_str = run
@@ -472,7 +468,7 @@ pub fn list_command(args: &RunsListArgs, styles: &Styles) -> Result<()> {
             .unwrap_or_else(|| "-".to_string());
         let duration_display = run
             .duration_ms
-            .map(|ms| super::progress::format_duration_short(Duration::from_millis(ms)))
+            .map(super::progress::format_duration_ms)
             .unwrap_or_else(|| "-".to_string());
         let cost_display = run
             .total_cost

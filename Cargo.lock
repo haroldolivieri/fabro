@@ -1277,6 +1277,7 @@ dependencies = [
  "dirs",
  "fabro-agent",
  "fabro-mcp",
+ "fabro-util",
  "fabro-workflows",
  "serde",
  "tempfile",

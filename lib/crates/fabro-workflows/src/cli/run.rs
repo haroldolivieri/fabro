@@ -46,7 +46,8 @@ fn resolve_cli_goal(
     match (goal, goal_file) {
         (Some(g), _) => Ok(Some(g.clone())),
         (_, Some(path)) => {
-            let content = std::fs::read_to_string(path)
+            let path = fabro_util::path::expand_tilde(path);
+            let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("failed to read goal file: {}", path.display()))?;
             debug!(path = %path.display(), "Goal loaded from file");
             Ok(Some(content))

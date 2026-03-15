@@ -1,0 +1,259 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 67b5269..8163c10 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1560,7 +1560,6 @@ dependencies = [
+  "dirs",
+  "dotenvy",
+  "fabro-agent",
+- "fabro-beastie",
+  "fabro-devcontainer",
+  "fabro-exe",
+  "fabro-git-storage",
+diff --git a/Cargo.toml b/Cargo.toml
+index 8116cb3..b52b6ea 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -69,4 +69,4 @@ opt-level = 2
+ [profile.dev.package.regex-automata]
+ opt-level = 2
+ [profile.dev.package.regex-syntax]
+-opt-level = 2
+\ No newline at end of file
++opt-level = 2
+diff --git a/lib/crates/fabro-beastie/src/iokit_bindings.rs b/lib/crates/fabro-beastie/src/iokit_bindings.rs
+index df20f91..98f33de 100644
+--- a/lib/crates/fabro-beastie/src/iokit_bindings.rs
++++ b/lib/crates/fabro-beastie/src/iokit_bindings.rs
+@@ -1,6 +1,5 @@
+ #![allow(non_upper_case_globals, dead_code)]
+ 
+-use core_foundation::base::TCFType;
+ use core_foundation::string::CFString;
+ 
+ // IOKit power management assertion types
+diff --git a/lib/crates/fabro-beastie/src/linux.rs b/lib/crates/fabro-beastie/src/linux.rs
+index fe56f20..9424508 100644
+--- a/lib/crates/fabro-beastie/src/linux.rs
++++ b/lib/crates/fabro-beastie/src/linux.rs
+@@ -1,3 +1,4 @@
++use std::os::unix::process::CommandExt;
+ use std::process::{Child, Command};
+ use tracing::{debug, warn};
+ 
+@@ -18,69 +19,36 @@ impl LinuxSleepInhibitor {
+         None
+     }
+ 
+-    fn try_systemd_inhibit() -> Option<Self> {
+-        let result = Command::new("systemd-inhibit")
+-            .args([
+-                "--what=idle",
+-                "--mode=block",
+-                "--who=fabro",
+-                "--reason=Fabro workflow running",
+-                "sleep",
+-                "infinity",
+-            ])
+-            .stdin(std::process::Stdio::null())
+-            .stdout(std::process::Stdio::null())
+-            .stderr(std::process::Stdio::null())
+-            .spawn();
+-        match result {
+-            Ok(mut child) => {
+-                // Set PR_SET_PDEATHSIG so the child is killed if the parent dies
+-                #[cfg(target_os = "linux")]
+-                {
+-                    use std::os::unix::process::CommandExt;
+-                    // The child is already spawned, but we can set pdeathsig via /proc
+-                    // Actually, PR_SET_PDEATHSIG must be set from within the child process.
+-                    // For a pre-spawned child, we rely on explicit Drop cleanup.
+-                    // The safer approach is to use pre_exec, so let's re-spawn.
+-                    let _ = child.kill();
+-                    let _ = child.wait();
++    /// Spawn a command with `PR_SET_PDEATHSIG` so the child is automatically
++    /// killed if the parent process dies (prevents orphan `sleep infinity`).
++    fn spawn_with_pdeathsig(cmd: &mut Command) -> std::io::Result<Child> {
++        unsafe {
++            cmd.pre_exec(|| {
++                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
++                Ok(())
++            });
++        }
++        cmd.spawn()
++    }
+ 
+-                    let result = unsafe {
+-                        Command::new("systemd-inhibit")
+-                            .args([
+-                                "--what=idle",
+-                                "--mode=block",
+-                                "--who=fabro",
+-                                "--reason=Fabro workflow running",
+-                                "sleep",
+-                                "infinity",
+-                            ])
+-                            .stdin(std::process::Stdio::null())
+-                            .stdout(std::process::Stdio::null())
+-                            .stderr(std::process::Stdio::null())
+-                            .pre_exec(|| {
+-                                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+-                                Ok(())
+-                            })
+-                            .spawn()
+-                    };
+-                    match result {
+-                        Ok(child) => {
+-                            debug!("Sleep inhibitor: acquired via systemd-inhibit");
+-                            Some(Self { child })
+-                        }
+-                        Err(e) => {
+-                            warn!("Sleep inhibitor: failed to respawn systemd-inhibit: {e}");
+-                            None
+-                        }
+-                    }
+-                }
++    fn try_systemd_inhibit() -> Option<Self> {
++        let mut cmd = Command::new("systemd-inhibit");
++        cmd.args([
++            "--what=idle",
++            "--mode=block",
++            "--who=fabro",
++            "--reason=Fabro workflow running",
++            "sleep",
++            "infinity",
++        ])
++        .stdin(std::process::Stdio::null())
++        .stdout(std::process::Stdio::null())
++        .stderr(std::process::Stdio::null());
+ 
+-                #[cfg(not(target_os = "linux"))]
+-                {
+-                    debug!("Sleep inhibitor: acquired via systemd-inhibit");
+-                    Some(Self { child })
+-                }
++        match Self::spawn_with_pdeathsig(&mut cmd) {
++            Ok(child) => {
++                debug!("Sleep inhibitor: acquired via systemd-inhibit");
++                Some(Self { child })
+             }
+             Err(e) => {
+                 debug!("Sleep inhibitor: systemd-inhibit not available: {e}");
+@@ -90,19 +58,19 @@ impl LinuxSleepInhibitor {
+     }
+ 
+     fn try_gnome_inhibit() -> Option<Self> {
+-        let result = Command::new("gnome-session-inhibit")
+-            .args([
+-                "--inhibit=idle",
+-                "--reason",
+-                "Fabro workflow running",
+-                "sleep",
+-                "infinity",
+-            ])
+-            .stdin(std::process::Stdio::null())
+-            .stdout(std::process::Stdio::null())
+-            .stderr(std::process::Stdio::null())
+-            .spawn();
+-        match result {
++        let mut cmd = Command::new("gnome-session-inhibit");
++        cmd.args([
++            "--inhibit=idle",
++            "--reason",
++            "Fabro workflow running",
++            "sleep",
++            "infinity",
++        ])
++        .stdin(std::process::Stdio::null())
++        .stdout(std::process::Stdio::null())
++        .stderr(std::process::Stdio::null());
++
++        match Self::spawn_with_pdeathsig(&mut cmd) {
+             Ok(child) => {
+                 debug!("Sleep inhibitor: acquired via gnome-session-inhibit");
+                 Some(Self { child })
+diff --git a/lib/crates/fabro-cli/Cargo.toml b/lib/crates/fabro-cli/Cargo.toml
+index 2d7a6df..a855fd6 100644
+--- a/lib/crates/fabro-cli/Cargo.toml
++++ b/lib/crates/fabro-cli/Cargo.toml
+@@ -13,7 +13,7 @@ path = "src/main.rs"
+ default = []
+ server = ["dep:fabro-api"]
+ exedev = ["fabro-config/exedev", "fabro-workflows/exedev"]
+-sleep_inhibitor = ["dep:fabro-beastie", "fabro-workflows/sleep_inhibitor"]
++sleep_inhibitor = ["dep:fabro-beastie"]
+ 
+ [dependencies]
+ fabro-config = { path = "../fabro-config" }
+@@ -69,4 +69,4 @@ predicates = "3"
+ tempfile = "3"
+ serde_json.workspace = true
+ httpmock = "0.8"
+-trycmd = "0.15"
+\ No newline at end of file
++trycmd = "0.15"
+diff --git a/lib/crates/fabro-cli/src/main.rs b/lib/crates/fabro-cli/src/main.rs
+index 04bd71a..45f4a1e 100644
+--- a/lib/crates/fabro-cli/src/main.rs
++++ b/lib/crates/fabro-cli/src/main.rs
+@@ -600,13 +600,15 @@ async fn main_inner() -> (String, Result<()>) {
+                     cli_config.git_author().and_then(|a| a.email.clone()),
+                 );
+ 
++                #[cfg(feature = "sleep_inhibitor")]
++                let _sleep_guard = fabro_beastie::guard(cli_config.prevent_idle_sleep);
++
+                 fabro_workflows::cli::run::run_command(
+                     args,
+                     cli_config.run_defaults,
+                     styles,
+                     github_app,
+                     git_author,
+-                    cli_config.prevent_idle_sleep,
+                 )
+                 .await?;
+             }
+diff --git a/lib/crates/fabro-workflows/Cargo.toml b/lib/crates/fabro-workflows/Cargo.toml
+index 8736eee..93f4aea 100644
+--- a/lib/crates/fabro-workflows/Cargo.toml
++++ b/lib/crates/fabro-workflows/Cargo.toml
+@@ -15,7 +15,6 @@ doctest = false
+ [features]
+ default = []
+ exedev = ["dep:fabro-exe"]
+-sleep_inhibitor = ["dep:fabro-beastie"]
+ 
+ [dependencies]
+ clap.workspace = true
+@@ -23,7 +22,6 @@ anyhow.workspace = true
+ dotenvy.workspace = true
+ fabro-agent = { path = "../fabro-agent" }
+ fabro-devcontainer = { path = "../fabro-devcontainer" }
+-fabro-beastie = { path = "../fabro-beastie", optional = true }
+ fabro-exe = { path = "../fabro-exe", optional = true }
+ fabro-ssh = { path = "../fabro-ssh" }
+ fabro-mcp = { path = "../fabro-mcp" }
+@@ -68,4 +66,4 @@ tokio = { workspace = true, features = ["test-util", "macros"] }
+ tempfile = "3"
+ dotenvy.workspace = true
+ assert_cmd = "2"
+-predicates = "3"
+\ No newline at end of file
++predicates = "3"
+diff --git a/lib/crates/fabro-workflows/src/cli/run.rs b/lib/crates/fabro-workflows/src/cli/run.rs
+index 2c8a8e0..86ad2fa 100644
+--- a/lib/crates/fabro-workflows/src/cli/run.rs
++++ b/lib/crates/fabro-workflows/src/cli/run.rs
+@@ -294,12 +294,7 @@ pub async fn run_command(
+     styles: &'static Styles,
+     github_app: Option<fabro_github::GitHubAppCredentials>,
+     git_author: crate::git::GitAuthor,
+-    prevent_idle_sleep: bool,
+ ) -> anyhow::Result<()> {
+-    #[cfg(feature = "sleep_inhibitor")]
+-    let _sleep_guard = fabro_beastie::guard(prevent_idle_sleep);
+-    #[cfg(not(feature = "sleep_inhibitor"))]
+-    let _ = prevent_idle_sleep;
+     // Handle --run-branch resume: read everything from git metadata
+     if let Some(branch) = args.run_branch.clone() {
+         return run_from_branch(args, &branch, styles, git_author, run_defaults, github_app).await;

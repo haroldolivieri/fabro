@@ -1,0 +1,40 @@
+digraph DjangoAutoreloaderFix {
+    graph [
+        goal="Fix Django issue #30479: StatReloader doesn't track changes in manage.py",
+        description="Verify that Django's autoreloader tracks changes to manage.py for automatic server restart"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    clone_django [label="Clone Django", shape=parallelogram, 
+        script="git clone https://github.com/django/django.git django-repo && cd django-repo && git checkout df46b329e0900e9e4dc1d60816c1dce6dfc1094e",
+        max_retries=0]
+    
+    review_issue [label="Review Issue", 
+        prompt="Read the Django issue #30479 about StatReloader not tracking manage.py changes. Summarize the problem and root cause."]
+    
+    examine_code [label="Examine Code",
+        prompt="Look at django/utils/autoreload.py and find the iter_modules_and_files() function. Identify why __main__ module (manage.py) is not being tracked."]
+    
+    implement_fix [label="Implement Fix",
+        prompt="Modify iter_modules_and_files() to handle the special case of __main__ module. Even though __spec__ is None, we should track __file__ if it exists."]
+    
+    verify_fix [label="Verify Fix", shape=parallelogram,
+        script="cd django-repo && python -m pytest tests/autoreload/ -xvs 2>&1",
+        max_retries=0]
+    
+    create_test [label="Create Test Case",
+        prompt="Create a simple test that verifies manage.py changes trigger autoreloader restart. Document the expected behavior."]
+
+    start -> clone_django
+    clone_django -> review_issue [condition="outcome=success"]
+    clone_django -> exit
+    review_issue -> examine_code
+    examine_code -> implement_fix
+    implement_fix -> verify_fix
+    verify_fix -> create_test [condition="outcome=success"]
+    verify_fix -> exit [condition="outcome=failure"]
+    create_test -> exit
+}

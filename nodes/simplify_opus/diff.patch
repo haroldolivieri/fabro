@@ -1,0 +1,139 @@
+diff --git a/lib/crates/fabro-api/src/demo/mod.rs b/lib/crates/fabro-api/src/demo/mod.rs
+index d724e32..d8b1166 100644
+--- a/lib/crates/fabro-api/src/demo/mod.rs
++++ b/lib/crates/fabro-api/src/demo/mod.rs
+@@ -226,39 +226,7 @@ pub async fn get_run_graph(
+     // Use graphviz to render the demo DOT source
+     let dot_source = "digraph demo {\n  graph [goal=\"Demo\"]\n  rankdir=LR\n  start [shape=Mdiamond, label=\"Start\"]\n  detect [label=\"Detect\\nDrift\"]\n  exit [shape=Msquare, label=\"Exit\"]\n  propose [label=\"Propose\\nChanges\"]\n  review [label=\"Review\\nChanges\"]\n  apply [label=\"Apply\\nChanges\"]\n  start -> detect\n  detect -> exit [label=\"No drift\"]\n  detect -> propose [label=\"Drift found\"]\n  propose -> review\n  review -> propose [label=\"Revise\"]\n  review -> apply [label=\"Accept\"]\n  apply -> exit\n}";
+ 
+-    let styled_source = fabro_workflows::cli::graph::inject_dot_style_defaults(dot_source);
+-
+-    let mut child = match tokio::process::Command::new("dot")
+-        .arg("-Tsvg")
+-        .stdin(std::process::Stdio::piped())
+-        .stdout(std::process::Stdio::piped())
+-        .stderr(std::process::Stdio::piped())
+-        .spawn()
+-    {
+-        Ok(child) => child,
+-        Err(_) => {
+-            return ApiError::new(
+-                StatusCode::BAD_GATEWAY,
+-                "Graphviz dot command not available.",
+-            )
+-            .into_response();
+-        }
+-    };
+-
+-    if let Some(mut stdin) = child.stdin.take() {
+-        use tokio::io::AsyncWriteExt;
+-        let _ = stdin.write_all(styled_source.as_bytes()).await;
+-    }
+-
+-    match child.wait_with_output().await {
+-        Ok(output) if output.status.success() => (
+-            StatusCode::OK,
+-            [("content-type", "image/svg+xml")],
+-            fabro_workflows::cli::graph::postprocess_svg(output.stdout),
+-        )
+-            .into_response(),
+-        _ => ApiError::new(StatusCode::BAD_GATEWAY, "Dot rendering failed.").into_response(),
+-    }
++    crate::server::render_dot_svg(dot_source).await
+ }
+ 
+ pub async fn get_run_retro(
+diff --git a/lib/crates/fabro-api/src/server.rs b/lib/crates/fabro-api/src/server.rs
+index ddb460a..787ba1f 100644
+--- a/lib/crates/fabro-api/src/server.rs
++++ b/lib/crates/fabro-api/src/server.rs
+@@ -1432,20 +1432,9 @@ async fn get_retro(
+     }
+ }
+ 
+-async fn get_graph(
+-    _auth: AuthenticatedService,
+-    State(state): State<Arc<AppState>>,
+-    Path(id): Path<String>,
+-) -> Response {
+-    let dot_source = {
+-        let runs = state.runs.lock().expect("runs lock poisoned");
+-        match runs.get(&id) {
+-            Some(managed_run) => managed_run.dot_source.clone(),
+-            None => return ApiError::not_found("Run not found.").into_response(),
+-        }
+-    };
+-
+-    let styled_source = fabro_workflows::cli::graph::inject_dot_style_defaults(&dot_source);
++/// Render DOT source to a styled SVG via the `dot` subprocess (async).
++pub(crate) async fn render_dot_svg(dot_source: &str) -> Response {
++    let styled_source = fabro_workflows::cli::graph::inject_dot_style_defaults(dot_source);
+ 
+     let mut child = match tokio::process::Command::new("dot")
+         .arg("-Tsvg")
+@@ -1467,7 +1456,6 @@ async fn get_graph(
+     if let Some(mut stdin) = child.stdin.take() {
+         use tokio::io::AsyncWriteExt;
+         let _ = stdin.write_all(styled_source.as_bytes()).await;
+-        // stdin is dropped here, closing the pipe
+     }
+ 
+     match child.wait_with_output().await {
+@@ -1486,6 +1474,22 @@ async fn get_graph(
+     }
+ }
+ 
++async fn get_graph(
++    _auth: AuthenticatedService,
++    State(state): State<Arc<AppState>>,
++    Path(id): Path<String>,
++) -> Response {
++    let dot_source = {
++        let runs = state.runs.lock().expect("runs lock poisoned");
++        match runs.get(&id) {
++            Some(managed_run) => managed_run.dot_source.clone(),
++            None => return ApiError::not_found("Run not found.").into_response(),
++        }
++    };
++
++    render_dot_svg(&dot_source).await
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/lib/crates/fabro-workflows/src/cli/graph.rs b/lib/crates/fabro-workflows/src/cli/graph.rs
+index 0b21fdf..d0b81db 100644
+--- a/lib/crates/fabro-workflows/src/cli/graph.rs
++++ b/lib/crates/fabro-workflows/src/cli/graph.rs
+@@ -76,8 +76,9 @@ pub fn graph_command(args: &GraphArgs, styles: &Styles) -> anyhow::Result<()> {
+     Ok(())
+ }
+ 
+-/// Dark mode CSS injected into SVG output.
+-const DARK_MODE_STYLE: &str = r##"<style>
++/// Dark mode CSS injected into SVG output (leading newline included for insertion).
++const DARK_MODE_STYLE: &str = r##"
++<style>
+   @media (prefers-color-scheme: dark) {
+     text { fill: #e0e0e0 !important; }
+     [stroke="#357f9e"] { stroke: #5bb8d8; }
+@@ -104,7 +105,8 @@ pub fn inject_dot_style_defaults(source: &str) -> String {
+ /// 1. Remove the white background `<polygon>` element
+ /// 2. Insert a dark-mode `<style>` block after the opening `<svg ...>` tag
+ pub fn postprocess_svg(raw: Vec<u8>) -> Vec<u8> {
+-    let mut svg = String::from_utf8_lossy(&raw).into_owned();
++    let mut svg = String::from_utf8(raw)
++        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
+ 
+     // Remove white background polygon (single line containing it)
+     svg = svg
+@@ -122,7 +124,7 @@ pub fn postprocess_svg(raw: Vec<u8>) -> Vec<u8> {
+         .find("<svg")
+         .and_then(|start| svg[start..].find('>').map(|end| start + end))
+     {
+-        svg.insert_str(svg_close + 1, &format!("\n{DARK_MODE_STYLE}"));
++        svg.insert_str(svg_close + 1, DARK_MODE_STYLE);
+     }
+ 
+     svg.into_bytes()

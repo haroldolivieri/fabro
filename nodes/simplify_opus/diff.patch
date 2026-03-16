@@ -1,0 +1,79 @@
+diff --git a/lib/crates/fabro-workflows/src/cli/pr.rs b/lib/crates/fabro-workflows/src/cli/pr.rs
+index 3094fcd..4be38dd 100644
+--- a/lib/crates/fabro-workflows/src/cli/pr.rs
++++ b/lib/crates/fabro-workflows/src/cli/pr.rs
+@@ -388,10 +388,6 @@ async fn pr_create_from(
+         .model
+         .unwrap_or_else(|| fabro_llm::catalog::default_model().id.to_string());
+ 
+-    let pr_config = crate::cli::run_config::PullRequestConfig {
+-        enabled: true,
+-        draft: true,
+-    };
+     let record = crate::pull_request::maybe_open_pull_request(
+         &creds,
+         &origin_url,
+@@ -400,7 +396,7 @@ async fn pr_create_from(
+         &manifest.goal,
+         &diff,
+         &model,
+-        &pr_config,
++        true,
+         &run_dir,
+     )
+     .await
+diff --git a/lib/crates/fabro-workflows/src/cli/run.rs b/lib/crates/fabro-workflows/src/cli/run.rs
+index 00c096f..a7b40d1 100644
+--- a/lib/crates/fabro-workflows/src/cli/run.rs
++++ b/lib/crates/fabro-workflows/src/cli/run.rs
+@@ -1458,7 +1458,7 @@ pub async fn run_command(
+                         graph.goal(),
+                         &diff,
+                         &model,
+-                        pr_cfg,
++                        pr_cfg.draft,
+                         &run_dir,
+                     )
+                     .await
+diff --git a/lib/crates/fabro-workflows/src/pull_request.rs b/lib/crates/fabro-workflows/src/pull_request.rs
+index 5798b17..1cfa742 100644
+--- a/lib/crates/fabro-workflows/src/pull_request.rs
++++ b/lib/crates/fabro-workflows/src/pull_request.rs
+@@ -355,7 +355,7 @@ pub async fn maybe_open_pull_request(
+     goal: &str,
+     diff: &str,
+     model: &str,
+-    pr_config: &crate::cli::run_config::PullRequestConfig,
++    draft: bool,
+     run_dir: &Path,
+ ) -> Result<Option<PullRequestRecord>, String> {
+     if diff.is_empty() {
+@@ -379,7 +379,7 @@ pub async fn maybe_open_pull_request(
+         head_branch,
+         &title,
+         &body,
+-        pr_config.draft,
++        draft,
+     )
+     .await?;
+ 
+@@ -904,10 +904,6 @@ mod tests {
+             app_id: "123".to_string(),
+             private_key_pem: "unused".to_string(),
+         };
+-        let pr_config = crate::cli::run_config::PullRequestConfig {
+-            enabled: true,
+-            draft: false,
+-        };
+         let result = maybe_open_pull_request(
+             &creds,
+             "https://github.com/owner/repo.git",
+@@ -916,7 +912,7 @@ mod tests {
+             "Fix bug",
+             "",
+             "claude-sonnet-4-20250514",
+-            &pr_config,
++            false,
+             tmp.path(),
+         )
+         .await;

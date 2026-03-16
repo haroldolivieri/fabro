@@ -278,7 +278,7 @@ impl ExeSandbox {
             {
                 let branch = params.branch.as_deref().unwrap_or("main");
                 let fallback_script = format!(
-                    "cd {WORKING_DIRECTORY} && git init && git remote add origin {} && git fetch origin && git checkout {}",
+                    "cd {WORKING_DIRECTORY} && rm -rf .git && git init && git remote add origin {} && git fetch origin && git checkout {}",
                     shell_quote(&clone_url),
                     shell_quote(branch),
                 );

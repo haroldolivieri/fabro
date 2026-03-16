@@ -50,7 +50,7 @@ const cssExample = `<span class="text-ice-300">/* All nodes default to fast + ch
         <a href="/" class="flex items-center">
           <img src="/logotype.svg" alt="Fabro" class="h-7" />
         </a>
-        <a href="https://docs.fabro.sh" class="text-sm text-ice-300 hover:text-ice-50 transition-colors">Docs</a>
+        <a href="https://docs.fabro.sh" class="text-sm font-medium text-ice-100 hover:text-ice-50 transition-colors">Docs</a>
       </div>
       <div class="flex items-center gap-5">
         <a href="https://github.com/fabro-sh/fabro" class="text-ice-300 hover:text-ice-50 transition-colors" aria-label="GitHub">
@@ -106,6 +106,13 @@ const cssExample = `<span class="text-ice-300">/* All nodes default to fast + ch
             >
               Read the docs
             </a>
+          </div>
+        </div>
+
+        <!-- Runs board screenshot -->
+        <div class="reveal reveal-d4 mt-16">
+          <div class="rounded-xl border border-navy-800 shadow-[0_0_80px_-20px_rgba(103,178,215,0.12)] overflow-hidden">
+            <img src="/runs-board.png" alt="Fabro Runs board showing workflows across Working, Pending, Verify, and Merge stages" class="w-full" data-lightbox />
           </div>
         </div>
       </div>
@@ -306,15 +313,22 @@ const cssExample = `<span class="text-ice-300">/* All nodes default to fast + ch
             </ul>
           </div>
 
-          <!-- DOT example -->
-          <div class="reveal reveal-d2 rounded-xl border border-navy-800 bg-navy-900/60 p-6 shadow-[0_0_60px_-15px_rgba(103,178,215,0.08)]">
-            <div class="mb-3 flex items-center gap-2">
-              <span class="h-3 w-3 rounded-full bg-coral/70"></span>
-              <span class="h-3 w-3 rounded-full bg-amber/70"></span>
-              <span class="h-3 w-3 rounded-full bg-mint/70"></span>
-              <span class="ml-3 text-xs text-ice-300/60 font-mono">plan-implement.fabro</span>
+          <div class="reveal reveal-d1 space-y-5">
+            <!-- Rendered workflow graph -->
+            <div class="rounded-xl border border-navy-800 bg-navy-900/40 p-6 flex items-center justify-center">
+              <img src="/plan-implement.svg" alt="Plan-Implement workflow graph: Start → Plan → Approve Plan → Implement → Simplify → Exit with a Revise loop" class="w-full max-w-xl" data-lightbox />
             </div>
-            <pre class="overflow-x-auto text-[13px] leading-relaxed"><code class="font-mono" set:html={dotExample} /></pre>
+
+            <!-- DOT source code -->
+            <div class="rounded-xl border border-navy-800 bg-navy-900/60 p-6 shadow-[0_0_60px_-15px_rgba(103,178,215,0.08)]">
+              <div class="mb-3 flex items-center gap-2">
+                <span class="h-3 w-3 rounded-full bg-coral/70"></span>
+                <span class="h-3 w-3 rounded-full bg-amber/70"></span>
+                <span class="h-3 w-3 rounded-full bg-mint/70"></span>
+                <span class="ml-3 text-xs text-ice-300/60 font-mono">plan-implement.fabro</span>
+              </div>
+              <pre class="overflow-x-auto text-[13px] leading-relaxed"><code class="font-mono" set:html={dotExample} /></pre>
+            </div>
           </div>
         </div>
       </div>
@@ -326,27 +340,8 @@ const cssExample = `<span class="text-ice-300">/* All nodes default to fast + ch
       <div class="mx-auto max-w-6xl px-6 pt-28">
         <div class="grid items-start gap-16 lg:grid-cols-2">
           <div class="order-2 lg:order-1 reveal reveal-d1">
-            <div class="grid grid-cols-2 gap-4">
-              <div class="glow-card rounded-lg border border-navy-800 bg-navy-800/25 p-5">
-                <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-teal-500">Gate</div>
-                <div class="font-display text-sm font-semibold text-ice-50">Build + Tests</div>
-                <p class="mt-1 text-xs text-ice-300">Hard gate. Failures trigger automatic fix loops.</p>
-              </div>
-              <div class="glow-card rounded-lg border border-navy-800 bg-navy-800/25 p-5">
-                <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-teal-500">Gate</div>
-                <div class="font-display text-sm font-semibold text-ice-50">Static Analysis</div>
-                <p class="mt-1 text-xs text-ice-300">Linters, type checkers, policy checks at every stage.</p>
-              </div>
-              <div class="glow-card rounded-lg border border-navy-800 bg-navy-800/25 p-5">
-                <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-amber">Layer</div>
-                <div class="font-display text-sm font-semibold text-ice-50">LLM-as-Judge</div>
-                <p class="mt-1 text-xs text-ice-300">Cross-critique from a fresh model with different blindspots.</p>
-              </div>
-              <div class="glow-card rounded-lg border border-navy-800 bg-navy-800/25 p-5">
-                <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-mint">Human</div>
-                <div class="font-display text-sm font-semibold text-ice-50">Approval Gate</div>
-                <p class="mt-1 text-xs text-ice-300">Approve, revise, or steer agents mid-turn.</p>
-              </div>
+            <div class="rounded-xl border border-navy-800 shadow-[0_0_60px_-15px_rgba(103,178,215,0.08)] overflow-hidden">
+              <img src="/run-detail.png" alt="Fabro verification view showing Traceability, Readability, Reliability, Code Coverage, Maintainability, and Security checks" class="w-full" data-lightbox />
             </div>
           </div>
           <div class="order-1 lg:order-2 reveal">
@@ -663,7 +658,29 @@ const cssExample = `<span class="text-ice-300">/* All nodes default to fast + ch
     </div>
   </footer>
 
+  <!-- Lightbox overlay -->
+  <div id="lightbox" class="fixed inset-0 z-[100] hidden items-center justify-center bg-navy-950/90 backdrop-blur-sm cursor-zoom-out p-8">
+    <img id="lightbox-img" src="" alt="" class="max-h-full max-w-full rounded-xl shadow-2xl" />
+  </div>
+
   <script>
+    // Lightbox
+    const lightbox = document.getElementById("lightbox");
+    const lightboxImg = document.getElementById("lightbox-img");
+    document.querySelectorAll("[data-lightbox]").forEach((el) => {
+      el.style.cursor = "zoom-in";
+      el.addEventListener("click", () => {
+        lightboxImg.src = el.src || el.querySelector("img")?.src || "";
+        lightboxImg.alt = el.alt || "";
+        lightbox.classList.remove("hidden");
+        lightbox.classList.add("flex");
+      });
+    });
+    lightbox.addEventListener("click", () => {
+      lightbox.classList.add("hidden");
+      lightbox.classList.remove("flex");
+    });
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {

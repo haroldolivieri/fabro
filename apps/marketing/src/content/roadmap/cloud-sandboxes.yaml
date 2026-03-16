@@ -1,0 +1,5 @@
+title: Cloud sandboxes
+description: Isolated VM execution environments with snapshot-based setup, network controls, and SSH access.
+status: shipped
+date: Jan 2026
+sortOrder: 3

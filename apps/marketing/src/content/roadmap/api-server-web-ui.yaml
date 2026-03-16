@@ -1,0 +1,5 @@
+title: API server & web UI
+description: REST API with SSE event streaming and a React dashboard for managing workflows at scale.
+status: shipped
+date: Feb 2026
+sortOrder: 2

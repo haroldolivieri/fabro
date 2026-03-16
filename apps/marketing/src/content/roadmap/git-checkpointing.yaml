@@ -1,0 +1,5 @@
+title: Git checkpointing & resume
+description: Every stage commits to a Git branch with full metadata. Revert or resume from any checkpoint.
+status: shipped
+date: Nov 2025
+sortOrder: 4

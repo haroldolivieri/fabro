@@ -1,0 +1,5 @@
+title: Core workflow engine
+description: DOT graph parsing with branching, loops, parallel execution, and conditional routing.
+status: shipped
+date: May 2025
+sortOrder: 7

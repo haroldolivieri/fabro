@@ -1,23 +1,26 @@
 {
-  "timestamp": "2026-03-16T12:01:42.187700Z",
-  "current_node": "solve",
+  "timestamp": "2026-03-16T12:01:44.799824Z",
+  "current_node": "extract_patch",
   "completed_nodes": [
     "start",
     "setup",
-    "solve"
+    "solve",
+    "extract_patch"
   ],
   "node_retries": {
-    "solve": 4,
+    "extract_patch": 1,
     "setup": 1,
-    "start": 1
+    "start": 1,
+    "solve": 4
   },
   "context_values": {
-    "current.preamble": "Goal: When DEBUG is True, raising Http404 in a path converter's to_python method does not result in a technical response\nDescription\n\t\nThis is the response I get (plain text): \nA server error occurred. Please contact the administrator.\nI understand a ValueError should be raised which tells the URL resolver \"this path does not match, try next one\" but Http404 is what came to my mind intuitively and the error message was not very helpful.\nOne could also make a point that raising a Http404 should be valid way to tell the resolver \"this is indeed the right path but the current parameter value does not match anything so stop what you are doing and let the handler return the 404 page (including a helpful error message when DEBUG is True instead of the default 'Django tried these URL patterns')\".\nThis would prove useful for example to implement a path converter that uses get_object_or_404.\n\n\n\n## Additional Context\n\nIt seems that other exceptions correctly result in a technical 500 response.\nThe technical_404_response view performs a new URL resolving (cf ​https://github.com/django/django/blob/a8e492bc81fca829f5d270e2d57703c02e58701e/django/views/debug.py#L482) which will obviously raise a new Http404 which won't be caught as only Resolver404 is checked. That means the WSGI handler fails and the WSGI server returns the previously described default error message (indeed the error message is the default one from wsgiref.handlers.BaseHandler ​https://docs.python.org/3.6/library/wsgiref.html#wsgiref.handlers.BaseHandler.error_body). The solution seems to be to catch Http404 instead of Resolver404 in technical_404_response. This will result in a technical 404 page with the Http404's message displayed and will match the behaviour of when DEBUG is False.\nCreated ​PR , but I am not sure how to write the tests. I've looking about the response before and after catch Http404 instead of Resolver404, and there is no difference. Should I also change the technical_404.html for response?\nI've added test to the patch, but not sure if it is correct.\nI have made the requested changes; please review again\n\n## Completed stages\n- **setup**: fail\n  - Script: `git clone https://github.com/django/django.git . && git checkout 514efa3129792ec2abb2444f3e7aeb3f21a38386 && python -m pip install -e .`\n  - Stdout:\n    ```\n    fatal: destination path '.' already exists and is not an empty directory.\n    ```\n  - Stderr: (empty)\n\n## Context\n- failure_class: deterministic\n- failure_signature: setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.\n",
+    "current.preamble": "Goal: When DEBUG is True, raising Http404 in a path converter's to_python method does not result in a technical response\nDescription\n\t\nThis is the response I get (plain text): \nA server error occurred. Please contact the administrator.\nI understand a ValueError should be raised which tells the URL resolver \"this path does not match, try next one\" but Http404 is what came to my mind intuitively and the error message was not very helpful.\nOne could also make a point that raising a Http404 should be valid way to tell the resolver \"this is indeed the right path but the current parameter value does not match anything so stop what you are doing and let the handler return the 404 page (including a helpful error message when DEBUG is True instead of the default 'Django tried these URL patterns')\".\nThis would prove useful for example to implement a path converter that uses get_object_or_404.\n\n\n\n## Additional Context\n\nIt seems that other exceptions correctly result in a technical 500 response.\nThe technical_404_response view performs a new URL resolving (cf ​https://github.com/django/django/blob/a8e492bc81fca829f5d270e2d57703c02e58701e/django/views/debug.py#L482) which will obviously raise a new Http404 which won't be caught as only Resolver404 is checked. That means the WSGI handler fails and the WSGI server returns the previously described default error message (indeed the error message is the default one from wsgiref.handlers.BaseHandler ​https://docs.python.org/3.6/library/wsgiref.html#wsgiref.handlers.BaseHandler.error_body). The solution seems to be to catch Http404 instead of Resolver404 in technical_404_response. This will result in a technical 404 page with the Http404's message displayed and will match the behaviour of when DEBUG is False.\nCreated ​PR , but I am not sure how to write the tests. I've looking about the response before and after catch Http404 instead of Resolver404, and there is no difference. Should I also change the technical_404.html for response?\nI've added test to the patch, but not sure if it is correct.\nI have made the requested changes; please review again\n\n## Completed stages\n- **setup**: fail\n  - Script: `git clone https://github.com/django/django.git . && git checkout 514efa3129792ec2abb2444f3e7aeb3f21a38386 && python -m pip install -e .`\n  - Stdout:\n    ```\n    fatal: destination path '.' already exists and is not an empty directory.\n    ```\n  - Stderr: (empty)\n- **solve**: fail\n\n## Context\n- failure_class: transient_infra\n- failure_signature: solve|transient_infra|api_transient|gemini|rate_limited\n",
+    "thread.solve.current_node": "extract_patch",
     "internal.retry_count.start": 1,
     "graph.goal": "When DEBUG is True, raising Http404 in a path converter's to_python method does not result in a technical response\nDescription\n\t\nThis is the response I get (plain text): \nA server error occurred. Please contact the administrator.\nI understand a ValueError should be raised which tells the URL resolver \"this path does not match, try next one\" but Http404 is what came to my mind intuitively and the error message was not very helpful.\nOne could also make a point that raising a Http404 should be valid way to tell the resolver \"this is indeed the right path but the current parameter value does not match anything so stop what you are doing and let the handler return the 404 page (including a helpful error message when DEBUG is True instead of the default 'Django tried these URL patterns')\".\nThis would prove useful for example to implement a path converter that uses get_object_or_404.\n\n\n\n## Additional Context\n\nIt seems that other exceptions correctly result in a technical 500 response.\nThe technical_404_response view performs a new URL resolving (cf ​https://github.com/django/django/blob/a8e492bc81fca829f5d270e2d57703c02e58701e/django/views/debug.py#L482) which will obviously raise a new Http404 which won't be caught as only Resolver404 is checked. That means the WSGI handler fails and the WSGI server returns the previously described default error message (indeed the error message is the default one from wsgiref.handlers.BaseHandler ​https://docs.python.org/3.6/library/wsgiref.html#wsgiref.handlers.BaseHandler.error_body). The solution seems to be to catch Http404 instead of Resolver404 in technical_404_response. This will result in a technical 404 page with the Http404's message displayed and will match the behaviour of when DEBUG is False.\nCreated ​PR , but I am not sure how to write the tests. I've looking about the response before and after catch Http404 instead of Resolver404, and there is no difference. Should I also change the technical_404.html for response?\nI've added test to the patch, but not sure if it is correct.\nI have made the requested changes; please review again",
     "command.stderr": "",
-    "current_node": "solve",
-    "failure_class": "transient_infra",
+    "current_node": "extract_patch",
+    "failure_class": "",
     "graph.rankdir": "LR",
     "internal.retry_count.setup": 1,
     "internal.run_id": "01KKV88R5QJHD88WHFFXQVP3S8",
@@ -25,14 +28,28 @@
     "internal.fidelity": "compact",
     "thread.setup.current_node": "solve",
     "internal.retry_count.solve": 4,
-    "failure_signature": "solve|transient_infra|api_transient|gemini|rate_limited",
-    "internal.thread_id": "setup",
-    "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n",
-    "outcome": "fail",
+    "internal.retry_count.extract_patch": 1,
+    "failure_signature": "",
+    "internal.thread_id": "solve",
+    "command.output": "",
+    "outcome": "success",
     "thread.start.current_node": "setup"
   },
   "logs": [],
   "node_outcomes": {
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    },
+    "extract_patch": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": ""
+      },
+      "notes": "Script completed: git diff",
+      "duration_ms": 40
+    },
     "setup": {
       "status": "fail",
       "context_updates": {
@@ -45,10 +62,6 @@
       },
       "duration_ms": 84
     },
-    "start": {
-      "status": "success",
-      "duration_ms": 0
-    },
     "solve": {
       "status": "fail",
       "failure": {
@@ -59,13 +72,14 @@
       "duration_ms": 96499
     }
   },
-  "next_node_id": "extract_patch",
+  "next_node_id": "exit",
   "loop_failure_signatures": {
     "setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.": 1
   },
   "node_visits": {
     "start": 1,
     "setup": 1,
+    "extract_patch": 1,
     "solve": 1
   }
 }

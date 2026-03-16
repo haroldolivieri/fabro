@@ -12,6 +12,7 @@ Usage:
 import argparse
 import json
 import logging
+import re
 import subprocess
 import sys
 import threading
@@ -327,6 +328,51 @@ def _cleanup_sandbox(label_value: str):
 
 
 # ---------------------------------------------------------------------------
+# Preflight
+# ---------------------------------------------------------------------------
+
+DAYTONA_CPU_LIMIT = 500  # org-level max from Daytona tier
+
+
+def preflight_daytona(max_workers: int, sandbox_cpu: int):
+    """Check that we have enough Daytona CPU headroom before starting."""
+    needed = max_workers * sandbox_cpu
+    buffer = 1.2  # 20% headroom
+
+    # Count CPUs in use by existing sandboxes
+    used_cpus = 0
+    try:
+        result = subprocess.run(
+            ["daytona", "sandbox", "list"],
+            capture_output=True, text=True, timeout=10,
+        )
+        import re
+        # Count sandbox entries (each has a UUID)
+        sandbox_count = len(re.findall(
+            r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+            result.stdout,
+        ))
+        # Daytona list doesn't show CPU per sandbox; assume worst case (same size as ours)
+        used_cpus = sandbox_count * sandbox_cpu
+    except Exception:
+        pass  # can't reach daytona — proceed with 0 used
+
+    available = DAYTONA_CPU_LIMIT - used_cpus
+    required = int(needed * buffer)
+
+    if required > available:
+        print(f"Preflight FAILED: need {required} CPUs "
+              f"({max_workers} workers x {sandbox_cpu} CPU x {buffer} buffer) "
+              f"but only {available} available "
+              f"({DAYTONA_CPU_LIMIT} limit - {used_cpus} in use)")
+        print(f"  Reduce --max-workers to {int(available / buffer / sandbox_cpu)} or fewer")
+        sys.exit(1)
+
+    print(f"Preflight OK: {required} CPUs needed, {available} available "
+          f"({used_cpus} in use, {DAYTONA_CPU_LIMIT} limit)")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -342,14 +388,14 @@ def main():
         "--provider", default="anthropic", help="LLM provider",
     )
     parser.add_argument(
-        "--max-workers", type=int, default=100,
+        "--max-workers", type=int, default=200,
         help="Max concurrent sandboxes (default 100)",
     )
     parser.add_argument(
         "--instance-ids", nargs="+", help="Run only these instance IDs",
     )
     parser.add_argument(
-        "--timeout", type=int, default=600,
+        "--timeout", type=int, default=1200,
         help="Timeout per instance in seconds",
     )
     parser.add_argument(
@@ -362,6 +408,9 @@ def main():
     args.output_dir = args.output_dir.resolve()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     setup_logging(args.output_dir)
+
+    # --- Preflight: check Daytona capacity --------------------------------
+    preflight_daytona(args.max_workers, sandbox_cpu=2)
 
     log.info("=" * 64)
     log.info("SWE-bench Evaluation")

@@ -1,0 +1,9 @@
+digraph SWEBench {
+    rankdir=LR
+    start [shape=Mdiamond]
+    exit  [shape=Msquare]
+    setup         [label="Setup", shape=parallelogram, script="git clone https://github.com/astropy/astropy.git . && git checkout d5bd3f68bb6d5ce3a61bdce9883ee750d1afade5 && python -m pip install -e .[test] --verbose"]
+    solve         [label="Solve", prompt="Fix this GitHub issue in the repository. Make the minimal code change needed."]
+    extract_patch [label="Extract Patch", shape=parallelogram, script="git diff"]
+    start -> setup -> solve -> extract_patch -> exit
+}

@@ -1,0 +1,56 @@
+{
+  "timestamp": "2026-03-16T05:38:47.990910Z",
+  "current_node": "setup",
+  "completed_nodes": [
+    "start",
+    "setup"
+  ],
+  "node_retries": {
+    "setup": 1,
+    "start": 1
+  },
+  "context_values": {
+    "internal.retry_count.start": 1,
+    "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n",
+    "failure_class": "deterministic",
+    "command.stderr": "",
+    "graph.rankdir": "LR",
+    "internal.fidelity": "compact",
+    "failure_signature": "setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.",
+    "current_node": "setup",
+    "internal.thread_id": "start",
+    "thread.start.current_node": "setup",
+    "internal.retry_count.setup": 1,
+    "current.preamble": "Goal: \n",
+    "internal.node_visit_count": 1,
+    "outcome": "fail",
+    "internal.run_id": "01KKTJEPBXY87WP445QHMESBR3"
+  },
+  "logs": [],
+  "node_outcomes": {
+    "setup": {
+      "status": "fail",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n"
+      },
+      "failure": {
+        "message": "Script failed with exit code: 128\n\n## stdout\nfatal: destination path '.' already exists and is not an empty directory.\n",
+        "failure_class": "deterministic"
+      },
+      "duration_ms": 19
+    },
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    }
+  },
+  "next_node_id": "solve",
+  "loop_failure_signatures": {
+    "setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.": 1
+  },
+  "node_visits": {
+    "setup": 1,
+    "start": 1
+  }
+}

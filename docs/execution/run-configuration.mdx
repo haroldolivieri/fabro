@@ -141,6 +141,24 @@ timeout_ms = 60000
 
 Each command must exit with status 0. If any command fails or times out, the run aborts before the workflow starts.
 
+#### Cloning into the current directory
+
+When cloning a repository into the current working directory (`.`), the destination must be empty. If you need to clone over an existing checkout, use a conditional to handle this:
+
+```toml title="run.toml"
+[setup]
+commands = ["git clone https://github.com/django/django.git . || (git fetch origin && git reset --hard)"]
+```
+
+Alternatively, clone into a subdirectory:
+
+```toml title="run.toml"
+[setup]
+commands = ["git clone https://github.com/django/django.git repo"]
+```
+
+Then reference `repo/` in your workflow prompts and scripts.
+
 ### `[sandbox]`
 
 Configure how agent tools (bash, file edits) are executed.

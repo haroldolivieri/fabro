@@ -141,6 +141,17 @@ timeout_ms = 60000
 
 Each command must exit with status 0. If any command fails or times out, the run aborts before the workflow starts.
 
+#### Cloning into the current directory
+
+When cloning a repository into the current directory (`.`), the initial `git clone <repo> .` will fail if the directory is not empty. Use a fallback to pull on subsequent runs:
+
+```toml title="run.toml"
+[setup]
+commands = ["git clone https://github.com/example/repo . || (cd . && git pull)", "pip install -e ."]
+```
+
+This pattern handles both initial setup (first clone) and re-runs (pull latest), avoiding "destination path already exists" errors.
+
 ### `[sandbox]`
 
 Configure how agent tools (bash, file edits) are executed.

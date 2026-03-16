@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-03-16T12:05:24.387945Z",
+  "current_node": "setup",
+  "completed_nodes": [
+    "start",
+    "setup"
+  ],
+  "node_retries": {
+    "setup": 1,
+    "start": 1
+  },
+  "context_values": {
+    "failure_class": "deterministic",
+    "command.stderr": "",
+    "internal.run_id": "01KKV8D21Z60FB6KHW2ZNCGB7X",
+    "failure_signature": "setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.",
+    "outcome": "fail",
+    "internal.thread_id": "start",
+    "current.preamble": "Goal: delete() on instances of models without any dependencies doesn't clear PKs.\nDescription\n\t\nDeleting any model with no dependencies not updates the PK on the model. It should be set to None after .delete() call.\nSee Django.db.models.deletion:276-281. Should update the model line 280.\n\n\n\n## Additional Context\n\nReproduced at 1ffddfc233e2d5139cc6ec31a4ec6ef70b10f87f. Regression in bc7dd8490b882b2cefdc7faf431dc64c532b79c9. Thanks for the report.\nRegression test.\nI have attached a simple fix which mimics what ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L324-L326 does for multiple objects. I am not sure if we need ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L320-L323 (the block above) because I think field_updates is only ever filled if the objects are not fast-deletable -- ie ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L224 is not called due to the can_fast_delete check at the beginning of the collect function. That said, if we want to be extra \"safe\" we can just move lines 320 - 326 into an extra function and call that from the old and new location (though I do not think it is needed).\n",
+    "internal.fidelity": "compact",
+    "internal.node_visit_count": 1,
+    "current_node": "setup",
+    "thread.start.current_node": "setup",
+    "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n",
+    "graph.rankdir": "LR",
+    "graph.goal": "delete() on instances of models without any dependencies doesn't clear PKs.\nDescription\n\t\nDeleting any model with no dependencies not updates the PK on the model. It should be set to None after .delete() call.\nSee Django.db.models.deletion:276-281. Should update the model line 280.\n\n\n\n## Additional Context\n\nReproduced at 1ffddfc233e2d5139cc6ec31a4ec6ef70b10f87f. Regression in bc7dd8490b882b2cefdc7faf431dc64c532b79c9. Thanks for the report.\nRegression test.\nI have attached a simple fix which mimics what ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L324-L326 does for multiple objects. I am not sure if we need ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L320-L323 (the block above) because I think field_updates is only ever filled if the objects are not fast-deletable -- ie ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L224 is not called due to the can_fast_delete check at the beginning of the collect function. That said, if we want to be extra \"safe\" we can just move lines 320 - 326 into an extra function and call that from the old and new location (though I do not think it is needed).",
+    "internal.retry_count.start": 1,
+    "internal.retry_count.setup": 1
+  },
+  "logs": [],
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    },
+    "setup": {
+      "status": "fail",
+      "context_updates": {
+        "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n",
+        "command.stderr": ""
+      },
+      "failure": {
+        "message": "Script failed with exit code: 128\n\n## stdout\nfatal: destination path '.' already exists and is not an empty directory.\n",
+        "failure_class": "deterministic"
+      },
+      "duration_ms": 24
+    }
+  },
+  "next_node_id": "solve",
+  "loop_failure_signatures": {
+    "setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.": 1
+  },
+  "node_visits": {
+    "start": 1,
+    "setup": 1
+  }
+}

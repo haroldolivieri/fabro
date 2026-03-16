@@ -1,0 +1,7 @@
+diff --git a/django b/django
+new file mode 160000
+index 0000000..d527639
+--- /dev/null
++++ b/django
+@@ -0,0 +1 @@
++Subproject commit d5276398046ce4a102776a1e67dcac2884d80dfe

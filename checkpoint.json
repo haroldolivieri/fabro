@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-16T02:23:16.447200Z",
-  "current_node": "simplify_gpt",
+  "timestamp": "2026-03-16T02:23:39.129312Z",
+  "current_node": "verify",
   "completed_nodes": [
     "start",
     "toolchain",
@@ -9,7 +9,8 @@
     "implement",
     "simplify_opus",
     "simplify_gemini",
-    "simplify_gpt"
+    "simplify_gpt",
+    "verify"
   ],
   "node_retries": {
     "preflight_compile": 1,
@@ -19,11 +20,13 @@
     "preflight_lint": 1,
     "simplify_gpt": 1,
     "start": 1,
-    "implement": 1
+    "implement": 1,
+    "verify": 1
   },
   "context_values": {
     "internal.retry_count.preflight_lint": 1,
-    "current.preamble": "Goal: # Wire up missing hook invocations\n\n## Context\n\nFive `HookEvent` variants exist in the enum and are documented in `docs/agents/hooks.mdx`, but `run_hooks()` is never called for them in the engine. Users can configure hooks for these events, but they silently never fire.\n\n**Events to wire up:** `StageRetrying`, `ParallelStart`, `ParallelComplete`\n**Events to mark as reserved:** `SandboxReady`, `SandboxCleanup` (sandbox lifecycle is managed outside the engine; wiring these requires significant architecture changes)\n\n## Changes\n\n### 1. Add StageRetrying hook calls in `engine.rs`\n\nFile: `lib/crates/fabro-workflows/src/engine.rs`\n\nTwo sites in `execute_with_retry`, both immediately after `WorkflowRunEvent::StageRetrying` emission and before `tokio::time::sleep(delay).await`:\n\n- **Site A (~line 1127):** error-retry path\n- **Site B (~line 1155):** explicit Retry status path\n\nPattern (same for both sites):\n```rust\n{\n    let mut hook_ctx = HookContext::new(\n        HookEvent::StageRetrying,\n        context.run_id(),\n        graph.name.clone(),\n    );\n    hook_ctx.node_id = Some(node.id.clone());\n    hook_ctx.node_label = Some(node.label().to_string());\n    hook_ctx.handler_type = node.handler_type().map(String::from);\n    hook_ctx.attempt = Some(usize::try_from(attempt).unwrap_or(usize::MAX));\n    hook_ctx.max_attempts = Some(\n        usize::try_from(policy.max_attempts).unwrap_or(usize::MAX),\n    );\n    let _ = self.run_hooks(&hook_ctx, None).await;\n}\n```\n\nAvailable via: `self.run_hooks()` (engine method), `context.run_id()`, `graph.name`, `node`, `attempt`, `policy`.\n\n### 2. Add ParallelStart hook call in `parallel.rs`\n\nFile: `lib/crates/fabro-workflows/src/handler/parallel.rs`\n\nAfter `ParallelStarted` event emission (~line 301). Call `hook_runner.run()` directly since the handler has `services: &EngineServices` (which has `hook_runner` and `sandbox`):\n\n```rust\nif let Some(ref runner) = services.hook_runner {\n    let hook_ctx = HookContext::new(\n        HookEvent::ParallelStart,\n        context.run_id(),\n        graph.name.clone(),\n    );\n    let _ = runner\n        .run(&hook_ctx, services.sandbox.clone(), None)\n        .await;\n}\n```\n\n### 3. Add ParallelComplete hook call in `parallel.rs`\n\nSame file, after `ParallelCompleted` event emission (~line 713). Same pattern as ParallelStart but with `HookEvent::ParallelComplete`.\n\n### 4. Mark SandboxReady/SandboxCleanup as reserved\n\nFile: `lib/crates/fabro-workflows/src/hook/types.rs`\n\nAdd doc comments:\n```rust\n/// Reserved: hooks for this event are not yet invoked by the engine.\nSandboxReady,\n/// Reserved: hooks for this event are not yet invoked by the engine.\nSandboxCleanup,\n```\n\n### 5. Update docs\n\nFile: `docs/agents/hooks.mdx`\n\nIn the lifecycle events table, annotate `sandbox_ready` and `sandbox_cleanup` rows — e.g., append \"(not yet wired)\" to the description or add a note.\n\n## Verification\n\n1. `cargo fmt --check --all`\n2. `cargo clippy --workspace -- -D warnings`\n3. `cargo test --workspace` — existing tests pass, no regressions\n4. Manual test: create a workflow with a retrying node and a `post_tool_use`-style hook for `stage_retrying`, verify it fires in the CLI log\n\n\n## Completed stages\n- **toolchain**: success\n  - Script: `command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1`\n  - Stdout:\n    ```\n    cargo 1.94.0 (85eff7c80 2026-01-15)\n    ```\n  - Stderr: (empty)\n- **preflight_compile**: success\n  - Script: `cargo check -q --workspace 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **preflight_lint**: success\n  - Script: `cargo clippy -q --workspace -- -D warnings 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **implement**: success\n  - Model: claude-opus-4-6, 33.1k tokens in / 7.2k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/engine.rs, /home/daytona/workspace/lib/crates/fabro-workflows/src/handler/parallel.rs\n- **simplify_opus**: success\n  - Model: claude-opus-4-6, 36.9k tokens in / 12.8k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/engine.rs\n- **simplify_gemini**: success\n  - Model: claude-opus-4-6, 39.9k tokens in / 11.2k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/handler/mod.rs, /home/daytona/workspace/lib/crates/fabro-workflows/src/handler/parallel.rs\n",
+    "thread.simplify_gpt.current_node": "verify",
+    "current.preamble": "Goal: # Wire up missing hook invocations\n\n## Context\n\nFive `HookEvent` variants exist in the enum and are documented in `docs/agents/hooks.mdx`, but `run_hooks()` is never called for them in the engine. Users can configure hooks for these events, but they silently never fire.\n\n**Events to wire up:** `StageRetrying`, `ParallelStart`, `ParallelComplete`\n**Events to mark as reserved:** `SandboxReady`, `SandboxCleanup` (sandbox lifecycle is managed outside the engine; wiring these requires significant architecture changes)\n\n## Changes\n\n### 1. Add StageRetrying hook calls in `engine.rs`\n\nFile: `lib/crates/fabro-workflows/src/engine.rs`\n\nTwo sites in `execute_with_retry`, both immediately after `WorkflowRunEvent::StageRetrying` emission and before `tokio::time::sleep(delay).await`:\n\n- **Site A (~line 1127):** error-retry path\n- **Site B (~line 1155):** explicit Retry status path\n\nPattern (same for both sites):\n```rust\n{\n    let mut hook_ctx = HookContext::new(\n        HookEvent::StageRetrying,\n        context.run_id(),\n        graph.name.clone(),\n    );\n    hook_ctx.node_id = Some(node.id.clone());\n    hook_ctx.node_label = Some(node.label().to_string());\n    hook_ctx.handler_type = node.handler_type().map(String::from);\n    hook_ctx.attempt = Some(usize::try_from(attempt).unwrap_or(usize::MAX));\n    hook_ctx.max_attempts = Some(\n        usize::try_from(policy.max_attempts).unwrap_or(usize::MAX),\n    );\n    let _ = self.run_hooks(&hook_ctx, None).await;\n}\n```\n\nAvailable via: `self.run_hooks()` (engine method), `context.run_id()`, `graph.name`, `node`, `attempt`, `policy`.\n\n### 2. Add ParallelStart hook call in `parallel.rs`\n\nFile: `lib/crates/fabro-workflows/src/handler/parallel.rs`\n\nAfter `ParallelStarted` event emission (~line 301). Call `hook_runner.run()` directly since the handler has `services: &EngineServices` (which has `hook_runner` and `sandbox`):\n\n```rust\nif let Some(ref runner) = services.hook_runner {\n    let hook_ctx = HookContext::new(\n        HookEvent::ParallelStart,\n        context.run_id(),\n        graph.name.clone(),\n    );\n    let _ = runner\n        .run(&hook_ctx, services.sandbox.clone(), None)\n        .await;\n}\n```\n\n### 3. Add ParallelComplete hook call in `parallel.rs`\n\nSame file, after `ParallelCompleted` event emission (~line 713). Same pattern as ParallelStart but with `HookEvent::ParallelComplete`.\n\n### 4. Mark SandboxReady/SandboxCleanup as reserved\n\nFile: `lib/crates/fabro-workflows/src/hook/types.rs`\n\nAdd doc comments:\n```rust\n/// Reserved: hooks for this event are not yet invoked by the engine.\nSandboxReady,\n/// Reserved: hooks for this event are not yet invoked by the engine.\nSandboxCleanup,\n```\n\n### 5. Update docs\n\nFile: `docs/agents/hooks.mdx`\n\nIn the lifecycle events table, annotate `sandbox_ready` and `sandbox_cleanup` rows — e.g., append \"(not yet wired)\" to the description or add a note.\n\n## Verification\n\n1. `cargo fmt --check --all`\n2. `cargo clippy --workspace -- -D warnings`\n3. `cargo test --workspace` — existing tests pass, no regressions\n4. Manual test: create a workflow with a retrying node and a `post_tool_use`-style hook for `stage_retrying`, verify it fires in the CLI log\n\n\n## Completed stages\n- **toolchain**: success\n  - Script: `command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1`\n  - Stdout:\n    ```\n    cargo 1.94.0 (85eff7c80 2026-01-15)\n    ```\n  - Stderr: (empty)\n- **preflight_compile**: success\n  - Script: `cargo check -q --workspace 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **preflight_lint**: success\n  - Script: `cargo clippy -q --workspace -- -D warnings 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **implement**: success\n  - Model: claude-opus-4-6, 33.1k tokens in / 7.2k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/engine.rs, /home/daytona/workspace/lib/crates/fabro-workflows/src/handler/parallel.rs\n- **simplify_opus**: success\n  - Model: claude-opus-4-6, 36.9k tokens in / 12.8k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/engine.rs\n- **simplify_gemini**: success\n  - Model: claude-opus-4-6, 39.9k tokens in / 11.2k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/handler/mod.rs, /home/daytona/workspace/lib/crates/fabro-workflows/src/handler/parallel.rs\n- **simplify_gpt**: success\n  - Model: claude-opus-4-6, 35.7k tokens in / 14.5k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/engine.rs, /home/daytona/workspace/lib/crates/fabro-workflows/src/handler/parallel.rs, /home/daytona/workspace/lib/crates/fabro-workflows/src/hook/types.rs\n",
     "graph.goal": "# Wire up missing hook invocations\n\n## Context\n\nFive `HookEvent` variants exist in the enum and are documented in `docs/agents/hooks.mdx`, but `run_hooks()` is never called for them in the engine. Users can configure hooks for these events, but they silently never fire.\n\n**Events to wire up:** `StageRetrying`, `ParallelStart`, `ParallelComplete`\n**Events to mark as reserved:** `SandboxReady`, `SandboxCleanup` (sandbox lifecycle is managed outside the engine; wiring these requires significant architecture changes)\n\n## Changes\n\n### 1. Add StageRetrying hook calls in `engine.rs`\n\nFile: `lib/crates/fabro-workflows/src/engine.rs`\n\nTwo sites in `execute_with_retry`, both immediately after `WorkflowRunEvent::StageRetrying` emission and before `tokio::time::sleep(delay).await`:\n\n- **Site A (~line 1127):** error-retry path\n- **Site B (~line 1155):** explicit Retry status path\n\nPattern (same for both sites):\n```rust\n{\n    let mut hook_ctx = HookContext::new(\n        HookEvent::StageRetrying,\n        context.run_id(),\n        graph.name.clone(),\n    );\n    hook_ctx.node_id = Some(node.id.clone());\n    hook_ctx.node_label = Some(node.label().to_string());\n    hook_ctx.handler_type = node.handler_type().map(String::from);\n    hook_ctx.attempt = Some(usize::try_from(attempt).unwrap_or(usize::MAX));\n    hook_ctx.max_attempts = Some(\n        usize::try_from(policy.max_attempts).unwrap_or(usize::MAX),\n    );\n    let _ = self.run_hooks(&hook_ctx, None).await;\n}\n```\n\nAvailable via: `self.run_hooks()` (engine method), `context.run_id()`, `graph.name`, `node`, `attempt`, `policy`.\n\n### 2. Add ParallelStart hook call in `parallel.rs`\n\nFile: `lib/crates/fabro-workflows/src/handler/parallel.rs`\n\nAfter `ParallelStarted` event emission (~line 301). Call `hook_runner.run()` directly since the handler has `services: &EngineServices` (which has `hook_runner` and `sandbox`):\n\n```rust\nif let Some(ref runner) = services.hook_runner {\n    let hook_ctx = HookContext::new(\n        HookEvent::ParallelStart,\n        context.run_id(),\n        graph.name.clone(),\n    );\n    let _ = runner\n        .run(&hook_ctx, services.sandbox.clone(), None)\n        .await;\n}\n```\n\n### 3. Add ParallelComplete hook call in `parallel.rs`\n\nSame file, after `ParallelCompleted` event emission (~line 713). Same pattern as ParallelStart but with `HookEvent::ParallelComplete`.\n\n### 4. Mark SandboxReady/SandboxCleanup as reserved\n\nFile: `lib/crates/fabro-workflows/src/hook/types.rs`\n\nAdd doc comments:\n```rust\n/// Reserved: hooks for this event are not yet invoked by the engine.\nSandboxReady,\n/// Reserved: hooks for this event are not yet invoked by the engine.\nSandboxCleanup,\n```\n\n### 5. Update docs\n\nFile: `docs/agents/hooks.mdx`\n\nIn the lifecycle events table, annotate `sandbox_ready` and `sandbox_cleanup` rows — e.g., append \"(not yet wired)\" to the description or add a note.\n\n## Verification\n\n1. `cargo fmt --check --all`\n2. `cargo clippy --workspace -- -D warnings`\n3. `cargo test --workspace` — existing tests pass, no regressions\n4. Manual test: create a workflow with a retrying node and a `post_tool_use`-style hook for `stage_retrying`, verify it fires in the CLI log\n",
     "internal.retry_count.simplify_gemini": 1,
     "internal.retry_count.simplify_opus": 1,
@@ -34,7 +37,7 @@
     "thread.implement.current_node": "simplify_opus",
     "thread.simplify_opus.current_node": "simplify_gemini",
     "last_stage": "simplify_gpt",
-    "command.output": "",
+    "command.output": "────────────\n Nextest run ID 66909466-303d-4533-9ddd-0d02de85d446 with nextest profile: default\n    Starting 3395 tests across 38 binaries (183 tests skipped)\n────────────\n     Summary [  18.920s] 3395 tests run: 3395 passed, 183 skipped\n",
     "thread.preflight_compile.current_node": "preflight_lint",
     "response.simplify_gemini": "All clean. Here's a summary of what was fixed:\n\n## Summary\n\n**Two issues fixed:**\n\n1. **Correctness: Parallel hooks now populate `node_id`/`node_label`/`handler_type`** — The `ParallelStart` and `ParallelComplete` hook contexts were missing node metadata that all other stage-level hooks provide. This meant user-defined hook matchers filtering on `node_id` or `handler_type` would silently never match these events. Fixed by populating these fields from the available `node` reference.\n\n2. **Abstraction: Extracted `EngineServices::run_hooks()` helper** — The parallel handler was duplicating the `if let Some(ref runner) = services.hook_runner { runner.run(...) }` guard pattern that the engine encapsulates in its own `run_hooks()` method. Added a `run_hooks(&self, hook_context: &HookContext) -> HookDecision` method on `EngineServices` so handlers can call hooks through a clean interface without reaching into `hook_runner` internals. Both parallel hook sites now use `services.run_hooks(&hook_ctx)`.\n\n**Skipped (not worth addressing):**\n- `usize::try_from(u32).unwrap_or(usize::MAX)` — infallible on all real platforms, consistent with existing code\n- Parameter sprawl in `stage_retrying_hook` — 5 params is borderline, all naturally in scope at call sites\n- Retry-path hook latency — absorbed by backoff sleep, negligible\n- `Arc::clone` costs — trivially cheap atomic increment",
     "internal.retry_count.simplify_gpt": 1,
@@ -42,6 +45,7 @@
     "graph.rankdir": "LR",
     "internal.retry_count.preflight_compile": 1,
     "response.simplify_opus": "All clean. Here's a summary of what was fixed:\n\n### Changes Made\n\n1. **Extracted duplicated StageRetrying hook code into a helper method** (`engine.rs`): The two identical 14-line blocks that built a `HookContext` for `StageRetrying` and called `run_hooks()` were extracted into a new `stage_retrying_hook()` method. This follows the existing pattern established by `run_failed_hook()` (line 963). Each call site is now a single 2-line method call instead of a 14-line block.\n\n2. **Restored trailing newline in `hooks.mdx`**: The previous commit accidentally stripped the trailing newline from the docs file.\n\n### Issues Reviewed and Deemed Clean\n\n- **parallel.rs hook pattern**: The `if let Some(ref runner) = services.hook_runner` pattern is correct — handlers don't have access to the engine's `run_hooks()` wrapper, so directly calling `runner.run()` is the appropriate approach.\n- **Type conversions**: `usize::try_from(u32)` matches the existing convention throughout the file. Not worth deviating.\n- **Cloning**: `graph.name.clone()`, `node.id.clone()`, `services.sandbox.clone()` — all are necessary since `HookContext` owns its strings, and sandbox is `Arc`-wrapped (cheap clone).",
+    "internal.retry_count.verify": 1,
     "failure_class": "",
     "thread.toolchain.current_node": "preflight_compile",
     "failure_signature": "",
@@ -49,10 +53,10 @@
     "graph.model_stylesheet": "\n            * { backend: api; model: claude-opus-4-6;}\n        ",
     "internal.retry_count.start": 1,
     "last_response": "Clean. Here's a summary of what was fixed:\n\n## Summary\n\n**Added:** `HookContext::set_node(&mut self, node: &Node)` helper in `hook/types.rs` — populates `node_id`, `node_label`, and `handler_type` f",
-    "current_node": "simplify_gpt",
+    "current_node": "verify",
     "command.stderr": "",
     "internal.node_visit_count": 1,
-    "internal.thread_id": "simplify_gemini",
+    "internal.thread_id": "simplify_gpt",
     "outcome": "success",
     "thread.preflight_lint.current_node": "implement",
     "internal.retry_count.toolchain": 1,
@@ -60,6 +64,15 @@
   },
   "logs": [],
   "node_outcomes": {
+    "verify": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "────────────\n Nextest run ID 66909466-303d-4533-9ddd-0d02de85d446 with nextest profile: default\n    Starting 3395 tests across 38 binaries (183 tests skipped)\n────────────\n     Summary [  18.920s] 3395 tests run: 3395 passed, 183 skipped\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: cargo clippy -q --workspace -- -D warnings 2>&1 && cargo nextest run --cargo-quiet --workspace --status-level fail 2>&1",
+      "duration_ms": 20204
+    },
     "start": {
       "status": "success",
       "duration_ms": 0
@@ -184,7 +197,7 @@
       "duration_ms": 387405
     }
   },
-  "next_node_id": "verify",
+  "next_node_id": "fmt",
   "node_visits": {
     "implement": 1,
     "preflight_lint": 1,
@@ -193,6 +206,7 @@
     "preflight_compile": 1,
     "start": 1,
     "simplify_gemini": 1,
-    "simplify_gpt": 1
+    "simplify_gpt": 1,
+    "verify": 1
   }
 }

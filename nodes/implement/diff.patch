@@ -1,0 +1,219 @@
+diff --git a/lib/crates/fabro-api/src/demo/mod.rs b/lib/crates/fabro-api/src/demo/mod.rs
+index d056854..d724e32 100644
+--- a/lib/crates/fabro-api/src/demo/mod.rs
++++ b/lib/crates/fabro-api/src/demo/mod.rs
+@@ -226,6 +226,8 @@ pub async fn get_run_graph(
+     // Use graphviz to render the demo DOT source
+     let dot_source = "digraph demo {\n  graph [goal=\"Demo\"]\n  rankdir=LR\n  start [shape=Mdiamond, label=\"Start\"]\n  detect [label=\"Detect\\nDrift\"]\n  exit [shape=Msquare, label=\"Exit\"]\n  propose [label=\"Propose\\nChanges\"]\n  review [label=\"Review\\nChanges\"]\n  apply [label=\"Apply\\nChanges\"]\n  start -> detect\n  detect -> exit [label=\"No drift\"]\n  detect -> propose [label=\"Drift found\"]\n  propose -> review\n  review -> propose [label=\"Revise\"]\n  review -> apply [label=\"Accept\"]\n  apply -> exit\n}";
+ 
++    let styled_source = fabro_workflows::cli::graph::inject_dot_style_defaults(dot_source);
++
+     let mut child = match tokio::process::Command::new("dot")
+         .arg("-Tsvg")
+         .stdin(std::process::Stdio::piped())
+@@ -245,14 +247,14 @@ pub async fn get_run_graph(
+ 
+     if let Some(mut stdin) = child.stdin.take() {
+         use tokio::io::AsyncWriteExt;
+-        let _ = stdin.write_all(dot_source.as_bytes()).await;
++        let _ = stdin.write_all(styled_source.as_bytes()).await;
+     }
+ 
+     match child.wait_with_output().await {
+         Ok(output) if output.status.success() => (
+             StatusCode::OK,
+             [("content-type", "image/svg+xml")],
+-            output.stdout,
++            fabro_workflows::cli::graph::postprocess_svg(output.stdout),
+         )
+             .into_response(),
+         _ => ApiError::new(StatusCode::BAD_GATEWAY, "Dot rendering failed.").into_response(),
+diff --git a/lib/crates/fabro-api/src/server.rs b/lib/crates/fabro-api/src/server.rs
+index 59debde..ddb460a 100644
+--- a/lib/crates/fabro-api/src/server.rs
++++ b/lib/crates/fabro-api/src/server.rs
+@@ -1445,6 +1445,8 @@ async fn get_graph(
+         }
+     };
+ 
++    let styled_source = fabro_workflows::cli::graph::inject_dot_style_defaults(&dot_source);
++
+     let mut child = match tokio::process::Command::new("dot")
+         .arg("-Tsvg")
+         .stdin(std::process::Stdio::piped())
+@@ -1464,7 +1466,7 @@ async fn get_graph(
+ 
+     if let Some(mut stdin) = child.stdin.take() {
+         use tokio::io::AsyncWriteExt;
+-        let _ = stdin.write_all(dot_source.as_bytes()).await;
++        let _ = stdin.write_all(styled_source.as_bytes()).await;
+         // stdin is dropped here, closing the pipe
+     }
+ 
+@@ -1472,7 +1474,7 @@ async fn get_graph(
+         Ok(output) if output.status.success() => (
+             StatusCode::OK,
+             [("content-type", "image/svg+xml")],
+-            output.stdout,
++            fabro_workflows::cli::graph::postprocess_svg(output.stdout),
+         )
+             .into_response(),
+         Ok(output) => {
+diff --git a/lib/crates/fabro-workflows/src/cli/graph.rs b/lib/crates/fabro-workflows/src/cli/graph.rs
+index daab1c6..0b21fdf 100644
+--- a/lib/crates/fabro-workflows/src/cli/graph.rs
++++ b/lib/crates/fabro-workflows/src/cli/graph.rs
+@@ -76,8 +76,62 @@ pub fn graph_command(args: &GraphArgs, styles: &Styles) -> anyhow::Result<()> {
+     Ok(())
+ }
+ 
++/// Dark mode CSS injected into SVG output.
++const DARK_MODE_STYLE: &str = r##"<style>
++  @media (prefers-color-scheme: dark) {
++    text { fill: #e0e0e0 !important; }
++    [stroke="#357f9e"] { stroke: #5bb8d8; }
++    [stroke="#666666"] { stroke: #999999; }
++    polygon[fill="#357f9e"] { fill: #5bb8d8; }
++    polygon[fill="#666666"] { fill: #999999; }
++  }
++</style>"##;
++
++/// Inject DOT graph-level style defaults (transparent background, teal nodes,
++/// gray edges, Helvetica font) right after the first `{` in the DOT source.
++/// Per-node/edge attributes override these defaults.
++pub fn inject_dot_style_defaults(source: &str) -> String {
++    let Some(pos) = source.find('{') else {
++        return source.to_string();
++    };
++    let (before, after) = source.split_at(pos + 1);
++    format!(
++        "{before}\n    bgcolor=\"transparent\"\n    node [color=\"#357f9e\", fontname=\"Helvetica\", fontsize=12, fontcolor=\"#1a1a1a\"]\n    edge [color=\"#666666\", fontname=\"Helvetica\", fontsize=10, fontcolor=\"#666666\"]\n{after}"
++    )
++}
++
++/// Post-process raw SVG output from Graphviz:
++/// 1. Remove the white background `<polygon>` element
++/// 2. Insert a dark-mode `<style>` block after the opening `<svg ...>` tag
++pub fn postprocess_svg(raw: Vec<u8>) -> Vec<u8> {
++    let mut svg = String::from_utf8_lossy(&raw).into_owned();
++
++    // Remove white background polygon (single line containing it)
++    svg = svg
++        .lines()
++        .filter(|line| {
++            !(line.contains("<polygon")
++                && line.contains("fill=\"white\"")
++                && line.contains("stroke=\"none\""))
++        })
++        .collect::<Vec<_>>()
++        .join("\n");
++
++    // Insert dark mode style block after the opening <svg ...> tag
++    if let Some(svg_close) = svg
++        .find("<svg")
++        .and_then(|start| svg[start..].find('>').map(|end| start + end))
++    {
++        svg.insert_str(svg_close + 1, &format!("\n{DARK_MODE_STYLE}"));
++    }
++
++    svg.into_bytes()
++}
++
+ /// Spawn the `dot` command to render DOT source into the given format.
+ fn render_dot(source: &str, format: GraphFormat) -> anyhow::Result<Vec<u8>> {
++    let styled_source = inject_dot_style_defaults(source);
++
+     let mut child = match Command::new("dot")
+         .arg(format!("-T{format}"))
+         .stdin(std::process::Stdio::piped())
+@@ -95,7 +149,7 @@ fn render_dot(source: &str, format: GraphFormat) -> anyhow::Result<Vec<u8>> {
+     };
+ 
+     if let Some(mut stdin) = child.stdin.take() {
+-        stdin.write_all(source.as_bytes())?;
++        stdin.write_all(styled_source.as_bytes())?;
+     }
+ 
+     let output = child.wait_with_output()?;
+@@ -105,7 +159,12 @@ fn render_dot(source: &str, format: GraphFormat) -> anyhow::Result<Vec<u8>> {
+         bail!("dot failed: {stderr}");
+     }
+ 
+-    Ok(output.stdout)
++    let raw = output.stdout;
++    if matches!(format, GraphFormat::Svg) {
++        Ok(postprocess_svg(raw))
++    } else {
++        Ok(raw)
++    }
+ }
+ 
+ /// Check whether the `dot` command is available on PATH.
+@@ -194,6 +253,14 @@ mod tests {
+ 
+         let content = std::fs::read_to_string(&output_path).unwrap();
+         assert!(content.contains("<svg"), "expected SVG content");
++        assert!(
++            content.contains("prefers-color-scheme: dark"),
++            "expected dark mode style block"
++        );
++        assert!(
++            !content.contains("fill=\"white\""),
++            "white background should be removed"
++        );
+     }
+ 
+     #[test]
+@@ -258,6 +325,52 @@ mod tests {
+         assert!(!content.is_empty(), "output file should not be empty");
+     }
+ 
++    #[test]
++    fn inject_dot_style_defaults_inserts_attrs() {
++        let source = "digraph G {\n    a -> b\n}";
++        let styled = inject_dot_style_defaults(source);
++        assert!(styled.contains("bgcolor=\"transparent\""));
++        assert!(styled.contains("node [color=\"#357f9e\""));
++        assert!(styled.contains("fontname=\"Helvetica\""));
++        assert!(styled.contains("edge [color=\"#666666\""));
++        // Original content preserved
++        assert!(styled.contains("a -> b"));
++    }
++
++    #[test]
++    fn inject_dot_style_defaults_no_brace() {
++        let source = "no brace here";
++        let result = inject_dot_style_defaults(source);
++        assert_eq!(result, source);
++    }
++
++    #[test]
++    fn postprocess_svg_removes_white_bg() {
++        let svg = b"<svg xmlns=\"...\" width=\"100\">\n<polygon fill=\"white\" stroke=\"none\" points=\"0,0 100,0 100,100 0,100\"/>\n<g>content</g>\n</svg>";
++        let result = postprocess_svg(svg.to_vec());
++        let result_str = String::from_utf8(result).unwrap();
++        assert!(
++            !result_str.contains("fill=\"white\""),
++            "white background polygon should be removed"
++        );
++        assert!(result_str.contains("<g>content</g>"));
++    }
++
++    #[test]
++    fn postprocess_svg_injects_dark_mode() {
++        let svg = b"<svg xmlns=\"...\" width=\"100\">\n<g>content</g>\n</svg>";
++        let result = postprocess_svg(svg.to_vec());
++        let result_str = String::from_utf8(result).unwrap();
++        assert!(
++            result_str.contains("prefers-color-scheme: dark"),
++            "dark mode style block should be present"
++        );
++        // Style block should come after <svg ...>
++        let svg_tag_end = result_str.find('>').unwrap();
++        let style_pos = result_str.find("<style>").unwrap();
++        assert!(style_pos > svg_tag_end);
++    }
++
+     #[test]
+     fn graph_toml_path() {
+         if !dot_is_available() {

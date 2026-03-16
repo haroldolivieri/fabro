@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-16T02:15:54.991394Z",
-  "current_node": "simplify_gemini",
+  "timestamp": "2026-03-16T02:19:16.696887Z",
+  "current_node": "simplify_gpt",
   "completed_nodes": [
     "start",
     "toolchain",
@@ -8,44 +8,49 @@
     "preflight_lint",
     "implement",
     "simplify_opus",
-    "simplify_gemini"
+    "simplify_gemini",
+    "simplify_gpt"
   ],
   "node_retries": {
+    "simplify_gemini": 1,
+    "simplify_gpt": 1,
     "preflight_compile": 1,
     "start": 1,
     "simplify_opus": 1,
-    "simplify_gemini": 1,
+    "toolchain": 1,
     "preflight_lint": 1,
-    "implement": 1,
-    "toolchain": 1
+    "implement": 1
   },
   "context_values": {
-    "last_response": "Everything is clean. Here's the summary:\n\n## Summary\n\n**One issue fixed:**\n\n**Decoupled `track_file_event` from `Arc<Mutex<>>`** — Changed the function signature from `fn track_file_event(event: &Ag",
+    "last_response": "All 7 tests in the module pass, including the 4 new `track_file_event` tests. Clippy is clean.\n\n## Summary\n\nAll three review agents completed. Here's the aggregate:\n\n- **Code Reuse:** No issues — no",
     "internal.run_id": "01KKT5VYJ8FG6KX44AVXK8PY96",
     "command.stderr": "",
-    "last_stage": "simplify_gemini",
+    "last_stage": "simplify_gpt",
     "graph.model_stylesheet": "\n            * { backend: api; model: claude-opus-4-6;}\n        ",
-    "internal.thread_id": "simplify_opus",
+    "internal.thread_id": "simplify_gemini",
     "command.output": "",
     "graph.goal": "# Fix: Sub-agent file writes not tracked in API backend\n\n## Context\n\nWhen the API backend's agent spawns sub-agents that call `edit_file`/`write_file`, those files are missing from `outcome.files_touched`. This causes downstream nodes (like `simplify_opus`) to receive an incomplete file list in their prompt preamble.\n\nRoot cause: `spawn_event_forwarder` in `backend.rs` only matches top-level `ToolCallStarted`/`ToolCallCompleted` events. Sub-agent tool calls arrive wrapped as `AgentEvent::SubAgentEvent { event: Box<inner> }` and hit the `_ => {}` catch-all.\n\n## Plan\n\n**Single file change:** `lib/crates/fabro-workflows/src/cli/backend.rs`\n\nIn `spawn_event_forwarder` (line 51), replace the flat match with a helper that recursively unwraps `SubAgentEvent` to extract the inner `ToolCallStarted`/`ToolCallCompleted`:\n\n```\nmatch &event.event {\n    AgentEvent::ToolCallStarted { .. } => { /* existing logic */ }\n    AgentEvent::ToolCallCompleted { .. } => { /* existing logic */ }\n+   AgentEvent::SubAgentEvent { event: inner, .. } => {\n+       // Recursively extract file-tracking events from sub-agents\n+       track_file_event(inner, &pending_tool_calls, &files_touched, &last_file_touched);\n+   }\n    _ => {}\n}\n```\n\nExtract the file-tracking logic into a `track_file_event(event, pending, touched, last)` function that:\n1. Matches `ToolCallStarted` for `write_file`/`edit_file` → records to `pending_tool_calls`\n2. Matches `ToolCallCompleted` (non-error) → moves from pending to `files_touched`\n3. Matches `SubAgentEvent` → recurses into the inner event (handles sub-sub-agents)\n4. Otherwise → no-op\n\nThe existing inline match in `spawn_event_forwarder` calls `track_file_event` for both top-level and sub-agent events.\n\n## Verification\n\n1. `cargo test -p fabro-workflows` — existing tests pass\n2. `cargo clippy --workspace -- -D warnings` — clean\n3. Add a unit test: emit a `SubAgentEvent` wrapping a `ToolCallStarted`/`ToolCallCompleted` for `edit_file`, verify it appears in `files_touched`\n",
     "internal.retry_count.start": 1,
     "response.simplify_gemini": "Everything is clean. Here's the summary:\n\n## Summary\n\n**One issue fixed:**\n\n**Decoupled `track_file_event` from `Arc<Mutex<>>`** — Changed the function signature from `fn track_file_event(event: &AgentEvent, state: &Arc<Mutex<FileTracking>>)` to `fn track_file_event(event: &AgentEvent, state: &mut FileTracking)`. The caller in `spawn_event_forwarder` now locks once and passes `&mut`. This:\n- Removes coupling of a pure state-transition function to the concurrency wrapper\n- Simplifies all 4 tests (no more `Arc<Mutex<>>` scaffolding — direct `&mut` access)\n- Makes the function more composable if reused elsewhere\n\n**Findings skipped (not worth addressing):**\n- *FileTracking vs FileTracker duplication*: The existing `FileTracker` in `fabro-agent` doesn't handle sub-agent events. Fixing that would require cross-crate changes beyond scope.\n- *Stringly-typed tool names*: No constants exist anywhere in the codebase. Adding a constants system is a broader effort.\n- *Missing `apply_patch` coverage*: Pre-existing gap (old code also only tracked `write_file`/`edit_file`). `apply_patch` extracts paths from output, not arguments, so it needs a different approach.\n- *`last` as derived state*: Part of the existing design pre-dating this diff.",
     "internal.retry_count.toolchain": 1,
     "thread.preflight_compile.current_node": "preflight_lint",
+    "thread.simplify_gemini.current_node": "simplify_gpt",
     "thread.toolchain.current_node": "preflight_compile",
     "failure_signature": "",
     "thread.implement.current_node": "simplify_opus",
     "internal.retry_count.implement": 1,
     "thread.preflight_lint.current_node": "implement",
     "outcome": "success",
-    "current.preamble": "Goal: # Fix: Sub-agent file writes not tracked in API backend\n\n## Context\n\nWhen the API backend's agent spawns sub-agents that call `edit_file`/`write_file`, those files are missing from `outcome.files_touched`. This causes downstream nodes (like `simplify_opus`) to receive an incomplete file list in their prompt preamble.\n\nRoot cause: `spawn_event_forwarder` in `backend.rs` only matches top-level `ToolCallStarted`/`ToolCallCompleted` events. Sub-agent tool calls arrive wrapped as `AgentEvent::SubAgentEvent { event: Box<inner> }` and hit the `_ => {}` catch-all.\n\n## Plan\n\n**Single file change:** `lib/crates/fabro-workflows/src/cli/backend.rs`\n\nIn `spawn_event_forwarder` (line 51), replace the flat match with a helper that recursively unwraps `SubAgentEvent` to extract the inner `ToolCallStarted`/`ToolCallCompleted`:\n\n```\nmatch &event.event {\n    AgentEvent::ToolCallStarted { .. } => { /* existing logic */ }\n    AgentEvent::ToolCallCompleted { .. } => { /* existing logic */ }\n+   AgentEvent::SubAgentEvent { event: inner, .. } => {\n+       // Recursively extract file-tracking events from sub-agents\n+       track_file_event(inner, &pending_tool_calls, &files_touched, &last_file_touched);\n+   }\n    _ => {}\n}\n```\n\nExtract the file-tracking logic into a `track_file_event(event, pending, touched, last)` function that:\n1. Matches `ToolCallStarted` for `write_file`/`edit_file` → records to `pending_tool_calls`\n2. Matches `ToolCallCompleted` (non-error) → moves from pending to `files_touched`\n3. Matches `SubAgentEvent` → recurses into the inner event (handles sub-sub-agents)\n4. Otherwise → no-op\n\nThe existing inline match in `spawn_event_forwarder` calls `track_file_event` for both top-level and sub-agent events.\n\n## Verification\n\n1. `cargo test -p fabro-workflows` — existing tests pass\n2. `cargo clippy --workspace -- -D warnings` — clean\n3. Add a unit test: emit a `SubAgentEvent` wrapping a `ToolCallStarted`/`ToolCallCompleted` for `edit_file`, verify it appears in `files_touched`\n\n\n## Completed stages\n- **toolchain**: success\n  - Script: `command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1`\n  - Stdout:\n    ```\n    cargo 1.94.0 (85eff7c80 2026-01-15)\n    ```\n  - Stderr: (empty)\n- **preflight_compile**: success\n  - Script: `cargo check -q --workspace 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **preflight_lint**: success\n  - Script: `cargo clippy -q --workspace -- -D warnings 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **implement**: success\n  - Model: claude-opus-4-6, 23.4k tokens in / 7.5k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/cli/backend.rs\n- **simplify_opus**: success\n  - Model: claude-opus-4-6, 33.6k tokens in / 5.2k out\n",
+    "current.preamble": "Goal: # Fix: Sub-agent file writes not tracked in API backend\n\n## Context\n\nWhen the API backend's agent spawns sub-agents that call `edit_file`/`write_file`, those files are missing from `outcome.files_touched`. This causes downstream nodes (like `simplify_opus`) to receive an incomplete file list in their prompt preamble.\n\nRoot cause: `spawn_event_forwarder` in `backend.rs` only matches top-level `ToolCallStarted`/`ToolCallCompleted` events. Sub-agent tool calls arrive wrapped as `AgentEvent::SubAgentEvent { event: Box<inner> }` and hit the `_ => {}` catch-all.\n\n## Plan\n\n**Single file change:** `lib/crates/fabro-workflows/src/cli/backend.rs`\n\nIn `spawn_event_forwarder` (line 51), replace the flat match with a helper that recursively unwraps `SubAgentEvent` to extract the inner `ToolCallStarted`/`ToolCallCompleted`:\n\n```\nmatch &event.event {\n    AgentEvent::ToolCallStarted { .. } => { /* existing logic */ }\n    AgentEvent::ToolCallCompleted { .. } => { /* existing logic */ }\n+   AgentEvent::SubAgentEvent { event: inner, .. } => {\n+       // Recursively extract file-tracking events from sub-agents\n+       track_file_event(inner, &pending_tool_calls, &files_touched, &last_file_touched);\n+   }\n    _ => {}\n}\n```\n\nExtract the file-tracking logic into a `track_file_event(event, pending, touched, last)` function that:\n1. Matches `ToolCallStarted` for `write_file`/`edit_file` → records to `pending_tool_calls`\n2. Matches `ToolCallCompleted` (non-error) → moves from pending to `files_touched`\n3. Matches `SubAgentEvent` → recurses into the inner event (handles sub-sub-agents)\n4. Otherwise → no-op\n\nThe existing inline match in `spawn_event_forwarder` calls `track_file_event` for both top-level and sub-agent events.\n\n## Verification\n\n1. `cargo test -p fabro-workflows` — existing tests pass\n2. `cargo clippy --workspace -- -D warnings` — clean\n3. Add a unit test: emit a `SubAgentEvent` wrapping a `ToolCallStarted`/`ToolCallCompleted` for `edit_file`, verify it appears in `files_touched`\n\n\n## Completed stages\n- **toolchain**: success\n  - Script: `command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1`\n  - Stdout:\n    ```\n    cargo 1.94.0 (85eff7c80 2026-01-15)\n    ```\n  - Stderr: (empty)\n- **preflight_compile**: success\n  - Script: `cargo check -q --workspace 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **preflight_lint**: success\n  - Script: `cargo clippy -q --workspace -- -D warnings 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **implement**: success\n  - Model: claude-opus-4-6, 23.4k tokens in / 7.5k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/cli/backend.rs\n- **simplify_opus**: success\n  - Model: claude-opus-4-6, 33.6k tokens in / 5.2k out\n- **simplify_gemini**: success\n  - Model: claude-opus-4-6, 38.6k tokens in / 11.5k out\n  - Files: /home/daytona/workspace/lib/crates/fabro-workflows/src/cli/backend.rs\n",
     "response.implement": "Everything looks correct. Here's a summary of what was done:\n\n## Changes Made\n\n**File:** `lib/crates/fabro-workflows/src/cli/backend.rs`\n\n### 1. Extracted `track_file_event` helper function (lines 33–75)\n\nA new recursive function that handles file-tracking logic for `write_file`/`edit_file` tool calls:\n- **`ToolCallStarted`** → records the `file_path` argument in `pending_tool_calls` keyed by `tool_call_id`\n- **`ToolCallCompleted`** (non-error) → moves the path from `pending_tool_calls` to `files_touched` and updates `last_file_touched`\n- **`ToolCallCompleted`** (error) → removes from `pending_tool_calls` without recording\n- **`SubAgentEvent`** → recursively unwraps the inner event and calls itself (handles arbitrarily nested sub-agents)\n- Everything else → no-op\n\n### 2. Refactored `spawn_event_forwarder` to use `track_file_event`\n\nReplaced the inline `match` block with a single call to `track_file_event(&event.event, ...)`, which now handles both top-level and sub-agent events.\n\n### 3. Added 4 unit tests\n\n- `track_file_event_records_top_level_write` — verifies basic `write_file` tracking still works\n- `track_file_event_unwraps_sub_agent_edit` — verifies `SubAgentEvent`-wrapped `edit_file` calls are tracked\n- `track_file_event_unwraps_nested_sub_sub_agent` — verifies double-nested `SubAgentEvent` (sub-sub-agent) is handled\n- `track_file_event_error_removes_pending` — verifies errored sub-agent tool calls don't pollute `files_touched`\n\n### Verification\n- ✅ `cargo test -p fabro-workflows` — 179 passed, 0 failed\n- ✅ `cargo clippy --workspace -- -D warnings` — clean",
     "internal.fidelity": "compact",
+    "response.simplify_gpt": "All 7 tests in the module pass, including the 4 new `track_file_event` tests. Clippy is clean.\n\n## Summary\n\nAll three review agents completed. Here's the aggregate:\n\n- **Code Reuse:** No issues — no duplication of existing utilities found.\n- **Code Quality:** No issues — the `FileTracking` struct and `track_file_event` function are well-structured, properly documented, and the tests cover top-level events, single-wrapped sub-agent events, double-wrapped sub-sub-agent events, and error paths.\n- **Efficiency:** One minor finding — the mutex is acquired on every event (including streaming deltas that don't need tracking). Skipped as not worth fixing: the mutex is uncontended (~20ns), event rates are manageable (hundreds/sec), and consolidating from 3 `Arc<Mutex<...>>` to 1 is already a net improvement. Adding a pre-check would add complexity (double-traversal of `SubAgentEvent` wrappers) for negligible benefit.\n\n**The code is already clean. No changes needed.**",
     "thread.start.current_node": "toolchain",
     "internal.retry_count.simplify_opus": 1,
     "internal.retry_count.preflight_compile": 1,
+    "internal.retry_count.simplify_gpt": 1,
     "graph.rankdir": "LR",
-    "current_node": "simplify_gemini",
+    "current_node": "simplify_gpt",
     "thread.simplify_opus.current_node": "simplify_gemini",
     "failure_class": "",
     "response.simplify_opus": "Everything is clean. Here's a summary:\n\n## Summary\n\n**All three review agents found the code to be clean overall.** One improvement was identified and applied:\n\n### Fixed: Consolidated `FileTracking` struct\nThe three separate `Arc<Mutex<...>>` parameters (`pending_tool_calls`, `files_touched`, `last_file_touched`) were consolidated into a single `FileTracking` struct behind one `Arc<Mutex<...>>`. This was independently recommended by both the **Code Quality** agent (parameter sprawl) and the **Efficiency** agent (triple lock acquisition). The change:\n\n- **Reduces lock acquisitions** from 3 to 1 on the `ToolCallCompleted` success path\n- **Reduces parameter count** on `track_file_event` (4 → 2) and `spawn_event_forwarder` (6 → 4)\n- **Makes state updates atomic** — `touched` and `last` are updated under a single lock guard\n- **Reduces `Arc::clone` calls** at call sites from 3 to 1\n\n### No issues found (confirmed clean):\n- **Code Reuse**: No existing utilities for recursive `SubAgentEvent` unwrapping or event-based file tracking. The implementation is genuinely new.\n- **Stringly-typed tool names**: `\"write_file\"` / `\"edit_file\"` are consistent with the codebase convention — no constants exist anywhere.\n- **Recursion depth**: Bounded by `max_subagent_depth` (default 1), so stack depth is not a concern.\n- **Hot-path performance**: Non-file events hit the `_ => {}` arm immediately — negligible cost.\n- **Missing newline at EOF**: Fixed.",
@@ -55,6 +60,56 @@
   },
   "logs": [],
   "node_outcomes": {
+    "simplify_gpt": {
+      "status": "success",
+      "context_updates": {
+        "last_stage": "simplify_gpt",
+        "last_response": "All 7 tests in the module pass, including the 4 new `track_file_event` tests. Clippy is clean.\n\n## Summary\n\nAll three review agents completed. Here's the aggregate:\n\n- **Code Reuse:** No issues — no",
+        "response.simplify_gpt": "All 7 tests in the module pass, including the 4 new `track_file_event` tests. Clippy is clean.\n\n## Summary\n\nAll three review agents completed. Here's the aggregate:\n\n- **Code Reuse:** No issues — no duplication of existing utilities found.\n- **Code Quality:** No issues — the `FileTracking` struct and `track_file_event` function are well-structured, properly documented, and the tests cover top-level events, single-wrapped sub-agent events, double-wrapped sub-sub-agent events, and error paths.\n- **Efficiency:** One minor finding — the mutex is acquired on every event (including streaming deltas that don't need tracking). Skipped as not worth fixing: the mutex is uncontended (~20ns), event rates are manageable (hundreds/sec), and consolidating from 3 `Arc<Mutex<...>>` to 1 is already a net improvement. Adding a pre-check would add complexity (double-traversal of `SubAgentEvent` wrappers) for negligible benefit.\n\n**The code is already clean. No changes needed.**"
+      },
+      "notes": "Stage completed: simplify_gpt",
+      "usage": {
+        "model": "claude-opus-4-6",
+        "input_tokens": 25500,
+        "output_tokens": 7424,
+        "cache_read_tokens": 143683,
+        "cache_write_tokens": 29881,
+        "reasoning_tokens": 582,
+        "cost": 0.9393
+      },
+      "duration_ms": 199534
+    },
+    "simplify_gemini": {
+      "status": "success",
+      "context_updates": {
+        "last_stage": "simplify_gemini",
+        "last_response": "Everything is clean. Here's the summary:\n\n## Summary\n\n**One issue fixed:**\n\n**Decoupled `track_file_event` from `Arc<Mutex<>>`** — Changed the function signature from `fn track_file_event(event: &Ag",
+        "response.simplify_gemini": "Everything is clean. Here's the summary:\n\n## Summary\n\n**One issue fixed:**\n\n**Decoupled `track_file_event` from `Arc<Mutex<>>`** — Changed the function signature from `fn track_file_event(event: &AgentEvent, state: &Arc<Mutex<FileTracking>>)` to `fn track_file_event(event: &AgentEvent, state: &mut FileTracking)`. The caller in `spawn_event_forwarder` now locks once and passes `&mut`. This:\n- Removes coupling of a pure state-transition function to the concurrency wrapper\n- Simplifies all 4 tests (no more `Arc<Mutex<>>` scaffolding — direct `&mut` access)\n- Makes the function more composable if reused elsewhere\n\n**Findings skipped (not worth addressing):**\n- *FileTracking vs FileTracker duplication*: The existing `FileTracker` in `fabro-agent` doesn't handle sub-agent events. Fixing that would require cross-crate changes beyond scope.\n- *Stringly-typed tool names*: No constants exist anywhere in the codebase. Adding a constants system is a broader effort.\n- *Missing `apply_patch` coverage*: Pre-existing gap (old code also only tracked `write_file`/`edit_file`). `apply_patch` extracts paths from output, not arguments, so it needs a different approach.\n- *`last` as derived state*: Part of the existing design pre-dating this diff."
+      },
+      "notes": "Stage completed: simplify_gemini",
+      "usage": {
+        "model": "claude-opus-4-6",
+        "input_tokens": 38584,
+        "output_tokens": 11462,
+        "cache_read_tokens": 338251,
+        "cache_write_tokens": 42558,
+        "reasoning_tokens": 1050,
+        "cost": 1.4384100000000002
+      },
+      "files_touched": [
+        "/home/daytona/workspace/lib/crates/fabro-workflows/src/cli/backend.rs"
+      ],
+      "duration_ms": 335379
+    },
+    "preflight_compile": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": ""
+      },
+      "notes": "Script completed: cargo check -q --workspace 2>&1",
+      "duration_ms": 69914
+    },
     "implement": {
       "status": "success",
       "context_updates": {
@@ -86,28 +141,6 @@
       "notes": "Script completed: cargo clippy -q --workspace -- -D warnings 2>&1",
       "duration_ms": 16562
     },
-    "simplify_gemini": {
-      "status": "success",
-      "context_updates": {
-        "last_stage": "simplify_gemini",
-        "last_response": "Everything is clean. Here's the summary:\n\n## Summary\n\n**One issue fixed:**\n\n**Decoupled `track_file_event` from `Arc<Mutex<>>`** — Changed the function signature from `fn track_file_event(event: &Ag",
-        "response.simplify_gemini": "Everything is clean. Here's the summary:\n\n## Summary\n\n**One issue fixed:**\n\n**Decoupled `track_file_event` from `Arc<Mutex<>>`** — Changed the function signature from `fn track_file_event(event: &AgentEvent, state: &Arc<Mutex<FileTracking>>)` to `fn track_file_event(event: &AgentEvent, state: &mut FileTracking)`. The caller in `spawn_event_forwarder` now locks once and passes `&mut`. This:\n- Removes coupling of a pure state-transition function to the concurrency wrapper\n- Simplifies all 4 tests (no more `Arc<Mutex<>>` scaffolding — direct `&mut` access)\n- Makes the function more composable if reused elsewhere\n\n**Findings skipped (not worth addressing):**\n- *FileTracking vs FileTracker duplication*: The existing `FileTracker` in `fabro-agent` doesn't handle sub-agent events. Fixing that would require cross-crate changes beyond scope.\n- *Stringly-typed tool names*: No constants exist anywhere in the codebase. Adding a constants system is a broader effort.\n- *Missing `apply_patch` coverage*: Pre-existing gap (old code also only tracked `write_file`/`edit_file`). `apply_patch` extracts paths from output, not arguments, so it needs a different approach.\n- *`last` as derived state*: Part of the existing design pre-dating this diff."
-      },
-      "notes": "Stage completed: simplify_gemini",
-      "usage": {
-        "model": "claude-opus-4-6",
-        "input_tokens": 38584,
-        "output_tokens": 11462,
-        "cache_read_tokens": 338251,
-        "cache_write_tokens": 42558,
-        "reasoning_tokens": 1050,
-        "cost": 1.4384100000000002
-      },
-      "files_touched": [
-        "/home/daytona/workspace/lib/crates/fabro-workflows/src/cli/backend.rs"
-      ],
-      "duration_ms": 335379
-    },
     "start": {
       "status": "success",
       "duration_ms": 0
@@ -120,15 +153,6 @@
       },
       "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
       "duration_ms": 34
-    },
-    "preflight_compile": {
-      "status": "success",
-      "context_updates": {
-        "command.stderr": "",
-        "command.output": ""
-      },
-      "notes": "Script completed: cargo check -q --workspace 2>&1",
-      "duration_ms": 69914
     },
     "simplify_opus": {
       "status": "success",
@@ -150,14 +174,15 @@
       "duration_ms": 345958
     }
   },
-  "next_node_id": "simplify_gpt",
+  "next_node_id": "verify",
   "node_visits": {
-    "implement": 1,
-    "preflight_compile": 1,
     "preflight_lint": 1,
     "simplify_gemini": 1,
     "toolchain": 1,
     "start": 1,
+    "simplify_gpt": 1,
+    "implement": 1,
+    "preflight_compile": 1,
     "simplify_opus": 1
   }
 }

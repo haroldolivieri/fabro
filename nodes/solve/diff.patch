@@ -1,0 +1,7 @@
+diff --git a/astropy b/astropy
+new file mode 160000
+index 0000000..a591797
+--- /dev/null
++++ b/astropy
+@@ -0,0 +1 @@
++Subproject commit a5917978be39d13cd90b517e1de4e7a539ffaa48

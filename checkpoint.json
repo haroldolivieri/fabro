@@ -1,34 +1,38 @@
 {
-  "timestamp": "2026-03-16T05:39:19.870565Z",
-  "current_node": "solve",
+  "timestamp": "2026-03-16T05:39:21.844734Z",
+  "current_node": "extract_patch",
   "completed_nodes": [
     "start",
     "setup",
-    "solve"
+    "solve",
+    "extract_patch"
   ],
   "node_retries": {
-    "solve": 4,
+    "extract_patch": 1,
     "start": 1,
-    "setup": 1
+    "setup": 1,
+    "solve": 4
   },
   "context_values": {
+    "thread.solve.current_node": "extract_patch",
     "internal.fidelity": "compact",
     "internal.run_id": "01KKTJCMVZ4J4X09SX573ZEN1F",
-    "failure_signature": "solve|transient_infra|api_transient|gemini|rate_limited",
+    "failure_signature": "",
     "graph.rankdir": "LR",
-    "failure_class": "transient_infra",
-    "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n",
+    "failure_class": "",
+    "command.output": "",
     "internal.retry_count.solve": 4,
-    "current.preamble": "Goal: \n\n## Completed stages\n- **setup**: fail\n  - Script: `git clone https://github.com/django/django.git . && git checkout 7f33c1e22dbc34a7afae7967783725b10f1f13b1 && python -m pip install -e .`\n  - Stdout:\n    ```\n    fatal: destination path '.' already exists and is not an empty directory.\n    ```\n  - Stderr: (empty)\n\n## Context\n- failure_class: deterministic\n- failure_signature: setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.\n",
-    "internal.thread_id": "setup",
-    "outcome": "fail",
+    "current.preamble": "Goal: \n\n## Completed stages\n- **setup**: fail\n  - Script: `git clone https://github.com/django/django.git . && git checkout 7f33c1e22dbc34a7afae7967783725b10f1f13b1 && python -m pip install -e .`\n  - Stdout:\n    ```\n    fatal: destination path '.' already exists and is not an empty directory.\n    ```\n  - Stderr: (empty)\n- **solve**: fail\n\n## Context\n- failure_class: transient_infra\n- failure_signature: solve|transient_infra|api_transient|gemini|rate_limited\n",
+    "internal.thread_id": "solve",
+    "outcome": "success",
+    "internal.retry_count.extract_patch": 1,
     "thread.setup.current_node": "solve",
     "internal.retry_count.start": 1,
     "thread.start.current_node": "setup",
     "internal.node_visit_count": 1,
     "internal.retry_count.setup": 1,
     "command.stderr": "",
-    "current_node": "solve"
+    "current_node": "extract_patch"
   },
   "logs": [],
   "node_outcomes": {
@@ -56,15 +60,25 @@
         "failure_signature": "api_transient|gemini|rate_limited"
       },
       "duration_ms": 96797
+    },
+    "extract_patch": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: git diff",
+      "duration_ms": 23
     }
   },
-  "next_node_id": "extract_patch",
+  "next_node_id": "exit",
   "loop_failure_signatures": {
     "setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.": 1
   },
   "node_visits": {
     "solve": 1,
-    "start": 1,
-    "setup": 1
+    "setup": 1,
+    "extract_patch": 1,
+    "start": 1
   }
 }

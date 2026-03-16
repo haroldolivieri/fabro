@@ -141,6 +141,19 @@ timeout_ms = 60000
 
 Each command must exit with status 0. If any command fails or times out, the run aborts before the workflow starts.
 
+#### Idempotent git clones
+
+When cloning repositories, use a fallback pattern to handle cases where the clone directory already exists:
+
+```toml title="run.toml"
+[setup]
+commands = [
+    "git clone https://github.com/openai/openai-agents-python upstream || (cd upstream && git pull)"
+]
+```
+
+This pattern attempts to clone, and if the directory already exists (which fails with `fatal: destination path ... already exists`), it pulls the latest changes instead.
+
 ### `[sandbox]`
 
 Configure how agent tools (bash, file edits) are executed.

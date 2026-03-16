@@ -313,6 +313,78 @@ struct CostAccumulator {
     has_pricing: bool,
 }
 
+/// Extract the git clone URL from a git clone command string.
+///
+/// Handles formats like: `git clone <url>`, `git clone --branch <branch> <url>`, etc.
+fn parse_git_clone_url(cmd: &str) -> Option<String> {
+    // Find "git clone" and extract the URL that comes after it
+    if let Some(clone_pos) = cmd.find("git clone") {
+        let after_clone = &cmd[clone_pos + 9..]; // Skip "git clone"
+        
+        for part in after_clone.split_whitespace() {
+            // Skip flags
+            if part.starts_with('-') {
+                continue;
+            }
+            // Check if this looks like a URL
+            if part.contains("://") || part.starts_with("git@") {
+                return Some(part.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract the git branch from a git clone command if specified with --branch.
+fn extract_git_branch(cmd: &str) -> Option<String> {
+    if let Some(branch_pos) = cmd.find("--branch") {
+        let after_flag = &cmd[branch_pos + 8..]; // Skip "--branch"
+        let remaining = after_flag.trim_start();
+        
+        // Handle both "--branch <value>" and "--branch=<value>"
+        if remaining.starts_with('=') {
+            remaining[1..].split_whitespace().next().map(|s| s.to_string())
+        } else {
+            remaining.split_whitespace().next().map(|s| s.to_string())
+        }
+    } else {
+        None
+    }
+}
+
+/// Extract the target directory from a git clone command.
+/// Returns "." if cloning to current directory or if target dir is not specified.
+fn extract_git_target_dir(cmd: &str) -> Option<String> {
+    // If command ends with " .", it's cloning to current directory
+    if cmd.trim_end().ends_with(" .") || cmd.trim_end().ends_with("' .") {
+        return Some(".".to_string());
+    }
+    
+    // Try to find the target directory - it's typically the last argument after the URL
+    if let Some(clone_pos) = cmd.find("git clone") {
+        let after_clone = &cmd[clone_pos + 9..];
+        let parts: Vec<&str> = after_clone.split_whitespace().collect();
+        
+        let mut found_url = false;
+        for part in parts.iter() {
+            if found_url {
+                // If this part doesn't start with -, it's likely the target directory
+                if !part.starts_with('-') && !part.contains("://") && !part.starts_with("git@") {
+                    // Check if this is part of chained commands (&&, ||, etc.)
+                    if !part.starts_with("&&") && !part.starts_with("||") && !part.starts_with("|") {
+                        return Some(part.to_string());
+                    }
+                }
+            }
+            
+            if (part.contains("://") || part.starts_with("git@")) && !part.starts_with('-') {
+                found_url = true;
+            }
+        }
+    }
+    None
+}
+
 /// Execute a full workflow run.
 ///
 /// # Errors
@@ -1040,11 +1112,53 @@ pub async fn run_command(
                 index,
             });
             let cmd_start = Instant::now();
-            let result = sandbox
+            let mut result = sandbox
                 .exec_command(cmd, 300_000, None, None, None)
                 .await
                 .map_err(|e| anyhow::anyhow!("Setup command failed: {e}"))?;
-            let cmd_duration = crate::millis_u64(cmd_start.elapsed());
+            let mut cmd_duration = crate::millis_u64(cmd_start.elapsed());
+            
+            // If git clone fails due to non-empty directory, try fallback
+            if result.exit_code != 0 {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                if cmd.contains("git clone") && 
+                   (stderr.contains("not an empty directory") || stderr.contains("already exists and is not an empty")) {
+                    // Try fallback: git init + remote add + fetch + checkout
+                    if let Some(clone_url) = parse_git_clone_url(cmd) {
+                        let branch = extract_git_branch(cmd).unwrap_or_else(|| "main".to_string());
+                        let target_dir = extract_git_target_dir(cmd).unwrap_or_else(|| ".".to_string());
+                        
+                        // Extract any chained commands after the git clone (e.g., && ...)
+                        let rest_of_cmd = if let Some(amp_pos) = cmd.find("&&") {
+                            &cmd[amp_pos..]
+                        } else {
+                            ""
+                        };
+                        
+                        let fallback_cmd = if target_dir == "." {
+                            // Current directory - don't cd
+                            format!(
+                                "git init && git remote add origin '{}' && git fetch origin && git checkout '{}' {}",
+                                clone_url, branch, rest_of_cmd
+                            )
+                        } else {
+                            // Specific directory - cd first
+                            format!(
+                                "cd '{}' && git init && git remote add origin '{}' && git fetch origin && git checkout '{}' {}",
+                                target_dir, clone_url, branch, rest_of_cmd
+                            )
+                        };
+                        
+                        let fallback_start = Instant::now();
+                        result = sandbox
+                            .exec_command(&fallback_cmd, 300_000, None, None, None)
+                            .await
+                            .map_err(|e| anyhow::anyhow!("Setup command fallback failed: {e}"))?;
+                        cmd_duration = crate::millis_u64(fallback_start.elapsed());
+                    }
+                }
+            }
+            
             if result.exit_code != 0 {
                 emitter.emit(&crate::event::WorkflowRunEvent::SetupFailed {
                     command: cmd.clone(),

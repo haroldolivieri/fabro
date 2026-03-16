@@ -1,0 +1,53 @@
+Goal: sqlmigrate wraps it's outpout in BEGIN/COMMIT even if the database doesn't support transactional DDL
+Description
+	 
+		(last modified by Simon Charette)
+	 
+The migration executor only adds the outer BEGIN/COMMIT ​if the migration is atomic and ​the schema editor can rollback DDL but the current sqlmigrate logic only takes migration.atomic into consideration.
+The issue can be addressed by
+Changing sqlmigrate ​assignment of self.output_transaction to consider connection.features.can_rollback_ddl as well.
+Adding a test in tests/migrations/test_commands.py based on ​an existing test for non-atomic migrations that mocks connection.features.can_rollback_ddl to False instead of overdidding MIGRATION_MODULES to point to a non-atomic migration.
+I marked the ticket as easy picking because I included the above guidelines but feel free to uncheck it if you deem it inappropriate.
+
+
+
+## Additional Context
+
+I marked the ticket as easy picking because I included the above guidelines but feel free to uncheck it if you deem it inappropriate. Super. We don't have enough Easy Pickings tickets for the demand, so this kind of thing is great. (IMO 🙂)
+Hey, I'm working on this ticket, I would like you to know as this is my first ticket it may take little longer to complete :). Here is a ​| link to the working branch You may feel free to post references or elaborate more on the topic.
+Hi Parth. No problem. If you need help please reach out to e.g. ​django-core-mentorship citing this issue, and where you've got to/got stuck. Welcome aboard, and have fun! ✨
+
+## Completed stages
+- **setup**: fail
+  - Script: `git clone https://github.com/django/django.git . && git checkout d5276398046ce4a102776a1e67dcac2884d80dfe && python -m pip install -e .`
+  - Stdout:
+    ```
+    fatal: destination path '.' already exists and is not an empty directory.
+    ```
+  - Stderr: (empty)
+
+## Context
+- failure_class: deterministic
+- failure_signature: setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.
+
+
+Fix this GitHub issue in the repository. Make the minimal code change needed.
+
+sqlmigrate wraps it's outpout in BEGIN/COMMIT even if the database doesn't support transactional DDL
+Description
+	 
+		(last modified by Simon Charette)
+	 
+The migration executor only adds the outer BEGIN/COMMIT ​if the migration is atomic and ​the schema editor can rollback DDL but the current sqlmigrate logic only takes migration.atomic into consideration.
+The issue can be addressed by
+Changing sqlmigrate ​assignment of self.output_transaction to consider connection.features.can_rollback_ddl as well.
+Adding a test in tests/migrations/test_commands.py based on ​an existing test for non-atomic migrations that mocks connection.features.can_rollback_ddl to False instead of overdidding MIGRATION_MODULES to point to a non-atomic migration.
+I marked the ticket as easy picking because I included the above guidelines but feel free to uncheck it if you deem it inappropriate.
+
+
+
+## Additional Context
+
+I marked the ticket as easy picking because I included the above guidelines but feel free to uncheck it if you deem it inappropriate. Super. We don't have enough Easy Pickings tickets for the demand, so this kind of thing is great. (IMO 🙂)
+Hey, I'm working on this ticket, I would like you to know as this is my first ticket it may take little longer to complete :). Here is a ​| link to the working branch You may feel free to post references or elaborate more on the topic.
+Hi Parth. No problem. If you need help please reach out to e.g. ​django-core-mentorship citing this issue, and where you've got to/got stuck. Welcome aboard, and have fun! ✨

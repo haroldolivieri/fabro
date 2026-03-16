@@ -21,6 +21,7 @@ CLI flags always take the highest priority:
 
 ```toml title="cli.toml"
 verbose = true
+upgrade_check = true
 mode = "server"
 
 [server]
@@ -68,6 +69,17 @@ Authorization = "Bearer sk-xxx"
 ```
 
 All fields are optional. You can include just the sections and keys you want to override.
+
+## `upgrade_check`
+
+Controls whether Fabro runs a daily background check for new releases. The check runs during `run`, `exec`, `init`, and `install` commands and prints a notice to stderr when a newer version is available.
+
+| Value | Description |
+|---|---|
+| `true` | Check for new releases (default) |
+| `false` | Disable automatic upgrade checks |
+
+The `--no-upgrade-check` CLI flag overrides this for a single invocation. See [`fabro upgrade`](/reference/cli#fabro-upgrade) for manual upgrades.
 
 ## `verbose`
 

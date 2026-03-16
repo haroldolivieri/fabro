@@ -10,6 +10,7 @@ These flags apply to all subcommands:
 | Flag | Description |
 |---|---|
 | `--debug` | Enable DEBUG-level logging (default is INFO) |
+| `--no-upgrade-check` | Skip the automatic background upgrade check |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
 
@@ -424,6 +425,30 @@ fabro run --run-branch fabro/run/<RUN_ID>
 
 See [Checkpoints](/execution/checkpoints#rewinding-to-an-earlier-checkpoint) for background on how checkpointing works.
 
+## `fabro fork`
+
+Fork a new run from an existing run's checkpoint. Unlike `fabro rewind`, which resets the original run in place, `fabro fork` creates an independent copy — the original run stays intact.
+
+```bash
+fabro fork <RUN_ID> [TARGET]
+fabro fork <RUN_ID> --list
+```
+
+| Argument / Flag | Description |
+|---|---|
+| `<RUN_ID>` | Run ID or unambiguous prefix (required) |
+| `[TARGET]` | Checkpoint to fork from: node name, `node@visit`, or `@ordinal` (1-based). Omit to fork from the latest checkpoint. |
+| `--list` | Show the checkpoint timeline instead of forking |
+| `--no-push` | Skip pushing new branches to the remote |
+
+Target formats are the same as [`fabro rewind`](#fabro-rewind). After forking, resume the new run:
+
+```bash
+fabro run --run-branch fabro/run/<NEW_RUN_ID>
+```
+
+See [Checkpoints — Forking a run](/execution/checkpoints#forking-a-run) for when to use fork vs. rewind.
+
 ## `fabro logs`
 
 View the event log of a workflow run. Runs can be referenced by ID prefix or workflow name (uses the most recent run).
@@ -594,6 +619,58 @@ fabro doctor --dry-run
 |---|---|
 | `-v, --verbose` | Show detailed information for each check |
 | `--dry-run` | Skip live service probes (LLM, sandbox, API, web, Brave Search) |
+
+## `fabro upgrade`
+
+Download and install a newer version of Fabro from GitHub releases. Verifies the download with SHA256 checksums and atomically replaces the binary.
+
+```bash
+fabro upgrade
+fabro upgrade --dry-run
+fabro upgrade --version 0.6.0
+```
+
+| Flag | Description |
+|---|---|
+| `--version <VERSION>` | Target version (e.g. `0.5.0` or `v0.5.0`). Defaults to the latest release. |
+| `--force` | Upgrade even if already on the target version |
+| `--dry-run` | Preview what would happen without making changes |
+
+Fabro refuses to downgrade unless you specify an explicit `--version`. A daily background check notifies you when a new version is available — disable it with `upgrade_check = false` in [`cli.toml`](/reference/cli-configuration#upgrade_check) or the `--no-upgrade-check` global flag.
+
+## `fabro asset list`
+
+List assets (screenshots, test reports, traces) collected from a workflow run.
+
+```bash
+fabro asset list <RUN_ID>
+fabro asset list <RUN_ID> --node verify --json
+```
+
+| Argument / Flag | Description |
+|---|---|
+| `<RUN_ID>` | Run ID or unambiguous prefix (required) |
+| `--node <NODE>` | Filter to assets from a specific node |
+| `--json` | Output as JSON |
+
+## `fabro asset cp`
+
+Copy assets from a workflow run to the local filesystem.
+
+```bash
+fabro asset cp <RUN_ID> ./output               # all assets, flat
+fabro asset cp <RUN_ID> ./output --tree         # preserve directory structure
+fabro asset cp <RUN_ID>:report.html ./output    # specific file
+```
+
+| Argument / Flag | Description |
+|---|---|
+| `<SOURCE>` | `RUN_ID` (all assets) or `RUN_ID:path` (specific file) |
+| `[DEST]` | Destination directory (defaults to `.`) |
+| `--node <NODE>` | Filter to assets from a specific node |
+| `--tree` | Preserve `{node}/{retry}/` directory structure |
+
+When copying all assets in flat mode, filenames must be unique across nodes. Use `--tree` or `--node` to disambiguate.
 
 ## `fabro install`
 

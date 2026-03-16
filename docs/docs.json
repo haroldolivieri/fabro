@@ -102,7 +102,6 @@
             "group": "Reference",
             "icon": "book",
             "pages": [
-              "getting-started/comparison",
               "reference/dot-language",
               "reference/cli",
               "reference/cli-configuration",
@@ -110,6 +109,7 @@
               "reference/architecture",
               "administration/server-configuration",
               "administration/troubleshooting",
+              "getting-started/comparison",
               "administration/security",
               "reference/acknowledgements"
             ]

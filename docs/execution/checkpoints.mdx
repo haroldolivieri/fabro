@@ -168,6 +168,25 @@ fabro run --run-branch fabro/run/<RUN_ID>
 
 See [`fabro rewind`](/reference/cli#fabro-rewind) for the full command reference.
 
+## Forking a run
+
+If you want to explore an alternate path from a checkpoint without losing the original run's history, use `fabro fork` instead of `fabro rewind`. Fork creates a new independent run branching from the target checkpoint — the original run stays intact.
+
+```bash
+# List checkpoints
+fabro fork <RUN_ID> --list
+
+# Fork from a specific checkpoint
+fabro fork <RUN_ID> plan@2
+
+# Resume the forked run
+fabro run --run-branch fabro/run/<NEW_RUN_ID>
+```
+
+Use **rewind** when you want to redo a run from an earlier point (destructive — resets the original). Use **fork** when you want to try a different approach while keeping the original run as a reference.
+
+See [`fabro fork`](/reference/cli#fabro-fork) for the full command reference.
+
 ## When checkpointing is active
 
 Git checkpointing activates automatically when:

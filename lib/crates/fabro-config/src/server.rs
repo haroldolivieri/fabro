@@ -118,6 +118,9 @@ impl Default for WebConfig {
 pub struct Features {
     #[serde(default)]
     pub session_sandboxes: bool,
+    /// Experimental: enable automatic retro generation after workflow runs.
+    #[serde(default)]
+    pub retros: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]

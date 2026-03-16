@@ -1,12 +1,14 @@
 {
-  "timestamp": "2026-03-16T12:08:31.532111Z",
-  "current_node": "solve",
+  "timestamp": "2026-03-16T12:08:33.844648Z",
+  "current_node": "extract_patch",
   "completed_nodes": [
     "start",
     "setup",
-    "solve"
+    "solve",
+    "extract_patch"
   ],
   "node_retries": {
+    "extract_patch": 1,
     "setup": 1,
     "start": 1,
     "solve": 4
@@ -17,34 +19,24 @@
     "graph.goal": "delete() on instances of models without any dependencies doesn't clear PKs.\nDescription\n\t\nDeleting any model with no dependencies not updates the PK on the model. It should be set to None after .delete() call.\nSee Django.db.models.deletion:276-281. Should update the model line 280.\n\n\n\n## Additional Context\n\nReproduced at 1ffddfc233e2d5139cc6ec31a4ec6ef70b10f87f. Regression in bc7dd8490b882b2cefdc7faf431dc64c532b79c9. Thanks for the report.\nRegression test.\nI have attached a simple fix which mimics what ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L324-L326 does for multiple objects. I am not sure if we need ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L320-L323 (the block above) because I think field_updates is only ever filled if the objects are not fast-deletable -- ie ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L224 is not called due to the can_fast_delete check at the beginning of the collect function. That said, if we want to be extra \"safe\" we can just move lines 320 - 326 into an extra function and call that from the old and new location (though I do not think it is needed).",
     "internal.retry_count.solve": 4,
     "internal.retry_count.setup": 1,
-    "failure_signature": "solve|transient_infra|api_transient|gemini|rate_limited",
-    "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n",
-    "outcome": "fail",
-    "current_node": "solve",
+    "failure_signature": "",
+    "command.output": "",
+    "outcome": "success",
+    "current_node": "extract_patch",
+    "internal.retry_count.extract_patch": 1,
     "internal.run_id": "01KKV8P0V6EWGEXMEQ40SKD40F",
-    "failure_class": "transient_infra",
+    "failure_class": "",
     "graph.rankdir": "LR",
-    "current.preamble": "Goal: delete() on instances of models without any dependencies doesn't clear PKs.\nDescription\n\t\nDeleting any model with no dependencies not updates the PK on the model. It should be set to None after .delete() call.\nSee Django.db.models.deletion:276-281. Should update the model line 280.\n\n\n\n## Additional Context\n\nReproduced at 1ffddfc233e2d5139cc6ec31a4ec6ef70b10f87f. Regression in bc7dd8490b882b2cefdc7faf431dc64c532b79c9. Thanks for the report.\nRegression test.\nI have attached a simple fix which mimics what ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L324-L326 does for multiple objects. I am not sure if we need ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L320-L323 (the block above) because I think field_updates is only ever filled if the objects are not fast-deletable -- ie ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L224 is not called due to the can_fast_delete check at the beginning of the collect function. That said, if we want to be extra \"safe\" we can just move lines 320 - 326 into an extra function and call that from the old and new location (though I do not think it is needed).\n\n## Completed stages\n- **setup**: fail\n  - Script: `git clone https://github.com/django/django.git . && git checkout 19fc6376ce67d01ca37a91ef2f55ef769f50513a && python -m pip install -e .`\n  - Stdout:\n    ```\n    fatal: destination path '.' already exists and is not an empty directory.\n    ```\n  - Stderr: (empty)\n\n## Context\n- failure_class: deterministic\n- failure_signature: setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.\n",
+    "current.preamble": "Goal: delete() on instances of models without any dependencies doesn't clear PKs.\nDescription\n\t\nDeleting any model with no dependencies not updates the PK on the model. It should be set to None after .delete() call.\nSee Django.db.models.deletion:276-281. Should update the model line 280.\n\n\n\n## Additional Context\n\nReproduced at 1ffddfc233e2d5139cc6ec31a4ec6ef70b10f87f. Regression in bc7dd8490b882b2cefdc7faf431dc64c532b79c9. Thanks for the report.\nRegression test.\nI have attached a simple fix which mimics what ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L324-L326 does for multiple objects. I am not sure if we need ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L320-L323 (the block above) because I think field_updates is only ever filled if the objects are not fast-deletable -- ie ​https://github.com/django/django/blob/master/django/db/models/deletion.py#L224 is not called due to the can_fast_delete check at the beginning of the collect function. That said, if we want to be extra \"safe\" we can just move lines 320 - 326 into an extra function and call that from the old and new location (though I do not think it is needed).\n\n## Completed stages\n- **setup**: fail\n  - Script: `git clone https://github.com/django/django.git . && git checkout 19fc6376ce67d01ca37a91ef2f55ef769f50513a && python -m pip install -e .`\n  - Stdout:\n    ```\n    fatal: destination path '.' already exists and is not an empty directory.\n    ```\n  - Stderr: (empty)\n- **solve**: fail\n\n## Context\n- failure_class: transient_infra\n- failure_signature: solve|transient_infra|api_transient|gemini|rate_limited\n",
     "command.stderr": "",
-    "internal.thread_id": "setup",
+    "thread.solve.current_node": "extract_patch",
+    "internal.thread_id": "solve",
     "internal.retry_count.start": 1,
     "internal.node_visit_count": 1,
     "thread.start.current_node": "setup"
   },
   "logs": [],
   "node_outcomes": {
-    "setup": {
-      "status": "fail",
-      "context_updates": {
-        "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n",
-        "command.stderr": ""
-      },
-      "failure": {
-        "message": "Script failed with exit code: 128\n\n## stdout\nfatal: destination path '.' already exists and is not an empty directory.\n",
-        "failure_class": "deterministic"
-      },
-      "duration_ms": 24
-    },
     "start": {
       "status": "success",
       "duration_ms": 0
@@ -57,15 +49,37 @@
         "failure_signature": "api_transient|gemini|rate_limited"
       },
       "duration_ms": 71413
+    },
+    "extract_patch": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": ""
+      },
+      "notes": "Script completed: git diff",
+      "duration_ms": 28
+    },
+    "setup": {
+      "status": "fail",
+      "context_updates": {
+        "command.output": "fatal: destination path '.' already exists and is not an empty directory.\n",
+        "command.stderr": ""
+      },
+      "failure": {
+        "message": "Script failed with exit code: 128\n\n## stdout\nfatal: destination path '.' already exists and is not an empty directory.\n",
+        "failure_class": "deterministic"
+      },
+      "duration_ms": 24
     }
   },
-  "next_node_id": "extract_patch",
+  "next_node_id": "exit",
   "loop_failure_signatures": {
     "setup|deterministic|script failed with exit code: <n> ## stdout fatal: destination path '.' already exists and is not an empty directory.": 1
   },
   "node_visits": {
-    "solve": 1,
     "setup": 1,
+    "extract_patch": 1,
+    "solve": 1,
     "start": 1
   }
 }

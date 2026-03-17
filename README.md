@@ -118,12 +118,21 @@ codex "$(curl -fsSL https://fabro.sh/install.md)"
 curl -fsSL https://fabro.sh/install.sh | bash
 ```
 
+Then initialize Fabro in your project:
+
+```bash
+fabro install          # one-time setup
+
+cd my-project
+fabro init             # per project
+```
+
 ---
 
 ## Help or Feedback
 
 - [Bug reports](https://github.com/fabro-sh/fabro/issues) via GitHub Issues
-- [Feature requests](https://github.com/fabro-sh/fabro/issues) via GitHub Issues
+- [Feature requests](https://github.com/fabro-sh/fabro/discussions) via GitHub Discussions
 - Email [bryan@qlty.sh](mailto:bryan@qlty.sh) for questions
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development workflow
 

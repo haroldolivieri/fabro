@@ -21,6 +21,7 @@ doctest = false
 clap.workspace = true
 anyhow.workspace = true
 dotenvy.workspace = true
+fabro-config = { path = "../fabro-config", features = ["clap"] }
 fabro-llm = { path = "../fabro-llm" }
 fabro-mcp = { path = "../fabro-mcp" }
 fabro-util = { path = "../fabro-util" }

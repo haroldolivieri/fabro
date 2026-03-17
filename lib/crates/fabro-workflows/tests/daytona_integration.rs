@@ -8,12 +8,12 @@ use std::path::Path;
 use std::sync::Arc;
 
 use fabro_agent::Sandbox;
+use fabro_daytona::{DaytonaConfig, DaytonaSandbox, DaytonaSnapshotConfig};
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_llm::provider::Provider;
 use fabro_workflows::artifact::sync_artifacts_to_env;
 use fabro_workflows::checkpoint::Checkpoint;
 use fabro_workflows::context::Context;
-use fabro_workflows::daytona_sandbox::{DaytonaConfig, DaytonaSandbox, DaytonaSnapshotConfig};
 use fabro_workflows::engine::{RunConfig, WorkflowRunEngine};
 use fabro_workflows::error::FabroError;
 use fabro_workflows::event::EventEmitter;
@@ -34,10 +34,9 @@ async fn create_env_with_github_app(
     if let Some(home) = dirs::home_dir() {
         dotenvy::from_path(home.join(".fabro/.env")).ok();
     }
-    let client = daytona_sdk::Client::new()
+    DaytonaSandbox::new(DaytonaConfig::default(), github_app, None, None)
         .await
-        .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
-    DaytonaSandbox::new(client, DaytonaConfig::default(), github_app, None, None)
+        .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?")
 }
 
 fn load_github_app_credentials() -> fabro_github::GitHubAppCredentials {
@@ -231,12 +230,9 @@ async fn daytona_full_lifecycle() {
 #[tokio::test]
 #[ignore]
 async fn daytona_snapshot_sandbox() {
-    use fabro_workflows::daytona_sandbox::DaytonaSnapshotConfig;
+    use fabro_daytona::DaytonaSnapshotConfig;
 
     dotenvy::dotenv().ok();
-    let client = daytona_sdk::Client::new()
-        .await
-        .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
 
     let config = DaytonaConfig {
         auto_stop_interval: Some(60),
@@ -245,7 +241,7 @@ async fn daytona_snapshot_sandbox() {
             cpu: Some(2),
             memory: Some(4),
             disk: Some(10),
-            dockerfile: Some(fabro_workflows::daytona_sandbox::DockerfileSource::Inline(
+            dockerfile: Some(fabro_daytona::DockerfileSource::Inline(
                 "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
             )),
         }),
@@ -253,7 +249,9 @@ async fn daytona_snapshot_sandbox() {
     };
 
     let creds = load_github_app_credentials();
-    let env = DaytonaSandbox::new(client, config, Some(creds), None, None);
+    let env = DaytonaSandbox::new(config, Some(creds), None, None)
+        .await
+        .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
     env.initialize().await.unwrap();
 
     // Verify rg is available (installed by snapshot)
@@ -916,9 +914,6 @@ use fabro_workflows::handler::agent::{CodergenBackend, CodergenResult};
 async fn run_daytona_cli_test(provider: Provider, model: &str, install_command: &str) {
     let creds = load_github_app_credentials();
     dotenvy::dotenv().ok();
-    let client = daytona_sdk::Client::new()
-        .await
-        .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
     let config = DaytonaConfig {
         snapshot: Some(DaytonaSnapshotConfig {
             name: "daytona-medium".into(),
@@ -929,7 +924,9 @@ async fn run_daytona_cli_test(provider: Provider, model: &str, install_command: 
         }),
         ..DaytonaConfig::default()
     };
-    let env = DaytonaSandbox::new(client, config, Some(creds), None, None);
+    let env = DaytonaSandbox::new(config, Some(creds), None, None)
+        .await
+        .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
     env.initialize().await.unwrap();
     let env: Arc<dyn Sandbox> = Arc::new(env);
 
@@ -1862,9 +1859,6 @@ async fn daytona_computer_use_browser_screenshot() {
     if let Some(home) = dirs::home_dir() {
         dotenvy::from_path(home.join(".fabro/.env")).ok();
     }
-    let client = daytona_sdk::Client::new()
-        .await
-        .expect("DAYTONA_API_KEY must be set");
     let config = DaytonaConfig {
         snapshot: Some(DaytonaSnapshotConfig {
             name: "daytona-medium".into(),
@@ -1875,7 +1869,9 @@ async fn daytona_computer_use_browser_screenshot() {
         }),
         ..DaytonaConfig::default()
     };
-    let env = DaytonaSandbox::new(client, config, None, None, None);
+    let env = DaytonaSandbox::new(config, None, None, None)
+        .await
+        .expect("DAYTONA_API_KEY must be set");
     env.initialize().await.unwrap();
 
     // 1. Start the computer use desktop environment (Xvfb, xfce4, etc.)
@@ -2023,9 +2019,6 @@ async fn daytona_playwright_mcp_sandbox_transport() {
     if let Some(home) = dirs::home_dir() {
         dotenvy::from_path(home.join(".fabro/.env")).ok();
     }
-    let client = daytona_sdk::Client::new()
-        .await
-        .expect("DAYTONA_API_KEY must be set");
     let config = DaytonaConfig {
         snapshot: Some(DaytonaSnapshotConfig {
             name: "daytona-medium".into(),
@@ -2036,7 +2029,9 @@ async fn daytona_playwright_mcp_sandbox_transport() {
         }),
         ..DaytonaConfig::default()
     };
-    let sandbox = DaytonaSandbox::new(client, config, None, None, None);
+    let sandbox = DaytonaSandbox::new(config, None, None, None)
+        .await
+        .expect("DAYTONA_API_KEY must be set");
     sandbox.initialize().await.unwrap();
 
     // 1. Install Playwright MCP server and its browser

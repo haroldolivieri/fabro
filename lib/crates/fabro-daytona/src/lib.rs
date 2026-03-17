@@ -167,15 +167,17 @@ pub struct DaytonaSandbox {
 }
 
 impl DaytonaSandbox {
-    #[must_use]
-    pub fn new(
-        client: daytona_sdk::Client,
+    /// Create a new `DaytonaSandbox`, creating the Daytona client internally.
+    pub async fn new(
         config: DaytonaConfig,
         github_app: Option<GitHubAppCredentials>,
         run_id: Option<String>,
         clone_branch: Option<String>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, String> {
+        let client = daytona_sdk::Client::new()
+            .await
+            .map_err(|e| format!("Failed to create Daytona client: {e}"))?;
+        Ok(Self {
             config,
             client,
             github_app,
@@ -185,16 +187,24 @@ impl DaytonaSandbox {
             origin_url: tokio::sync::OnceCell::new(),
             run_id,
             clone_branch,
-        }
+        })
     }
 
-    /// Create a `DaytonaSandbox` from an already-existing Daytona SDK sandbox.
-    /// Used for reconnection (e.g. `fabro cp`).
-    #[must_use]
-    pub fn from_existing(client: daytona_sdk::Client, sdk_sandbox: daytona_sdk::Sandbox) -> Self {
+    /// Reconnect to an existing Daytona sandbox by name.
+    ///
+    /// Creates the client internally and fetches the sandbox, replacing the old
+    /// `from_existing()` + manual client/get boilerplate at call sites.
+    pub async fn reconnect(sandbox_name: &str) -> Result<Self, String> {
+        let client = daytona_sdk::Client::new()
+            .await
+            .map_err(|e| format!("Failed to create Daytona client: {e}"))?;
+        let sdk_sandbox = client
+            .get(sandbox_name)
+            .await
+            .map_err(|e| format!("Failed to reconnect to Daytona sandbox '{sandbox_name}': {e}"))?;
         let sandbox_cell = tokio::sync::OnceCell::new();
         let _ = sandbox_cell.set(sdk_sandbox);
-        Self {
+        Ok(Self {
             config: DaytonaConfig::default(),
             client,
             github_app: None,
@@ -204,7 +214,7 @@ impl DaytonaSandbox {
             origin_url: tokio::sync::OnceCell::new(),
             run_id: None,
             clone_branch: None,
-        }
+        })
     }
 
     pub fn set_event_callback(&mut self, cb: SandboxEventCallback) {
@@ -1425,7 +1435,4 @@ mod tests {
         // Documents the current behavior: detect_repo_info returns whatever HEAD points to
         assert_eq!(branch, Some("fabro/run/ABC".into()));
     }
-
-    // The `clone_branch` field on `DaytonaSandbox::new()` is verified at compile time —
-    // all call sites (run.rs, integration tests) must pass the new parameter.
 }

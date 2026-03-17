@@ -122,16 +122,9 @@ pub async fn reconnect(record: &SandboxRecord) -> Result<Box<dyn fabro_agent::sa
                 .as_deref()
                 .context("Daytona sandbox record missing identifier (sandbox name)")?;
 
-            let client = daytona_sdk::Client::new()
+            let sandbox = fabro_daytona::DaytonaSandbox::reconnect(name)
                 .await
-                .map_err(|e| anyhow::anyhow!("Failed to create Daytona client: {e}"))?;
-
-            let sdk_sandbox = client.get(name).await.map_err(|e| {
-                anyhow::anyhow!("Failed to reconnect to Daytona sandbox '{name}': {e}")
-            })?;
-
-            let sandbox =
-                crate::daytona_sandbox::DaytonaSandbox::from_existing(client, sdk_sandbox);
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
             Ok(Box::new(sandbox))
         }
         #[cfg(feature = "exedev")]

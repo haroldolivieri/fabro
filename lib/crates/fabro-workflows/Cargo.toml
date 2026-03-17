@@ -28,6 +28,7 @@ fabro-ssh = { path = "../fabro-ssh" }
 fabro-mcp = { path = "../fabro-mcp" }
 fabro-github = { path = "../fabro-github" }
 fabro-util = { path = "../fabro-util" }
+fabro-daytona = { path = "../fabro-daytona" }
 fabro-git-storage = { path = "../fabro-git-storage" }
 fabro-llm = { path = "../fabro-llm" }
 fabro-retro = { path = "../fabro-retro" }
@@ -44,9 +45,6 @@ chrono = { workspace = true, features = ["serde"] }
 toml.workspace = true
 dirs = "6"
 dialoguer.workspace = true
-daytona-sdk.workspace = true
-daytona-api-client.workspace = true
-base64.workspace = true
 regex.workspace = true
 scopeguard = "1"
 hex.workspace = true
@@ -62,6 +60,7 @@ tracing.workspace = true
 walkdir.workspace = true
 reqwest.workspace = true
 [dev-dependencies]
+base64.workspace = true
 fabro-mcp = { path = "../fabro-mcp" }
 mockito = "1"
 tokio = { workspace = true, features = ["test-util", "macros"] }

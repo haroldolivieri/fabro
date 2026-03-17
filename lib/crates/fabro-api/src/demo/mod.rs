@@ -1289,20 +1289,20 @@ mod runs {
                 preserve: None,
                 devcontainer: None,
                 local: None,
-                daytona: Some(fabro_workflows::daytona_sandbox::DaytonaConfig {
+                daytona: Some(fabro_daytona::DaytonaConfig {
                     auto_stop_interval: Some(60),
                     labels: Some(std::collections::HashMap::from([(
                         "project".into(),
                         "api-server".into(),
                     )])),
-                    snapshot: Some(fabro_workflows::daytona_sandbox::DaytonaSnapshotConfig {
+                    snapshot: Some(fabro_daytona::DaytonaSnapshotConfig {
                         name: "api-server-dev".into(),
                         cpu: Some(4),
                         memory: Some(8),
                         disk: Some(10),
                         dockerfile: None,
                     }),
-                    network: Some(fabro_workflows::daytona_sandbox::DaytonaNetwork::Block),
+                    network: Some(fabro_daytona::DaytonaNetwork::Block),
                 }),
                 exe: None,
                 ssh: None,
@@ -1464,12 +1464,12 @@ mod workflows {
                         preserve: None,
                         devcontainer: None,
                         local: None,
-                        daytona: Some(fabro_workflows::daytona_sandbox::DaytonaConfig {
+                        daytona: Some(fabro_daytona::DaytonaConfig {
                             auto_stop_interval: Some(60),
                             labels: Some(std::collections::HashMap::from([
                                 ("project".into(), "fix-build".into()),
                             ])),
-                            snapshot: Some(fabro_workflows::daytona_sandbox::DaytonaSnapshotConfig {
+                            snapshot: Some(fabro_daytona::DaytonaSnapshotConfig {
                                 name: "fix-build-dev".into(),
                                 cpu: Some(4),
                                 memory: Some(8),
@@ -1536,13 +1536,13 @@ mod workflows {
                         preserve: None,
                         devcontainer: None,
                         local: None,
-                        daytona: Some(fabro_workflows::daytona_sandbox::DaytonaConfig {
+                        daytona: Some(fabro_daytona::DaytonaConfig {
                             auto_stop_interval: Some(120),
                             labels: Some(std::collections::HashMap::from([
                                 ("project".into(), "implement".into()),
                                 ("team".into(), "engineering".into()),
                             ])),
-                            snapshot: Some(fabro_workflows::daytona_sandbox::DaytonaSnapshotConfig {
+                            snapshot: Some(fabro_daytona::DaytonaSnapshotConfig {
                                 name: "implement-dev".into(),
                                 cpu: Some(4),
                                 memory: Some(8),
@@ -1620,13 +1620,13 @@ mod workflows {
                         preserve: None,
                         devcontainer: None,
                         local: None,
-                        daytona: Some(fabro_workflows::daytona_sandbox::DaytonaConfig {
+                        daytona: Some(fabro_daytona::DaytonaConfig {
                             auto_stop_interval: Some(120),
                             labels: Some(std::collections::HashMap::from([
                                 ("project".into(), "sync-drift".into()),
                                 ("team".into(), "platform".into()),
                             ])),
-                            snapshot: Some(fabro_workflows::daytona_sandbox::DaytonaSnapshotConfig {
+                            snapshot: Some(fabro_daytona::DaytonaSnapshotConfig {
                                 name: "sync-drift-dev".into(),
                                 cpu: Some(2),
                                 memory: Some(4),
@@ -1695,13 +1695,13 @@ mod workflows {
                         preserve: None,
                         devcontainer: None,
                         local: None,
-                        daytona: Some(fabro_workflows::daytona_sandbox::DaytonaConfig {
+                        daytona: Some(fabro_daytona::DaytonaConfig {
                             auto_stop_interval: Some(180),
                             labels: Some(std::collections::HashMap::from([
                                 ("project".into(), "expand".into()),
                                 ("team".into(), "product".into()),
                             ])),
-                            snapshot: Some(fabro_workflows::daytona_sandbox::DaytonaSnapshotConfig {
+                            snapshot: Some(fabro_daytona::DaytonaSnapshotConfig {
                                 name: "expand-dev".into(),
                                 cpu: Some(2),
                                 memory: Some(4),
@@ -3270,11 +3270,11 @@ mod settings {
                     preserve: None,
                     devcontainer: None,
                     local: None,
-                    daytona: Some(fabro_workflows::daytona_sandbox::DaytonaConfig {
+                    daytona: Some(fabro_daytona::DaytonaConfig {
                         auto_stop_interval: Some(60),
                         labels: None,
                         snapshot: None,
-                        network: Some(fabro_workflows::daytona_sandbox::DaytonaNetwork::Block),
+                        network: Some(fabro_daytona::DaytonaNetwork::Block),
                     }),
                     exe: None,
                     ssh: None,

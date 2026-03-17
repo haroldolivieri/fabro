@@ -1281,6 +1281,7 @@ dependencies = [
  "dirs",
  "fabro-agent",
  "fabro-config",
+ "fabro-daytona",
  "fabro-db",
  "fabro-exe",
  "fabro-github",
@@ -1394,6 +1395,28 @@ dependencies = [
  "fabro-workflows",
  "serde",
  "tempfile",
+ "toml",
+ "tracing",
+]
+
+[[package]]
+name = "fabro-daytona"
+version = "0.174.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "chrono",
+ "daytona-api-client",
+ "daytona-sdk",
+ "fabro-agent",
+ "fabro-github",
+ "git2",
+ "rand 0.8.5",
+ "serde",
+ "shlex",
+ "tempfile",
+ "tokio",
+ "tokio-util",
  "toml",
  "tracing",
 ]
@@ -1687,12 +1710,11 @@ dependencies = [
  "clap",
  "cli-table",
  "console 0.15.11",
- "daytona-api-client",
- "daytona-sdk",
  "dialoguer",
  "dirs",
  "dotenvy",
  "fabro-agent",
+ "fabro-daytona",
  "fabro-devcontainer",
  "fabro-exe",
  "fabro-git-storage",

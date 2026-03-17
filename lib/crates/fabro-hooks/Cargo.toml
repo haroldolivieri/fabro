@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 fabro-agent = { path = "../fabro-agent" }
+fabro-config = { path = "../fabro-config" }
 fabro-llm = { path = "../fabro-llm" }
 serde.workspace = true
 serde_json.workspace = true

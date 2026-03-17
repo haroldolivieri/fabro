@@ -1,1 +1,661 @@
-pub use fabro_workflows::cli::project_config::*;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use anyhow::{bail, Context};
+use serde::Deserialize;
+
+use crate::hook::HookDefinition;
+use crate::mcp::McpServerEntry;
+use crate::run::{
+    AssetsConfig, CheckpointConfig, GitHubConfig, LlmConfig, PullRequestConfig, RunDefaults,
+    SetupConfig,
+};
+use crate::sandbox::SandboxConfig;
+
+const CONFIG_FILENAME: &str = "fabro.toml";
+const SUPPORTED_VERSION: u32 = 1;
+
+#[derive(Debug, Default, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectConfig {
+    #[serde(default)]
+    pub version: u32,
+    #[serde(default)]
+    pub fabro: ProjectFabroConfig,
+    #[serde(default)]
+    pub features: ProjectFeatures,
+    #[serde(alias = "directory")]
+    pub work_dir: Option<String>,
+    pub llm: Option<LlmConfig>,
+    pub setup: Option<SetupConfig>,
+    pub sandbox: Option<SandboxConfig>,
+    pub vars: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub checkpoint: CheckpointConfig,
+    pub pull_request: Option<PullRequestConfig>,
+    pub assets: Option<AssetsConfig>,
+    #[serde(default)]
+    pub hooks: Vec<HookDefinition>,
+    #[serde(default)]
+    pub mcp_servers: HashMap<String, McpServerEntry>,
+    pub github: Option<GitHubConfig>,
+}
+
+impl ProjectConfig {
+    /// Convert project config fields into `RunDefaults`.
+    pub fn into_run_defaults(self) -> RunDefaults {
+        RunDefaults {
+            work_dir: self.work_dir,
+            llm: self.llm,
+            setup: self.setup,
+            sandbox: self.sandbox,
+            vars: self.vars,
+            checkpoint: self.checkpoint,
+            pull_request: self.pull_request,
+            assets: self.assets,
+            hooks: self.hooks,
+            mcp_servers: self.mcp_servers,
+            github: self.github,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectFabroConfig {
+    #[serde(default = "default_root")]
+    pub root: String,
+}
+
+fn default_root() -> String {
+    ".".to_string()
+}
+
+impl Default for ProjectFabroConfig {
+    fn default() -> Self {
+        Self {
+            root: default_root(),
+        }
+    }
+}
+
+/// Feature flags for the project. All features default to `false` (opt-in).
+#[derive(Debug, Default, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectFeatures {
+    /// Experimental: enable automatic retro generation after workflow runs.
+    #[serde(default)]
+    pub retros: bool,
+}
+
+/// Parse a project config from a TOML string.
+pub fn parse_project_config(content: &str) -> anyhow::Result<ProjectConfig> {
+    let config: ProjectConfig =
+        toml::from_str(content).context("Failed to parse project config")?;
+    if config.version != SUPPORTED_VERSION {
+        bail!(
+            "Unsupported project config version: {}. Only version {SUPPORTED_VERSION} is supported.",
+            config.version,
+        );
+    }
+    Ok(config)
+}
+
+/// Load a project config from a file path.
+pub fn load_project_config(path: &Path) -> anyhow::Result<ProjectConfig> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let config = parse_project_config(&content)?;
+    tracing::debug!(path = %path.display(), root = %config.fabro.root, "Loaded project config");
+    Ok(config)
+}
+
+/// Walk ancestor directories from `start` looking for `fabro.toml`.
+/// Returns the config file path and parsed config, or `None` if not found.
+pub fn discover_project_config(start: &Path) -> anyhow::Result<Option<(PathBuf, ProjectConfig)>> {
+    for ancestor in start.ancestors() {
+        let candidate = ancestor.join(CONFIG_FILENAME);
+        if candidate.is_file() {
+            tracing::debug!(path = %candidate.display(), "Discovered project config");
+            let config = load_project_config(&candidate)?;
+            return Ok(Some((candidate, config)));
+        }
+    }
+    Ok(None)
+}
+
+/// Resolve a workflow argument to a path.
+///
+/// - If the arg has a file extension (`.toml`, `.fabro`, etc.), return it as-is.
+/// - If no extension, attempt project-based resolution: find `fabro.toml`, resolve
+///   `{fabro_root}/workflows/{name}/workflow.toml`. Returns an error with suggestions
+///   if an `fabro.toml` exists but the workflow wasn't found.
+pub fn resolve_workflow_arg(arg: &Path) -> anyhow::Result<PathBuf> {
+    let start = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    resolve_workflow_arg_from(arg, &start)
+}
+
+fn resolve_workflow_arg_from(arg: &Path, start_dir: &Path) -> anyhow::Result<PathBuf> {
+    resolve_workflow_arg_impl(arg, start_dir, user_workflows_dir().as_deref())
+}
+
+fn resolve_workflow_arg_impl(
+    arg: &Path,
+    start_dir: &Path,
+    user_workflows: Option<&Path>,
+) -> anyhow::Result<PathBuf> {
+    if arg.extension().is_some() {
+        tracing::debug!(arg = %arg.display(), "Workflow arg has extension, returning as-is");
+        return Ok(arg.to_path_buf());
+    }
+
+    let name = arg.to_string_lossy();
+    match discover_project_config(start_dir) {
+        Ok(Some((config_path, config))) => {
+            let fabro_root = resolve_fabro_root(&config_path, &config);
+            let project_candidate = fabro_root
+                .join("workflows")
+                .join(&*name)
+                .join("workflow.toml");
+            if project_candidate.is_file() {
+                tracing::debug!(arg = %arg.display(), resolved = %project_candidate.display(), "Resolved workflow name via project config");
+                return Ok(project_candidate);
+            }
+
+            if let Some(resolved) = resolve_user_workflow(user_workflows, &name, arg) {
+                return Ok(resolved);
+            }
+
+            let project_wf_dir = fabro_root.join("workflows");
+            let available = list_available_workflows(Some(&project_wf_dir), user_workflows);
+            if available.is_empty() {
+                bail!(
+                    "Unknown workflow '{name}'\n\nNo workflows found in {}",
+                    project_wf_dir.display()
+                );
+            }
+            let mut msg = format!(
+                "Unknown workflow '{name}'\n\nAvailable workflows: {}",
+                available.join(", ")
+            );
+            if let Some(suggestion) = find_closest_match(&name, &available) {
+                msg.push_str(&format!("\n\nDid you mean '{suggestion}'?"));
+            }
+            bail!("{msg}");
+        }
+        Ok(None) => {
+            if let Some(resolved) = resolve_user_workflow(user_workflows, &name, arg) {
+                return Ok(resolved);
+            }
+            tracing::debug!(arg = %arg.display(), "No project config found, returning literal");
+            Ok(arg.to_path_buf())
+        }
+        Err(err) => {
+            tracing::debug!(arg = %arg.display(), error = %err, "Error discovering project config, returning literal");
+            Ok(arg.to_path_buf())
+        }
+    }
+}
+
+/// Check if a workflow exists in the user-level workflows directory.
+fn resolve_user_workflow(user_workflows: Option<&Path>, name: &str, arg: &Path) -> Option<PathBuf> {
+    let user_wf = user_workflows?;
+    let candidate = user_wf.join(name).join("workflow.toml");
+    if candidate.is_file() {
+        tracing::debug!(arg = %arg.display(), resolved = %candidate.display(), "Resolved workflow name via user workflows");
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+/// Return the user-level workflows directory (`~/.fabro/workflows/`).
+fn user_workflows_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(".fabro").join("workflows"))
+}
+
+/// Metadata about a discovered workflow.
+pub struct WorkflowInfo {
+    pub name: String,
+    pub goal: Option<String>,
+    pub source: WorkflowSource,
+}
+
+/// Where a workflow was discovered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkflowSource {
+    Project,
+    User,
+}
+
+/// List workflow names in a single directory by scanning for subdirs containing `workflow.toml`.
+fn list_workflows_in(workflows_dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(workflows_dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_dir() && path.join("workflow.toml").is_file() {
+                entry.file_name().to_str().map(String::from)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Read the `goal` field from a `workflow.toml` without full config validation.
+fn read_workflow_goal(workflow_toml: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(workflow_toml).ok()?;
+    let table: toml::Table = content.parse().ok()?;
+    table.get("goal")?.as_str().map(String::from)
+}
+
+/// List workflows with metadata by scanning project and user workflow directories.
+pub fn list_workflows_detailed(
+    project_workflows_dir: Option<&Path>,
+    user_workflows_dir: Option<&Path>,
+) -> Vec<WorkflowInfo> {
+    let mut infos: Vec<WorkflowInfo> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+
+    if let Some(dir) = project_workflows_dir {
+        for name in list_workflows_in(dir) {
+            let goal = read_workflow_goal(&dir.join(&name).join("workflow.toml"));
+            seen.push(name.clone());
+            infos.push(WorkflowInfo {
+                name,
+                goal,
+                source: WorkflowSource::Project,
+            });
+        }
+    }
+    if let Some(dir) = user_workflows_dir {
+        for name in list_workflows_in(dir) {
+            if !seen.contains(&name) {
+                let goal = read_workflow_goal(&dir.join(&name).join("workflow.toml"));
+                seen.push(name.clone());
+                infos.push(WorkflowInfo {
+                    name,
+                    goal,
+                    source: WorkflowSource::User,
+                });
+            }
+        }
+    }
+
+    infos.sort_by(|a, b| a.name.cmp(&b.name));
+    infos
+}
+
+/// List workflow names by scanning project and user workflow directories.
+/// Project workflows appear first; user workflows are deduplicated.
+pub fn list_available_workflows(
+    project_workflows_dir: Option<&Path>,
+    user_workflows_dir: Option<&Path>,
+) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+
+    if let Some(dir) = project_workflows_dir {
+        names.extend(list_workflows_in(dir));
+    }
+    if let Some(dir) = user_workflows_dir {
+        for name in list_workflows_in(dir) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+
+    names.sort();
+    names
+}
+
+/// Find the closest match using normalized Levenshtein distance (threshold: 0.5).
+fn find_closest_match(input: &str, candidates: &[String]) -> Option<String> {
+    candidates
+        .iter()
+        .map(|c| (c, strsim::normalized_levenshtein(input, c)))
+        .filter(|(_, score)| *score >= 0.5)
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(name, _)| name.clone())
+}
+
+/// Resolve a workflow argument to a DOT path and optional run config.
+///
+/// Calls `resolve_workflow_arg` first, then if the result is a `.toml` file,
+/// loads the run config and resolves the graph path within it.
+pub fn resolve_workflow(
+    arg: &Path,
+) -> anyhow::Result<(PathBuf, Option<crate::run::WorkflowRunConfig>)> {
+    let start = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    resolve_workflow_from(arg, &start)
+}
+
+fn resolve_workflow_from(
+    arg: &Path,
+    start_dir: &Path,
+) -> anyhow::Result<(PathBuf, Option<crate::run::WorkflowRunConfig>)> {
+    let path = resolve_workflow_arg_from(arg, start_dir)?;
+    if path.extension().is_some_and(|ext| ext == "toml") {
+        let cfg = crate::run::load_run_config(&path)?;
+        let dot = crate::run::resolve_graph_path(&path, &cfg.graph);
+        Ok((dot, Some(cfg)))
+    } else {
+        Ok((path, None))
+    }
+}
+
+/// Check whether retros are enabled in the project config.
+/// Returns `false` (the default) if no config is found or on error.
+/// Retros are an experimental feature gated behind `[features] retros = true`.
+pub fn is_retro_enabled() -> bool {
+    let start = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    match discover_project_config(&start) {
+        Ok(Some((_path, config))) => config.features.retros,
+        _ => false,
+    }
+}
+
+/// Resolve the fabro root directory from a config file path and its config.
+/// The returned path is the directory containing `fabro.toml` joined with the `root` value.
+pub fn resolve_fabro_root(config_path: &Path, config: &ProjectConfig) -> PathBuf {
+    let project_dir = config_path
+        .parent()
+        .expect("config_path should have a parent directory");
+    project_dir.join(&config.fabro.root)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::run::MergeStrategy;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn parse_minimal_config() {
+        let config = parse_project_config("version = 1\n").unwrap();
+        assert_eq!(
+            config,
+            ProjectConfig {
+                version: 1,
+                fabro: ProjectFabroConfig {
+                    root: ".".to_string(),
+                },
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_full_config() {
+        let config = parse_project_config("version = 1\n[fabro]\nroot = \"fabro/\"\n").unwrap();
+        assert_eq!(config.fabro.root, "fabro/");
+    }
+
+    #[test]
+    fn parse_retros_default_false() {
+        let config = parse_project_config("version = 1\n").unwrap();
+        assert!(!config.features.retros);
+    }
+
+    #[test]
+    fn parse_retros_enabled() {
+        let config = parse_project_config("version = 1\n[features]\nretros = true\n").unwrap();
+        assert!(config.features.retros);
+    }
+
+    #[test]
+    fn parse_version_mismatch() {
+        let err = parse_project_config("version = 2\n").unwrap_err();
+        assert!(
+            err.to_string().contains("Unsupported"),
+            "Expected 'Unsupported' in error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_pull_request_config() {
+        let config =
+            parse_project_config("version = 1\n\n[pull_request]\nenabled = true\ndraft = false\n")
+                .unwrap();
+        assert_eq!(
+            config.pull_request,
+            Some(PullRequestConfig {
+                enabled: true,
+                draft: false,
+                auto_merge: false,
+                merge_strategy: MergeStrategy::Squash,
+            })
+        );
+    }
+
+    #[test]
+    fn parse_project_config_with_sandbox() {
+        let toml = r#"
+version = 1
+[sandbox]
+provider = "daytona"
+[sandbox.daytona.snapshot]
+name = "my-snapshot"
+cpu = 4
+memory = 8
+"#;
+        let config = parse_project_config(toml).unwrap();
+        let sandbox = config.sandbox.unwrap();
+        assert_eq!(sandbox.provider.as_deref(), Some("daytona"));
+        let snap = sandbox.daytona.unwrap().snapshot.unwrap();
+        assert_eq!(snap.name, "my-snapshot");
+        assert_eq!(snap.cpu, Some(4));
+        assert_eq!(snap.memory, Some(8));
+    }
+
+    #[test]
+    fn parse_project_config_with_hooks_and_mcp() {
+        let toml = r#"
+version = 1
+[[hooks]]
+event = "run_start"
+command = "echo start"
+[mcp_servers.playwright]
+type = "stdio"
+command = ["npx", "@playwright/mcp@latest"]
+"#;
+        let config = parse_project_config(toml).unwrap();
+        assert_eq!(config.hooks.len(), 1);
+        assert_eq!(config.mcp_servers.len(), 1);
+        assert!(config.mcp_servers.contains_key("playwright"));
+    }
+
+    #[test]
+    fn parse_project_config_with_llm_and_work_dir() {
+        let toml = r#"
+version = 1
+work_dir = "/workspace"
+[llm]
+model = "claude-sonnet-4-6"
+"#;
+        let config = parse_project_config(toml).unwrap();
+        assert_eq!(config.work_dir.as_deref(), Some("/workspace"));
+        assert_eq!(
+            config.llm.unwrap().model.as_deref(),
+            Some("claude-sonnet-4-6")
+        );
+    }
+
+    #[test]
+    fn into_run_defaults_preserves_fields() {
+        let toml = r#"
+version = 1
+work_dir = "/ws"
+[llm]
+model = "m"
+[sandbox]
+provider = "daytona"
+"#;
+        let config = parse_project_config(toml).unwrap();
+        let defaults = config.into_run_defaults();
+        assert_eq!(defaults.work_dir.as_deref(), Some("/ws"));
+        assert_eq!(defaults.llm.unwrap().model.as_deref(), Some("m"));
+        assert_eq!(
+            defaults.sandbox.unwrap().provider.as_deref(),
+            Some("daytona")
+        );
+    }
+
+    #[test]
+    fn parse_unknown_field_rejected() {
+        let err = parse_project_config("version = 1\nfoo = \"bar\"\n").unwrap_err();
+        let chain = format!("{err:#}");
+        assert!(chain.contains("unknown field"), "got: {chain}");
+    }
+
+    #[test]
+    fn load_from_disk() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("fabro.toml");
+        fs::write(&path, "version = 1\n").unwrap();
+        let config = load_project_config(&path).unwrap();
+        assert_eq!(config.version, 1);
+        assert_eq!(config.fabro.root, ".");
+    }
+
+    #[test]
+    fn discover_walks_ancestors() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("fabro.toml"), "version = 1\n").unwrap();
+        let sub = tmp.path().join("sub").join("dir");
+        fs::create_dir_all(&sub).unwrap();
+
+        let (found_path, config) = discover_project_config(&sub).unwrap().unwrap();
+        assert_eq!(found_path, tmp.path().join("fabro.toml"));
+        assert_eq!(config.version, 1);
+    }
+
+    #[test]
+    fn discover_returns_none_when_absent() {
+        let tmp = TempDir::new().unwrap();
+        let result = discover_project_config(tmp.path()).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn resolve_fabro_root_with_subdirectory() {
+        let config_path = Path::new("/repo/fabro.toml");
+        let config = ProjectConfig {
+            version: 1,
+            fabro: ProjectFabroConfig {
+                root: "fabro/".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_fabro_root(config_path, &config),
+            Path::new("/repo/fabro/")
+        );
+    }
+
+    #[test]
+    fn resolve_fabro_root_with_dot() {
+        let config_path = Path::new("/repo/fabro.toml");
+        let config = ProjectConfig {
+            version: 1,
+            fabro: ProjectFabroConfig {
+                root: ".".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_fabro_root(config_path, &config),
+            Path::new("/repo/.")
+        );
+    }
+
+    #[test]
+    fn resolve_workflow_arg_toml_extension_returned_as_is() {
+        let tmp = TempDir::new().unwrap();
+        let result = resolve_workflow_arg_from(Path::new("my-workflow.toml"), tmp.path()).unwrap();
+        assert_eq!(result, Path::new("my-workflow.toml"));
+    }
+
+    #[test]
+    fn resolve_workflow_arg_fabro_extension_returned_as_is() {
+        let tmp = TempDir::new().unwrap();
+        let result = resolve_workflow_arg_from(Path::new("my-workflow.fabro"), tmp.path()).unwrap();
+        assert_eq!(result, Path::new("my-workflow.fabro"));
+    }
+
+    #[test]
+    fn resolve_workflow_arg_no_extension_no_config_returns_literal() {
+        let tmp = TempDir::new().unwrap();
+        let result = resolve_workflow_arg_from(Path::new("my-workflow"), tmp.path()).unwrap();
+        assert_eq!(result, Path::new("my-workflow"));
+    }
+
+    #[test]
+    fn resolve_workflow_arg_no_extension_with_config_and_workflow_file() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("fabro.toml"), "version = 1\n").unwrap();
+        let wf_dir = tmp.path().join("workflows").join("my-workflow");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("workflow.toml"),
+            "version = 1\ngraph = \"workflow.fabro\"\n",
+        )
+        .unwrap();
+
+        let result = resolve_workflow_arg_from(Path::new("my-workflow"), tmp.path()).unwrap();
+        assert_eq!(result, wf_dir.join("workflow.toml"));
+    }
+
+    #[test]
+    fn resolve_workflow_arg_typo_suggests_similar_name() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("fabro.toml"), "version = 1\n").unwrap();
+        let wf_dir = tmp.path().join("workflows").join("implement");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("workflow.toml"),
+            "version = 1\ngraph = \"w.fabro\"\n",
+        )
+        .unwrap();
+
+        let err = resolve_workflow_arg_from(Path::new("implemet"), tmp.path()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("Unknown workflow 'implemet'"), "got: {msg}");
+        assert!(msg.contains("Did you mean 'implement'?"), "got: {msg}");
+    }
+
+    #[test]
+    fn parse_project_config_with_github() {
+        let toml = r#"
+version = 1
+
+[github]
+permissions = { contents = "read" }
+"#;
+        let config = parse_project_config(toml).unwrap();
+        let github = config.github.unwrap();
+        assert_eq!(github.permissions["contents"], "read");
+    }
+
+    #[test]
+    fn into_run_defaults_preserves_github() {
+        let toml = r#"
+version = 1
+
+[github]
+permissions = { contents = "read", issues = "write" }
+"#;
+        let config = parse_project_config(toml).unwrap();
+        let defaults = config.into_run_defaults();
+        let github = defaults.github.unwrap();
+        assert_eq!(github.permissions["contents"], "read");
+        assert_eq!(github.permissions["issues"], "write");
+    }
+}

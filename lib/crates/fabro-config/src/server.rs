@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use fabro_workflows::cli::run_config::RunDefaults;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+
+use crate::run::RunDefaults;
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -465,7 +466,7 @@ matcher = "agent_loop"
         assert_eq!(config.run_defaults.hooks.len(), 2);
         assert_eq!(
             config.run_defaults.hooks[0].event,
-            fabro_hooks::HookEvent::RunStart
+            crate::hook::HookEvent::RunStart
         );
         assert_eq!(
             config.run_defaults.hooks[0].command.as_deref(),
@@ -473,7 +474,7 @@ matcher = "agent_loop"
         );
         assert_eq!(
             config.run_defaults.hooks[1].event,
-            fabro_hooks::HookEvent::StageComplete
+            crate::hook::HookEvent::StageComplete
         );
         assert_eq!(
             config.run_defaults.hooks[1].matcher.as_deref(),

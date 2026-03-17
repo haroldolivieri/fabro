@@ -10,7 +10,6 @@ use fabro_agent::sandbox::{
     format_lines_numbered, DirEntry, ExecResult, GrepOptions, Sandbox, SandboxEvent,
     SandboxEventCallback,
 };
-use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 pub use openssh_runner::OpensshRunner;
@@ -82,11 +81,7 @@ pub trait SshRunner: Send + Sync {
     async fn download_file(&self, path: &str) -> Result<Vec<u8>, String>;
 }
 
-/// Configuration for an exe.dev sandbox (TOML target for `[sandbox.exe]`).
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct ExeConfig {
-    pub image: Option<String>,
-}
+pub use fabro_config::sandbox::ExeConfig;
 
 /// Parameters for cloning a git repo into the sandbox during initialization.
 #[derive(Clone, Debug)]

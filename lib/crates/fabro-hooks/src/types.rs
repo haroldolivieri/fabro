@@ -1,66 +1,6 @@
+pub use fabro_config::hook::HookEvent;
+
 use serde::{Deserialize, Serialize};
-
-/// Lifecycle events that can trigger user-defined hooks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HookEvent {
-    RunStart,
-    RunComplete,
-    RunFailed,
-    StageStart,
-    StageComplete,
-    StageFailed,
-    StageRetrying,
-    EdgeSelected,
-    ParallelStart,
-    ParallelComplete,
-    /// Reserved: hooks for this event are not yet invoked by the engine.
-    SandboxReady,
-    /// Reserved: hooks for this event are not yet invoked by the engine.
-    SandboxCleanup,
-    CheckpointSaved,
-    PreToolUse,
-    PostToolUse,
-    PostToolUseFailure,
-}
-
-impl HookEvent {
-    /// Whether hooks for this event block execution by default.
-    #[must_use]
-    pub fn is_blocking_by_default(self) -> bool {
-        matches!(
-            self,
-            Self::RunStart
-                | Self::StageStart
-                | Self::EdgeSelected
-                | Self::PreToolUse
-                | Self::SandboxReady
-        )
-    }
-}
-
-impl std::fmt::Display for HookEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::RunStart => "run_start",
-            Self::RunComplete => "run_complete",
-            Self::RunFailed => "run_failed",
-            Self::StageStart => "stage_start",
-            Self::StageComplete => "stage_complete",
-            Self::StageFailed => "stage_failed",
-            Self::StageRetrying => "stage_retrying",
-            Self::EdgeSelected => "edge_selected",
-            Self::ParallelStart => "parallel_start",
-            Self::ParallelComplete => "parallel_complete",
-            Self::SandboxReady => "sandbox_ready",
-            Self::SandboxCleanup => "sandbox_cleanup",
-            Self::CheckpointSaved => "checkpoint_saved",
-            Self::PreToolUse => "pre_tool_use",
-            Self::PostToolUse => "post_tool_use",
-            Self::PostToolUseFailure => "post_tool_use_failure",
-        })
-    }
-}
 
 /// Rich JSON payload sent to hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]

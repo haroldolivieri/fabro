@@ -1,9 +1,26 @@
 use std::path::{Path, PathBuf};
 
-use fabro_agent::cli::{OutputFormat, PermissionLevel};
-use fabro_workflows::cli::run_config::RunDefaults;
 use serde::Deserialize;
 use tracing::debug;
+
+use crate::run::RunDefaults;
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[serde(rename_all = "kebab-case")]
+pub enum OutputFormat {
+    Text,
+    Json,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[serde(rename_all = "kebab-case")]
+pub enum PermissionLevel {
+    ReadOnly,
+    ReadWrite,
+    Full,
+}
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -124,8 +141,7 @@ pub fn load_cli_config(path: Option<&Path>) -> anyhow::Result<CliConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fabro_mcp::config::McpTransport;
-    use fabro_workflows::cli::run_config::McpServerEntry;
+    use crate::mcp::{McpServerEntry, McpTransport};
     use std::collections::HashMap;
 
     #[test]

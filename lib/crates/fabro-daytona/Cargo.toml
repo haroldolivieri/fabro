@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 fabro-agent = { path = "../fabro-agent" }
+fabro-config = { path = "../fabro-config" }
 fabro-github = { path = "../fabro-github" }
 async-trait.workspace = true
 tokio.workspace = true

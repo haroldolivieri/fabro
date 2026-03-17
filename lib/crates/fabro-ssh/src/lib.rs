@@ -10,7 +10,6 @@ use fabro_agent::sandbox::{
     format_lines_numbered, DirEntry, ExecResult, GrepOptions, Sandbox, SandboxEvent,
     SandboxEventCallback,
 };
-use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 pub use openssh_runner::OpensshRunner;
@@ -47,19 +46,7 @@ pub trait SshRunner: Send + Sync {
     async fn download_file(&self, path: &str) -> Result<Vec<u8>, String>;
 }
 
-/// Configuration for an SSH sandbox (TOML target for `[sandbox.ssh]`).
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct SshConfig {
-    /// SSH destination (e.g. `user@host` or an SSH alias).
-    pub destination: String,
-    /// Remote working directory.
-    pub working_directory: String,
-    /// Optional path to a custom SSH config file.
-    pub config_file: Option<String>,
-    /// Base URL for port previews (e.g. `"http://beast"`).
-    /// When set, `get_preview_url(port)` returns `"{preview_url_base}:{port}"`.
-    pub preview_url_base: Option<String>,
-}
+pub use fabro_config::sandbox::SshConfig;
 
 /// Parameters for cloning a git repo into the sandbox during initialization.
 #[derive(Clone, Debug)]

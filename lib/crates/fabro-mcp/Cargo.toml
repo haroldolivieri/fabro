@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace = true
+fabro-config = { path = "../fabro-config" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

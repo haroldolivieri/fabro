@@ -10,17 +10,16 @@ doctest = false
 
 [features]
 default = []
-exedev = ["fabro-workflows/exedev"]
+exedev = []
+clap = ["dep:clap"]
 
 [dependencies]
 anyhow.workspace = true
-fabro-agent = { path = "../fabro-agent" }
-fabro-hooks = { path = "../fabro-hooks" }
-fabro-mcp = { path = "../fabro-mcp" }
-fabro-workflows = { path = "../fabro-workflows" }
+clap = { workspace = true, optional = true }
 fabro-util = { path = "../fabro-util" }
 dirs.workspace = true
 serde.workspace = true
+strsim = "0.11"
 toml.workspace = true
 tracing.workspace = true
 

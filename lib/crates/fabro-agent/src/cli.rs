@@ -4,7 +4,7 @@ use crate::{
     AgentEvent, AnthropicProfile, GeminiProfile, LocalSandbox, OpenAiProfile, ProviderProfile,
     Session, SessionConfig, Turn,
 };
-use clap::{Args, Parser, ValueEnum};
+use clap::{Args, Parser};
 use fabro_llm::client::Client;
 use fabro_llm::provider::{ModelId, Provider};
 use fabro_util::terminal::Styles;
@@ -58,20 +58,7 @@ struct Cli {
     args: AgentArgs,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, ValueEnum, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum OutputFormat {
-    Text,
-    Json,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, ValueEnum, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PermissionLevel {
-    ReadOnly,
-    ReadWrite,
-    Full,
-}
+pub use fabro_config::cli::{OutputFormat, PermissionLevel};
 
 impl AgentArgs {
     /// Fill `None` fields from cli.toml values, then hardcoded defaults.

@@ -1,8 +1,8 @@
 use anyhow::bail;
 use fabro_util::terminal::Styles;
 
-use crate::validation::Severity;
 use crate::workflow::prepare_from_file;
+use fabro_validate::Severity;
 
 use super::{print_diagnostics, relative_path, ValidateArgs};
 

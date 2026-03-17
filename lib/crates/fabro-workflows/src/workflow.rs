@@ -5,8 +5,8 @@ use crate::transform::{
     FileInliningTransform, ProviderInferenceTransform, StylesheetApplicationTransform, Transform,
     VariableExpansionTransform,
 };
-use crate::validation::{self, Diagnostic};
 use fabro_graphviz::graph::Graph;
+use fabro_validate::Diagnostic;
 
 /// Builder for configuring and executing a workflow preparation.
 /// Collects custom transforms that run after the built-in ones.
@@ -74,7 +74,7 @@ impl WorkflowBuilder {
             transform.apply(&mut graph);
         }
 
-        let diagnostics = validation::validate(&graph, &[]);
+        let diagnostics = fabro_validate::validate(&graph, &[]);
         Ok((graph, diagnostics))
     }
 }
@@ -106,7 +106,7 @@ pub fn prepare_from_file(path: &Path) -> Result<(Graph, Vec<Diagnostic>), FabroE
 pub fn prepare_from_source(dot_source: &str) -> Result<Graph, FabroError> {
     let builder = WorkflowBuilder::new();
     let (graph, diagnostics) = builder.prepare(dot_source)?;
-    validation::raise_on_errors(&diagnostics)?;
+    fabro_validate::raise_on_errors(&diagnostics).map_err(|e| FabroError::Validation(e.0))?;
     Ok(graph)
 }
 

@@ -419,8 +419,10 @@ impl From<SdkError> for FabroError {
 
 impl From<fabro_graphviz::error::GraphvizError> for FabroError {
     fn from(e: fabro_graphviz::error::GraphvizError) -> Self {
-        let fabro_graphviz::error::GraphvizError::Parse(msg) = e;
-        Self::Parse(msg)
+        match e {
+            fabro_graphviz::error::GraphvizError::Parse(msg) => Self::Parse(msg),
+            fabro_graphviz::error::GraphvizError::Stylesheet(msg) => Self::Stylesheet(msg),
+        }
     }
 }
 

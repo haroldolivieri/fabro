@@ -367,10 +367,10 @@ mod tests {
             fs::read_to_string(tmp.path().join("fabro/workflows/test-wf/workflow.fabro")).unwrap();
 
         let graph = fabro_graphviz::parser::parse(&content).expect("generated .fabro should parse");
-        let diagnostics = crate::validation::validate(&graph, &[]);
+        let diagnostics = fabro_validate::validate(&graph, &[]);
         let errors: Vec<_> = diagnostics
             .iter()
-            .filter(|d| d.severity == crate::validation::Severity::Error)
+            .filter(|d| d.severity == fabro_validate::Severity::Error)
             .collect();
         assert!(errors.is_empty(), "validation errors: {errors:?}");
     }

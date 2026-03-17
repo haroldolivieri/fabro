@@ -12,7 +12,6 @@ use crate::context::Context;
 use crate::engine::{RunConfig, WorkflowRunEngine};
 use crate::error::FabroError;
 use crate::outcome::{Outcome, StageStatus};
-use crate::validation;
 use crate::workflow::{prepare_from_file, prepare_from_source};
 use fabro_graphviz::graph::{Graph, Node};
 
@@ -62,7 +61,7 @@ fn parse_child_graph(node: &Node) -> Result<Graph, FabroError> {
         .and_then(|v| v.as_str())
     {
         let (graph, diagnostics) = prepare_from_file(std::path::Path::new(path))?;
-        validation::raise_on_errors(&diagnostics)?;
+        fabro_validate::raise_on_errors(&diagnostics).map_err(|e| FabroError::Validation(e.0))?;
         return Ok(graph);
     }
     Err(FabroError::handler("No child workflow source".to_string()))

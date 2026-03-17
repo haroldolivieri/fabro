@@ -1,10 +1,10 @@
 use std::collections::{HashSet, VecDeque};
 use std::str::FromStr;
 
-use crate::condition::parse_condition;
+use fabro_graphviz::condition::parse_condition;
 use fabro_graphviz::graph::{is_llm_handler_type, AttrValue, Graph};
 
-use super::{Diagnostic, LintRule, Severity};
+use crate::{Diagnostic, LintRule, Severity};
 
 /// Returns all built-in lint rules.
 #[must_use]
@@ -348,7 +348,7 @@ impl LintRule for StylesheetSyntaxRule {
         if stylesheet.is_empty() {
             return Vec::new();
         }
-        match crate::stylesheet::parse_stylesheet(stylesheet) {
+        match fabro_graphviz::stylesheet::parse_stylesheet(stylesheet) {
             Ok(_) => Vec::new(),
             Err(e) => vec![Diagnostic {
                 rule: self.name().to_string(),
@@ -414,7 +414,7 @@ struct FidelityValidRule;
 
 impl FidelityValidRule {
     fn fix_message() -> String {
-        use crate::context::keys::Fidelity;
+        use fabro_graphviz::Fidelity;
         let modes: Vec<_> = [
             Fidelity::Full,
             Fidelity::Truncate,
@@ -436,7 +436,7 @@ impl LintRule for FidelityValidRule {
     }
 
     fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
-        use crate::context::keys::Fidelity;
+        use fabro_graphviz::Fidelity;
 
         let mut diagnostics = Vec::new();
         for node in graph.nodes.values() {
@@ -902,12 +902,12 @@ impl LintRule for ScriptAbsoluteCdRule {
 struct StylesheetModelKnownRule;
 
 impl StylesheetModelKnownRule {
-    fn selector_label(selector: &crate::stylesheet::Selector) -> String {
+    fn selector_label(selector: &fabro_graphviz::stylesheet::Selector) -> String {
         match selector {
-            crate::stylesheet::Selector::Universal => "*".to_string(),
-            crate::stylesheet::Selector::Shape(s) => s.clone(),
-            crate::stylesheet::Selector::Class(c) => format!(".{c}"),
-            crate::stylesheet::Selector::Id(id) => format!("#{id}"),
+            fabro_graphviz::stylesheet::Selector::Universal => "*".to_string(),
+            fabro_graphviz::stylesheet::Selector::Shape(s) => s.clone(),
+            fabro_graphviz::stylesheet::Selector::Class(c) => format!(".{c}"),
+            fabro_graphviz::stylesheet::Selector::Id(id) => format!("#{id}"),
         }
     }
 }
@@ -922,7 +922,7 @@ impl LintRule for StylesheetModelKnownRule {
         if stylesheet_str.is_empty() {
             return Vec::new();
         }
-        let stylesheet = match crate::stylesheet::parse_stylesheet(stylesheet_str) {
+        let stylesheet = match fabro_graphviz::stylesheet::parse_stylesheet(stylesheet_str) {
             Ok(ss) => ss,
             Err(_) => return Vec::new(), // syntax errors caught by stylesheet_syntax rule
         };

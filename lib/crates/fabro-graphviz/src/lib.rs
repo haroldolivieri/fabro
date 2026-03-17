@@ -1,3 +1,8 @@
+pub mod condition;
 pub mod error;
+pub mod fidelity;
 pub mod graph;
 pub mod parser;
+pub mod stylesheet;
+
+pub use fidelity::Fidelity;

@@ -351,7 +351,7 @@ async fn pr_create_from(
 
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     let (origin_url, detected_branch) =
-        crate::daytona_sandbox::detect_repo_info(&cwd).map_err(|e| anyhow::anyhow!("{e}"))?;
+        fabro_daytona::detect_repo_info(&cwd).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let base_branch = manifest
         .base_branch

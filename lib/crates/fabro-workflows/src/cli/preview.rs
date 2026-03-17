@@ -67,16 +67,9 @@ pub async fn preview_command(args: PreviewArgs) -> Result<()> {
 
     info!(run_id = %args.run, provider = %record.provider, port = args.port, "Generating preview URL");
 
-    let client = daytona_sdk::Client::new()
+    let daytona = fabro_daytona::DaytonaSandbox::reconnect(name)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to create Daytona client: {e}"))?;
-
-    let sdk_sandbox = client
-        .get(name)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to reconnect to Daytona sandbox '{name}': {e}"))?;
-
-    let daytona = crate::daytona_sandbox::DaytonaSandbox::from_existing(client, sdk_sandbox);
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     if args.use_signed() {
         let signed = daytona

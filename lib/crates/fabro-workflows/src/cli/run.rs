@@ -185,7 +185,7 @@ fn resolve_worktree_mode(
 fn resolve_daytona_config(
     run_cfg: Option<&WorkflowRunConfig>,
     run_defaults: &RunDefaults,
-) -> Option<crate::daytona_sandbox::DaytonaConfig> {
+) -> Option<fabro_daytona::DaytonaConfig> {
     run_cfg
         .and_then(|c| c.sandbox.as_ref())
         .and_then(|e| e.daytona.clone())
@@ -215,7 +215,7 @@ fn resolve_exe_config(
 /// Returns `None` if no git repo is detected. Credential resolution is
 /// handled by ExeSandbox itself via its `github_app` field.
 fn resolve_exe_clone_params(cwd: &std::path::Path) -> Option<fabro_exe::GitCloneParams> {
-    let (detected_url, branch) = match crate::daytona_sandbox::detect_repo_info(cwd) {
+    let (detected_url, branch) = match fabro_daytona::detect_repo_info(cwd) {
         Ok(info) => info,
         Err(e) => {
             tracing::warn!("No git repo detected for exe.dev clone: {e}");
@@ -242,7 +242,7 @@ fn resolve_ssh_config(
 /// Returns `None` if no git repo is detected. Credential resolution is
 /// handled by SshSandbox itself via its `github_app` field.
 fn resolve_ssh_clone_params(cwd: &std::path::Path) -> Option<fabro_ssh::GitCloneParams> {
-    let (detected_url, branch) = match crate::daytona_sandbox::detect_repo_info(cwd) {
+    let (detected_url, branch) = match fabro_daytona::detect_repo_info(cwd) {
         Ok(info) => info,
         Err(e) => {
             tracing::warn!("No git repo detected for SSH clone: {e}");
@@ -452,10 +452,9 @@ pub async fn run_command(
     let preserve_sandbox =
         resolve_preserve_sandbox(args.preserve_sandbox, run_cfg.as_ref(), &run_defaults);
     let original_cwd = std::env::current_dir()?;
-    let (origin_url, detected_base_branch) =
-        crate::daytona_sandbox::detect_repo_info(&original_cwd)
-            .map(|(url, branch)| (Some(url), branch))
-            .unwrap_or((None, None));
+    let (origin_url, detected_base_branch) = fabro_daytona::detect_repo_info(&original_cwd)
+        .map(|(url, branch)| (Some(url), branch))
+        .unwrap_or((None, None));
     let git_clean = if sandbox_provider.is_remote() {
         crate::git::ensure_clean_and_pushed(
             &original_cwd,
@@ -901,17 +900,15 @@ pub async fn run_command(
             Arc::new(env)
         }
         SandboxProvider::Daytona => {
-            let daytona_client = daytona_sdk::Client::new()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to create Daytona client: {e}"))?;
             let config = daytona_config.clone().unwrap_or_default();
-            let mut env = crate::daytona_sandbox::DaytonaSandbox::new(
-                daytona_client,
+            let mut env = fabro_daytona::DaytonaSandbox::new(
                 config,
                 github_app.clone(),
                 Some(run_id.clone()),
                 detected_base_branch.clone(),
-            );
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
             let emitter_cb = Arc::clone(&emitter);
             env.set_event_callback(Arc::new(move |event| {
                 emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
@@ -2012,20 +2009,13 @@ async fn run_preflight(
                 .map(|env| Arc::new(env) as Arc<dyn Sandbox>)
                 .map_err(|e| format!("Docker sandbox creation failed: {e}"))
         }
-        SandboxProvider::Daytona => match daytona_sdk::Client::new().await {
-            Ok(daytona_client) => {
-                let config = daytona_config.unwrap_or_default();
-                let env = crate::daytona_sandbox::DaytonaSandbox::new(
-                    daytona_client,
-                    config,
-                    github_app.clone(),
-                    None,
-                    None,
-                );
-                Ok(Arc::new(env) as Arc<dyn Sandbox>)
+        SandboxProvider::Daytona => {
+            let config = daytona_config.unwrap_or_default();
+            match fabro_daytona::DaytonaSandbox::new(config, github_app.clone(), None, None).await {
+                Ok(env) => Ok(Arc::new(env) as Arc<dyn Sandbox>),
+                Err(e) => Err(format!("Daytona sandbox creation failed: {e}")),
             }
-            Err(e) => Err(format!("Daytona client creation failed: {e}")),
-        },
+        }
         #[cfg(feature = "exedev")]
         SandboxProvider::Exe => match fabro_exe::OpensshRunner::connect_raw("exe.dev").await {
             Ok(mgmt_ssh) => {

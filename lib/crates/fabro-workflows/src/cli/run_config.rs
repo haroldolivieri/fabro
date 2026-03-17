@@ -8,7 +8,7 @@ use tracing::debug;
 
 use fabro_mcp::config::{McpServerConfig, McpTransport};
 
-use crate::daytona_sandbox::{DaytonaConfig, DockerfileSource};
+use fabro_daytona::{DaytonaConfig, DockerfileSource};
 
 const SUPPORTED_VERSION: u32 = 1;
 
@@ -623,7 +623,7 @@ pub async fn run_setup(setup: &SetupConfig, directory: &Path) -> anyhow::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::daytona_sandbox::{DaytonaSnapshotConfig, DockerfileSource};
+    use fabro_daytona::{DaytonaSnapshotConfig, DockerfileSource};
 
     #[test]
     fn parse_toml_with_vars() {
@@ -1744,10 +1744,7 @@ network = "block"
 "#;
         let config = parse_run_config(toml).unwrap();
         let daytona = config.sandbox.unwrap().daytona.unwrap();
-        assert_eq!(
-            daytona.network,
-            Some(crate::daytona_sandbox::DaytonaNetwork::Block)
-        );
+        assert_eq!(daytona.network, Some(fabro_daytona::DaytonaNetwork::Block));
     }
 
     #[test]
@@ -1770,7 +1767,7 @@ network = "block"
                 devcontainer: None,
                 local: None,
                 daytona: Some(DaytonaConfig {
-                    network: Some(crate::daytona_sandbox::DaytonaNetwork::AllowAll),
+                    network: Some(fabro_daytona::DaytonaNetwork::AllowAll),
                     ..DaytonaConfig::default()
                 }),
                 #[cfg(feature = "exedev")]
@@ -1783,7 +1780,7 @@ network = "block"
         cfg.apply_defaults(&defaults);
         assert_eq!(
             cfg.sandbox.unwrap().daytona.unwrap().network,
-            Some(crate::daytona_sandbox::DaytonaNetwork::Block)
+            Some(fabro_daytona::DaytonaNetwork::Block)
         );
     }
 
@@ -1807,8 +1804,8 @@ auto_stop_interval = 60
                 devcontainer: None,
                 local: None,
                 daytona: Some(DaytonaConfig {
-                    network: Some(crate::daytona_sandbox::DaytonaNetwork::AllowList(vec![
-                        "10.0.0.0/8".into(),
+                    network: Some(fabro_daytona::DaytonaNetwork::AllowList(vec![
+                        "10.0.0.0/8".into()
                     ])),
                     ..DaytonaConfig::default()
                 }),
@@ -1822,7 +1819,7 @@ auto_stop_interval = 60
         cfg.apply_defaults(&defaults);
         assert_eq!(
             cfg.sandbox.unwrap().daytona.unwrap().network,
-            Some(crate::daytona_sandbox::DaytonaNetwork::AllowList(vec![
+            Some(fabro_daytona::DaytonaNetwork::AllowList(vec![
                 "10.0.0.0/8".into(),
             ]))
         );

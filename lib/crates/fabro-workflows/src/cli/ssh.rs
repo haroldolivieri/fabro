@@ -48,16 +48,9 @@ pub async fn ssh_command(args: SshArgs) -> Result<()> {
 
     info!(run_id = %args.run, ttl_minutes = args.ttl, "Creating SSH access");
 
-    let client = daytona_sdk::Client::new()
+    let daytona = fabro_daytona::DaytonaSandbox::reconnect(name)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to create Daytona client: {e}"))?;
-
-    let sdk_sandbox = client
-        .get(name)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to reconnect to Daytona sandbox '{name}': {e}"))?;
-
-    let daytona = crate::daytona_sandbox::DaytonaSandbox::from_existing(client, sdk_sandbox);
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let ssh_cmd = daytona
         .create_ssh_access(Some(args.ttl))

@@ -2,7 +2,6 @@ pub mod rules;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::FabroError;
 use fabro_graphviz::graph::Graph;
 
 /// Severity level for validation diagnostics.
@@ -30,6 +29,11 @@ pub trait LintRule {
     fn apply(&self, graph: &Graph) -> Vec<Diagnostic>;
 }
 
+/// Validation error returned when error-severity diagnostics are present.
+#[derive(Debug, thiserror::Error)]
+#[error("Validation error: {0}")]
+pub struct ValidationError(pub String);
+
 /// Run all built-in lint rules (and any extra rules) against the graph.
 #[must_use]
 pub fn validate(graph: &Graph, extra_rules: &[&dyn LintRule]) -> Vec<Diagnostic> {
@@ -44,11 +48,11 @@ pub fn validate(graph: &Graph, extra_rules: &[&dyn LintRule]) -> Vec<Diagnostic>
     diagnostics
 }
 
-/// If any Error-severity diagnostics are present, return `FabroError::Validation`.
+/// If any Error-severity diagnostics are present, return `ValidationError`.
 ///
 /// # Errors
-/// Returns `FabroError::Validation` with joined error messages.
-pub fn raise_on_errors(diagnostics: &[Diagnostic]) -> Result<(), FabroError> {
+/// Returns `ValidationError` with joined error messages.
+pub fn raise_on_errors(diagnostics: &[Diagnostic]) -> Result<(), ValidationError> {
     let mut errors = diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Error)
@@ -58,7 +62,7 @@ pub fn raise_on_errors(diagnostics: &[Diagnostic]) -> Result<(), FabroError> {
             .map(|d| d.message.as_str())
             .collect::<Vec<_>>()
             .join("; ");
-        return Err(FabroError::Validation(message));
+        return Err(ValidationError(message));
     }
     Ok(())
 }
@@ -67,11 +71,11 @@ pub fn raise_on_errors(diagnostics: &[Diagnostic]) -> Result<(), FabroError> {
 /// diagnostics are found.
 ///
 /// # Errors
-/// Returns `FabroError::Validation` if any Error-severity diagnostics are found.
+/// Returns `ValidationError` if any Error-severity diagnostics are found.
 pub fn validate_or_raise(
     graph: &Graph,
     extra_rules: &[&dyn LintRule],
-) -> Result<Vec<Diagnostic>, FabroError> {
+) -> Result<Vec<Diagnostic>, ValidationError> {
     let diagnostics = validate(graph, extra_rules);
     raise_on_errors(&diagnostics)?;
     Ok(diagnostics)

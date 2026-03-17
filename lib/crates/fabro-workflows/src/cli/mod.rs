@@ -29,7 +29,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::outcome::StageUsage;
-use crate::validation::{Diagnostic, Severity};
+use fabro_validate::{Diagnostic, Severity};
 
 /// Sandbox provider for agent tool operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]

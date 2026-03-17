@@ -19,8 +19,8 @@ use crate::interviewer::auto_approve::AutoApproveInterviewer;
 use crate::interviewer::console::ConsoleInterviewer;
 use crate::interviewer::Interviewer;
 use crate::outcome::StageStatus;
-use crate::validation::Severity;
 use crate::workflow::WorkflowBuilder;
+use fabro_validate::Severity;
 
 use fabro_llm::provider::Provider;
 
@@ -1599,10 +1599,7 @@ async fn run_from_branch(
     );
 
     super::print_diagnostics(&diagnostics, styles);
-    if diagnostics
-        .iter()
-        .any(|d| d.severity == crate::validation::Severity::Error)
-    {
+    if diagnostics.iter().any(|d| d.severity == Severity::Error) {
         anyhow::bail!("Validation failed");
     }
 

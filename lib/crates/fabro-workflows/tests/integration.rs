@@ -6,6 +6,7 @@ use std::time::Duration;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_graphviz::parser::parse;
 use fabro_llm::provider::Provider;
+use fabro_validate::{validate, validate_or_raise, Severity};
 use fabro_workflows::checkpoint::Checkpoint;
 use fabro_workflows::cli::backend::AgentApiBackend;
 use fabro_workflows::context::Context;
@@ -31,7 +32,6 @@ use fabro_workflows::stylesheet::{apply_stylesheet, parse_stylesheet};
 use fabro_workflows::transform::{
     StylesheetApplicationTransform, Transform, VariableExpansionTransform,
 };
-use fabro_workflows::validation::{validate, validate_or_raise, Severity};
 
 fn local_env() -> Arc<dyn fabro_agent::Sandbox> {
     Arc::new(fabro_agent::LocalSandbox::new(
@@ -69,7 +69,7 @@ fn parse_and_validate_simple_linear() {
     let diagnostics = validate_or_raise(&graph, &[]).expect("validation should pass");
     let errors: Vec<_> = diagnostics
         .iter()
-        .filter(|d| d.severity == fabro_workflows::validation::Severity::Error)
+        .filter(|d| d.severity == fabro_validate::Severity::Error)
         .collect();
     assert!(errors.is_empty(), "expected no validation errors");
 }
@@ -115,7 +115,7 @@ fn parse_and_validate_branching_with_conditions() {
     let diagnostics = validate_or_raise(&graph, &[]).expect("validation should pass");
     let errors: Vec<_> = diagnostics
         .iter()
-        .filter(|d| d.severity == fabro_workflows::validation::Severity::Error)
+        .filter(|d| d.severity == fabro_validate::Severity::Error)
         .collect();
     assert!(errors.is_empty(), "expected no validation errors");
 }
@@ -154,7 +154,7 @@ fn parse_and_validate_human_gate() {
     let diagnostics = validate_or_raise(&graph, &[]).expect("validation should pass");
     let errors: Vec<_> = diagnostics
         .iter()
-        .filter(|d| d.severity == fabro_workflows::validation::Severity::Error)
+        .filter(|d| d.severity == fabro_validate::Severity::Error)
         .collect();
     assert!(errors.is_empty(), "expected no validation errors");
 }

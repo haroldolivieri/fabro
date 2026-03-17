@@ -1499,6 +1499,7 @@ name = "fabro-graphviz"
 version = "0.174.0"
 dependencies = [
  "nom",
+ "regex",
  "serde",
  "thiserror 2.0.18",
 ]
@@ -1699,6 +1700,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fabro-validate"
+version = "0.174.0"
+dependencies = [
+ "fabro-graphviz",
+ "fabro-llm",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "fabro-workflows"
 version = "0.174.0"
 dependencies = [
@@ -1725,6 +1736,7 @@ dependencies = [
  "fabro-retro",
  "fabro-ssh",
  "fabro-util",
+ "fabro-validate",
  "futures",
  "git2",
  "hex",

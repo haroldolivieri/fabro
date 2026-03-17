@@ -10,8 +10,8 @@ use clap::{Args, ValueEnum};
 use fabro_util::terminal::Styles;
 use tracing::debug;
 
-use crate::validation::Severity;
 use crate::workflow::prepare_from_file;
+use fabro_validate::Severity;
 
 use super::{print_diagnostics, read_workflow_file, relative_path};
 

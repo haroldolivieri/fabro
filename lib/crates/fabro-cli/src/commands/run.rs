@@ -1074,7 +1074,6 @@ pub async fn run_command(
             }));
             Arc::new(env)
         }
-        _ => bail!("exe.dev sandbox support is not enabled in this build"),
     };
 
     // Wrap with ReadBeforeWriteSandbox to enforce read-before-write guard
@@ -1815,7 +1814,6 @@ async fn run_from_branch(
             SandboxProvider::Daytona => {
                 bail!("--run-branch resume is not yet supported with --sandbox daytona");
             }
-            _ => bail!("exe.dev sandbox support is not enabled in this build"),
         };
 
     // Wrap with ReadBeforeWriteSandbox to enforce read-before-write guard
@@ -2164,7 +2162,6 @@ async fn run_preflight(
         SandboxProvider::Local => {
             Ok(Arc::new(LocalSandbox::new(original_cwd.clone())) as Arc<dyn Sandbox>)
         }
-        _ => Err("exe.dev sandbox support is not enabled in this build".to_string()),
     };
 
     let sandbox_ok = match sandbox_result {

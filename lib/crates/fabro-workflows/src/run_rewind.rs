@@ -1,35 +1,13 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, Context, Result};
-use clap::Args;
-use cli_table::format::{Border, Separator};
-use cli_table::{print_stderr, Cell, CellStruct, Color, Style, Table};
 use fabro_git_storage::branchstore::{BranchStore, CommitInfo};
 use fabro_git_storage::gitobj::Store;
-use fabro_util::terminal::Styles;
 use git2::{Oid, Repository, Signature};
 
 use crate::checkpoint::Checkpoint;
 use crate::git::MetadataStore;
 use fabro_graphviz::graph::Graph;
-
-/// Rewind a workflow run to an earlier checkpoint.
-#[derive(Debug, Args)]
-pub struct RewindArgs {
-    /// Run ID (or unambiguous prefix)
-    pub run_id: String,
-
-    /// Target checkpoint: node name, node@visit, or @ordinal (omit with --list)
-    pub target: Option<String>,
-
-    /// Show the checkpoint timeline instead of rewinding
-    #[arg(long)]
-    pub list: bool,
-
-    /// Skip force-pushing rewound refs to the remote
-    #[arg(long)]
-    pub no_push: bool,
-}
 
 /// Parsed rewind target.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -271,66 +249,6 @@ pub fn resolve_target<'a>(
     }
 }
 
-/// Print the timeline table to stderr.
-pub fn print_timeline(
-    timeline: &[TimelineEntry],
-    parallel_map: &HashMap<String, String>,
-    styles: &Styles,
-) {
-    if timeline.is_empty() {
-        eprintln!("No checkpoints found.");
-        return;
-    }
-
-    let use_color = styles.use_color;
-
-    let title = vec![
-        "@".cell().bold(true),
-        "Node".cell().bold(true),
-        "Details".cell().bold(true),
-    ];
-
-    let rows: Vec<Vec<CellStruct>> = timeline
-        .iter()
-        .map(|entry| {
-            let ordinal_str = format!("@{}", entry.ordinal);
-            let mut details = Vec::new();
-            if entry.visit > 1 {
-                details.push(format!("visit {}, loop", entry.visit));
-            }
-            if parallel_map.contains_key(&entry.node_name) {
-                details.push("parallel interior".to_string());
-            }
-            if entry.run_commit_sha.is_none() {
-                details.push("no run commit".to_string());
-            }
-
-            let detail_str = if details.is_empty() {
-                String::new()
-            } else {
-                format!("({})", details.join(", "))
-            };
-
-            vec![
-                ordinal_str
-                    .cell()
-                    .foreground_color(super::color_if(use_color, Color::Cyan)),
-                entry.node_name.clone().cell(),
-                detail_str
-                    .cell()
-                    .foreground_color(super::color_if(use_color, Color::Ansi256(8))),
-            ]
-        })
-        .collect();
-
-    let table = rows
-        .table()
-        .title(title)
-        .border(Border::builder().build())
-        .separator(Separator::builder().build());
-    let _ = print_stderr(table);
-}
-
 /// Move both refs backward to the target checkpoint.
 pub fn execute_rewind(
     store: &Store,
@@ -437,38 +355,6 @@ pub fn find_run_id_by_prefix(repo: &Repository, prefix: &str) -> Result<String> 
             bail!("{msg}")
         }
     }
-}
-
-/// Entry point for `fabro rewind`.
-pub fn rewind_command(args: &RewindArgs, styles: &Styles) -> Result<()> {
-    let repo = Repository::discover(".").context("not in a git repository")?;
-    let run_id = find_run_id_by_prefix(&repo, &args.run_id)?;
-    let store = Store::new(repo);
-
-    let timeline = build_timeline(&store, &run_id)?;
-
-    if args.list || args.target.is_none() {
-        // Read graph for parallel detection
-        let parallel_map = load_parallel_map(&store, &run_id);
-        print_timeline(&timeline, &parallel_map, styles);
-        return Ok(());
-    }
-
-    let target_str = args.target.as_ref().unwrap();
-    let target = parse_target(target_str)?;
-
-    let parallel_map = load_parallel_map(&store, &run_id);
-    let entry = resolve_target(&timeline, &target, &parallel_map)?;
-
-    execute_rewind(&store, &run_id, entry, !args.no_push)?;
-
-    eprintln!(
-        "\nTo resume: fabro run --run-branch {}{}",
-        crate::git::RUN_BRANCH_PREFIX,
-        run_id
-    );
-
-    Ok(())
 }
 
 /// Load the graph from the metadata branch and build the parallel interior map.

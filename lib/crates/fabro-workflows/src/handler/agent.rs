@@ -75,8 +75,7 @@ impl AgentHandler {
 /// `$gaol` at runtime.
 pub(crate) fn expand_variables(text: &str, graph: &Graph) -> Result<String, FabroError> {
     let vars = HashMap::from([("goal".to_string(), graph.goal().to_string())]);
-    crate::cli::run_config::expand_vars(text, &vars)
-        .map_err(|e| FabroError::Validation(e.to_string()))
+    crate::vars::expand_vars(text, &vars).map_err(|e| FabroError::Validation(e.to_string()))
 }
 
 /// Status fields that indicate a JSON object contains routing directives.

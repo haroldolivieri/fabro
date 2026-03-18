@@ -7,12 +7,13 @@ use async_trait::async_trait;
 use console::Style;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 
-use crate::event::{EventEmitter, WorkflowRunEvent};
-use crate::outcome::StageStatus;
 use fabro_agent::AgentEvent;
 use fabro_interview::{Answer, ConsoleInterviewer, Interviewer, Question};
+use fabro_workflows::event::{EventEmitter, WorkflowRunEvent};
+use fabro_workflows::outcome::StageStatus;
 
-use super::{compute_stage_cost, format_cost, format_tokens_human};
+use crate::commands::shared::{format_tokens_human, tilde_path};
+use fabro_workflows::cost::{compute_stage_cost, format_cost};
 
 // ── Cached styles ───────────────────────────────────────────────────────
 
@@ -785,7 +786,7 @@ impl ProgressUI {
     // ── Logs dir (called externally) ────────────────────────────────────
 
     pub fn show_run_dir(&mut self, run_dir: &Path) {
-        let path_str = super::tilde_path(run_dir);
+        let path_str = tilde_path(run_dir);
         match &self.renderer {
             ProgressRenderer::Tty(tty) => {
                 let bar = tty.multi.add(ProgressBar::new_spinner());
@@ -839,7 +840,7 @@ impl ProgressUI {
     }
 
     pub fn show_worktree(&mut self, path: &Path) {
-        let path_str = super::tilde_path(path);
+        let path_str = tilde_path(path);
         match &self.renderer {
             ProgressRenderer::Tty(tty) => {
                 let bar = tty.multi.add(ProgressBar::new_spinner());

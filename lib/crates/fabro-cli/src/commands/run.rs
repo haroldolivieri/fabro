@@ -6,35 +6,134 @@ use std::time::Instant;
 
 use anyhow::{bail, Context};
 use chrono::{Local, Utc};
+use clap::{Args, ValueEnum};
 use fabro_agent::{DockerSandbox, DockerSandboxConfig, LocalSandbox, Sandbox};
-use fabro_util::terminal::Styles;
-use tracing::debug;
-
-use super::{relative_path, tilde_path};
-use crate::checkpoint::Checkpoint;
-use crate::engine::{RunConfig, WorkflowRunEngine};
-use crate::event::EventEmitter;
-use crate::handler::default_registry;
-use crate::outcome::StageStatus;
-use crate::workflow::WorkflowBuilder;
+use fabro_config::run::{RunDefaults, WorkflowRunConfig};
+use fabro_config::{project as project_config, run as run_config, sandbox as sandbox_config};
 use fabro_interview::{AutoApproveInterviewer, ConsoleInterviewer, Interviewer};
-use fabro_validate::Severity;
-
 use fabro_llm::provider::Provider;
-
-use super::backend::AgentApiBackend;
-use super::cli_backend::{AgentCliBackend, BackendRouter};
-use super::progress;
-use super::run_config;
-use super::run_config::{RunDefaults, WorkflowRunConfig};
-use crate::devcontainer_bridge;
+use fabro_util::terminal::Styles;
+use fabro_validate::Severity;
+use fabro_workflows::backend::{AgentApiBackend, AgentCliBackend, BackendRouter};
+use fabro_workflows::checkpoint::Checkpoint;
+use fabro_workflows::cost::{compute_stage_cost, format_cost};
+use fabro_workflows::devcontainer_bridge;
+use fabro_workflows::engine::{RunConfig, WorkflowRunEngine};
+use fabro_workflows::event::EventEmitter;
+use fabro_workflows::handler::default_registry;
+use fabro_workflows::outcome::StageStatus;
+use fabro_workflows::sandbox_provider::SandboxProvider;
+use fabro_workflows::workflow::WorkflowBuilder;
 use indicatif::HumanDuration;
 use std::time::Duration;
+use tracing::debug;
 
-use super::{
-    compute_stage_cost, format_cost, format_tokens_human, print_diagnostics, read_workflow_file,
-    RunArgs, SandboxProvider,
+use super::run_progress;
+use crate::commands::shared::{
+    format_tokens_human, print_diagnostics, read_workflow_file, relative_path, tilde_path,
 };
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum CliSandboxProvider {
+    Local,
+    Docker,
+    Daytona,
+    #[cfg(feature = "exedev")]
+    Exe,
+    Ssh,
+}
+
+impl From<CliSandboxProvider> for SandboxProvider {
+    fn from(value: CliSandboxProvider) -> Self {
+        match value {
+            CliSandboxProvider::Local => Self::Local,
+            CliSandboxProvider::Docker => Self::Docker,
+            CliSandboxProvider::Daytona => Self::Daytona,
+            #[cfg(feature = "exedev")]
+            CliSandboxProvider::Exe => Self::Exe,
+            CliSandboxProvider::Ssh => Self::Ssh,
+        }
+    }
+}
+
+#[derive(Args)]
+pub struct RunArgs {
+    /// Path to a .fabro workflow file or .toml task config (not required with --run-branch)
+    #[arg(required_unless_present = "run_branch")]
+    pub workflow: Option<PathBuf>,
+
+    /// Run output directory
+    #[arg(long)]
+    pub run_dir: Option<PathBuf>,
+
+    /// Execute with simulated LLM backend
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Validate run configuration without executing
+    #[arg(long, conflicts_with_all = ["resume", "run_branch", "dry_run"])]
+    pub preflight: bool,
+
+    /// Auto-approve all human gates
+    #[arg(long)]
+    pub auto_approve: bool,
+
+    /// Resume from a checkpoint file
+    #[arg(long)]
+    pub resume: Option<PathBuf>,
+
+    /// Resume from a git run branch (reads checkpoint and graph from metadata branch)
+    #[arg(long, conflicts_with = "resume")]
+    pub run_branch: Option<String>,
+
+    /// Override the workflow goal (exposed as $goal in prompts)
+    #[arg(long)]
+    pub goal: Option<String>,
+
+    /// Read the workflow goal from a file
+    #[arg(long, conflicts_with = "goal")]
+    pub goal_file: Option<PathBuf>,
+
+    /// Override default LLM model
+    #[arg(long)]
+    pub model: Option<String>,
+
+    /// Override default LLM provider
+    #[arg(long)]
+    pub provider: Option<String>,
+
+    /// Enable verbose output
+    #[arg(short, long)]
+    pub verbose: bool,
+
+    /// Sandbox for agent tools
+    #[arg(long, value_enum)]
+    pub sandbox: Option<CliSandboxProvider>,
+
+    /// Attach a label to this run (repeatable, format: KEY=VALUE)
+    #[arg(long = "label", value_name = "KEY=VALUE")]
+    pub label: Vec<String>,
+
+    /// Skip retro generation after the run
+    #[arg(long)]
+    pub no_retro: bool,
+
+    /// Create SSH access to the Daytona sandbox and print the connection command
+    #[arg(long)]
+    pub ssh: bool,
+
+    /// Keep the sandbox alive after the run finishes (for debugging)
+    #[arg(long)]
+    pub preserve_sandbox: bool,
+
+    /// Run the workflow in the background and print the run ID
+    #[arg(short = 'd', long, conflicts_with_all = ["resume", "run_branch", "preflight"])]
+    pub detach: bool,
+
+    /// Pre-generated run ID (used internally by --detach)
+    #[arg(long, hide = true)]
+    pub run_id: Option<String>,
+}
 
 /// Resolve goal from `--goal` string or `--goal-file` path.
 fn resolve_cli_goal(
@@ -124,7 +223,7 @@ fn resolve_model_provider(
 
 /// Parse sandbox provider from an optional `SandboxConfig`.
 fn parse_sandbox_provider(
-    sandbox: Option<&run_config::SandboxConfig>,
+    sandbox: Option<&sandbox_config::SandboxConfig>,
 ) -> anyhow::Result<Option<SandboxProvider>> {
     sandbox
         .and_then(|s| s.provider.as_deref())
@@ -164,7 +263,7 @@ fn resolve_preserve_sandbox(
 fn resolve_worktree_mode(
     run_cfg: Option<&WorkflowRunConfig>,
     run_defaults: &RunDefaults,
-) -> run_config::WorktreeMode {
+) -> sandbox_config::WorktreeMode {
     run_cfg
         .and_then(|c| c.sandbox.as_ref())
         .and_then(|s| s.local.as_ref())
@@ -321,7 +420,7 @@ pub async fn run_command(
     mut run_defaults: RunDefaults,
     styles: &'static Styles,
     github_app: Option<fabro_github::GitHubAppCredentials>,
-    git_author: crate::git::GitAuthor,
+    git_author: fabro_workflows::git::GitAuthor,
 ) -> anyhow::Result<()> {
     // Handle --run-branch resume: read everything from git metadata
     if let Some(branch) = args.run_branch.clone() {
@@ -336,7 +435,7 @@ pub async fn run_command(
     // Apply project-level config overrides (fabro.toml) on top of CLI defaults.
     // Precedence: workflow.toml > fabro.toml > cli.toml/server.toml
     if let Ok(Some((_config_path, project_config))) =
-        super::project_config::discover_project_config(&std::env::current_dir().unwrap_or_default())
+        project_config::discover_project_config(&std::env::current_dir().unwrap_or_default())
     {
         tracing::debug!("Applying run defaults from fabro.toml");
         run_defaults.merge_overlay(project_config.into_run_defaults());
@@ -344,7 +443,7 @@ pub async fn run_command(
 
     // 0. Resolve workflow arg, load run config if TOML, resolve DOT path, apply defaults
     let (dot_path, run_cfg) = {
-        let (dot, cfg) = super::project_config::resolve_workflow(workflow_path)?;
+        let (dot, cfg) = project_config::resolve_workflow(workflow_path)?;
         match cfg {
             Some(mut cfg) => {
                 cfg.apply_defaults(&run_defaults);
@@ -390,7 +489,7 @@ pub async fn run_command(
         .and_then(|c| c.vars.as_ref())
         .or(run_defaults.vars.as_ref());
     let source = match vars {
-        Some(vars) => run_config::expand_vars(&source, vars)?,
+        Some(vars) => fabro_workflows::vars::expand_vars(&source, vars)?,
         None => source,
     };
     let dot_dir = dot_path.parent().unwrap_or(std::path::Path::new("."));
@@ -403,7 +502,8 @@ pub async fn run_command(
     // Inline @file references in the (possibly overridden) goal
     if let Some(fabro_graphviz::graph::AttrValue::String(goal)) = graph.attrs.get("goal") {
         let fallback = dirs::home_dir().map(|h| h.join(".fabro"));
-        let resolved = crate::transform::resolve_file_ref(goal, dot_dir, fallback.as_deref());
+        let resolved =
+            fabro_workflows::transform::resolve_file_ref(goal, dot_dir, fallback.as_deref());
         if resolved != *goal {
             graph.attrs.insert(
                 "goal".to_string(),
@@ -445,7 +545,11 @@ pub async fn run_command(
     let sandbox_provider = if args.dry_run {
         SandboxProvider::Local
     } else {
-        resolve_sandbox_provider(args.sandbox, run_cfg.as_ref(), &run_defaults)?
+        resolve_sandbox_provider(
+            args.sandbox.map(Into::into),
+            run_cfg.as_ref(),
+            &run_defaults,
+        )?
     };
     let preserve_sandbox =
         resolve_preserve_sandbox(args.preserve_sandbox, run_cfg.as_ref(), &run_defaults);
@@ -454,14 +558,14 @@ pub async fn run_command(
         .map(|(url, branch)| (Some(url), branch))
         .unwrap_or((None, None));
     let git_clean = if sandbox_provider.is_remote() {
-        crate::git::ensure_clean_and_pushed(
+        fabro_workflows::git::ensure_clean_and_pushed(
             &original_cwd,
             "origin",
             detected_base_branch.as_deref(),
         )
         .is_ok()
     } else {
-        crate::git::ensure_clean(&original_cwd).is_ok()
+        fabro_workflows::git::ensure_clean(&original_cwd).is_ok()
     };
 
     if args.preflight {
@@ -497,19 +601,19 @@ pub async fn run_command(
         .context("Failed to activate per-run log")?;
     tokio::fs::write(run_dir.join("graph.fabro"), &source).await?;
     tokio::fs::write(run_dir.join("run.pid"), std::process::id().to_string()).await?;
-    super::runs::write_run_status(
+    fabro_workflows::run_status::write_run_status(
         &run_dir,
-        crate::run_status::RunStatus::Starting,
-        Some(crate::run_status::StatusReason::SandboxInitializing),
+        fabro_workflows::run_status::RunStatus::Starting,
+        Some(fabro_workflows::run_status::StatusReason::SandboxInitializing),
     );
 
     // Safety net: mark as failed if we exit before engine.run() (e.g. sandbox init failure)
     let status_run_dir = run_dir.clone();
     let status_guard = scopeguard::guard((), move |()| {
-        super::runs::write_run_status(
+        fabro_workflows::run_status::write_run_status(
             &status_run_dir,
-            crate::run_status::RunStatus::Failed,
-            Some(crate::run_status::StatusReason::SandboxInitFailed),
+            fabro_workflows::run_status::RunStatus::Failed,
+            Some(fabro_workflows::run_status::StatusReason::SandboxInitFailed),
         );
     });
 
@@ -521,7 +625,10 @@ pub async fn run_command(
 
     // Create progress UI (used for both normal and verbose modes)
     let is_tty = std::io::stderr().is_terminal();
-    let progress_ui = Arc::new(Mutex::new(progress::ProgressUI::new(is_tty, args.verbose)));
+    let progress_ui = Arc::new(Mutex::new(run_progress::ProgressUI::new(
+        is_tty,
+        args.verbose,
+    )));
     {
         let mut ui = progress_ui.lock().expect("progress lock poisoned");
         ui.show_version();
@@ -538,7 +645,7 @@ pub async fn run_command(
     {
         let sha_clone = Arc::clone(&last_git_sha);
         emitter.on_event(move |event| {
-            if let crate::event::WorkflowRunEvent::CheckpointCompleted {
+            if let fabro_workflows::event::WorkflowRunEvent::CheckpointCompleted {
                 git_commit_sha: Some(sha),
                 ..
             } = event
@@ -552,7 +659,9 @@ pub async fn run_command(
     let accumulator = Arc::new(Mutex::new(CostAccumulator::default()));
     let acc_clone = Arc::clone(&accumulator);
     emitter.on_event(move |event| {
-        if let crate::event::WorkflowRunEvent::StageCompleted { usage: Some(u), .. } = event {
+        if let fabro_workflows::event::WorkflowRunEvent::StageCompleted { usage: Some(u), .. } =
+            event
+        {
             let mut acc = acc_clone.lock().unwrap();
             acc.total_input_tokens += u.input_tokens;
             acc.total_output_tokens += u.output_tokens;
@@ -573,7 +682,9 @@ pub async fn run_command(
         let run_id = Arc::new(Mutex::new(run_id.clone()));
         let run_id_clone = Arc::clone(&run_id);
         emitter.on_event(move |event| {
-            if let crate::event::WorkflowRunEvent::WorkflowRunStarted { run_id, .. } = event {
+            if let fabro_workflows::event::WorkflowRunEvent::WorkflowRunStarted { run_id, .. } =
+                event
+            {
                 *run_id_clone.lock().unwrap() = run_id.clone();
             }
             let envelope = build_event_envelope(event, &run_id_clone.lock().unwrap());
@@ -597,13 +708,13 @@ pub async fn run_command(
         });
     }
 
-    progress::ProgressUI::register(&progress_ui, &mut emitter);
+    run_progress::ProgressUI::register(&progress_ui, &mut emitter);
 
     // 4. Build interviewer
     let interviewer: Arc<dyn Interviewer> = if args.auto_approve {
         Arc::new(AutoApproveInterviewer)
     } else {
-        Arc::new(progress::ProgressAwareInterviewer::new(
+        Arc::new(run_progress::ProgressAwareInterviewer::new(
             ConsoleInterviewer::new(styles),
             Arc::clone(&progress_ui),
         ))
@@ -617,10 +728,10 @@ pub async fn run_command(
         false
     } else {
         match worktree_mode {
-            run_config::WorktreeMode::Always => true,
-            run_config::WorktreeMode::Clean => git_clean,
-            run_config::WorktreeMode::Dirty => !git_clean,
-            run_config::WorktreeMode::Never => false,
+            sandbox_config::WorktreeMode::Always => true,
+            sandbox_config::WorktreeMode::Clean => git_clean,
+            sandbox_config::WorktreeMode::Dirty => !git_clean,
+            sandbox_config::WorktreeMode::Never => false,
         }
     };
     debug!(
@@ -643,7 +754,7 @@ pub async fn run_command(
             let check_repo = original_cwd.clone();
             let check_branch = branch.clone();
             let needs_push = tokio::task::spawn_blocking(move || {
-                crate::git::branch_needs_push(&check_repo, "origin", &check_branch)
+                fabro_workflows::git::branch_needs_push(&check_repo, "origin", &check_branch)
             })
             .await
             .unwrap_or(true);
@@ -651,8 +762,8 @@ pub async fn run_command(
             if needs_push {
                 let repo_path = original_cwd.clone();
                 let branch_owned = branch.clone();
-                let result = crate::git::blocking_push_with_timeout(60, move || {
-                    crate::git::push_branch(&repo_path, "origin", &branch_owned)
+                let result = fabro_workflows::git::blocking_push_with_timeout(60, move || {
+                    fabro_workflows::git::push_branch(&repo_path, "origin", &branch_owned)
                 })
                 .await;
                 match result {
@@ -725,12 +836,14 @@ pub async fn run_command(
                 let lifecycle_command_count = dc.on_create_commands.len()
                     + dc.post_create_commands.len()
                     + dc.post_start_commands.len();
-                emitter.emit(&crate::event::WorkflowRunEvent::DevcontainerResolved {
-                    dockerfile_lines: dc.dockerfile.lines().count(),
-                    environment_count: dc.environment.len(),
-                    lifecycle_command_count,
-                    workspace_folder: dc.workspace_folder.clone(),
-                });
+                emitter.emit(
+                    &fabro_workflows::event::WorkflowRunEvent::DevcontainerResolved {
+                        dockerfile_lines: dc.dockerfile.lines().count(),
+                        environment_count: dc.environment.len(),
+                        lifecycle_command_count,
+                        workspace_folder: dc.workspace_folder.clone(),
+                    },
+                );
 
                 // Override daytona_config with devcontainer dockerfile
                 let snapshot = devcontainer_bridge::devcontainer_to_snapshot_config(&dc);
@@ -807,7 +920,9 @@ pub async fn run_command(
         let deferred_sb = Arc::clone(&deferred_sandbox);
         let provider = sandbox_provider; // Copy — captured by move closure
         emitter.on_event(move |event| {
-            if let crate::event::WorkflowRunEvent::SandboxInitialized { working_directory } = event
+            if let fabro_workflows::event::WorkflowRunEvent::SandboxInitialized {
+                working_directory,
+            } = event
             {
                 progress_for_listener
                     .lock()
@@ -825,7 +940,7 @@ pub async fn run_command(
                 });
 
                 let is_docker = provider == SandboxProvider::Docker;
-                let record = crate::sandbox_record::SandboxRecord {
+                let record = fabro_workflows::sandbox_record::SandboxRecord {
                     provider: provider.to_string(),
                     working_directory: working_directory.clone(),
                     identifier: sandbox_info_opt,
@@ -856,7 +971,7 @@ pub async fn run_command(
     if args.ssh {
         let deferred_sb_ssh = Arc::clone(&deferred_sandbox);
         emitter.on_event(move |event| {
-            if let crate::event::WorkflowRunEvent::SandboxInitialized { .. } = event {
+            if let fabro_workflows::event::WorkflowRunEvent::SandboxInitialized { .. } = event {
                 if let Ok(rt) = tokio::runtime::Handle::try_current() {
                     let sb_lock = deferred_sb_ssh.lock().unwrap();
                     if let Some(ref sb) = *sb_lock {
@@ -893,7 +1008,7 @@ pub async fn run_command(
                 .map_err(|e| anyhow::anyhow!("Failed to create Docker environment: {e}"))?;
             let emitter_cb = Arc::clone(&emitter);
             env.set_event_callback(Arc::new(move |event| {
-                emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
+                emitter_cb.emit(&fabro_workflows::event::WorkflowRunEvent::Sandbox { event });
             }));
             Arc::new(env)
         }
@@ -909,7 +1024,7 @@ pub async fn run_command(
             .map_err(|e| anyhow::anyhow!("{e}"))?;
             let emitter_cb = Arc::clone(&emitter);
             env.set_event_callback(Arc::new(move |event| {
-                emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
+                emitter_cb.emit(&fabro_workflows::event::WorkflowRunEvent::Sandbox { event });
             }));
             Arc::new(env)
         }
@@ -930,7 +1045,7 @@ pub async fn run_command(
             );
             let emitter_cb = Arc::clone(&emitter);
             env.set_event_callback(Arc::new(move |event| {
-                emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
+                emitter_cb.emit(&fabro_workflows::event::WorkflowRunEvent::Sandbox { event });
             }));
             Arc::new(env)
         }
@@ -947,7 +1062,7 @@ pub async fn run_command(
             );
             let emitter_cb = Arc::clone(&emitter);
             env.set_event_callback(Arc::new(move |event| {
-                emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
+                emitter_cb.emit(&fabro_workflows::event::WorkflowRunEvent::Sandbox { event });
             }));
             Arc::new(env)
         }
@@ -955,10 +1070,11 @@ pub async fn run_command(
             let mut env = LocalSandbox::new(cwd.clone());
             let emitter_cb = Arc::clone(&emitter);
             env.set_event_callback(Arc::new(move |event| {
-                emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
+                emitter_cb.emit(&fabro_workflows::event::WorkflowRunEvent::Sandbox { event });
             }));
             Arc::new(env)
         }
+        _ => bail!("exe.dev sandbox support is not enabled in this build"),
     };
 
     // Wrap with ReadBeforeWriteSandbox to enforce read-before-write guard
@@ -1114,7 +1230,7 @@ pub async fn run_command(
     // 7. Execute
     // Set up metadata branch for git checkpointing (host or remote — engine fills remote)
     let meta_branch = if worktree_work_dir.is_some() {
-        Some(crate::git::MetadataStore::branch_name(&run_id))
+        Some(fabro_workflows::git::MetadataStore::branch_name(&run_id))
     } else {
         None
     };
@@ -1156,7 +1272,7 @@ pub async fn run_command(
     };
 
     // Build lifecycle config for sandbox init, setup commands, and devcontainer phases
-    let lifecycle = crate::engine::LifecycleConfig {
+    let lifecycle = fabro_workflows::engine::LifecycleConfig {
         setup_commands,
         setup_command_timeout_ms: 300_000,
         devcontainer_phases: if let Some(ref dc) = devcontainer_config {
@@ -1206,32 +1322,35 @@ pub async fn run_command(
     {
         let (status, failure_reason) = match &engine_result {
             Ok(ref o) => (o.status.clone(), o.failure_reason().map(String::from)),
-            Err(e) => (crate::outcome::StageStatus::Fail, Some(e.to_string())),
+            Err(e) => (
+                fabro_workflows::outcome::StageStatus::Fail,
+                Some(e.to_string()),
+            ),
         };
 
         // Map engine result to RunStatus + StatusReason
         let (run_status, status_reason) = match &engine_result {
             Ok(ref o) => match o.status {
                 StageStatus::Success | StageStatus::Skipped => (
-                    crate::run_status::RunStatus::Succeeded,
-                    Some(crate::run_status::StatusReason::Completed),
+                    fabro_workflows::run_status::RunStatus::Succeeded,
+                    Some(fabro_workflows::run_status::StatusReason::Completed),
                 ),
                 StageStatus::PartialSuccess => (
-                    crate::run_status::RunStatus::Succeeded,
-                    Some(crate::run_status::StatusReason::PartialSuccess),
+                    fabro_workflows::run_status::RunStatus::Succeeded,
+                    Some(fabro_workflows::run_status::StatusReason::PartialSuccess),
                 ),
                 StageStatus::Fail | StageStatus::Retry => (
-                    crate::run_status::RunStatus::Failed,
-                    Some(crate::run_status::StatusReason::WorkflowError),
+                    fabro_workflows::run_status::RunStatus::Failed,
+                    Some(fabro_workflows::run_status::StatusReason::WorkflowError),
                 ),
             },
-            Err(crate::error::FabroError::Cancelled) => (
-                crate::run_status::RunStatus::Failed,
-                Some(crate::run_status::StatusReason::Cancelled),
+            Err(fabro_workflows::error::FabroError::Cancelled) => (
+                fabro_workflows::run_status::RunStatus::Failed,
+                Some(fabro_workflows::run_status::StatusReason::Cancelled),
             ),
             Err(_) => (
-                crate::run_status::RunStatus::Failed,
-                Some(crate::run_status::StatusReason::WorkflowError),
+                fabro_workflows::run_status::RunStatus::Failed,
+                Some(fabro_workflows::run_status::StatusReason::WorkflowError),
             ),
         };
 
@@ -1259,7 +1378,7 @@ pub async fn run_command(
                     *cost_sum.get_or_insert(0.0) += c;
                 }
 
-                stages.push(crate::conclusion::StageSummary {
+                stages.push(fabro_workflows::conclusion::StageSummary {
                     stage_id: node_id.clone(),
                     stage_label: node_id.clone(),
                     duration_ms: stage_durations.get(node_id).copied().unwrap_or(0),
@@ -1272,7 +1391,7 @@ pub async fn run_command(
             (vec![], None, 0)
         };
 
-        let conclusion = crate::conclusion::Conclusion {
+        let conclusion = fabro_workflows::conclusion::Conclusion {
             timestamp: Utc::now(),
             status,
             duration_ms: run_duration_ms,
@@ -1283,11 +1402,11 @@ pub async fn run_command(
             total_retries,
         };
         let _ = conclusion.save(&run_dir.join("conclusion.json"));
-        super::runs::write_run_status(&run_dir, run_status, status_reason);
+        fabro_workflows::run_status::write_run_status(&run_dir, run_status, status_reason);
     }
 
     // Auto-derive retro (always, cheap) and optionally run retro agent
-    if !args.no_retro && super::project_config::is_retro_enabled() {
+    if !args.no_retro && project_config::is_retro_enabled() {
         let failed = match &engine_result {
             Ok(ref o) => o.status == StageStatus::Fail,
             Err(_) => true,
@@ -1352,14 +1471,14 @@ pub async fn run_command(
                     }
 
                     let auto_merge = if pr_cfg.auto_merge {
-                        Some(crate::pull_request::AutoMergeConfig {
+                        Some(fabro_workflows::pull_request::AutoMergeConfig {
                             merge_strategy: pr_cfg.merge_strategy,
                         })
                     } else {
                         None
                     };
 
-                    match crate::pull_request::maybe_open_pull_request(
+                    match fabro_workflows::pull_request::maybe_open_pull_request(
                         creds,
                         origin,
                         base_branch,
@@ -1374,11 +1493,13 @@ pub async fn run_command(
                     .await
                     {
                         Ok(Some(record)) => {
-                            emitter.emit(&crate::event::WorkflowRunEvent::PullRequestCreated {
-                                pr_url: record.html_url.clone(),
-                                pr_number: record.number,
-                                draft: pr_cfg.draft,
-                            });
+                            emitter.emit(
+                                &fabro_workflows::event::WorkflowRunEvent::PullRequestCreated {
+                                    pr_url: record.html_url.clone(),
+                                    pr_number: record.number,
+                                    draft: pr_cfg.draft,
+                                },
+                            );
                             pr_url = Some(record.html_url.clone());
                             if let Err(e) = record.save(&run_dir.join("pull_request.json")) {
                                 tracing::warn!(error = %e, "Failed to save pull_request.json");
@@ -1386,9 +1507,11 @@ pub async fn run_command(
                         }
                         Ok(None) => {} // empty diff, logged at DEBUG
                         Err(e) => {
-                            emitter.emit(&crate::event::WorkflowRunEvent::PullRequestFailed {
-                                error: e.to_string(),
-                            });
+                            emitter.emit(
+                                &fabro_workflows::event::WorkflowRunEvent::PullRequestFailed {
+                                    error: e.to_string(),
+                                },
+                            );
                             eprintln!(
                                 "{} PR creation failed: {e}",
                                 styles.yellow.apply_to("Warning:")
@@ -1528,12 +1651,14 @@ fn setup_worktree(
     run_dir: &std::path::Path,
     run_id: &str,
 ) -> anyhow::Result<(PathBuf, PathBuf, String, String)> {
-    let base_sha = crate::git::head_sha(original_cwd).map_err(|e| anyhow::anyhow!("{e}"))?;
-    let branch_name = format!("{}{run_id}", crate::git::RUN_BRANCH_PREFIX);
-    crate::git::create_branch(original_cwd, &branch_name).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let base_sha =
+        fabro_workflows::git::head_sha(original_cwd).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let branch_name = format!("{}{run_id}", fabro_workflows::git::RUN_BRANCH_PREFIX);
+    fabro_workflows::git::create_branch(original_cwd, &branch_name)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let worktree_path = run_dir.join("worktree");
-    crate::git::replace_worktree(original_cwd, &worktree_path, &branch_name)
+    fabro_workflows::git::replace_worktree(original_cwd, &worktree_path, &branch_name)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     std::env::set_current_dir(&worktree_path)?;
@@ -1550,17 +1675,17 @@ async fn run_from_branch(
     args: RunArgs,
     run_branch: &str,
     styles: &'static Styles,
-    git_author: crate::git::GitAuthor,
+    git_author: fabro_workflows::git::GitAuthor,
     run_defaults: RunDefaults,
     github_app: Option<fabro_github::GitHubAppCredentials>,
 ) -> anyhow::Result<()> {
     // Extract run_id from branch name: "fabro/run/{run_id}" -> "{run_id}"
     let run_id = run_branch
-        .strip_prefix(crate::git::RUN_BRANCH_PREFIX)
+        .strip_prefix(fabro_workflows::git::RUN_BRANCH_PREFIX)
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "invalid run branch format: expected '{}<run_id>', got '{run_branch}'",
-                crate::git::RUN_BRANCH_PREFIX,
+                fabro_workflows::git::RUN_BRANCH_PREFIX,
             )
         })?
         .to_string();
@@ -1568,22 +1693,22 @@ async fn run_from_branch(
     let original_cwd = std::env::current_dir()?;
 
     // Read checkpoint from metadata branch
-    let checkpoint = crate::git::MetadataStore::read_checkpoint(&original_cwd, &run_id)?
+    let checkpoint = fabro_workflows::git::MetadataStore::read_checkpoint(&original_cwd, &run_id)?
         .ok_or_else(|| {
             anyhow::anyhow!("no checkpoint found on metadata branch for run {run_id}")
         })?;
 
     // Read graph DOT from metadata branch
-    let source =
-        crate::git::MetadataStore::read_graph_dot(&original_cwd, &run_id)?.ok_or_else(|| {
+    let source = fabro_workflows::git::MetadataStore::read_graph_dot(&original_cwd, &run_id)?
+        .ok_or_else(|| {
             anyhow::anyhow!("no graph.fabro found on metadata branch for run {run_id}")
         })?;
 
     // If --pipeline was also provided, use it instead (allows overriding)
     let (mut graph, diagnostics) = if let Some(ref workflow_path) = args.workflow {
-        crate::workflow::prepare_from_file(workflow_path)?
+        fabro_workflows::workflow::prepare_from_file(workflow_path)?
     } else {
-        crate::workflow::WorkflowBuilder::new().prepare(&source)?
+        fabro_workflows::workflow::WorkflowBuilder::new().prepare(&source)?
     };
     let cli_goal = resolve_cli_goal(&args.goal, &args.goal_file)?;
     apply_goal_override(&mut graph, cli_goal.as_deref(), None);
@@ -1596,7 +1721,7 @@ async fn run_from_branch(
         run_id,
     );
 
-    super::print_diagnostics(&diagnostics, styles);
+    print_diagnostics(&diagnostics, styles);
     if diagnostics.iter().any(|d| d.severity == Severity::Error) {
         anyhow::bail!("Validation failed");
     }
@@ -1622,14 +1747,14 @@ async fn run_from_branch(
         .context("Failed to activate per-run log")?;
     tokio::fs::write(run_dir.join("graph.fabro"), &source).await?;
 
-    let base_sha =
-        crate::git::MetadataStore::read_manifest(&original_cwd, &run_id)?.and_then(|m| m.base_sha);
+    let base_sha = fabro_workflows::git::MetadataStore::read_manifest(&original_cwd, &run_id)?
+        .and_then(|m| m.base_sha);
 
     // Resolve sandbox provider
     let sandbox_provider = if args.dry_run {
         SandboxProvider::Local
     } else {
-        resolve_sandbox_provider(args.sandbox, None, &run_defaults)?
+        resolve_sandbox_provider(args.sandbox.map(Into::into), None, &run_defaults)?
     };
 
     let emitter = Arc::new(EventEmitter::new());
@@ -1638,14 +1763,14 @@ async fn run_from_branch(
             SandboxProvider::Local | SandboxProvider::Docker => {
                 // Re-attach worktree to the existing run branch
                 let wt = run_dir.join("worktree");
-                crate::git::replace_worktree(&original_cwd, &wt, run_branch).map_err(|e| {
-                    anyhow::anyhow!("failed to attach worktree to {run_branch}: {e}")
-                })?;
+                fabro_workflows::git::replace_worktree(&original_cwd, &wt, run_branch).map_err(
+                    |e| anyhow::anyhow!("failed to attach worktree to {run_branch}: {e}"),
+                )?;
                 std::env::set_current_dir(&wt)?;
                 let mut env = fabro_agent::LocalSandbox::new(wt.clone());
                 let emitter_cb = Arc::clone(&emitter);
                 env.set_event_callback(Arc::new(move |event| {
-                    emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
+                    emitter_cb.emit(&fabro_workflows::event::WorkflowRunEvent::Sandbox { event });
                 }));
                 (Arc::new(env), Some(wt))
             }
@@ -1666,7 +1791,7 @@ async fn run_from_branch(
                 );
                 let emitter_cb = Arc::clone(&emitter);
                 env.set_event_callback(Arc::new(move |event| {
-                    emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
+                    emitter_cb.emit(&fabro_workflows::event::WorkflowRunEvent::Sandbox { event });
                 }));
                 (Arc::new(env), None)
             }
@@ -1683,13 +1808,14 @@ async fn run_from_branch(
                 );
                 let emitter_cb = Arc::clone(&emitter);
                 env.set_event_callback(Arc::new(move |event| {
-                    emitter_cb.emit(&crate::event::WorkflowRunEvent::Sandbox { event });
+                    emitter_cb.emit(&fabro_workflows::event::WorkflowRunEvent::Sandbox { event });
                 }));
                 (Arc::new(env), None)
             }
             SandboxProvider::Daytona => {
                 bail!("--run-branch resume is not yet supported with --sandbox daytona");
             }
+            _ => bail!("exe.dev sandbox support is not enabled in this build"),
         };
 
     // Wrap with ReadBeforeWriteSandbox to enforce read-before-write guard
@@ -1731,7 +1857,7 @@ async fn run_from_branch(
     // No fallback config available for branch resume; use empty chain.
     let fallback_chain = Vec::new();
 
-    let registry = crate::handler::default_registry(interviewer.clone(), || {
+    let registry = fabro_workflows::handler::default_registry(interviewer.clone(), || {
         if dry_run_mode {
             None
         } else {
@@ -1740,7 +1866,7 @@ async fn run_from_branch(
             Some(Box::new(BackendRouter::new(Box::new(api), cli)))
         }
     });
-    let mut engine = crate::engine::WorkflowRunEngine::with_interviewer(
+    let mut engine = fabro_workflows::engine::WorkflowRunEngine::with_interviewer(
         registry,
         Arc::clone(&emitter),
         interviewer,
@@ -1750,7 +1876,7 @@ async fn run_from_branch(
         engine.set_dry_run(true);
     }
 
-    let meta_branch = Some(crate::git::MetadataStore::branch_name(&run_id));
+    let meta_branch = Some(fabro_workflows::git::MetadataStore::branch_name(&run_id));
     let mut config = RunConfig {
         run_dir: run_dir.clone(),
         cancel_token: None,
@@ -1775,7 +1901,7 @@ async fn run_from_branch(
         workflow_slug: None,
     };
 
-    let lifecycle = crate::engine::LifecycleConfig {
+    let lifecycle = fabro_workflows::engine::LifecycleConfig {
         setup_commands: resume_setup_commands,
         setup_command_timeout_ms: 60_000,
         devcontainer_phases: Vec::new(),
@@ -1791,7 +1917,7 @@ async fn run_from_branch(
     let _ = std::env::set_current_dir(&original_cwd);
 
     // Auto-derive retro
-    if !args.no_retro && super::project_config::is_retro_enabled() {
+    if !args.no_retro && project_config::is_retro_enabled() {
         let failed = match &engine_result {
             Ok(ref o) => o.status == StageStatus::Fail,
             Err(_) => true,
@@ -1883,7 +2009,7 @@ fn print_final_output(run_dir: &std::path::Path, styles: &Styles) {
 
 /// Print collected asset paths, if any.
 fn print_assets(run_dir: &std::path::Path, styles: &Styles) {
-    let paths = crate::asset_snapshot::collect_asset_paths(run_dir);
+    let paths = fabro_workflows::asset_snapshot::collect_asset_paths(run_dir);
     if paths.is_empty() {
         return;
     }
@@ -2038,6 +2164,7 @@ async fn run_preflight(
         SandboxProvider::Local => {
             Ok(Arc::new(LocalSandbox::new(original_cwd.clone())) as Arc<dyn Sandbox>)
         }
+        _ => Err("exe.dev sandbox support is not enabled in this build".to_string()),
     };
 
     let sandbox_ok = match sandbox_result {
@@ -2254,8 +2381,8 @@ async fn write_finalize_commit(config: &RunConfig, run_dir: &std::path::Path) {
         return;
     };
 
-    let store = crate::git::MetadataStore::new(repo_path, &config.git_author);
-    let mut entries = crate::git::scan_node_files(run_dir);
+    let store = fabro_workflows::git::MetadataStore::new(repo_path, &config.git_author);
+    let mut entries = fabro_workflows::git::scan_node_files(run_dir);
     if let Ok(retro_bytes) = std::fs::read(run_dir.join("retro.json")) {
         entries.push(("retro.json".to_string(), retro_bytes));
     }
@@ -2270,8 +2397,13 @@ async fn write_finalize_commit(config: &RunConfig, run_dir: &std::path::Path) {
 
     // Push the finalize commit
     let refspec = format!("refs/heads/{meta_branch}");
-    crate::engine::git_push_host(repo_path, &refspec, &config.github_app, "finalize metadata")
-        .await;
+    fabro_workflows::engine::git_push_host(
+        repo_path,
+        &refspec,
+        &config.github_app,
+        "finalize metadata",
+    )
+    .await;
 }
 
 /// Generate a retro report for a completed workflow run.
@@ -2305,7 +2437,7 @@ async fn generate_retro(
         }
     };
 
-    let completed_stages = crate::build_completed_stages(&cp, failed);
+    let completed_stages = fabro_workflows::build_completed_stages(&cp, failed);
     let stage_durations = fabro_retro::retro::extract_stage_durations(run_dir);
     let mut retro = fabro_retro::retro::derive_retro(
         run_id,
@@ -2331,7 +2463,7 @@ async fn generate_retro(
 
     let retro_start = std::time::Instant::now();
     if let Some(ref em) = emitter {
-        em.emit(&crate::event::WorkflowRunEvent::RetroStarted);
+        em.emit(&fabro_workflows::event::WorkflowRunEvent::RetroStarted);
     } else {
         eprintln!(
             "{}",
@@ -2360,7 +2492,7 @@ async fn generate_retro(
                                 | fabro_agent::AgentEvent::ToolCallOutputDelta { .. }
                                 | fabro_agent::AgentEvent::SkillExpanded { .. }
                         ) {
-                            em.emit(&crate::event::WorkflowRunEvent::Agent {
+                            em.emit(&fabro_workflows::event::WorkflowRunEvent::Agent {
                                 stage: "retro".to_string(),
                                 event: event.event.clone(),
                             });
@@ -2385,12 +2517,12 @@ async fn generate_retro(
     if let Some(ref em) = emitter {
         match &narrative_result {
             Ok(_) => {
-                em.emit(&crate::event::WorkflowRunEvent::RetroCompleted {
+                em.emit(&fabro_workflows::event::WorkflowRunEvent::RetroCompleted {
                     duration_ms: retro_dur_elapsed.as_millis() as u64,
                 });
             }
             Err(e) => {
-                em.emit(&crate::event::WorkflowRunEvent::RetroFailed {
+                em.emit(&fabro_workflows::event::WorkflowRunEvent::RetroFailed {
                     error: e.to_string(),
                     duration_ms: retro_dur_elapsed.as_millis() as u64,
                 });
@@ -2398,7 +2530,7 @@ async fn generate_retro(
         }
     }
 
-    let retro_dur = progress::format_duration_short(retro_dur_elapsed);
+    let retro_dur = run_progress::format_duration_short(retro_dur_elapsed);
 
     match narrative_result {
         Ok(narrative) => {
@@ -2452,7 +2584,7 @@ async fn generate_retro(
                     }
 
                     // Line 3: file path
-                    let retro_path = format!("{}/retro.json", super::tilde_path(run_dir));
+                    let retro_path = format!("{}/retro.json", tilde_path(run_dir));
                     eprintln!(
                         "  {} {}",
                         styles.dim.apply_to("Retro saved to"),
@@ -2476,8 +2608,11 @@ async fn generate_retro(
     }
 }
 
-fn build_event_envelope(event: &crate::event::WorkflowRunEvent, run_id: &str) -> serde_json::Value {
-    let (event_name, event_fields) = crate::event::flatten_event(event);
+fn build_event_envelope(
+    event: &fabro_workflows::event::WorkflowRunEvent,
+    run_id: &str,
+) -> serde_json::Value {
+    let (event_name, event_fields) = fabro_workflows::event::flatten_event(event);
     let mut envelope = serde_json::Map::new();
     envelope.insert(
         "ts".to_string(),
@@ -2730,16 +2865,10 @@ mod tests {
             work_dir: None,
             llm: None,
             setup: None,
-            sandbox: Some(run_config::SandboxConfig {
+            sandbox: Some(sandbox_config::SandboxConfig {
                 provider: None,
                 preserve: Some(false),
-                devcontainer: None,
-                local: None,
-                daytona: None,
-                #[cfg(feature = "exedev")]
-                exe: None,
-                ssh: None,
-                env: None,
+                ..Default::default()
             }),
             vars: None,
             hooks: Vec::new(),
@@ -2762,16 +2891,10 @@ mod tests {
             work_dir: None,
             llm: None,
             setup: None,
-            sandbox: Some(run_config::SandboxConfig {
+            sandbox: Some(sandbox_config::SandboxConfig {
                 provider: None,
                 preserve: Some(true),
-                devcontainer: None,
-                local: None,
-                daytona: None,
-                #[cfg(feature = "exedev")]
-                exe: None,
-                ssh: None,
-                env: None,
+                ..Default::default()
             }),
             vars: None,
             hooks: Vec::new(),
@@ -2782,16 +2905,10 @@ mod tests {
             github: None,
         };
         let defaults = RunDefaults {
-            sandbox: Some(run_config::SandboxConfig {
+            sandbox: Some(sandbox_config::SandboxConfig {
                 provider: None,
                 preserve: Some(false),
-                devcontainer: None,
-                local: None,
-                daytona: None,
-                #[cfg(feature = "exedev")]
-                exe: None,
-                ssh: None,
-                env: None,
+                ..Default::default()
             }),
             ..RunDefaults::default()
         };
@@ -2801,16 +2918,10 @@ mod tests {
     #[test]
     fn resolve_preserve_sandbox_defaults_used() {
         let defaults = RunDefaults {
-            sandbox: Some(run_config::SandboxConfig {
+            sandbox: Some(sandbox_config::SandboxConfig {
                 provider: None,
                 preserve: Some(true),
-                devcontainer: None,
-                local: None,
-                daytona: None,
-                #[cfg(feature = "exedev")]
-                exe: None,
-                ssh: None,
-                env: None,
+                ..Default::default()
             }),
             ..RunDefaults::default()
         };
@@ -2828,7 +2939,7 @@ mod tests {
         let defaults = RunDefaults::default();
         assert_eq!(
             resolve_worktree_mode(None, &defaults),
-            run_config::WorktreeMode::Clean
+            sandbox_config::WorktreeMode::Clean
         );
     }
 
@@ -2841,18 +2952,14 @@ mod tests {
             work_dir: None,
             llm: None,
             setup: None,
-            sandbox: Some(run_config::SandboxConfig {
+            sandbox: Some(sandbox_config::SandboxConfig {
                 provider: None,
                 preserve: None,
                 devcontainer: None,
-                local: Some(run_config::LocalSandboxConfig {
-                    worktree_mode: run_config::WorktreeMode::Always,
+                local: Some(sandbox_config::LocalSandboxConfig {
+                    worktree_mode: sandbox_config::WorktreeMode::Always,
                 }),
-                daytona: None,
-                #[cfg(feature = "exedev")]
-                exe: None,
-                ssh: None,
-                env: None,
+                ..Default::default()
             }),
             vars: None,
             hooks: Vec::new(),
@@ -2865,31 +2972,27 @@ mod tests {
         let defaults = RunDefaults::default();
         assert_eq!(
             resolve_worktree_mode(Some(&cfg), &defaults),
-            run_config::WorktreeMode::Always
+            sandbox_config::WorktreeMode::Always
         );
     }
 
     #[test]
     fn resolve_worktree_mode_from_defaults() {
         let defaults = RunDefaults {
-            sandbox: Some(run_config::SandboxConfig {
+            sandbox: Some(sandbox_config::SandboxConfig {
                 provider: None,
                 preserve: None,
                 devcontainer: None,
-                local: Some(run_config::LocalSandboxConfig {
-                    worktree_mode: run_config::WorktreeMode::Dirty,
+                local: Some(sandbox_config::LocalSandboxConfig {
+                    worktree_mode: sandbox_config::WorktreeMode::Dirty,
                 }),
-                daytona: None,
-                #[cfg(feature = "exedev")]
-                exe: None,
-                ssh: None,
-                env: None,
+                ..Default::default()
             }),
             ..RunDefaults::default()
         };
         assert_eq!(
             resolve_worktree_mode(None, &defaults),
-            run_config::WorktreeMode::Dirty
+            sandbox_config::WorktreeMode::Dirty
         );
     }
 
@@ -2902,18 +3005,14 @@ mod tests {
             work_dir: None,
             llm: None,
             setup: None,
-            sandbox: Some(run_config::SandboxConfig {
+            sandbox: Some(sandbox_config::SandboxConfig {
                 provider: None,
                 preserve: None,
                 devcontainer: None,
-                local: Some(run_config::LocalSandboxConfig {
-                    worktree_mode: run_config::WorktreeMode::Never,
+                local: Some(sandbox_config::LocalSandboxConfig {
+                    worktree_mode: sandbox_config::WorktreeMode::Never,
                 }),
-                daytona: None,
-                #[cfg(feature = "exedev")]
-                exe: None,
-                ssh: None,
-                env: None,
+                ..Default::default()
             }),
             vars: None,
             hooks: Vec::new(),
@@ -2924,24 +3023,20 @@ mod tests {
             github: None,
         };
         let defaults = RunDefaults {
-            sandbox: Some(run_config::SandboxConfig {
+            sandbox: Some(sandbox_config::SandboxConfig {
                 provider: None,
                 preserve: None,
                 devcontainer: None,
-                local: Some(run_config::LocalSandboxConfig {
-                    worktree_mode: run_config::WorktreeMode::Dirty,
+                local: Some(sandbox_config::LocalSandboxConfig {
+                    worktree_mode: sandbox_config::WorktreeMode::Dirty,
                 }),
-                daytona: None,
-                #[cfg(feature = "exedev")]
-                exe: None,
-                ssh: None,
-                env: None,
+                ..Default::default()
             }),
             ..RunDefaults::default()
         };
         assert_eq!(
             resolve_worktree_mode(Some(&cfg), &defaults),
-            run_config::WorktreeMode::Never
+            sandbox_config::WorktreeMode::Never
         );
     }
 
@@ -2988,7 +3083,7 @@ mod tests {
 
     #[test]
     fn envelope_field_order_starts_with_ts_run_id_event() {
-        let event = crate::event::WorkflowRunEvent::StageStarted {
+        let event = fabro_workflows::event::WorkflowRunEvent::StageStarted {
             node_id: "plan".to_string(),
             name: "Plan".to_string(),
             index: 0,

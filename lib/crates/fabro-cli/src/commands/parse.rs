@@ -1,0 +1,26 @@
+use std::io::Write;
+use std::path::PathBuf;
+
+use clap::Args;
+
+use crate::commands::shared::read_workflow_file;
+
+#[derive(Args)]
+pub struct ParseArgs {
+    /// Path to the .fabro workflow file
+    pub workflow: PathBuf,
+}
+
+pub fn run(args: &ParseArgs) -> anyhow::Result<()> {
+    let stdout = std::io::stdout();
+    run_to(args, stdout.lock())
+}
+
+fn run_to(args: &ParseArgs, mut out: impl Write) -> anyhow::Result<()> {
+    let (dot_path, _cfg) = fabro_config::project::resolve_workflow(&args.workflow)?;
+    let source = read_workflow_file(&dot_path)?;
+    let ast = fabro_graphviz::parser::parse_ast(&source)?;
+    serde_json::to_writer_pretty(&mut out, &ast)?;
+    writeln!(out)?;
+    Ok(())
+}

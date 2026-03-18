@@ -1,4 +1,5 @@
 mod cli_config;
+mod commands;
 mod doctor;
 mod init;
 mod install;
@@ -69,32 +70,32 @@ enum Command {
     #[command(hide = true)]
     Exec(fabro_agent::cli::AgentArgs),
     /// Launch a workflow run
-    Run(fabro_workflows::cli::RunArgs),
+    Run(commands::run::RunArgs),
     /// Validate a workflow
-    Validate(fabro_workflows::cli::ValidateArgs),
+    Validate(commands::validate::ValidateArgs),
     /// Render a workflow graph as SVG or PNG
-    Graph(fabro_workflows::cli::graph::GraphArgs),
+    Graph(commands::graph::GraphArgs),
     /// Parse a DOT file and print its AST
     #[command(hide = true)]
-    Parse(fabro_workflows::cli::ParseArgs),
+    Parse(commands::parse::ParseArgs),
     /// Inspect and copy run assets (screenshots, reports, traces)
     Asset {
         #[command(subcommand)]
         command: AssetCommand,
     },
     /// Copy files to/from a run's sandbox
-    Cp(fabro_workflows::cli::cp::CpArgs),
+    Cp(commands::cp::CpArgs),
     /// Get a preview URL for a port on a run's sandbox
-    Preview(fabro_workflows::cli::preview::PreviewArgs),
+    Preview(commands::preview::PreviewArgs),
     /// SSH into a run's Daytona sandbox
-    Ssh(fabro_workflows::cli::ssh::SshArgs),
+    Ssh(commands::ssh::SshArgs),
     /// Show the diff of changes from a workflow run
     #[command(hide = true)]
-    Diff(fabro_workflows::cli::diff::DiffArgs),
+    Diff(commands::diff::DiffArgs),
     /// View the event log of a workflow run
-    Logs(fabro_workflows::cli::logs::LogsArgs),
+    Logs(commands::logs::LogsArgs),
     /// Show detailed information about a workflow run
-    Inspect(fabro_workflows::cli::inspect::InspectArgs),
+    Inspect(commands::inspect::InspectArgs),
     /// List and test LLM models
     Model {
         #[command(subcommand)]
@@ -119,9 +120,9 @@ enum Command {
     Install,
     /// List workflow runs
     #[command(hide = true)]
-    Ps(fabro_workflows::cli::runs::RunsListArgs),
+    Ps(commands::runs::RunsListArgs),
     /// Remove one or more workflow runs
-    Rm(fabro_workflows::cli::runs::RunsRemoveArgs),
+    Rm(commands::runs::RunsRemoveArgs),
     /// Pull request operations
     Pr {
         #[command(subcommand)]
@@ -133,9 +134,9 @@ enum Command {
         command: SkillCommand,
     },
     /// Rewind a workflow run to an earlier checkpoint
-    Rewind(fabro_workflows::cli::rewind::RewindArgs),
+    Rewind(commands::rewind::RewindArgs),
     /// Fork a workflow run from an earlier checkpoint into a new run
-    Fork(fabro_workflows::cli::fork::ForkArgs),
+    Fork(commands::fork::ForkArgs),
     /// Workflow operations
     Workflow {
         #[command(subcommand)]
@@ -169,23 +170,23 @@ enum Command {
 #[derive(Subcommand)]
 enum PrCommand {
     /// Create a pull request from a completed run
-    Create(fabro_workflows::cli::pr::PrCreateArgs),
+    Create(commands::pr::PrCreateArgs),
     /// List pull requests from workflow runs
-    List(fabro_workflows::cli::pr::PrListArgs),
+    List(commands::pr::PrListArgs),
     /// View pull request details
-    View(fabro_workflows::cli::pr::PrViewArgs),
+    View(commands::pr::PrViewArgs),
     /// Merge a pull request
-    Merge(fabro_workflows::cli::pr::PrMergeArgs),
+    Merge(commands::pr::PrMergeArgs),
     /// Close a pull request
-    Close(fabro_workflows::cli::pr::PrCloseArgs),
+    Close(commands::pr::PrCloseArgs),
 }
 
 #[derive(Subcommand)]
 enum SystemCommand {
     /// Delete old workflow runs
-    Prune(fabro_workflows::cli::runs::RunsPruneArgs),
+    Prune(commands::runs::RunsPruneArgs),
     /// Show disk usage
-    Df(fabro_workflows::cli::runs::DfArgs),
+    Df(commands::runs::DfArgs),
 }
 
 #[derive(Subcommand)]
@@ -197,17 +198,17 @@ enum SkillCommand {
 #[derive(Subcommand)]
 enum WorkflowCommand {
     /// List available workflows
-    List(fabro_workflows::cli::workflow::WorkflowListArgs),
+    List(commands::workflow::WorkflowListArgs),
     /// Create a new workflow
-    Create(fabro_workflows::cli::workflow::WorkflowCreateArgs),
+    Create(commands::workflow::WorkflowCreateArgs),
 }
 
 #[derive(Subcommand)]
 enum AssetCommand {
     /// List assets for a workflow run
-    List(fabro_workflows::cli::asset::AssetListArgs),
+    List(commands::asset::AssetListArgs),
     /// Copy assets from a workflow run
-    Cp(fabro_workflows::cli::asset::AssetCpArgs),
+    Cp(commands::asset::AssetCpArgs),
 }
 
 #[derive(Subcommand)]
@@ -237,7 +238,7 @@ pub(crate) fn build_github_app_credentials(
 }
 
 /// Fork the workflow as a background process, print the run ID, and exit.
-fn detach_run(args: fabro_workflows::cli::RunArgs) -> Result<()> {
+fn detach_run(args: commands::run::RunArgs) -> Result<()> {
     let run_id = ulid::Ulid::new().to_string();
 
     let run_dir = args.run_dir.clone().unwrap_or_else(|| {
@@ -253,7 +254,7 @@ fn detach_run(args: fabro_workflows::cli::RunArgs) -> Result<()> {
     });
     std::fs::create_dir_all(&run_dir)?;
     std::fs::write(run_dir.join("id.txt"), &run_id)?;
-    fabro_workflows::cli::runs::write_run_status(
+    fabro_workflows::run_status::write_run_status(
         &run_dir,
         fabro_workflows::run_status::RunStatus::Submitted,
         None,
@@ -665,7 +666,7 @@ async fn main_inner() -> (String, Result<()>) {
                 #[cfg(feature = "sleep_inhibitor")]
                 let _sleep_guard = fabro_beastie::guard(cli_config.prevent_idle_sleep);
 
-                fabro_workflows::cli::run::run_command(
+                commands::run::run_command(
                     args,
                     cli_config.run_defaults,
                     styles,
@@ -676,41 +677,41 @@ async fn main_inner() -> (String, Result<()>) {
             }
             Command::Validate(args) => {
                 let styles = fabro_util::terminal::Styles::detect_stderr();
-                fabro_workflows::cli::validate::validate_command(&args, &styles)?;
+                commands::validate::run(&args, &styles)?;
             }
             Command::Graph(args) => {
                 let styles = fabro_util::terminal::Styles::detect_stderr();
-                fabro_workflows::cli::graph::graph_command(&args, &styles)?;
+                commands::graph::run(&args, &styles)?;
             }
             Command::Parse(args) => {
-                fabro_workflows::cli::parse::parse_command(&args)?;
+                commands::parse::run(&args)?;
             }
             Command::Asset { command } => match command {
                 AssetCommand::List(args) => {
-                    fabro_workflows::cli::asset::list_command(&args)?;
+                    commands::asset::list_command(&args)?;
                 }
                 AssetCommand::Cp(args) => {
-                    fabro_workflows::cli::asset::cp_command(&args)?;
+                    commands::asset::cp_command(&args)?;
                 }
             },
             Command::Cp(args) => {
-                fabro_workflows::cli::cp::cp_command(args).await?;
+                commands::cp::cp_command(args).await?;
             }
             Command::Preview(args) => {
-                fabro_workflows::cli::preview::preview_command(args).await?;
+                commands::preview::run(args).await?;
             }
             Command::Ssh(args) => {
-                fabro_workflows::cli::ssh::ssh_command(args).await?;
+                commands::ssh::run(args).await?;
             }
             Command::Diff(args) => {
-                fabro_workflows::cli::diff::diff_command(args).await?;
+                commands::diff::run(args).await?;
             }
             Command::Logs(args) => {
                 let styles = fabro_util::terminal::Styles::detect_stdout();
-                fabro_workflows::cli::logs::logs_command(args, &styles)?;
+                commands::logs::run(args, &styles)?;
             }
             Command::Inspect(args) => {
-                fabro_workflows::cli::inspect::inspect_command(&args)?;
+                commands::inspect::run(&args)?;
             }
             Command::Model { command } => {
                 let server = {
@@ -767,46 +768,46 @@ async fn main_inner() -> (String, Result<()>) {
             }
             Command::Ps(args) => {
                 let styles = fabro_util::terminal::Styles::detect_stdout();
-                fabro_workflows::cli::runs::list_command(&args, &styles)?;
+                commands::runs::list_command(&args, &styles)?;
             }
             Command::Rm(args) => {
-                fabro_workflows::cli::runs::remove_command(&args).await?;
+                commands::runs::remove_command(&args).await?;
             }
             Command::Pr { command } => {
                 let cli_config = cli_config::load_cli_config(None)?;
                 let github_app = build_github_app_credentials(cli_config.app_id());
                 match command {
                     PrCommand::Create(args) => {
-                        fabro_workflows::cli::pr::pr_create_command(args, github_app).await?;
+                        commands::pr::create_command(args, github_app).await?;
                     }
                     PrCommand::List(args) => {
-                        fabro_workflows::cli::pr::pr_list_command(args, github_app).await?;
+                        commands::pr::list_command(args, github_app).await?;
                     }
                     PrCommand::View(args) => {
-                        fabro_workflows::cli::pr::pr_view_command(args, github_app).await?;
+                        commands::pr::view_command(args, github_app).await?;
                     }
                     PrCommand::Merge(args) => {
-                        fabro_workflows::cli::pr::pr_merge_command(args, github_app).await?;
+                        commands::pr::merge_command(args, github_app).await?;
                     }
                     PrCommand::Close(args) => {
-                        fabro_workflows::cli::pr::pr_close_command(args, github_app).await?;
+                        commands::pr::close_command(args, github_app).await?;
                     }
                 }
             }
             Command::Rewind(args) => {
                 let styles = fabro_util::terminal::Styles::detect_stderr();
-                fabro_workflows::cli::rewind::rewind_command(&args, &styles)?;
+                commands::rewind::run(&args, &styles)?;
             }
             Command::Fork(args) => {
                 let styles = fabro_util::terminal::Styles::detect_stderr();
-                fabro_workflows::cli::fork::fork_command(&args, &styles)?;
+                commands::fork::run(&args, &styles)?;
             }
             Command::Workflow { command } => match command {
                 WorkflowCommand::List(args) => {
-                    fabro_workflows::cli::workflow::workflow_list_command(&args)?;
+                    commands::workflow::list_command(&args)?;
                 }
                 WorkflowCommand::Create(args) => {
-                    fabro_workflows::cli::workflow::workflow_create_command(&args)?;
+                    commands::workflow::create_command(&args)?;
                 }
             },
             Command::Skill { command } => match command {
@@ -819,10 +820,10 @@ async fn main_inner() -> (String, Result<()>) {
             }
             Command::System { command } => match command {
                 SystemCommand::Prune(args) => {
-                    fabro_workflows::cli::runs::prune_command(&args)?;
+                    commands::runs::prune_command(&args)?;
                 }
                 SystemCommand::Df(args) => {
-                    fabro_workflows::cli::runs::df_command(&args)?;
+                    commands::runs::df_command(&args)?;
                 }
             },
             Command::SendAnalytics { path } => {

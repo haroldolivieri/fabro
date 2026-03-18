@@ -176,6 +176,12 @@ impl RunStatusRecord {
     }
 }
 
+/// Write the run status to `status.json` (best-effort).
+pub fn write_run_status(run_dir: &Path, status: RunStatus, reason: Option<StatusReason>) {
+    let record = RunStatusRecord::new(status, reason);
+    let _ = record.save(&run_dir.join("status.json"));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

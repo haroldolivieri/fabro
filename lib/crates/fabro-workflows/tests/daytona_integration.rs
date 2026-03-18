@@ -905,7 +905,7 @@ async fn daytona_parallel_git_branching_e2e() {
 // CLI Backend on Daytona — real CLI tools via exec_command
 // ---------------------------------------------------------------------------
 
-use fabro_workflows::cli::cli_backend::AgentCliBackend;
+use fabro_workflows::backend::AgentCliBackend;
 use fabro_workflows::handler::agent::{CodergenBackend, CodergenResult};
 
 /// Helper: run a real CLI backend test on Daytona.
@@ -1753,7 +1753,7 @@ async fn daytona_toolbox_idle_diagnostic() {
 #[tokio::test]
 #[ignore]
 async fn daytona_cp_upload_download_round_trip() {
-    use fabro_workflows::cli::cp::reconnect;
+    use fabro_workflows::sandbox_reconnect::reconnect;
     use fabro_workflows::sandbox_record::SandboxRecord;
 
     // 1. Create and initialize a real Daytona sandbox

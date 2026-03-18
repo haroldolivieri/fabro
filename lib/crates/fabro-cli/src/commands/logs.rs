@@ -4,9 +4,8 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use clap::Args;
+use fabro_util::terminal::Styles;
 use tracing::{debug, info};
-
-use crate::cli::runs::{default_runs_base, resolve_run};
 
 #[derive(Args)]
 pub struct LogsArgs {
@@ -26,9 +25,9 @@ pub struct LogsArgs {
     pub pretty: bool,
 }
 
-pub fn logs_command(args: LogsArgs, styles: &fabro_util::terminal::Styles) -> Result<()> {
-    let base = default_runs_base();
-    let run = resolve_run(&base, &args.run)?;
+pub fn run(args: LogsArgs, styles: &Styles) -> Result<()> {
+    let base = fabro_workflows::run_lookup::default_runs_base();
+    let run = fabro_workflows::run_lookup::resolve_run(&base, &args.run)?;
 
     info!(run_id = %run.run_id, "Showing logs");
 
@@ -38,11 +37,10 @@ pub fn logs_command(args: LogsArgs, styles: &fabro_util::terminal::Styles) -> Re
     }
 
     let since_cutoff = match &args.since {
-        Some(s) => Some(parse_since(s)?),
+        Some(value) => Some(parse_since(value)?),
         None => None,
     };
 
-    // Read all lines, apply --since and --tail filters
     let all_lines = read_lines(&progress_path)?;
     let filtered = apply_filters(&all_lines, since_cutoff.as_ref(), args.tail);
 
@@ -117,24 +115,23 @@ fn extract_timestamp(line: &str) -> Option<DateTime<Utc>> {
     ts_str.parse::<DateTime<Utc>>().ok()
 }
 
-/// Parse a `--since` value: relative duration (e.g. "42m", "2h", "7d") or ISO 8601 timestamp.
 pub fn parse_since(s: &str) -> Result<DateTime<Utc>> {
     let s = s.trim();
     if s.is_empty() {
         bail!("empty --since value");
     }
 
-    // Try relative duration first
-    if let Some(dur) = try_parse_relative_duration(s) {
-        return Ok(Utc::now() - dur);
+    if let Some(duration) = try_parse_relative_duration(s) {
+        return Ok(Utc::now() - duration);
     }
 
-    // Try ISO 8601
     if let Ok(ts) = s.parse::<DateTime<Utc>>() {
         return Ok(ts);
     }
 
-    bail!("invalid --since value '{s}' (expected relative like '42m', '2h', '7d' or ISO 8601 timestamp)")
+    bail!(
+        "invalid --since value '{s}' (expected relative like '42m', '2h', '7d' or ISO 8601 timestamp)"
+    )
 }
 
 fn try_parse_relative_duration(s: &str) -> Option<chrono::Duration> {
@@ -157,7 +154,7 @@ fn follow_logs(
     run_dir: &Path,
     mut lines_seen: usize,
     pretty: bool,
-    styles: &fabro_util::terminal::Styles,
+    styles: &Styles,
     _is_tty: bool,
 ) -> Result<()> {
     let conclusion_path = run_dir.join("conclusion.json");
@@ -182,7 +179,6 @@ fn follow_logs(
             lines_seen = all_lines.len();
         }
 
-        // Stop following when the run has concluded and there are no more new lines
         if conclusion_path.exists() && all_lines.len() <= lines_seen {
             debug!("Run concluded, stopping follow");
             break;
@@ -192,25 +188,18 @@ fn follow_logs(
     Ok(())
 }
 
-// ── Pretty formatter ──────────────────────────────────────────────────
-
-/// Render markdown text with indentation, wrapping to terminal width.
-fn render_indented_markdown(
-    styles: &fabro_util::terminal::Styles,
-    text: &str,
-    indent: &str,
-) -> String {
-    let term_width = fabro_util::terminal::Styles::terminal_width();
+fn render_indented_markdown(styles: &Styles, text: &str, indent: &str) -> String {
+    let term_width = Styles::terminal_width();
     let wrap_width = term_width.saturating_sub(indent.len());
     let rendered = styles.render_markdown_width(text, wrap_width);
     rendered
         .lines()
-        .map(|l| format!("{indent}{l}"))
+        .map(|line| format!("{indent}{line}"))
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) -> Option<String> {
+pub fn format_event_pretty(line: &str, styles: &Styles) -> Option<String> {
     let envelope: serde_json::Value = serde_json::from_str(line).ok()?;
     let event = envelope.get("event")?.as_str()?;
     let ts = format_timestamp(envelope.get("ts")?.as_str()?);
@@ -234,11 +223,10 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 _ => Some(header),
             }
         }
-
         "WorkflowRunCompleted" => {
             let duration = format_duration_ms(envelope.get("duration_ms"));
             let status_str = match str_field(&envelope, "status") {
-                Some(s) if !s.is_empty() => s,
+                Some(status) if !status.is_empty() => status,
                 _ => "success",
             };
             let status_upper = status_str.to_uppercase();
@@ -259,7 +247,7 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
             if let Some(usage) = envelope.get("usage") {
                 let total = usage
                     .get("total_tokens")
-                    .and_then(|v| v.as_i64())
+                    .and_then(|value| value.as_i64())
                     .unwrap_or(0);
                 let pad = " ".repeat(ts.len() + 1);
                 if total > 0 {
@@ -271,8 +259,8 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                             .apply_to(format!("Tokens: {}", format_tokens(total as u64)))
                     ));
                 }
-                if let Some(cr) = usage.get("cache_read_tokens").and_then(|v| v.as_i64()) {
-                    let cw = usage
+                if let Some(cache_read) = usage.get("cache_read_tokens").and_then(|v| v.as_i64()) {
+                    let cache_write = usage
                         .get("cache_write_tokens")
                         .and_then(|v| v.as_i64())
                         .unwrap_or(0);
@@ -281,19 +269,20 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                         pad,
                         styles.dim.apply_to(format!(
                             "Cache:  {} read, {} write",
-                            format_tokens(cr as u64),
-                            format_tokens(cw as u64)
+                            format_tokens(cache_read as u64),
+                            format_tokens(cache_write as u64)
                         ))
                     ));
                 }
-                if let Some(r) = usage.get("reasoning_tokens").and_then(|v| v.as_i64()) {
-                    if r > 0 {
+                if let Some(reasoning) = usage.get("reasoning_tokens").and_then(|v| v.as_i64()) {
+                    if reasoning > 0 {
                         lines.push(format!(
                             "{}{}",
                             pad,
-                            styles
-                                .dim
-                                .apply_to(format!("Reasoning: {} tokens", format_tokens(r as u64)))
+                            styles.dim.apply_to(format!(
+                                "Reasoning: {} tokens",
+                                format_tokens(reasoning as u64)
+                            ))
                         ));
                     }
                 }
@@ -301,7 +290,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
 
             Some(lines.join("\n"))
         }
-
         "WorkflowRunFailed" => {
             let error = str_field(&envelope, "error").unwrap_or("unknown error");
             Some(format!(
@@ -311,7 +299,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.red.apply_to(error),
             ))
         }
-
         "StageStarted" => {
             let label = str_field(&envelope, "node_label").unwrap_or("?");
             Some(format!(
@@ -321,7 +308,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.bold.apply_to(label),
             ))
         }
-
         "StageCompleted" => {
             let label = str_field(&envelope, "node_label").unwrap_or("?");
             let duration = format_duration_ms(envelope.get("duration_ms"));
@@ -346,7 +332,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.dim.apply_to(&stats),
             ))
         }
-
         "StageFailed" => {
             let label = str_field(&envelope, "node_label").unwrap_or("?");
             let error = str_field(&envelope, "error").unwrap_or("unknown error");
@@ -358,7 +343,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.red.apply_to(error),
             ))
         }
-
         "Agent.AssistantMessage" => {
             let stage = str_field(&envelope, "node_id").unwrap_or("?");
             let model = str_field(&envelope, "model").unwrap_or("?");
@@ -375,12 +359,11 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
             let body = render_indented_markdown(styles, text, "            ");
             Some(format!("{header}\n{body}\n"))
         }
-
         "Agent.ToolCallStarted" => {
             let tool = str_field(&envelope, "tool_name").unwrap_or("?");
             let detail = tool_detail(&envelope);
             let display = match detail {
-                Some(d) => format!("{tool}({d})"),
+                Some(value) => format!("{tool}({value})"),
                 None => tool.to_string(),
             };
             Some(format!(
@@ -390,7 +373,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.dim.apply_to(&display),
             ))
         }
-
         "Agent.ToolCallCompleted" => {
             let tool = str_field(&envelope, "tool_name").unwrap_or("?");
             let is_error = envelope
@@ -399,7 +381,7 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 .unwrap_or(false);
             let detail = tool_detail(&envelope);
             let display = match detail {
-                Some(d) => format!("{tool}({d})"),
+                Some(value) => format!("{tool}({value})"),
                 None => tool.to_string(),
             };
             let glyph = if is_error { "\u{2717}" } else { "\u{2713}" };
@@ -411,13 +393,12 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 display,
             ))
         }
-
         "EdgeSelected" => {
             let to = str_field(&envelope, "to_node_id").unwrap_or("?");
             let reason = str_field(&envelope, "reason").unwrap_or("?");
             let condition = str_field(&envelope, "condition");
             let detail = match condition {
-                Some(c) => format!("  [{c}]"),
+                Some(value) => format!("  [{value}]"),
                 None => String::new(),
             };
             Some(format!(
@@ -429,7 +410,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.dim.apply_to(&detail),
             ))
         }
-
         "Sandbox.Ready" => {
             let provider = str_field(&envelope, "sandbox_provider").unwrap_or("?");
             let duration = format_duration_ms(envelope.get("duration_ms"));
@@ -440,7 +420,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.dim.apply_to(&duration),
             ))
         }
-
         "SetupCompleted" => {
             let count = envelope
                 .get("command_count")
@@ -454,9 +433,8 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.dim.apply_to(&duration),
             ))
         }
-
         "Agent.CompactionCompleted" => {
-            let orig = envelope
+            let original = envelope
                 .get("original_turn_count")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
@@ -469,10 +447,9 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.dim.apply_to(&ts),
                 styles
                     .dim
-                    .apply_to(format!("compaction: {orig}\u{2192}{preserved} turns")),
+                    .apply_to(format!("compaction: {original}\u{2192}{preserved} turns")),
             ))
         }
-
         "ParallelStarted" => {
             let count = envelope
                 .get("branch_count")
@@ -485,7 +462,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 count,
             ))
         }
-
         "ParallelBranchStarted" => {
             let label = str_field(&envelope, "node_label").unwrap_or("?");
             Some(format!(
@@ -495,7 +471,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 label,
             ))
         }
-
         "ParallelBranchCompleted" => {
             let label = str_field(&envelope, "node_label").unwrap_or("?");
             Some(format!(
@@ -505,7 +480,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 label,
             ))
         }
-
         "ParallelCompleted" => {
             let duration = format_duration_ms(envelope.get("duration_ms"));
             Some(format!(
@@ -515,7 +489,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 duration,
             ))
         }
-
         "PullRequestCreated" => {
             let url = str_field(&envelope, "pr_url").unwrap_or("?");
             let draft = envelope
@@ -530,7 +503,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 url,
             ))
         }
-
         "PullRequestFailed" => {
             let error = str_field(&envelope, "error").unwrap_or("unknown error");
             Some(format!(
@@ -540,7 +512,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.red.apply_to(error),
             ))
         }
-
         "RetroCompleted" => {
             let duration = format_duration_ms(envelope.get("duration_ms"));
             Some(format!(
@@ -550,7 +521,6 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 duration,
             ))
         }
-
         "RetroFailed" => {
             let error = str_field(&envelope, "error").unwrap_or("unknown error");
             let duration = format_duration_ms(envelope.get("duration_ms"));
@@ -562,14 +532,11 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
                 styles.red.apply_to(error),
             ))
         }
-
         "RetroStarted" => Some(format!(
             "{} {} Retro",
             styles.dim.apply_to(&ts),
             styles.bold_cyan.apply_to("\u{25b6}"),
         )),
-
-        // Noise events — skip
         "Agent.SessionStarted"
         | "Agent.SessionEnded"
         | "Agent.AssistantTextStart"
@@ -593,19 +560,15 @@ pub fn format_event_pretty(line: &str, styles: &fabro_util::terminal::Styles) ->
         | "GitFetch"
         | "GitReset"
         | "AssetsCaptured" => None,
-
         _ => None,
     }
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────
 
 fn str_field<'a>(value: &'a serde_json::Value, key: &str) -> Option<&'a str> {
     value.get(key)?.as_str()
 }
 
 fn format_timestamp(ts: &str) -> String {
-    // Parse ISO 8601 and show HH:MM:SS
     ts.parse::<DateTime<Utc>>()
         .map(|dt| dt.format("%H:%M:%S").to_string())
         .unwrap_or_else(|_| ts.to_string())
@@ -680,14 +643,15 @@ fn truncate(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
 
-    // === parse_since tests ===
+    fn no_color_styles() -> Styles {
+        Styles::new(false)
+    }
 
     #[test]
     fn parse_since_relative_minutes() {
         let before = Utc::now();
         let result = parse_since("42m").unwrap();
         let after = Utc::now();
-        // Should be roughly 42 minutes ago
         let expected_lower = after - chrono::Duration::minutes(42) - chrono::Duration::seconds(1);
         let expected_upper = before - chrono::Duration::minutes(42) + chrono::Duration::seconds(1);
         assert!(result >= expected_lower && result <= expected_upper);
@@ -722,8 +686,6 @@ mod tests {
         assert!(parse_since("notadate").is_err());
     }
 
-    // === apply_filters tests ===
-
     #[test]
     fn tail_returns_last_n_lines() {
         let lines: Vec<String> = (0..10).map(|i| format!("line {i}")).collect();
@@ -752,8 +714,6 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
-    // === raw mode test ===
-
     #[test]
     fn raw_lines_pass_through_verbatim() {
         let lines = vec![
@@ -762,12 +722,6 @@ mod tests {
         ];
         let result = apply_filters(&lines, None, None);
         assert_eq!(result, lines);
-    }
-
-    // === pretty formatter tests ===
-
-    fn no_color_styles() -> fabro_util::terminal::Styles {
-        fabro_util::terminal::Styles::new(false)
     }
 
     #[test]
@@ -848,7 +802,6 @@ mod tests {
         assert!(result.contains("smoke"), "got: {result}");
         assert!(result.contains("abc123"), "got: {result}");
         assert!(result.contains("Fix the bug"), "got: {result}");
-        // Should be multi-line (header + body)
         assert!(result.contains('\n'), "got: {result}");
     }
 
@@ -857,7 +810,6 @@ mod tests {
         let styles = no_color_styles();
         let line = r#"{"ts":"2026-01-01T14:23:01Z","run_id":"abc123","event":"WorkflowRunStarted","workflow_name":"smoke"}"#;
         let result = format_event_pretty(line, &styles).unwrap();
-        // Without goal, should be a single line (no newlines)
         assert!(!result.contains('\n'), "got: {result}");
     }
 
@@ -878,13 +830,11 @@ mod tests {
     #[test]
     fn pretty_workflow_run_completed_backward_compat() {
         let styles = no_color_styles();
-        // Old JSONL without status/usage still renders
         let line = r#"{"ts":"2026-01-01T14:23:32Z","run_id":"abc123","event":"WorkflowRunCompleted","duration_ms":25000,"total_cost":0.57}"#;
         let result = format_event_pretty(line, &styles).unwrap();
         assert!(result.contains("SUCCESS"), "got: {result}");
         assert!(result.contains("25s"), "got: {result}");
         assert!(result.contains("$0.57"), "got: {result}");
-        // No usage lines when usage is absent
         assert!(!result.contains("Tokens:"), "got: {result}");
     }
 

@@ -173,7 +173,7 @@ pub struct LocalSandboxConfig {
     pub worktree_mode: WorktreeMode,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct SandboxConfig {
     pub provider: Option<String>,
     pub preserve: Option<bool>,

@@ -17,7 +17,6 @@ default = []
 exedev = ["dep:fabro-exe", "fabro-config/exedev"]
 
 [dependencies]
-clap.workspace = true
 anyhow.workspace = true
 dotenvy.workspace = true
 fabro-agent = { path = "../fabro-agent" }
@@ -53,9 +52,6 @@ hex.workspace = true
 sha2 = { workspace = true }
 shlex = "1"
 git2.workspace = true
-cli-table.workspace = true
-console.workspace = true
-indicatif.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 walkdir.workspace = true

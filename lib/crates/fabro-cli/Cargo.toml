@@ -12,7 +12,7 @@ path = "src/main.rs"
 [features]
 default = []
 server = ["dep:fabro-api"]
-exedev = ["fabro-config/exedev", "fabro-workflows/exedev"]
+exedev = ["dep:fabro-exe", "fabro-config/exedev", "fabro-workflows/exedev"]
 sleep_inhibitor = ["dep:fabro-beastie"]
 
 [dependencies]
@@ -21,12 +21,23 @@ fabro-llm = { path = "../fabro-llm" }
 fabro-openai-oauth = { path = "../fabro-openai-oauth" }
 fabro-github = { path = "../fabro-github" }
 fabro-agent = { path = "../fabro-agent" }
+fabro-devcontainer = { path = "../fabro-devcontainer" }
+fabro-exe = { path = "../fabro-exe", optional = true }
+fabro-hooks = { path = "../fabro-hooks" }
+fabro-interview = { path = "../fabro-interview" }
 fabro-mcp = { path = "../fabro-mcp" }
+fabro-daytona = { path = "../fabro-daytona" }
+fabro-retro = { path = "../fabro-retro" }
+fabro-ssh = { path = "../fabro-ssh" }
+fabro-git-storage = { path = "../fabro-git-storage" }
+fabro-graphviz = { path = "../fabro-graphviz" }
+fabro-validate = { path = "../fabro-validate" }
 fabro-workflows = { path = "../fabro-workflows" }
 fabro-api = { path = "../fabro-api", optional = true }
 fabro-beastie = { path = "../fabro-beastie", optional = true }
 fabro-util = { path = "../fabro-util" }
 clap.workspace = true
+cli-table.workspace = true
 console.workspace = true
 indicatif.workspace = true
 daytona-sdk.workspace = true
@@ -44,19 +55,24 @@ futures.workspace = true
 regex.workspace = true
 semver.workspace = true
 reqwest.workspace = true
+async-trait.workspace = true
 jsonwebtoken.workspace = true
 base64.workspace = true
 ulid.workspace = true
+scopeguard = "1"
 rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
 rustls-pemfile = "2"
 x509-parser = "0.16"
 rand.workspace = true
 dialoguer.workspace = true
+git2.workspace = true
 axum = "0.8"
 open = "5"
 serde_json.workspace = true
 tempfile = "3"
 sha2.workspace = true
+shlex = "1"
+walkdir.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

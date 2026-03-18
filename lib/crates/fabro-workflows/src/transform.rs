@@ -18,7 +18,7 @@ impl Transform for VariableExpansionTransform {
         let vars = HashMap::from([("goal".to_string(), goal)]);
         for node in graph.nodes.values_mut() {
             if let Some(AttrValue::String(prompt)) = node.attrs.get("prompt") {
-                if let Ok(expanded) = crate::cli::run_config::expand_vars(prompt, &vars) {
+                if let Ok(expanded) = crate::vars::expand_vars(prompt, &vars) {
                     if expanded != *prompt {
                         node.attrs
                             .insert("prompt".to_string(), AttrValue::String(expanded));

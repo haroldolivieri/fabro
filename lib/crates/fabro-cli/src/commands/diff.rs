@@ -1,0 +1,130 @@
+use std::io::{self, IsTerminal, Write};
+use std::path::Path;
+
+use anyhow::{bail, Context, Result};
+use clap::Args;
+use tracing::{debug, info};
+
+#[derive(Args)]
+pub struct DiffArgs {
+    /// Run ID or prefix
+    pub run: String,
+    /// Show diff for a specific node
+    #[arg(long)]
+    pub node: Option<String>,
+    /// Show diffstat instead of full patch (live diffs only)
+    #[arg(long)]
+    pub stat: bool,
+    /// Show only files-changed/insertions/deletions summary (live diffs only)
+    #[arg(long)]
+    pub shortstat: bool,
+}
+
+pub async fn run(args: DiffArgs) -> Result<()> {
+    info!(run_id = %args.run, "Showing diff");
+    let base = fabro_workflows::run_lookup::default_runs_base();
+    let run_dir = fabro_workflows::run_lookup::resolve_run(&base, &args.run)?.path;
+
+    let patch = resolve_diff(&run_dir, &args).await?;
+
+    let is_tty = io::stdout().is_terminal();
+    let mut stdout = io::stdout().lock();
+    if is_tty {
+        for line in patch.lines() {
+            writeln!(stdout, "{}", colorize_diff_line(line))?;
+        }
+    } else {
+        stdout.write_all(patch.as_bytes())?;
+    }
+    Ok(())
+}
+
+async fn resolve_diff(run_dir: &Path, args: &DiffArgs) -> Result<String> {
+    if let Some(ref node_id) = args.node {
+        debug!(node_id, "Reading per-node diff");
+        let node_patch = run_dir.join("nodes").join(node_id).join("diff.patch");
+        return std::fs::read_to_string(&node_patch).with_context(|| {
+            format!("No diff found for node '{node_id}' — check the node ID and try again")
+        });
+    }
+
+    let manifest = fabro_workflows::manifest::Manifest::load(&run_dir.join("manifest.json"))
+        .context("Failed to load manifest.json")?;
+
+    let base_sha = manifest
+        .base_sha
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("This run was not git-checkpointed; no diff available"))?;
+
+    let final_patch_path = run_dir.join("final.patch");
+    if final_patch_path.exists() {
+        debug!("Reading final.patch");
+        return std::fs::read_to_string(&final_patch_path).context("Failed to read final.patch");
+    }
+
+    let conclusion_path = run_dir.join("conclusion.json");
+    if conclusion_path.exists() {
+        bail!(
+            "Run completed but no final.patch exists — the run may not have produced any changes"
+        );
+    }
+
+    debug!("No final.patch found; attempting live diff from sandbox");
+    let sandbox_json = run_dir.join("sandbox.json");
+    let record = fabro_workflows::sandbox_record::SandboxRecord::load(&sandbox_json).context(
+        "Failed to load sandbox.json — was this run started with a recent version of arc?",
+    )?;
+
+    info!(provider = %record.provider, "Reconnecting to sandbox for live diff");
+    let sandbox = fabro_workflows::sandbox_reconnect::reconnect(&record).await?;
+
+    let cmd = build_live_diff_cmd(base_sha, args.stat, args.shortstat);
+    debug!(cmd, "Running git diff in sandbox");
+
+    let result = sandbox
+        .exec_command(&cmd, 30_000, None, None, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to run git diff in sandbox: {e}"))?;
+
+    if result.exit_code != 0 {
+        let stderr = result.stderr.trim();
+        bail!("git diff failed (exit {}):\n{stderr}", result.exit_code);
+    }
+
+    Ok(result.stdout)
+}
+
+fn build_live_diff_cmd(base_sha: &str, stat: bool, shortstat: bool) -> String {
+    let mut flags = String::new();
+    if stat {
+        flags.push_str(" --stat");
+    }
+    if shortstat {
+        flags.push_str(" --shortstat");
+    }
+    let quoted_sha = shlex::try_quote(base_sha).map_or_else(
+        |_| format!("'{}'", base_sha.replace('\'', "'\\''")),
+        |q| q.to_string(),
+    );
+    format!(
+        "{} add -N . && {} diff{flags} {quoted_sha}",
+        fabro_workflows::engine::GIT_REMOTE,
+        fabro_workflows::engine::GIT_REMOTE
+    )
+}
+
+fn colorize_diff_line(line: &str) -> String {
+    if line.starts_with("+++") || line.starts_with("---") {
+        format!("\x1b[1m{line}\x1b[0m")
+    } else if line.starts_with('+') {
+        format!("\x1b[32m{line}\x1b[0m")
+    } else if line.starts_with('-') {
+        format!("\x1b[31m{line}\x1b[0m")
+    } else if line.starts_with("@@") {
+        format!("\x1b[36m{line}\x1b[0m")
+    } else if line.starts_with("diff ") {
+        format!("\x1b[1m{line}\x1b[0m")
+    } else {
+        line.to_string()
+    }
+}

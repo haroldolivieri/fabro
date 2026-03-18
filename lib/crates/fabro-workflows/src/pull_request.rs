@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use fabro_config::run::MergeStrategy;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
@@ -62,7 +63,7 @@ fn truncate_pr_body(body: &str) -> String {
 
 /// Format an optional cost as `$X.XX` or an en-dash when absent.
 fn format_cost(cost: Option<f64>) -> String {
-    cost.map(crate::cli::format_cost)
+    cost.map(crate::cost::format_cost)
         .unwrap_or_else(|| "\u{2013}".to_string())
 }
 
@@ -344,7 +345,7 @@ pub async fn build_pr_body(
 
 /// Auto-merge configuration for a pull request.
 pub struct AutoMergeConfig {
-    pub merge_strategy: crate::cli::run_config::MergeStrategy,
+    pub merge_strategy: MergeStrategy,
 }
 
 /// Optionally open a pull request after a successful workflow run.
@@ -393,9 +394,9 @@ pub async fn maybe_open_pull_request(
 
     if let Some(am_cfg) = auto_merge {
         let merge_method = match am_cfg.merge_strategy {
-            crate::cli::run_config::MergeStrategy::Squash => github_app::AutoMergeMethod::Squash,
-            crate::cli::run_config::MergeStrategy::Merge => github_app::AutoMergeMethod::Merge,
-            crate::cli::run_config::MergeStrategy::Rebase => github_app::AutoMergeMethod::Rebase,
+            MergeStrategy::Squash => github_app::AutoMergeMethod::Squash,
+            MergeStrategy::Merge => github_app::AutoMergeMethod::Merge,
+            MergeStrategy::Rebase => github_app::AutoMergeMethod::Rebase,
         };
         match github_app::enable_auto_merge(creds, &owner, &repo, &created.node_id, merge_method)
             .await

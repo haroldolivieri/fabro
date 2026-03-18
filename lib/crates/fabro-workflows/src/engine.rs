@@ -16,7 +16,6 @@ use fabro_git_storage::trailerlink::{self, Trailer};
 use crate::artifact::{offload_large_values, sync_artifacts_to_env, ArtifactStore};
 use crate::asset_snapshot;
 use crate::checkpoint::Checkpoint;
-use crate::cli::run_config::PullRequestConfig;
 use crate::condition::evaluate_condition;
 use crate::context;
 use crate::context::Context;
@@ -26,6 +25,7 @@ use crate::handler::{EngineServices, HandlerRegistry};
 use crate::millis_u64;
 use crate::outcome::{Outcome, StageStatus};
 use crate::preamble::build_preamble;
+use fabro_config::run::PullRequestConfig;
 use fabro_graphviz::graph::{Edge, Graph, Node};
 use fabro_hooks::{HookContext, HookDecision, HookEvent, HookRunner};
 use fabro_interview::Interviewer;
@@ -715,7 +715,7 @@ pub async fn git_checkpoint(
 ///
 /// Authenticates via a GitHub App installation token so we don't depend
 /// on the host's ambient git credentials.
-pub(crate) async fn git_push_host(
+pub async fn git_push_host(
     repo_path: &Path,
     refspec: &str,
     github_app: &Option<fabro_github::GitHubAppCredentials>,
@@ -1537,7 +1537,7 @@ impl WorkflowRunEngine {
 
         // Write manifest.json (spec 5.6)
         let manifest = write_manifest(&config.run_dir, graph, config);
-        crate::cli::runs::write_run_status(
+        crate::run_status::write_run_status(
             &config.run_dir,
             crate::run_status::RunStatus::Running,
             None,

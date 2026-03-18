@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use fabro_config::run::WorkflowRunConfig;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_graphviz::parser::parse;
 use fabro_interview::{
@@ -11,8 +12,9 @@ use fabro_interview::{
 };
 use fabro_llm::provider::Provider;
 use fabro_validate::{validate, validate_or_raise, Severity};
+use fabro_workflows::backend::cli::{parse_cli_response, AgentCliBackend, BackendRouter};
+use fabro_workflows::backend::AgentApiBackend;
 use fabro_workflows::checkpoint::Checkpoint;
-use fabro_workflows::cli::backend::AgentApiBackend;
 use fabro_workflows::context::Context;
 use fabro_workflows::engine::{RunConfig, WorkflowRunEngine};
 use fabro_workflows::error::FabroError;
@@ -8127,7 +8129,7 @@ event = "run_complete"
 command = "echo done"
 "#;
 
-    let cfg: fabro_workflows::cli::run_config::WorkflowRunConfig = toml::from_str(toml).unwrap();
+    let cfg: WorkflowRunConfig = toml::from_str(toml).unwrap();
     assert_eq!(cfg.hooks.len(), 2);
     assert_eq!(cfg.hooks[0].event, fabro_hooks::HookEvent::StageStart);
     assert_eq!(cfg.hooks[0].matcher.as_deref(), Some("agent_loop"));
@@ -8307,7 +8309,7 @@ max_tool_rounds = 10
 timeout_ms = 120000
 "#;
 
-    let cfg: fabro_workflows::cli::run_config::WorkflowRunConfig = toml::from_str(toml).unwrap();
+    let cfg: WorkflowRunConfig = toml::from_str(toml).unwrap();
     assert_eq!(cfg.hooks.len(), 2);
 
     // Prompt hook
@@ -9310,8 +9312,6 @@ async fn node_dir_uses_visit_count_on_revisit() {
 // ---------------------------------------------------------------------------
 // CLI Backend end-to-end tests
 // ---------------------------------------------------------------------------
-
-use fabro_workflows::cli::cli_backend::{AgentCliBackend, BackendRouter};
 
 /// A mock sandbox for CLI backend e2e tests.
 /// Records all exec_command and write_file calls, and returns configurable
@@ -10402,8 +10402,6 @@ async fn stylesheet_backend_property_routes_to_cli() {
 // ---------------------------------------------------------------------------
 // Real CLI backend e2e tests (require actual CLI tools installed)
 // ---------------------------------------------------------------------------
-
-use fabro_workflows::cli::cli_backend::parse_cli_response;
 
 /// Run a real CLI tool via LocalSandbox and verify the full flow.
 async fn run_real_cli_test(provider: Provider, model: &str) {

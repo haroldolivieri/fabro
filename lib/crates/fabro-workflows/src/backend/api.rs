@@ -13,6 +13,7 @@ use fabro_llm::client::Client;
 use fabro_llm::provider::Provider;
 
 use crate::context::Context;
+use crate::cost::compute_stage_cost;
 use crate::error::FabroError;
 use crate::event::WorkflowRunEvent;
 use crate::handler::agent::{CodergenBackend, CodergenResult};
@@ -390,7 +391,7 @@ impl CodergenBackend for AgentApiBackend {
             reasoning_tokens: response.usage.reasoning_tokens,
             cost: None,
         };
-        stage_usage.cost = super::compute_stage_cost(&stage_usage);
+        stage_usage.cost = compute_stage_cost(&stage_usage);
 
         Ok(CodergenResult::Text {
             text: response.text(),
@@ -584,7 +585,7 @@ impl CodergenBackend for AgentApiBackend {
             reasoning_tokens: total_usage.reasoning_tokens,
             cost: None,
         };
-        stage_usage.cost = super::compute_stage_cost(&stage_usage);
+        stage_usage.cost = compute_stage_cost(&stage_usage);
 
         // Extract last assistant response from the session history.
         let response = session

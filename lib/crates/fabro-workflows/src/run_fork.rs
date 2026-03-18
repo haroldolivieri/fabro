@@ -1,75 +1,12 @@
 use anyhow::{Context, Result};
-use clap::Args;
 use fabro_git_storage::branchstore::BranchStore;
 use fabro_git_storage::gitobj::Store;
-use fabro_util::terminal::Styles;
-use git2::{Oid, Repository, Signature};
+use git2::{Oid, Signature};
 
 use crate::git::MetadataStore;
 use crate::manifest::Manifest;
 
-use super::rewind::{
-    build_timeline, find_run_id_by_prefix, load_parallel_map, parse_target, print_timeline,
-    resolve_target, TimelineEntry,
-};
-
-/// Fork a workflow run from an earlier checkpoint into a new run.
-#[derive(Debug, Args)]
-pub struct ForkArgs {
-    /// Run ID (or unambiguous prefix)
-    pub run_id: String,
-
-    /// Target checkpoint: node name, node@visit, or @ordinal (omit to fork from latest)
-    pub target: Option<String>,
-
-    /// Show the checkpoint timeline instead of forking
-    #[arg(long)]
-    pub list: bool,
-
-    /// Skip pushing new branches to the remote
-    #[arg(long)]
-    pub no_push: bool,
-}
-
-/// Entry point for `fabro fork`.
-pub fn fork_command(args: &ForkArgs, styles: &Styles) -> Result<()> {
-    let repo = Repository::discover(".").context("not in a git repository")?;
-    let run_id = find_run_id_by_prefix(&repo, &args.run_id)?;
-    let store = Store::new(repo);
-
-    let timeline = build_timeline(&store, &run_id)?;
-
-    if args.list {
-        let parallel_map = load_parallel_map(&store, &run_id);
-        print_timeline(&timeline, &parallel_map, styles);
-        return Ok(());
-    }
-
-    let entry = if let Some(target_str) = &args.target {
-        let target = parse_target(target_str)?;
-        let parallel_map = load_parallel_map(&store, &run_id);
-        resolve_target(&timeline, &target, &parallel_map)?
-    } else {
-        timeline
-            .last()
-            .ok_or_else(|| anyhow::anyhow!("no checkpoints found for run {run_id}"))?
-    };
-
-    let new_run_id = execute_fork(&store, &run_id, entry, !args.no_push)?;
-
-    eprintln!(
-        "\nForked run {} -> {}",
-        &run_id[..8.min(run_id.len())],
-        &new_run_id[..8.min(new_run_id.len())]
-    );
-    eprintln!(
-        "To resume: fabro run --run-branch {}{}",
-        crate::git::RUN_BRANCH_PREFIX,
-        new_run_id
-    );
-
-    Ok(())
-}
+use crate::run_rewind::TimelineEntry;
 
 /// Create a new run that branches from an existing run at a specific checkpoint.
 ///
@@ -204,6 +141,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::run_rewind::{build_timeline, find_run_id_by_prefix, parse_target, resolve_target};
+    use git2::Repository;
 
     fn temp_repo() -> (tempfile::TempDir, Store) {
         let dir = tempfile::TempDir::new().unwrap();

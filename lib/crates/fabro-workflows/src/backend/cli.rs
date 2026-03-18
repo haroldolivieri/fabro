@@ -8,6 +8,7 @@ use fabro_agent::Sandbox;
 use fabro_llm::provider::Provider;
 
 use crate::context::Context;
+use crate::cost::compute_stage_cost;
 use crate::error::FabroError;
 use crate::event::{EventEmitter, WorkflowRunEvent};
 use crate::handler::agent::{CodergenBackend, CodergenResult};
@@ -707,7 +708,7 @@ impl CodergenBackend for AgentCliBackend {
             reasoning_tokens: None,
             cost: None,
         };
-        stage_usage.cost = super::compute_stage_cost(&stage_usage);
+        stage_usage.cost = compute_stage_cost(&stage_usage);
 
         Ok(CodergenResult::Text {
             text: parsed.text,

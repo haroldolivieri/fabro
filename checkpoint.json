@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-03-19T14:34:48.477068Z",
+  "current_node": "draft",
+  "completed_nodes": [
+    "start",
+    "draft"
+  ],
+  "node_retries": {
+    "start": 1,
+    "draft": 1
+  },
+  "context_values": {
+    "internal.retry_count.start": 1,
+    "graph.goal": "Test human gate with auto-approve",
+    "internal.thread_id": "start",
+    "internal.node_visit_count": 1,
+    "internal.fidelity": "compact",
+    "graph.rankdir": "LR",
+    "current_node": "draft",
+    "current.preamble": "Goal: Test human gate with auto-approve\n",
+    "response.draft": "# Greeting\n\nHello! 👋\n\nI'm Claude, an AI assistant created by Anthropic. I'm here to help you with coding, analysis, writing, math, creative projects, and much more.\n\nHow can I assist you today?",
+    "failure_class": "",
+    "failure_signature": "",
+    "thread.start.current_node": "draft",
+    "internal.run_id": "01KM38A5VG531GTEHAEK1GW0FS",
+    "internal.retry_count.draft": 1,
+    "last_response": "# Greeting\n\nHello! 👋\n\nI'm Claude, an AI assistant created by Anthropic. I'm here to help you with coding, analysis, writing, math, creative projects, and much more.\n\nHow can I assist you today?",
+    "outcome": "success",
+    "last_stage": "draft"
+  },
+  "logs": [],
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    },
+    "draft": {
+      "status": "success",
+      "context_updates": {
+        "last_stage": "draft",
+        "response.draft": "# Greeting\n\nHello! 👋\n\nI'm Claude, an AI assistant created by Anthropic. I'm here to help you with coding, analysis, writing, math, creative projects, and much more.\n\nHow can I assist you today?",
+        "last_response": "# Greeting\n\nHello! 👋\n\nI'm Claude, an AI assistant created by Anthropic. I'm here to help you with coding, analysis, writing, math, creative projects, and much more.\n\nHow can I assist you today?"
+      },
+      "notes": "Stage completed: draft",
+      "usage": {
+        "model": "claude-haiku-4-5",
+        "input_tokens": 2022,
+        "output_tokens": 56,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "cost": 0.0018416
+      },
+      "duration_ms": 3326
+    }
+  },
+  "next_node_id": "approve",
+  "node_visits": {
+    "draft": 1,
+    "start": 1
+  }
+}

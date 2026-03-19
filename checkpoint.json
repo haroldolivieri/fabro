@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-03-19T13:41:01.055184Z",
+  "current_node": "setup",
+  "completed_nodes": [
+    "start",
+    "setup"
+  ],
+  "node_retries": {
+    "setup": 1,
+    "start": 1
+  },
+  "context_values": {
+    "internal.node_visit_count": 1,
+    "internal.work_dir": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpkZuQ7X/run/worktree",
+    "internal.retry_count.start": 1,
+    "internal.fidelity": "compact",
+    "current.preamble": "Goal: Full-stack scenario: command, agent, human gate, and goal gate verification\n",
+    "graph.goal": "Full-stack scenario: command, agent, human gate, and goal gate verification",
+    "thread.start.current_node": "setup",
+    "failure_signature": "",
+    "command.output": "",
+    "internal.retry_count.setup": 1,
+    "current_node": "setup",
+    "internal.thread_id": "start",
+    "internal.run_id": "01KM357YAEQYP2R435EY9QHA2T",
+    "outcome": "success",
+    "command.stderr": "",
+    "graph.rankdir": "LR",
+    "failure_class": ""
+  },
+  "logs": [],
+  "node_outcomes": {
+    "setup": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": ""
+      },
+      "notes": "Script completed: mkdir -p /tmp/scenario_full && echo ready > /tmp/scenario_full/flag.txt",
+      "duration_ms": 15
+    },
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    }
+  },
+  "next_node_id": "plan",
+  "node_visits": {
+    "setup": 1,
+    "start": 1
+  }
+}

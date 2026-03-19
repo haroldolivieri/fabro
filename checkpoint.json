@@ -1,0 +1,65 @@
+{
+  "timestamp": "2026-03-19T13:41:08.088264Z",
+  "current_node": "work",
+  "completed_nodes": [
+    "start",
+    "work"
+  ],
+  "node_retries": {
+    "start": 1,
+    "work": 1
+  },
+  "context_values": {
+    "last_stage": "work",
+    "internal.run_id": "01KM357YAGZ890D4AE1K3V9X4S",
+    "thread.start.current_node": "work",
+    "response.work": "Perfect! The agent has successfully written 'hello' to the file `scenario_test.txt`. The task is complete!",
+    "current.preamble": "Goal: Write hello to a file using an agent\n",
+    "failure_class": "",
+    "last_response": "Perfect! The agent has successfully written 'hello' to the file `scenario_test.txt`. The task is complete!",
+    "outcome": "success",
+    "internal.work_dir": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmp22fOwy/run/worktree",
+    "current_node": "work",
+    "internal.retry_count.start": 1,
+    "graph.goal": "Write hello to a file using an agent",
+    "internal.retry_count.work": 1,
+    "failure_signature": "",
+    "internal.node_visit_count": 1,
+    "internal.thread_id": "start",
+    "internal.fidelity": "compact",
+    "graph.rankdir": "LR"
+  },
+  "logs": [],
+  "node_outcomes": {
+    "work": {
+      "status": "success",
+      "context_updates": {
+        "last_stage": "work",
+        "last_response": "Perfect! The agent has successfully written 'hello' to the file `scenario_test.txt`. The task is complete!",
+        "response.work": "Perfect! The agent has successfully written 'hello' to the file `scenario_test.txt`. The task is complete!"
+      },
+      "notes": "Stage completed: work",
+      "usage": {
+        "model": "claude-haiku-4-5",
+        "input_tokens": 646,
+        "output_tokens": 229,
+        "cache_read_tokens": 9785,
+        "cache_write_tokens": 5210,
+        "cost": 0.0014328000000000001
+      },
+      "files_touched": [
+        "scenario_test.txt"
+      ],
+      "duration_ms": 7030
+    },
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    }
+  },
+  "next_node_id": "exit",
+  "node_visits": {
+    "start": 1,
+    "work": 1
+  }
+}

@@ -1,15 +1,17 @@
 {
-  "timestamp": "2026-03-19T14:34:54.043248Z",
-  "current_node": "gate",
+  "timestamp": "2026-03-19T14:34:56.748074Z",
+  "current_node": "passed",
   "completed_nodes": [
     "start",
     "cmd",
-    "gate"
+    "gate",
+    "passed"
   ],
   "node_retries": {
-    "start": 1,
     "cmd": 1,
-    "gate": 1
+    "gate": 1,
+    "passed": 1,
+    "start": 1
   },
   "context_values": {
     "graph.rankdir": "LR",
@@ -17,19 +19,21 @@
     "internal.retry_count.start": 1,
     "command.stderr": "",
     "failure_signature": "",
-    "internal.thread_id": "cmd",
+    "internal.thread_id": "gate",
     "internal.retry_count.gate": 1,
-    "current_node": "gate",
-    "current.preamble": "Goal: Test conditional edge selection after a command\n\n## Completed stages\n- **cmd**: success\n  - Script: `echo pass`\n  - Stdout:\n    ```\n    pass\n    ```\n  - Stderr: (empty)\n",
+    "current_node": "passed",
+    "current.preamble": "Goal: Test conditional edge selection after a command\n\n## Completed stages\n- **cmd**: success\n  - Script: `echo pass`\n  - Stdout:\n    ```\n    pass\n    ```\n  - Stderr: (empty)\n- **gate**: success\n",
     "internal.node_visit_count": 1,
     "thread.cmd.current_node": "gate",
     "thread.start.current_node": "cmd",
     "internal.retry_count.cmd": 1,
+    "internal.retry_count.passed": 1,
     "internal.fidelity": "compact",
     "graph.goal": "Test conditional edge selection after a command",
     "outcome": "success",
     "failure_class": "",
-    "command.output": "pass\n"
+    "command.output": "branch-passed\n",
+    "thread.gate.current_node": "passed"
   },
   "logs": [],
   "node_outcomes": {
@@ -42,20 +46,30 @@
       "notes": "Script completed: echo pass",
       "duration_ms": 50
     },
-    "start": {
+    "passed": {
       "status": "success",
-      "duration_ms": 0
+      "context_updates": {
+        "command.output": "branch-passed\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: echo branch-passed",
+      "duration_ms": 50
     },
     "gate": {
       "status": "success",
       "notes": "Conditional node evaluated: gate",
       "duration_ms": 0
+    },
+    "start": {
+      "status": "success",
+      "duration_ms": 0
     }
   },
-  "next_node_id": "passed",
+  "next_node_id": "exit",
   "node_visits": {
-    "start": 1,
     "cmd": 1,
-    "gate": 1
+    "passed": 1,
+    "gate": 1,
+    "start": 1
   }
 }

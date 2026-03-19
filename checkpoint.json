@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-03-19T13:41:01.054017Z",
+  "current_node": "step1",
+  "completed_nodes": [
+    "start",
+    "step1"
+  ],
+  "node_retries": {
+    "step1": 1,
+    "start": 1
+  },
+  "context_values": {
+    "internal.node_visit_count": 1,
+    "current_node": "step1",
+    "current.preamble": "Goal: Run two commands in sequence\n",
+    "internal.retry_count.start": 1,
+    "internal.retry_count.step1": 1,
+    "internal.fidelity": "compact",
+    "graph.goal": "Run two commands in sequence",
+    "failure_class": "",
+    "thread.start.current_node": "step1",
+    "graph.rankdir": "LR",
+    "internal.work_dir": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmprr4hlp/run/worktree",
+    "outcome": "success",
+    "failure_signature": "",
+    "internal.run_id": "01KM357YAH35WGJC5Q0CFTYT5H",
+    "command.output": "hello-from-step1\n",
+    "internal.thread_id": "start",
+    "command.stderr": ""
+  },
+  "logs": [],
+  "node_outcomes": {
+    "step1": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": "hello-from-step1\n"
+      },
+      "notes": "Script completed: echo hello-from-step1",
+      "duration_ms": 12
+    },
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    }
+  },
+  "next_node_id": "step2",
+  "node_visits": {
+    "start": 1,
+    "step1": 1
+  }
+}

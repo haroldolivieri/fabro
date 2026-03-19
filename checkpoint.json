@@ -1,24 +1,26 @@
 {
-  "timestamp": "2026-03-19T13:41:09.203923Z",
-  "current_node": "gate",
+  "timestamp": "2026-03-19T13:41:11.491369Z",
+  "current_node": "passed",
   "completed_nodes": [
     "start",
     "cmd",
-    "gate"
+    "gate",
+    "passed"
   ],
   "node_retries": {
-    "start": 1,
+    "passed": 1,
     "gate": 1,
-    "cmd": 1
+    "cmd": 1,
+    "start": 1
   },
   "context_values": {
-    "command.output": "pass\n",
+    "command.output": "branch-passed\n",
     "thread.cmd.current_node": "gate",
     "internal.run_id": "01KM357YC4V2TVWWYRH13N6YY5",
     "graph.goal": "Test conditional edge selection after a command",
     "failure_class": "",
     "internal.node_visit_count": 1,
-    "current_node": "gate",
+    "current_node": "passed",
     "outcome": "success",
     "thread.start.current_node": "cmd",
     "internal.retry_count.start": 1,
@@ -26,20 +28,31 @@
     "graph.rankdir": "LR",
     "internal.fidelity": "compact",
     "internal.retry_count.cmd": 1,
+    "internal.retry_count.passed": 1,
     "failure_signature": "",
-    "internal.thread_id": "cmd",
+    "internal.thread_id": "gate",
+    "thread.gate.current_node": "passed",
     "command.stderr": "",
-    "current.preamble": "Goal: Test conditional edge selection after a command\n\n## Completed stages\n- **cmd**: success\n  - Script: `echo pass`\n  - Stdout:\n    ```\n    pass\n    ```\n  - Stderr: (empty)\n"
+    "current.preamble": "Goal: Test conditional edge selection after a command\n\n## Completed stages\n- **cmd**: success\n  - Script: `echo pass`\n  - Stdout:\n    ```\n    pass\n    ```\n  - Stderr: (empty)\n- **gate**: success\n"
   },
   "logs": [],
   "node_outcomes": {
-    "start": {
-      "status": "success",
-      "duration_ms": 0
-    },
     "gate": {
       "status": "success",
       "notes": "Conditional node evaluated: gate",
+      "duration_ms": 0
+    },
+    "passed": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": "branch-passed\n"
+      },
+      "notes": "Script completed: echo branch-passed",
+      "duration_ms": 27
+    },
+    "start": {
+      "status": "success",
       "duration_ms": 0
     },
     "cmd": {
@@ -52,10 +65,11 @@
       "duration_ms": 214
     }
   },
-  "next_node_id": "passed",
+  "next_node_id": "exit",
   "node_visits": {
     "cmd": 1,
     "gate": 1,
-    "start": 1
+    "start": 1,
+    "passed": 1
   }
 }

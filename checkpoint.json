@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-03-19T13:41:09.539813Z",
+  "current_node": "draft",
+  "completed_nodes": [
+    "start",
+    "draft"
+  ],
+  "node_retries": {
+    "draft": 1,
+    "start": 1
+  },
+  "context_values": {
+    "last_stage": "draft",
+    "internal.retry_count.draft": 1,
+    "internal.run_id": "01KM357YBWHVYEMV9CWQ6PB84Q",
+    "internal.thread_id": "start",
+    "internal.node_visit_count": 1,
+    "current_node": "draft",
+    "internal.retry_count.start": 1,
+    "graph.rankdir": "LR",
+    "internal.fidelity": "compact",
+    "current.preamble": "Goal: Test human gate with auto-approve\n",
+    "outcome": "success",
+    "failure_class": "",
+    "response.draft": "# Greeting\n\nHello! 👋 \n\nI'm ready to help you test the human gate with auto-approve functionality. This involves verifying that workflows can pause at human decision points and automatically proceed when configured to do so.\n\nLet me know what specific aspect you'd like to test or implement!",
+    "failure_signature": "",
+    "thread.start.current_node": "draft",
+    "graph.goal": "Test human gate with auto-approve",
+    "last_response": "# Greeting\n\nHello! 👋 \n\nI'm ready to help you test the human gate with auto-approve functionality. This involves verifying that workflows can pause at human decision points and automatically proceed"
+  },
+  "logs": [],
+  "node_outcomes": {
+    "draft": {
+      "status": "success",
+      "context_updates": {
+        "last_response": "# Greeting\n\nHello! 👋 \n\nI'm ready to help you test the human gate with auto-approve functionality. This involves verifying that workflows can pause at human decision points and automatically proceed",
+        "response.draft": "# Greeting\n\nHello! 👋 \n\nI'm ready to help you test the human gate with auto-approve functionality. This involves verifying that workflows can pause at human decision points and automatically proceed when configured to do so.\n\nLet me know what specific aspect you'd like to test or implement!",
+        "last_stage": "draft"
+      },
+      "notes": "Stage completed: draft",
+      "usage": {
+        "model": "claude-haiku-4-5",
+        "input_tokens": 2022,
+        "output_tokens": 66,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "cost": 0.0018816000000000002
+      },
+      "duration_ms": 2871
+    },
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    }
+  },
+  "next_node_id": "approve",
+  "node_visits": {
+    "start": 1,
+    "draft": 1
+  }
+}

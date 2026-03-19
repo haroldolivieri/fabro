@@ -1,0 +1,13 @@
+{
+  "run_id": "01KM32WG9J9C5D8TJ80DGFCN4B",
+  "workflow_name": "CommandAgentMixed",
+  "goal": "Verify sandbox filesystem is shared across command and agent nodes",
+  "start_time": "2026-03-19T12:59:48.966827Z",
+  "node_count": 5,
+  "edge_count": 4,
+  "run_branch": "fabro/run/01KM32WG9J9C5D8TJ80DGFCN4B",
+  "base_sha": "10595c9e76ba1be90de1cf49a2a3c183e287d917",
+  "base_branch": "main",
+  "workflow_slug": "scenario",
+  "host_repo_path": "/Users/bhelmkamp/p/fabro-sh/fabro/lib/crates/fabro-cli"
+}

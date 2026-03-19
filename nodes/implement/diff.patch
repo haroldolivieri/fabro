@@ -1,0 +1,195 @@
+diff --git a/lib/crates/fabro-api/src/serve.rs b/lib/crates/fabro-api/src/serve.rs
+index 3791cfb1..65a0abac 100644
+--- a/lib/crates/fabro-api/src/serve.rs
++++ b/lib/crates/fabro-api/src/serve.rs
+@@ -288,10 +288,15 @@ fn resolve_model_provider(
+         .map(|s| s.to_string())
+         .or_else(|| config_model.map(|s| s.to_string()))
+         .unwrap_or_else(|| {
+-            // Look up default model from catalog for the given provider
++            // Look up default model from catalog for the given provider,
++            // falling back to the best provider with an API key configured.
++            let default_provider = Provider::default_from_env();
+             let default_info = provider_str
+                 .and_then(fabro_llm::catalog::default_model_for_provider)
+-                .unwrap_or_else(fabro_llm::catalog::default_model);
++                .unwrap_or_else(|| {
++                    fabro_llm::catalog::default_model_for_provider(default_provider.as_str())
++                        .unwrap_or_else(fabro_llm::catalog::default_model)
++                });
+             default_info.id
+         });
+ 
+@@ -307,7 +312,7 @@ fn resolve_model_provider(
+     let provider_enum: Provider = provider_str
+         .as_deref()
+         .and_then(|s| s.parse::<Provider>().ok())
+-        .unwrap_or(Provider::Anthropic);
++        .unwrap_or_else(Provider::default_from_env);
+ 
+     (model, provider_enum)
+ }
+diff --git a/lib/crates/fabro-cli/src/commands/pr.rs b/lib/crates/fabro-cli/src/commands/pr.rs
+index 3137f096..38c14154 100644
+--- a/lib/crates/fabro-cli/src/commands/pr.rs
++++ b/lib/crates/fabro-cli/src/commands/pr.rs
+@@ -383,9 +383,12 @@ async fn create_from(
+         );
+     }
+ 
+-    let model = args
+-        .model
+-        .unwrap_or_else(|| fabro_llm::catalog::default_model().id.to_string());
++    let model = args.model.unwrap_or_else(|| {
++        let default_provider = fabro_llm::provider::Provider::default_from_env();
++        fabro_llm::catalog::default_model_for_provider(default_provider.as_str())
++            .map(|m| m.id)
++            .unwrap_or_else(|| fabro_llm::catalog::default_model().id.to_string())
++    });
+ 
+     let record = fabro_workflows::pull_request::maybe_open_pull_request(
+         &creds,
+diff --git a/lib/crates/fabro-cli/src/commands/run.rs b/lib/crates/fabro-cli/src/commands/run.rs
+index d180835b..94072c11 100644
+--- a/lib/crates/fabro-cli/src/commands/run.rs
++++ b/lib/crates/fabro-cli/src/commands/run.rs
+@@ -208,7 +208,7 @@ fn resolve_model_provider(
+             let provider_enum = provider
+                 .as_deref()
+                 .and_then(|s| s.parse::<Provider>().ok())
+-                .unwrap_or(Provider::Anthropic);
++                .unwrap_or_else(Provider::default_from_env);
+             fabro_llm::catalog::default_model_for_provider(provider_enum.as_str())
+                 .map(|m| m.id)
+                 .unwrap_or_else(|| provider_enum.as_str().to_string())
+@@ -1166,13 +1166,13 @@ pub async fn run_command(
+         &graph,
+     );
+ 
+-    // Parse provider string to enum (defaults to Anthropic)
++    // Parse provider string to enum (defaults to best available from env)
+     let provider_enum: Provider = provider
+         .as_deref()
+         .map(|s| s.parse::<Provider>())
+         .transpose()
+         .map_err(|e| anyhow::anyhow!("{e}"))?
+-        .unwrap_or(Provider::Anthropic);
++        .unwrap_or_else(Provider::default_from_env);
+ 
+     // Resolve fallback chain from config
+     let fallback_chain = resolve_fallback_chain(provider_enum, &model, run_cfg.as_ref());
+@@ -1895,14 +1895,19 @@ async fn run_from_branch(
+             .map(|c| c.provider_names().is_empty())
+             .unwrap_or(true);
+ 
+-    let model = args.model.unwrap_or_else(|| "claude-opus-4-6".to_string());
++    let default_provider = fabro_llm::provider::Provider::default_from_env();
++    let model = args.model.unwrap_or_else(|| {
++        fabro_llm::catalog::default_model_for_provider(default_provider.as_str())
++            .map(|m| m.id)
++            .unwrap_or_else(|| default_provider.as_str().to_string())
++    });
+     let provider_enum = args
+         .provider
+         .as_deref()
+         .map(|s| s.parse::<fabro_llm::provider::Provider>())
+         .transpose()
+         .map_err(|e| anyhow::anyhow!("{e}"))?
+-        .unwrap_or(fabro_llm::provider::Provider::Anthropic);
++        .unwrap_or(default_provider);
+ 
+     // No fallback config available for branch resume; use empty chain.
+     let fallback_chain = Vec::new();
+diff --git a/lib/crates/fabro-llm/src/provider.rs b/lib/crates/fabro-llm/src/provider.rs
+index d4d2e86f..5f19e6af 100644
+--- a/lib/crates/fabro-llm/src/provider.rs
++++ b/lib/crates/fabro-llm/src/provider.rs
+@@ -58,6 +58,26 @@ impl Provider {
+             .any(|var| std::env::var(var).is_ok())
+     }
+ 
++    /// Pick the best default provider based on which API keys are available.
++    ///
++    /// Checks Anthropic → OpenAI → Gemini; falls back to Anthropic if none
++    /// have a key configured.
++    #[must_use]
++    pub fn default_from_env() -> Self {
++        Self::default_with(Self::has_api_key)
++    }
++
++    /// Testable core of [`default_from_env`]: walks the precedence list and
++    /// returns the first provider for which `is_configured` returns `true`.
++    fn default_with(is_configured: impl Fn(Self) -> bool) -> Self {
++        const PRECEDENCE: [Provider; 3] = [Provider::Anthropic, Provider::OpenAi, Provider::Gemini];
++        PRECEDENCE
++            .iter()
++            .copied()
++            .find(|&p| is_configured(p))
++            .unwrap_or(Provider::Anthropic)
++    }
++
+     /// Stable lowercase string representation used in `Request.provider`,
+     /// adapter names, and other serialization boundaries.
+     #[must_use]
+@@ -236,6 +256,48 @@ mod tests {
+         assert_eq!(Provider::Inception.as_str(), "inception");
+     }
+ 
++    #[test]
++    fn default_with_all_configured_prefers_anthropic() {
++        assert_eq!(Provider::default_with(|_| true), Provider::Anthropic);
++    }
++
++    #[test]
++    fn default_with_only_openai() {
++        assert_eq!(
++            Provider::default_with(|p| p == Provider::OpenAi),
++            Provider::OpenAi
++        );
++    }
++
++    #[test]
++    fn default_with_only_gemini() {
++        assert_eq!(
++            Provider::default_with(|p| p == Provider::Gemini),
++            Provider::Gemini
++        );
++    }
++
++    #[test]
++    fn default_with_openai_and_gemini_prefers_openai() {
++        assert_eq!(
++            Provider::default_with(|p| p == Provider::OpenAi || p == Provider::Gemini),
++            Provider::OpenAi,
++        );
++    }
++
++    #[test]
++    fn default_with_none_configured_falls_back_to_anthropic() {
++        assert_eq!(Provider::default_with(|_| false), Provider::Anthropic);
++    }
++
++    #[test]
++    fn default_with_only_kimi_falls_back_to_anthropic() {
++        assert_eq!(
++            Provider::default_with(|p| p == Provider::Kimi),
++            Provider::Anthropic
++        );
++    }
++
+     #[test]
+     fn api_key_env_vars_anthropic() {
+         assert_eq!(
+diff --git a/lib/crates/fabro-workflows/src/handler/prompt.rs b/lib/crates/fabro-workflows/src/handler/prompt.rs
+index f0164307..fb4caf8b 100644
+--- a/lib/crates/fabro-workflows/src/handler/prompt.rs
++++ b/lib/crates/fabro-workflows/src/handler/prompt.rs
+@@ -67,7 +67,7 @@ impl Handler for PromptHandler {
+             let provider = node
+                 .provider()
+                 .and_then(|s| s.parse::<Provider>().ok())
+-                .unwrap_or(Provider::Anthropic);
++                .unwrap_or_else(Provider::default_from_env);
+             let docs = fabro_agent::discover_memory(
+                 &*services.sandbox,
+                 working_dir,

@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-03-19T12:59:50.953968Z",
+  "current_node": "draft",
+  "completed_nodes": [
+    "start",
+    "draft"
+  ],
+  "node_retries": {
+    "start": 1,
+    "draft": 1
+  },
+  "context_values": {
+    "internal.fidelity": "compact",
+    "current_node": "draft",
+    "last_response": "# Short Greeting Message\n\nHello! 👋 Welcome to Fabro, an AI-powered workflow orchestration platform. I'm here to help you build, test, and deploy intelligent workflows with ease. What can I do for y",
+    "failure_class": "",
+    "internal.retry_count.draft": 1,
+    "last_stage": "draft",
+    "response.draft": "# Short Greeting Message\n\nHello! 👋 Welcome to Fabro, an AI-powered workflow orchestration platform. I'm here to help you build, test, and deploy intelligent workflows with ease. What can I do for you today?",
+    "internal.thread_id": "start",
+    "internal.retry_count.start": 1,
+    "internal.work_dir": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpXZsOqi/run/worktree",
+    "graph.goal": "Test human gate with auto-approve",
+    "graph.rankdir": "LR",
+    "thread.start.current_node": "draft",
+    "outcome": "success",
+    "internal.run_id": "01KM32WG9KQ7466HBJAA2KTXFX",
+    "internal.node_visit_count": 1,
+    "failure_signature": "",
+    "current.preamble": "Goal: Test human gate with auto-approve\n"
+  },
+  "logs": [],
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "duration_ms": 0
+    },
+    "draft": {
+      "status": "success",
+      "context_updates": {
+        "last_stage": "draft",
+        "last_response": "# Short Greeting Message\n\nHello! 👋 Welcome to Fabro, an AI-powered workflow orchestration platform. I'm here to help you build, test, and deploy intelligent workflows with ease. What can I do for y",
+        "response.draft": "# Short Greeting Message\n\nHello! 👋 Welcome to Fabro, an AI-powered workflow orchestration platform. I'm here to help you build, test, and deploy intelligent workflows with ease. What can I do for you today?"
+      },
+      "notes": "Stage completed: draft",
+      "usage": {
+        "model": "claude-haiku-4-5",
+        "input_tokens": 2022,
+        "output_tokens": 55,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "cost": 0.0018376
+      },
+      "duration_ms": 1981
+    }
+  },
+  "next_node_id": "approve",
+  "node_visits": {
+    "draft": 1,
+    "start": 1
+  }
+}

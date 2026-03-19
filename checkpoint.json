@@ -1,22 +1,24 @@
 {
-  "timestamp": "2026-03-19T13:48:09.706437Z",
-  "current_node": "gate",
+  "timestamp": "2026-03-19T13:48:14.398600Z",
+  "current_node": "passed",
   "completed_nodes": [
     "start",
     "cmd",
-    "gate"
+    "gate",
+    "passed"
   ],
   "node_retries": {
     "start": 1,
     "gate": 1,
-    "cmd": 1
+    "cmd": 1,
+    "passed": 1
   },
   "context_values": {
     "graph.rankdir": "LR",
     "internal.node_visit_count": 1,
     "internal.run_id": "01KM35MF57PY1F3RGJ2MMGT0F9",
-    "current.preamble": "Goal: Test conditional edge selection after a command\n\n## Completed stages\n- **cmd**: success\n  - Script: `echo pass`\n  - Stdout:\n    ```\n    pass\n    ```\n  - Stderr: (empty)\n",
-    "internal.thread_id": "cmd",
+    "current.preamble": "Goal: Test conditional edge selection after a command\n\n## Completed stages\n- **cmd**: success\n  - Script: `echo pass`\n  - Stdout:\n    ```\n    pass\n    ```\n  - Stderr: (empty)\n- **gate**: success\n",
+    "internal.thread_id": "gate",
     "command.stderr": "",
     "thread.cmd.current_node": "gate",
     "internal.retry_count.start": 1,
@@ -28,8 +30,10 @@
     "outcome": "success",
     "graph.goal": "Test conditional edge selection after a command",
     "failure_signature": "",
-    "current_node": "gate",
-    "command.output": "pass\n"
+    "current_node": "passed",
+    "command.output": "branch-passed\n",
+    "thread.gate.current_node": "passed",
+    "internal.retry_count.passed": 1
   },
   "logs": [],
   "node_outcomes": {
@@ -42,6 +46,15 @@
       "status": "success",
       "duration_ms": 0
     },
+    "passed": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": "branch-passed\n"
+      },
+      "notes": "Script completed: echo branch-passed",
+      "duration_ms": 193
+    },
     "cmd": {
       "status": "success",
       "context_updates": {
@@ -52,10 +65,11 @@
       "duration_ms": 90
     }
   },
-  "next_node_id": "passed",
+  "next_node_id": "exit",
   "node_visits": {
-    "start": 1,
     "cmd": 1,
+    "start": 1,
+    "passed": 1,
     "gate": 1
   }
 }

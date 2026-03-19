@@ -1,35 +1,54 @@
 {
-  "timestamp": "2026-03-19T14:34:48.477068Z",
-  "current_node": "draft",
+  "timestamp": "2026-03-19T14:34:51.178625Z",
+  "current_node": "approve",
   "completed_nodes": [
     "start",
-    "draft"
+    "draft",
+    "approve"
   ],
   "node_retries": {
+    "approve": 1,
     "start": 1,
     "draft": 1
   },
   "context_values": {
     "internal.retry_count.start": 1,
     "graph.goal": "Test human gate with auto-approve",
-    "internal.thread_id": "start",
+    "thread.draft.current_node": "approve",
+    "internal.thread_id": "draft",
     "internal.node_visit_count": 1,
     "internal.fidelity": "compact",
     "graph.rankdir": "LR",
-    "current_node": "draft",
-    "current.preamble": "Goal: Test human gate with auto-approve\n",
+    "current_node": "approve",
+    "current.preamble": "Goal: Test human gate with auto-approve\n\n## Completed stages\n- **draft**: success\n  - Model: claude-haiku-4-5, 2.0k tokens in / 56 out\n",
+    "human.gate.selected": "A",
     "response.draft": "# Greeting\n\nHello! 👋\n\nI'm Claude, an AI assistant created by Anthropic. I'm here to help you with coding, analysis, writing, math, creative projects, and much more.\n\nHow can I assist you today?",
     "failure_class": "",
     "failure_signature": "",
+    "preferred_label": "[A] Approve",
     "thread.start.current_node": "draft",
     "internal.run_id": "01KM38A5VG531GTEHAEK1GW0FS",
     "internal.retry_count.draft": 1,
     "last_response": "# Greeting\n\nHello! 👋\n\nI'm Claude, an AI assistant created by Anthropic. I'm here to help you with coding, analysis, writing, math, creative projects, and much more.\n\nHow can I assist you today?",
+    "human.gate.label": "[A] Approve",
     "outcome": "success",
-    "last_stage": "draft"
+    "last_stage": "draft",
+    "internal.retry_count.approve": 1
   },
   "logs": [],
   "node_outcomes": {
+    "approve": {
+      "status": "success",
+      "preferred_label": "[A] Approve",
+      "suggested_next_ids": [
+        "ship"
+      ],
+      "context_updates": {
+        "human.gate.label": "[A] Approve",
+        "human.gate.selected": "A"
+      },
+      "duration_ms": 0
+    },
     "start": {
       "status": "success",
       "duration_ms": 0
@@ -53,9 +72,10 @@
       "duration_ms": 3326
     }
   },
-  "next_node_id": "approve",
+  "next_node_id": "ship",
   "node_visits": {
     "draft": 1,
+    "approve": 1,
     "start": 1
   }
 }

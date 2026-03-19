@@ -1,0 +1,1 @@
+Perfect! The file `/tmp/scenario_flag.txt` contains `SCENARIO_FLAG_42`, which confirms that the sandbox filesystem **is shared** across the command and agent nodes. The setup stage successfully created this file, and I was able to read it in the subsequent stage, verifying that the filesystem state persists across different execution contexts within the same sandbox.

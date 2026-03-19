@@ -1,0 +1,13 @@
+{
+  "run_id": "01KM357YAFA45FZJX1MBGYB9RJ",
+  "workflow_name": "HumanGate",
+  "goal": "Test human gate with auto-approve",
+  "start_time": "2026-03-19T13:41:01.150009Z",
+  "node_count": 6,
+  "edge_count": 6,
+  "run_branch": "fabro/run/01KM357YAFA45FZJX1MBGYB9RJ",
+  "base_sha": "a7a6c53c9b09e231ba0e474d14c3a10280570c74",
+  "base_branch": "main",
+  "workflow_slug": "scenario",
+  "host_repo_path": "/Users/bhelmkamp/p/fabro-sh/fabro/lib/crates/fabro-cli"
+}

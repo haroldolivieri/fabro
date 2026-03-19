@@ -1,21 +1,23 @@
 {
-  "timestamp": "2026-03-19T13:47:51.538686Z",
-  "current_node": "step1",
+  "timestamp": "2026-03-19T13:47:54.361957Z",
+  "current_node": "step2",
   "completed_nodes": [
     "start",
-    "step1"
+    "step1",
+    "step2"
   ],
   "node_retries": {
     "start": 1,
+    "step2": 1,
     "step1": 1
   },
   "context_values": {
-    "command.output": "hello-from-step1\n",
+    "command.output": "hello-from-step2\n",
     "graph.rankdir": "LR",
     "internal.retry_count.start": 1,
     "failure_class": "",
     "internal.node_visit_count": 1,
-    "current_node": "step1",
+    "current_node": "step2",
     "failure_signature": "",
     "thread.start.current_node": "step1",
     "command.stderr": "",
@@ -24,9 +26,11 @@
     "outcome": "success",
     "graph.goal": "Run two commands in sequence",
     "internal.retry_count.step1": 1,
-    "internal.thread_id": "start",
+    "internal.thread_id": "step1",
+    "thread.step1.current_node": "step2",
     "internal.run_id": "01KM35MF3XED6G8BRW8F19PP45",
-    "current.preamble": "Goal: Run two commands in sequence\n"
+    "internal.retry_count.step2": 1,
+    "current.preamble": "Goal: Run two commands in sequence\n\n## Completed stages\n- **step1**: success\n  - Script: `echo hello-from-step1`\n  - Stdout:\n    ```\n    hello-from-step1\n    ```\n  - Stderr: (empty)\n"
   },
   "logs": [],
   "node_outcomes": {
@@ -42,11 +46,21 @@
       },
       "notes": "Script completed: echo hello-from-step1",
       "duration_ms": 4
+    },
+    "step2": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "hello-from-step2\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: echo hello-from-step2",
+      "duration_ms": 2
     }
   },
-  "next_node_id": "step2",
+  "next_node_id": "exit",
   "node_visits": {
     "step1": 1,
-    "start": 1
+    "start": 1,
+    "step2": 1
   }
 }

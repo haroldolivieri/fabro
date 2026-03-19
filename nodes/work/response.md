@@ -1,0 +1,1 @@
+Excellent! The task is complete. The file `scenario_test.txt` now contains the word "hello" as requested.

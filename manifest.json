@@ -1,0 +1,13 @@
+{
+  "run_id": "01KM6N16D0BZQSM1W02XVPTKS9",
+  "workflow_name": "GhTriage",
+  "goal": "Check open PRs and issues using the gh CLI and produce a triage summary",
+  "start_time": "2026-03-20T22:14:46.532782Z",
+  "node_count": 3,
+  "edge_count": 2,
+  "run_branch": "fabro/run/01KM6N16D0BZQSM1W02XVPTKS9",
+  "base_sha": "09809ad51c9552da09282788379c8f8b373c0e1b",
+  "base_branch": "main",
+  "workflow_slug": "gh-triage",
+  "host_repo_path": "/Users/bhelmkamp/p/fabro-sh/fabro"
+}

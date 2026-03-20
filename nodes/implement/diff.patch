@@ -1,0 +1,1612 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index a2a3ba95..9a23b047 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1248,6 +1248,7 @@ dependencies = [
+  "fabro-config",
+  "fabro-llm",
+  "fabro-mcp",
++ "fabro-model",
+  "fabro-sandbox",
+  "fabro-util",
+  "futures",
+@@ -1287,6 +1288,7 @@ dependencies = [
+  "fabro-hooks",
+  "fabro-interview",
+  "fabro-llm",
++ "fabro-model",
+  "fabro-retro",
+  "fabro-sandbox",
+  "fabro-types",
+@@ -1360,6 +1362,7 @@ dependencies = [
+  "fabro-interview",
+  "fabro-llm",
+  "fabro-mcp",
++ "fabro-model",
+  "fabro-openai-oauth",
+  "fabro-retro",
+  "fabro-sandbox",
+@@ -1489,6 +1492,7 @@ dependencies = [
+  "fabro-agent",
+  "fabro-config",
+  "fabro-llm",
++ "fabro-model",
+  "fabro-util",
+  "mockito",
+  "regex",
+@@ -1540,6 +1544,7 @@ dependencies = [
+  "cli-table",
+  "dialoguer",
+  "dotenvy",
++ "fabro-model",
+  "fabro-util",
+  "futures",
+  "http",
+@@ -1572,6 +1577,15 @@ dependencies = [
+  "tracing",
+ ]
+ 
++[[package]]
++name = "fabro-model"
++version = "0.176.2"
++dependencies = [
++ "insta",
++ "serde",
++ "serde_json",
++]
++
+ [[package]]
+ name = "fabro-openai-oauth"
+ version = "0.176.2"
+@@ -1725,7 +1739,7 @@ name = "fabro-validate"
+ version = "0.176.2"
+ dependencies = [
+  "fabro-graphviz",
+- "fabro-llm",
++ "fabro-model",
+  "serde",
+  "thiserror 2.0.18",
+ ]
+@@ -1751,6 +1765,7 @@ dependencies = [
+  "fabro-interview",
+  "fabro-llm",
+  "fabro-mcp",
++ "fabro-model",
+  "fabro-retro",
+  "fabro-sandbox",
+  "fabro-util",
+diff --git a/lib/crates/fabro-agent/Cargo.toml b/lib/crates/fabro-agent/Cargo.toml
+index 8f23c681..765bc95c 100644
+--- a/lib/crates/fabro-agent/Cargo.toml
++++ b/lib/crates/fabro-agent/Cargo.toml
+@@ -23,6 +23,7 @@ anyhow.workspace = true
+ dotenvy.workspace = true
+ fabro-config = { path = "../fabro-config", features = ["clap"] }
+ fabro-llm = { path = "../fabro-llm" }
++fabro-model = { path = "../fabro-model" }
+ fabro-mcp = { path = "../fabro-mcp" }
+ fabro-sandbox = { path = "../fabro-sandbox" }
+ fabro-util = { path = "../fabro-util" }
+@@ -51,4 +52,4 @@ tokio = { workspace = true, features = ["test-util", "macros"] }
+ tempfile = "3"
+ dotenvy = { workspace = true }
+ paste = "1"
+-fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
++fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
+\ No newline at end of file
+diff --git a/lib/crates/fabro-agent/src/cli.rs b/lib/crates/fabro-agent/src/cli.rs
+index 4b7a1ba9..c15c48dd 100644
+--- a/lib/crates/fabro-agent/src/cli.rs
++++ b/lib/crates/fabro-agent/src/cli.rs
+@@ -6,7 +6,7 @@ use crate::{
+ };
+ use clap::{Args, Parser};
+ use fabro_llm::client::Client;
+-use fabro_llm::provider::{ModelId, Provider};
++use fabro_model::{ModelId, Provider};
+ use fabro_util::terminal::Styles;
+ use std::io::{IsTerminal, Write};
+ use std::path::PathBuf;
+@@ -386,8 +386,8 @@ pub async fn run_with_args_and_client(
+ 
+     // Resolve model and build profile
+     let model = args.model.unwrap_or_else(|| {
+-        fabro_llm::catalog::default_model_for_provider(provider.as_str())
+-            .unwrap_or_else(fabro_llm::catalog::default_model_from_env)
++        fabro_model::default_model_for_provider(provider.as_str())
++            .unwrap_or_else(fabro_model::default_model_from_env)
+             .id
+     });
+     eprintln!("{}", styles.dim.apply_to(format!("Using model: {model}")));
+@@ -634,7 +634,7 @@ pub async fn run() -> anyhow::Result<()> {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use fabro_llm::provider::Provider;
++    use fabro_model::Provider;
+     use serde_json::json;
+ 
+     static NO_COLOR: std::sync::LazyLock<Styles> = std::sync::LazyLock::new(|| Styles::new(false));
+diff --git a/lib/crates/fabro-agent/src/memory.rs b/lib/crates/fabro-agent/src/memory.rs
+index 8c0e3a9e..982572b1 100644
+--- a/lib/crates/fabro-agent/src/memory.rs
++++ b/lib/crates/fabro-agent/src/memory.rs
+@@ -1,5 +1,5 @@
+ use crate::sandbox::Sandbox;
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ use std::collections::HashSet;
+ use tracing::{debug, info, warn};
+ 
+diff --git a/lib/crates/fabro-agent/src/profiles/anthropic.rs b/lib/crates/fabro-agent/src/profiles/anthropic.rs
+index 55920409..7bceb347 100644
+--- a/lib/crates/fabro-agent/src/profiles/anthropic.rs
++++ b/lib/crates/fabro-agent/src/profiles/anthropic.rs
+@@ -6,7 +6,7 @@ use crate::sandbox::Sandbox;
+ use crate::skills::Skill;
+ use crate::tool_registry::ToolRegistry;
+ use crate::tools::{make_edit_file_tool, register_core_tools, WebFetchSummarizer};
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ 
+ use super::EnvContext;
+ 
+@@ -164,7 +164,7 @@ in the project. Keep changes minimal and focused on the task.";
+     }
+ 
+     fn capabilities(&self) -> ProfileCapabilities {
+-        let context_window_size = fabro_llm::catalog::get_model_info(self.model())
++        let context_window_size = fabro_model::get_model_info(self.model())
+             .map(|info| info.limits.context_window as usize)
+             .unwrap_or_else(|| {
+                 if self.model().contains("opus-4-6") {
+diff --git a/lib/crates/fabro-agent/src/profiles/gemini.rs b/lib/crates/fabro-agent/src/profiles/gemini.rs
+index d70c4556..5f93ecbc 100644
+--- a/lib/crates/fabro-agent/src/profiles/gemini.rs
++++ b/lib/crates/fabro-agent/src/profiles/gemini.rs
+@@ -9,7 +9,7 @@ use crate::tools::{
+     make_edit_file_tool, make_list_dir_tool, make_read_many_files_tool, register_core_tools,
+     WebFetchSummarizer,
+ };
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ 
+ use super::EnvContext;
+ 
+@@ -199,7 +199,7 @@ in the project.";
+     }
+ 
+     fn capabilities(&self) -> ProfileCapabilities {
+-        let context_window_size = fabro_llm::catalog::get_model_info(self.model())
++        let context_window_size = fabro_model::get_model_info(self.model())
+             .map(|info| info.limits.context_window as usize)
+             .unwrap_or(1_000_000);
+         ProfileCapabilities {
+diff --git a/lib/crates/fabro-agent/src/profiles/mod.rs b/lib/crates/fabro-agent/src/profiles/mod.rs
+index f5f24094..283b0011 100644
+--- a/lib/crates/fabro-agent/src/profiles/mod.rs
++++ b/lib/crates/fabro-agent/src/profiles/mod.rs
+@@ -9,7 +9,7 @@ pub use openai::OpenAiProfile;
+ use crate::sandbox::Sandbox;
+ use crate::skills::{format_skills_prompt_section, Skill};
+ use crate::tool_registry::ToolRegistry;
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ 
+ /// Common fields shared by all provider profiles.
+ ///
+diff --git a/lib/crates/fabro-agent/src/profiles/openai.rs b/lib/crates/fabro-agent/src/profiles/openai.rs
+index 74fc645d..d5eb54d4 100644
+--- a/lib/crates/fabro-agent/src/profiles/openai.rs
++++ b/lib/crates/fabro-agent/src/profiles/openai.rs
+@@ -7,7 +7,7 @@ use crate::skills::Skill;
+ use crate::tool_registry::ToolRegistry;
+ use crate::tools::{register_core_tools, WebFetchSummarizer};
+ use crate::v4a_patch::make_apply_patch_tool;
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ 
+ use super::EnvContext;
+ 
+@@ -191,7 +191,7 @@ in the project.";
+     }
+ 
+     fn capabilities(&self) -> ProfileCapabilities {
+-        let context_window_size = fabro_llm::catalog::get_model_info(self.model())
++        let context_window_size = fabro_model::get_model_info(self.model())
+             .map(|info| info.limits.context_window as usize)
+             .unwrap_or(128_000);
+         ProfileCapabilities {
+diff --git a/lib/crates/fabro-agent/src/provider_profile.rs b/lib/crates/fabro-agent/src/provider_profile.rs
+index 9aa81612..93c57f71 100644
+--- a/lib/crates/fabro-agent/src/provider_profile.rs
++++ b/lib/crates/fabro-agent/src/provider_profile.rs
+@@ -6,8 +6,8 @@ use crate::subagent::{
+     SubAgentManager,
+ };
+ use crate::tool_registry::ToolRegistry;
+-use fabro_llm::provider::Provider;
+ use fabro_llm::types::ToolDefinition;
++use fabro_model::Provider;
+ use std::sync::Arc;
+ 
+ /// Static capabilities of a provider profile.
+@@ -82,7 +82,7 @@ pub trait ProviderProfile: Send + Sync {
+ mod tests {
+     use super::*;
+     use crate::test_support::{MockSandbox, TestProfile};
+-    use fabro_llm::provider::Provider;
++    use fabro_model::Provider;
+ 
+     #[test]
+     fn profile_provider_and_model() {
+diff --git a/lib/crates/fabro-agent/src/session.rs b/lib/crates/fabro-agent/src/session.rs
+index 41de33cc..4fd442dc 100644
+--- a/lib/crates/fabro-agent/src/session.rs
++++ b/lib/crates/fabro-agent/src/session.rs
+@@ -901,7 +901,7 @@ impl Session {
+             temperature: None,
+             top_p: None,
+             max_tokens: self.config.max_tokens.or_else(|| {
+-                fabro_llm::catalog::get_model_info(self.provider_profile.model())
++                fabro_model::get_model_info(self.provider_profile.model())
+                     .and_then(|m| m.limits.max_output)
+             }),
+             stop_sequences: None,
+diff --git a/lib/crates/fabro-agent/src/test_support.rs b/lib/crates/fabro-agent/src/test_support.rs
+index 705ce264..91c97a61 100644
+--- a/lib/crates/fabro-agent/src/test_support.rs
++++ b/lib/crates/fabro-agent/src/test_support.rs
+@@ -10,8 +10,9 @@ use crate::tool_registry::ToolRegistry;
+ use async_trait::async_trait;
+ use fabro_llm::client::Client;
+ use fabro_llm::error::SdkError;
+-use fabro_llm::provider::{Provider, ProviderAdapter, StreamEventStream};
++use fabro_llm::provider::{ProviderAdapter, StreamEventStream};
+ use fabro_llm::types::{ContentPart, FinishReason, Message, Request, Response, StreamEvent, Usage};
++use fabro_model::Provider;
+ use std::collections::HashMap;
+ use std::sync::atomic::{AtomicUsize, Ordering};
+ use std::sync::{Arc, Mutex};
+diff --git a/lib/crates/fabro-agent/src/tools.rs b/lib/crates/fabro-agent/src/tools.rs
+index d6e8f110..f204dadb 100644
+--- a/lib/crates/fabro-agent/src/tools.rs
++++ b/lib/crates/fabro-agent/src/tools.rs
+@@ -2,8 +2,8 @@ use crate::config::SessionConfig;
+ use crate::sandbox::GrepOptions;
+ use crate::tool_registry::RegisteredTool;
+ use fabro_llm::client::Client;
+-use fabro_llm::provider::ModelId;
+ use fabro_llm::types::{Message, Request, ToolDefinition};
++use fabro_model::ModelId;
+ use std::borrow::Cow;
+ use std::fmt::Write;
+ use std::sync::Arc;
+@@ -1249,7 +1249,7 @@ mod tests {
+         let client = make_client(provider).await;
+         let summarizer = WebFetchSummarizer {
+             client,
+-            model_id: ModelId::new(fabro_llm::provider::Provider::Anthropic, "mock-model"),
++            model_id: ModelId::new(fabro_model::Provider::Anthropic, "mock-model"),
+         };
+ 
+         let tool = make_web_fetch_tool(Some(summarizer));
+@@ -1342,7 +1342,7 @@ mod tests {
+ 
+         let summarizer = WebFetchSummarizer {
+             client,
+-            model_id: ModelId::new(fabro_llm::provider::Provider::Anthropic, "target-model"),
++            model_id: ModelId::new(fabro_model::Provider::Anthropic, "target-model"),
+         };
+ 
+         let tool = make_web_fetch_tool(Some(summarizer));
+diff --git a/lib/crates/fabro-agent/tests/guardrails.rs b/lib/crates/fabro-agent/tests/guardrails.rs
+index 8da50568..e60f3e60 100644
+--- a/lib/crates/fabro-agent/tests/guardrails.rs
++++ b/lib/crates/fabro-agent/tests/guardrails.rs
+@@ -1,6 +1,6 @@
+ use fabro_agent::{AnthropicProfile, GeminiProfile, OpenAiProfile, ProviderProfile};
+-use fabro_llm::catalog;
+-use fabro_llm::provider::Provider;
++use fabro_model as catalog;
++use fabro_model::Provider;
+ 
+ #[test]
+ fn profile_context_window_matches_catalog_for_default_models() {
+diff --git a/lib/crates/fabro-api/Cargo.toml b/lib/crates/fabro-api/Cargo.toml
+index 620d73a3..c83d5158 100644
+--- a/lib/crates/fabro-api/Cargo.toml
++++ b/lib/crates/fabro-api/Cargo.toml
+@@ -18,6 +18,7 @@ fabro-sandbox = { path = "../fabro-sandbox", features = ["daytona"] }
+ fabro-github = { path = "../fabro-github" }
+ fabro-agent = { path = "../fabro-agent" }
+ fabro-llm = { path = "../fabro-llm" }
++fabro-model = { path = "../fabro-model" }
+ fabro-retro = { path = "../fabro-retro" }
+ fabro-util = { path = "../fabro-util" }
+ fabro-db = { path = "../fabro-db" }
+@@ -62,4 +63,4 @@ http-body-util = "0.1"
+ tempfile = "3"
+ openapiv3 = "2"
+ serde_yaml = "0.9"
+-fabro-sandbox = { path = "../fabro-sandbox", features = ["exe"] }
++fabro-sandbox = { path = "../fabro-sandbox", features = ["exe"] }
+\ No newline at end of file
+diff --git a/lib/crates/fabro-api/src/demo/mod.rs b/lib/crates/fabro-api/src/demo/mod.rs
+index 09df9765..f2653640 100644
+--- a/lib/crates/fabro-api/src/demo/mod.rs
++++ b/lib/crates/fabro-api/src/demo/mod.rs
+@@ -576,7 +576,7 @@ pub async fn list_models(
+     State(_state): State<Arc<AppState>>,
+     Query(pagination): Query<PaginationParams>,
+ ) -> Response {
+-    paginated_response(fabro_llm::catalog::list_models(None), &pagination)
++    paginated_response(fabro_model::list_models(None), &pagination)
+ }
+ 
+ // ── Settings ───────────────────────────────────────────────────────────
+diff --git a/lib/crates/fabro-api/src/serve.rs b/lib/crates/fabro-api/src/serve.rs
+index d263dbdc..0758a84d 100644
+--- a/lib/crates/fabro-api/src/serve.rs
++++ b/lib/crates/fabro-api/src/serve.rs
+@@ -2,7 +2,7 @@ use std::path::PathBuf;
+ use std::sync::{Arc, RwLock};
+ use std::time::Duration;
+ 
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ use fabro_util::terminal::Styles;
+ use tokio::net::TcpListener;
+ use tracing::{error, info, warn};
+@@ -291,13 +291,13 @@ fn resolve_model_provider(
+             // Look up default model from catalog for the given provider,
+             // falling back to the best provider with an API key configured.
+             provider_str
+-                .and_then(fabro_llm::catalog::default_model_for_provider)
+-                .unwrap_or_else(fabro_llm::catalog::default_model_from_env)
++                .and_then(fabro_model::default_model_for_provider)
++                .unwrap_or_else(fabro_model::default_model_from_env)
+                 .id
+         });
+ 
+     // Resolve model alias through catalog
+-    let (model, provider_str) = match fabro_llm::catalog::get_model_info(&model) {
++    let (model, provider_str) = match fabro_model::get_model_info(&model) {
+         Some(info) => (
+             info.id,
+             provider_str.map(|s| s.to_string()).or(Some(info.provider)),
+diff --git a/lib/crates/fabro-api/src/server.rs b/lib/crates/fabro-api/src/server.rs
+index 3fd2efee..8da054ac 100644
+--- a/lib/crates/fabro-api/src/server.rs
++++ b/lib/crates/fabro-api/src/server.rs
+@@ -1053,7 +1053,7 @@ async fn test_model(
+     State(state): State<Arc<AppState>>,
+     Path(id): Path<String>,
+ ) -> Response {
+-    let Some(info) = fabro_llm::catalog::get_model_info(&id) else {
++    let Some(info) = fabro_model::get_model_info(&id) else {
+         return ApiError::not_found(format!("Model not found: {id}")).into_response();
+     };
+ 
+@@ -1163,12 +1163,12 @@ async fn create_completion(
+ ) -> Response {
+     // Resolve model
+     let model_id = req.model.unwrap_or_else(|| {
+-        fabro_llm::catalog::list_models(None)
++        fabro_model::list_models(None)
+             .first()
+             .map_or_else(|| "claude-sonnet-4-5".to_string(), |m| m.id.clone())
+     });
+ 
+-    let catalog_info = fabro_llm::catalog::get_model_info(&model_id);
++    let catalog_info = fabro_model::get_model_info(&model_id);
+ 
+     // Resolve provider: explicit request > catalog > None
+     let provider_name = req
+diff --git a/lib/crates/fabro-api/src/sessions.rs b/lib/crates/fabro-api/src/sessions.rs
+index 2655cc3c..fcff3296 100644
+--- a/lib/crates/fabro-api/src/sessions.rs
++++ b/lib/crates/fabro-api/src/sessions.rs
+@@ -61,11 +61,11 @@ fn generate_title(content: &str) -> String {
+ 
+ fn resolve_model(model_arg: Option<String>) -> (String, Option<String>) {
+     let raw = model_arg.unwrap_or_else(|| {
+-        fabro_llm::catalog::list_models(None)
++        fabro_model::list_models(None)
+             .first()
+             .map_or_else(|| "claude-sonnet-4-5".to_string(), |m| m.id.clone())
+     });
+-    match fabro_llm::catalog::get_model_info(&raw) {
++    match fabro_model::get_model_info(&raw) {
+         Some(info) => (info.id, Some(info.provider)),
+         None => (raw, None),
+     }
+diff --git a/lib/crates/fabro-cli/Cargo.toml b/lib/crates/fabro-cli/Cargo.toml
+index aa273a8e..0ac56450 100644
+--- a/lib/crates/fabro-cli/Cargo.toml
++++ b/lib/crates/fabro-cli/Cargo.toml
+@@ -18,6 +18,7 @@ sleep_inhibitor = ["dep:fabro-beastie"]
+ [dependencies]
+ fabro-config = { path = "../fabro-config" }
+ fabro-llm = { path = "../fabro-llm" }
++fabro-model = { path = "../fabro-model" }
+ fabro-openai-oauth = { path = "../fabro-openai-oauth" }
+ fabro-github = { path = "../fabro-github" }
+ fabro-agent = { path = "../fabro-agent" }
+@@ -87,4 +88,4 @@ predicates = "3"
+ serde_json.workspace = true
+ tempfile = "3"
+ httpmock = "0.8"
+-trycmd = "0.15"
++trycmd = "0.15"
+\ No newline at end of file
+diff --git a/lib/crates/fabro-cli/src/commands/pr.rs b/lib/crates/fabro-cli/src/commands/pr.rs
+index ea58023d..c66ff5e5 100644
+--- a/lib/crates/fabro-cli/src/commands/pr.rs
++++ b/lib/crates/fabro-cli/src/commands/pr.rs
+@@ -385,7 +385,7 @@ async fn create_from(
+ 
+     let model = args
+         .model
+-        .unwrap_or_else(|| fabro_llm::catalog::default_model_from_env().id);
++        .unwrap_or_else(|| fabro_model::default_model_from_env().id);
+ 
+     let record = fabro_workflows::pull_request::maybe_open_pull_request(
+         &creds,
+diff --git a/lib/crates/fabro-cli/src/commands/provider.rs b/lib/crates/fabro-cli/src/commands/provider.rs
+index 3145c701..3d89fc23 100644
+--- a/lib/crates/fabro-cli/src/commands/provider.rs
++++ b/lib/crates/fabro-cli/src/commands/provider.rs
+@@ -1,6 +1,6 @@
+ use anyhow::{Context, Result};
+ use clap::Args;
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ use fabro_util::terminal::Styles;
+ 
+ use crate::provider_auth;
+diff --git a/lib/crates/fabro-cli/src/commands/run.rs b/lib/crates/fabro-cli/src/commands/run.rs
+index da58742f..8bfa9d51 100644
+--- a/lib/crates/fabro-cli/src/commands/run.rs
++++ b/lib/crates/fabro-cli/src/commands/run.rs
+@@ -11,7 +11,7 @@ use fabro_agent::{DockerSandbox, DockerSandboxConfig, LocalSandbox, Sandbox};
+ use fabro_config::run::{RunDefaults, WorkflowRunConfig};
+ use fabro_config::{project as project_config, run as run_config, sandbox as sandbox_config};
+ use fabro_interview::{AutoApproveInterviewer, ConsoleInterviewer, Interviewer};
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ use fabro_util::terminal::Styles;
+ use fabro_validate::Severity;
+ use fabro_workflows::backend::{AgentApiBackend, AgentCliBackend, BackendRouter};
+@@ -208,13 +208,13 @@ fn resolve_model_provider(
+         .unwrap_or_else(|| {
+             provider
+                 .as_deref()
+-                .and_then(fabro_llm::catalog::default_model_for_provider)
+-                .unwrap_or_else(fabro_llm::catalog::default_model_from_env)
++                .and_then(fabro_model::default_model_for_provider)
++                .unwrap_or_else(fabro_model::default_model_from_env)
+                 .id
+         });
+ 
+     // Resolve model alias through catalog
+-    match fabro_llm::catalog::get_model_info(&model) {
++    match fabro_model::get_model_info(&model) {
+         Some(info) => (info.id, provider.or(Some(info.provider))),
+         None => (model, provider),
+     }
+@@ -357,13 +357,13 @@ fn resolve_fallback_chain(
+     provider: Provider,
+     model: &str,
+     run_cfg: Option<&WorkflowRunConfig>,
+-) -> Vec<fabro_llm::catalog::FallbackTarget> {
++) -> Vec<fabro_model::FallbackTarget> {
+     let fallbacks = run_cfg
+         .and_then(|c| c.llm.as_ref())
+         .and_then(|l| l.fallbacks.as_ref());
+ 
+     match fallbacks {
+-        Some(map) => fabro_llm::catalog::build_fallback_chain(provider.as_str(), model, map),
++        Some(map) => fabro_model::build_fallback_chain(provider.as_str(), model, map),
+         None => Vec::new(),
+     }
+ }
+@@ -1893,14 +1893,14 @@ async fn run_from_branch(
+ 
+     let model = args
+         .model
+-        .unwrap_or_else(|| fabro_llm::catalog::default_model_from_env().id);
++        .unwrap_or_else(|| fabro_model::default_model_from_env().id);
+     let provider_enum = args
+         .provider
+         .as_deref()
+-        .map(|s| s.parse::<fabro_llm::provider::Provider>())
++        .map(|s| s.parse::<fabro_model::Provider>())
+         .transpose()
+         .map_err(|e| anyhow::anyhow!("{e}"))?
+-        .unwrap_or_else(fabro_llm::provider::Provider::default_from_env);
++        .unwrap_or_else(fabro_model::Provider::default_from_env);
+ 
+     // No fallback config available for branch resume; use empty chain.
+     let fallback_chain = Vec::new();
+@@ -2281,7 +2281,7 @@ async fn run_preflight(
+ 
+                 // Resolve through catalog to get canonical model ID and provider
+                 let (resolved_model, resolved_provider) =
+-                    if let Some(info) = fabro_llm::catalog::get_model_info(node_model) {
++                    if let Some(info) = fabro_model::get_model_info(node_model) {
+                         (info.id, info.provider)
+                     } else {
+                         (node_model.to_string(), node_provider.to_string())
+@@ -2300,7 +2300,7 @@ async fn run_preflight(
+             // If no LLM nodes found, fall back to the default model/provider
+             if model_providers.is_empty() {
+                 let (resolved_model, resolved_provider) =
+-                    if let Some(info) = fabro_llm::catalog::get_model_info(&model) {
++                    if let Some(info) = fabro_model::get_model_info(&model) {
+                         (info.id, info.provider)
+                     } else {
+                         (model.clone(), default_provider.to_string())
+diff --git a/lib/crates/fabro-cli/src/doctor.rs b/lib/crates/fabro-cli/src/doctor.rs
+index 3deb71d0..1747f40d 100644
+--- a/lib/crates/fabro-cli/src/doctor.rs
++++ b/lib/crates/fabro-cli/src/doctor.rs
+@@ -6,7 +6,7 @@ use std::sync::LazyLock;
+ 
+ #[cfg(feature = "server")]
+ use fabro_config::server::{ApiAuthStrategy, AuthProvider};
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ pub use fabro_util::check_report::{
+     CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus,
+ };
+@@ -856,7 +856,7 @@ async fn probe_daytona() -> Option<Result<(), String>> {
+ }
+ 
+ pub(crate) fn probe_model(provider: Provider) -> String {
+-    fabro_llm::catalog::probe_model_for_provider(provider.as_str())
++    fabro_model::probe_model_for_provider(provider.as_str())
+         .map(|m| m.id)
+         .unwrap_or_else(|| format!("unknown-{}", provider.as_str()))
+ }
+diff --git a/lib/crates/fabro-cli/src/install.rs b/lib/crates/fabro-cli/src/install.rs
+index a401a0aa..55b21b02 100644
+--- a/lib/crates/fabro-cli/src/install.rs
++++ b/lib/crates/fabro-cli/src/install.rs
+@@ -9,7 +9,7 @@ use axum::extract::Query;
+ use axum::response::Html;
+ use axum::routing::get;
+ use dialoguer::{MultiSelect, Select};
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ use fabro_util::terminal::Styles;
+ use rand::Rng;
+ use tokio::net::TcpListener;
+diff --git a/lib/crates/fabro-cli/src/main.rs b/lib/crates/fabro-cli/src/main.rs
+index 6a4a9ea5..91659c72 100644
+--- a/lib/crates/fabro-cli/src/main.rs
++++ b/lib/crates/fabro-cli/src/main.rs
+@@ -952,7 +952,7 @@ mod tests {
+             Command::Provider {
+                 command: ProviderCommand::Login(args),
+             } => {
+-                assert_eq!(args.provider, fabro_llm::provider::Provider::OpenAi);
++                assert_eq!(args.provider, fabro_model::Provider::OpenAi);
+             }
+             _ => panic!("unexpected command variant"),
+         }
+@@ -966,7 +966,7 @@ mod tests {
+             Command::Provider {
+                 command: ProviderCommand::Login(args),
+             } => {
+-                assert_eq!(args.provider, fabro_llm::provider::Provider::Anthropic);
++                assert_eq!(args.provider, fabro_model::Provider::Anthropic);
+             }
+             _ => panic!("unexpected command variant"),
+         }
+diff --git a/lib/crates/fabro-cli/src/provider_auth.rs b/lib/crates/fabro-cli/src/provider_auth.rs
+index ba8b89f8..83b691f5 100644
+--- a/lib/crates/fabro-cli/src/provider_auth.rs
++++ b/lib/crates/fabro-cli/src/provider_auth.rs
+@@ -2,7 +2,7 @@ use std::path::Path;
+ 
+ use anyhow::Result;
+ use dialoguer::{Confirm, Password};
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ use fabro_util::terminal::Styles;
+ 
+ use crate::doctor;
+diff --git a/lib/crates/fabro-hooks/Cargo.toml b/lib/crates/fabro-hooks/Cargo.toml
+index 377f4238..9f88953f 100644
+--- a/lib/crates/fabro-hooks/Cargo.toml
++++ b/lib/crates/fabro-hooks/Cargo.toml
+@@ -12,6 +12,7 @@ doctest = false
+ fabro-agent = { path = "../fabro-agent" }
+ fabro-config = { path = "../fabro-config" }
+ fabro-llm = { path = "../fabro-llm" }
++fabro-model = { path = "../fabro-model" }
+ fabro-util = { path = "../fabro-util" }
+ serde.workspace = true
+ serde_json.workspace = true
+@@ -25,4 +26,4 @@ tokio-util.workspace = true
+ [dev-dependencies]
+ mockito = "1"
+ tokio = { workspace = true, features = ["test-util", "macros"] }
+-toml.workspace = true
++toml.workspace = true
+\ No newline at end of file
+diff --git a/lib/crates/fabro-hooks/src/executor.rs b/lib/crates/fabro-hooks/src/executor.rs
+index 12b0b9a3..4d63e6da 100644
+--- a/lib/crates/fabro-hooks/src/executor.rs
++++ b/lib/crates/fabro-hooks/src/executor.rs
+@@ -218,7 +218,7 @@ impl HookExecutorImpl {
+     /// Resolve a model alias (e.g. "haiku") to a concrete model ID.
+     fn resolve_model(model: &Option<String>) -> String {
+         let model_id = model.as_deref().unwrap_or("haiku");
+-        let model_info = fabro_llm::catalog::get_model_info(model_id);
++        let model_info = fabro_model::get_model_info(model_id);
+         model_info
+             .as_ref()
+             .map_or(model_id, |m| m.id.as_str())
+diff --git a/lib/crates/fabro-llm/Cargo.toml b/lib/crates/fabro-llm/Cargo.toml
+index cd8e70bc..2d87759d 100644
+--- a/lib/crates/fabro-llm/Cargo.toml
++++ b/lib/crates/fabro-llm/Cargo.toml
+@@ -31,6 +31,7 @@ cli-table.workspace = true
+ clap.workspace = true
+ dialoguer.workspace = true
+ tracing.workspace = true
++fabro-model = { path = "../fabro-model" }
+ fabro-util = { path = "../fabro-util" }
+ 
+ [dev-dependencies]
+@@ -39,4 +40,4 @@ insta = { workspace = true }
+ tokio = { workspace = true, features = ["test-util", "macros"] }
+ dotenvy.workspace = true
+ httpmock = "0.8"
+-serde_json.workspace = true
++serde_json.workspace = true
+\ No newline at end of file
+diff --git a/lib/crates/fabro-llm/src/cli.rs b/lib/crates/fabro-llm/src/cli.rs
+index d9afae73..6b18a80f 100644
+--- a/lib/crates/fabro-llm/src/cli.rs
++++ b/lib/crates/fabro-llm/src/cli.rs
+@@ -13,9 +13,11 @@ use serde::Deserialize;
+ 
+ use fabro_util::terminal::Styles;
+ 
+-use crate::catalog;
++use fabro_model as catalog;
++
+ use crate::generate::{self, GenerateParams};
+-use crate::types::{Message, ModelInfo};
++use crate::types::Message;
++use fabro_model::ModelInfo;
+ 
+ pub struct ServerConnection {
+     pub client: reqwest::Client,
+diff --git a/lib/crates/fabro-llm/src/client.rs b/lib/crates/fabro-llm/src/client.rs
+index 50e6774f..5fb60337 100644
+--- a/lib/crates/fabro-llm/src/client.rs
++++ b/lib/crates/fabro-llm/src/client.rs
+@@ -144,7 +144,7 @@ impl Client {
+     /// Resolve the provider for a request.
+     fn resolve_provider(&self, request: &Request) -> Result<Arc<dyn ProviderAdapter>, SdkError> {
+         let catalog_provider =
+-            crate::catalog::get_model_info(&request.model).map(|info| info.provider);
++            fabro_model::get_model_info(&request.model).map(|info| info.provider);
+ 
+         let provider_name = request
+             .provider
+diff --git a/lib/crates/fabro-llm/src/lib.rs b/lib/crates/fabro-llm/src/lib.rs
+index a519031e..ecc6dfbd 100644
+--- a/lib/crates/fabro-llm/src/lib.rs
++++ b/lib/crates/fabro-llm/src/lib.rs
+@@ -1,4 +1,3 @@
+-pub mod catalog;
+ pub mod cli;
+ pub mod client;
+ pub mod error;
+@@ -11,5 +10,5 @@ pub mod tools;
+ pub mod types;
+ 
+ // Re-export module-level default client helpers (Section 2.5).
++pub use fabro_model::{ModelId, Provider};
+ pub use generate::set_default_client;
+-pub use provider::{ModelId, Provider};
+diff --git a/lib/crates/fabro-llm/src/provider.rs b/lib/crates/fabro-llm/src/provider.rs
+index 5f19e6af..c891f146 100644
+--- a/lib/crates/fabro-llm/src/provider.rs
++++ b/lib/crates/fabro-llm/src/provider.rs
+@@ -1,149 +1,9 @@
+ use crate::error::SdkError;
+ use crate::types::{Request, Response, StreamEvent, ToolChoice};
+ use futures::Stream;
+-use serde::{Deserialize, Serialize};
+-use std::fmt;
+ use std::pin::Pin;
+-use std::str::FromStr;
+ 
+-// ---------------------------------------------------------------------------
+-// Provider enum — compile-time safe provider identity
+-// ---------------------------------------------------------------------------
+-
+-/// Known LLM provider variants.
+-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+-#[serde(rename_all = "snake_case")]
+-pub enum Provider {
+-    Anthropic,
+-    OpenAi,
+-    Gemini,
+-    Kimi,
+-    Zai,
+-    Minimax,
+-    Inception,
+-}
+-
+-impl Provider {
+-    /// All known provider variants, for use in guardrail tests and iteration.
+-    pub const ALL: &[Provider] = &[
+-        Provider::Anthropic,
+-        Provider::OpenAi,
+-        Provider::Gemini,
+-        Provider::Kimi,
+-        Provider::Zai,
+-        Provider::Minimax,
+-        Provider::Inception,
+-    ];
+-
+-    /// Environment variable names that can provide the API key for this provider.
+-    /// Gemini accepts either `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
+-    #[must_use]
+-    pub fn api_key_env_vars(self) -> &'static [&'static str] {
+-        match self {
+-            Self::Anthropic => &["ANTHROPIC_API_KEY"],
+-            Self::OpenAi => &["OPENAI_API_KEY"],
+-            Self::Gemini => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+-            Self::Kimi => &["KIMI_API_KEY"],
+-            Self::Zai => &["ZAI_API_KEY"],
+-            Self::Minimax => &["MINIMAX_API_KEY"],
+-            Self::Inception => &["INCEPTION_API_KEY"],
+-        }
+-    }
+-
+-    /// Returns `true` if at least one of the provider's API key env vars is set.
+-    #[must_use]
+-    pub fn has_api_key(self) -> bool {
+-        self.api_key_env_vars()
+-            .iter()
+-            .any(|var| std::env::var(var).is_ok())
+-    }
+-
+-    /// Pick the best default provider based on which API keys are available.
+-    ///
+-    /// Checks Anthropic → OpenAI → Gemini; falls back to Anthropic if none
+-    /// have a key configured.
+-    #[must_use]
+-    pub fn default_from_env() -> Self {
+-        Self::default_with(Self::has_api_key)
+-    }
+-
+-    /// Testable core of [`default_from_env`]: walks the precedence list and
+-    /// returns the first provider for which `is_configured` returns `true`.
+-    fn default_with(is_configured: impl Fn(Self) -> bool) -> Self {
+-        const PRECEDENCE: [Provider; 3] = [Provider::Anthropic, Provider::OpenAi, Provider::Gemini];
+-        PRECEDENCE
+-            .iter()
+-            .copied()
+-            .find(|&p| is_configured(p))
+-            .unwrap_or(Provider::Anthropic)
+-    }
+-
+-    /// Stable lowercase string representation used in `Request.provider`,
+-    /// adapter names, and other serialization boundaries.
+-    #[must_use]
+-    pub fn as_str(self) -> &'static str {
+-        match self {
+-            Self::Anthropic => "anthropic",
+-            Self::OpenAi => "openai",
+-            Self::Gemini => "gemini",
+-            Self::Kimi => "kimi",
+-            Self::Zai => "zai",
+-            Self::Minimax => "minimax",
+-            Self::Inception => "inception",
+-        }
+-    }
+-}
+-
+-impl fmt::Display for Provider {
+-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        f.write_str(self.as_str())
+-    }
+-}
+-
+-impl FromStr for Provider {
+-    type Err = String;
+-
+-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+-        match s {
+-            "anthropic" => Ok(Self::Anthropic),
+-            "openai" | "open_ai" => Ok(Self::OpenAi),
+-            "gemini" => Ok(Self::Gemini),
+-            "kimi" => Ok(Self::Kimi),
+-            "zai" => Ok(Self::Zai),
+-            "minimax" => Ok(Self::Minimax),
+-            "inception" | "inception_labs" => Ok(Self::Inception),
+-            other => Err(format!("unknown provider: {other}")),
+-        }
+-    }
+-}
+-
+-// ---------------------------------------------------------------------------
+-// ModelId — bundles a provider with a model name
+-// ---------------------------------------------------------------------------
+-
+-/// A model identifier that pairs a [`Provider`] with the provider-specific
+-/// model name (e.g. `"claude-opus-4-6"` or `"gpt-4o-mini"`).
+-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+-pub struct ModelId {
+-    pub provider: Provider,
+-    pub model: String,
+-}
+-
+-impl ModelId {
+-    #[must_use]
+-    pub fn new(provider: Provider, model: impl Into<String>) -> Self {
+-        Self {
+-            provider,
+-            model: model.into(),
+-        }
+-    }
+-}
+-
+-impl fmt::Display for ModelId {
+-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}:{}", self.provider, self.model)
+-    }
+-}
++pub use fabro_model::{ModelId, Provider};
+ 
+ // ---------------------------------------------------------------------------
+ // ProviderAdapter trait
+@@ -209,145 +69,6 @@ pub fn validate_tool_choice(
+ mod tests {
+     use super::*;
+ 
+-    #[test]
+-    fn parse_kimi() {
+-        assert_eq!("kimi".parse::<Provider>().unwrap(), Provider::Kimi);
+-    }
+-
+-    #[test]
+-    fn parse_zai() {
+-        assert_eq!("zai".parse::<Provider>().unwrap(), Provider::Zai);
+-    }
+-
+-    #[test]
+-    fn parse_minimax() {
+-        assert_eq!("minimax".parse::<Provider>().unwrap(), Provider::Minimax);
+-    }
+-
+-    #[test]
+-    fn kimi_as_str() {
+-        assert_eq!(Provider::Kimi.as_str(), "kimi");
+-    }
+-
+-    #[test]
+-    fn zai_as_str() {
+-        assert_eq!(Provider::Zai.as_str(), "zai");
+-    }
+-
+-    #[test]
+-    fn minimax_as_str() {
+-        assert_eq!(Provider::Minimax.as_str(), "minimax");
+-    }
+-
+-    #[test]
+-    fn parse_inception() {
+-        assert_eq!(
+-            "inception".parse::<Provider>().unwrap(),
+-            Provider::Inception
+-        );
+-        assert_eq!(
+-            "inception_labs".parse::<Provider>().unwrap(),
+-            Provider::Inception
+-        );
+-    }
+-
+-    #[test]
+-    fn inception_as_str() {
+-        assert_eq!(Provider::Inception.as_str(), "inception");
+-    }
+-
+-    #[test]
+-    fn default_with_all_configured_prefers_anthropic() {
+-        assert_eq!(Provider::default_with(|_| true), Provider::Anthropic);
+-    }
+-
+-    #[test]
+-    fn default_with_only_openai() {
+-        assert_eq!(
+-            Provider::default_with(|p| p == Provider::OpenAi),
+-            Provider::OpenAi
+-        );
+-    }
+-
+-    #[test]
+-    fn default_with_only_gemini() {
+-        assert_eq!(
+-            Provider::default_with(|p| p == Provider::Gemini),
+-            Provider::Gemini
+-        );
+-    }
+-
+-    #[test]
+-    fn default_with_openai_and_gemini_prefers_openai() {
+-        assert_eq!(
+-            Provider::default_with(|p| p == Provider::OpenAi || p == Provider::Gemini),
+-            Provider::OpenAi,
+-        );
+-    }
+-
+-    #[test]
+-    fn default_with_none_configured_falls_back_to_anthropic() {
+-        assert_eq!(Provider::default_with(|_| false), Provider::Anthropic);
+-    }
+-
+-    #[test]
+-    fn default_with_only_kimi_falls_back_to_anthropic() {
+-        assert_eq!(
+-            Provider::default_with(|p| p == Provider::Kimi),
+-            Provider::Anthropic
+-        );
+-    }
+-
+-    #[test]
+-    fn api_key_env_vars_anthropic() {
+-        assert_eq!(
+-            Provider::Anthropic.api_key_env_vars(),
+-            &["ANTHROPIC_API_KEY"]
+-        );
+-    }
+-
+-    #[test]
+-    fn api_key_env_vars_openai() {
+-        assert_eq!(Provider::OpenAi.api_key_env_vars(), &["OPENAI_API_KEY"]);
+-    }
+-
+-    #[test]
+-    fn api_key_env_vars_gemini_has_two() {
+-        let vars = Provider::Gemini.api_key_env_vars();
+-        assert_eq!(vars.len(), 2);
+-        assert_eq!(vars, &["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
+-    }
+-
+-    #[test]
+-    fn api_key_env_vars_kimi() {
+-        assert_eq!(Provider::Kimi.api_key_env_vars(), &["KIMI_API_KEY"]);
+-    }
+-
+-    #[test]
+-    fn api_key_env_vars_zai() {
+-        assert_eq!(Provider::Zai.api_key_env_vars(), &["ZAI_API_KEY"]);
+-    }
+-
+-    #[test]
+-    fn api_key_env_vars_minimax() {
+-        assert_eq!(Provider::Minimax.api_key_env_vars(), &["MINIMAX_API_KEY"]);
+-    }
+-
+-    #[test]
+-    fn api_key_env_vars_inception() {
+-        assert_eq!(
+-            Provider::Inception.api_key_env_vars(),
+-            &["INCEPTION_API_KEY"]
+-        );
+-    }
+-
+-    #[test]
+-    fn every_provider_has_at_least_one_env_var() {
+-        assert!(Provider::ALL
+-            .iter()
+-            .all(|p| !p.api_key_env_vars().is_empty()));
+-    }
+-
+     // Mock adapter that supports all tool choices
+     struct MockAdapter;
+ 
+diff --git a/lib/crates/fabro-llm/src/providers/anthropic.rs b/lib/crates/fabro-llm/src/providers/anthropic.rs
+index 38dd9712..638b81e9 100644
+--- a/lib/crates/fabro-llm/src/providers/anthropic.rs
++++ b/lib/crates/fabro-llm/src/providers/anthropic.rs
+@@ -1078,7 +1078,7 @@ fn build_api_request(
+         max_tokens: request
+             .max_tokens
+             .or_else(|| {
+-                crate::catalog::get_model_info(&request.model).and_then(|m| m.limits.max_output)
++                fabro_model::get_model_info(&request.model).and_then(|m| m.limits.max_output)
+             })
+             .unwrap_or(65536),
+         system: system_value,
+diff --git a/lib/crates/fabro-llm/src/types.rs b/lib/crates/fabro-llm/src/types.rs
+index 4706f5f8..05f78245 100644
+--- a/lib/crates/fabro-llm/src/types.rs
++++ b/lib/crates/fabro-llm/src/types.rs
+@@ -636,43 +636,9 @@ impl StreamEvent {
+     }
+ }
+ 
+-// --- 2.9 ModelInfo ---
++// --- 2.9 ModelInfo (re-exported from fabro-model) ---
+ 
+-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+-pub struct ModelLimits {
+-    pub context_window: i64,
+-    pub max_output: Option<i64>,
+-}
+-
+-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+-pub struct ModelFeatures {
+-    pub tools: bool,
+-    pub vision: bool,
+-    pub reasoning: bool,
+-}
+-
+-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+-pub struct ModelCosts {
+-    pub input_cost_per_mtok: Option<f64>,
+-    pub output_cost_per_mtok: Option<f64>,
+-    pub cache_input_cost_per_mtok: Option<f64>,
+-}
+-
+-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+-pub struct ModelInfo {
+-    pub id: String,
+-    pub provider: String,
+-    pub family: String,
+-    pub display_name: String,
+-    pub limits: ModelLimits,
+-    pub training: Option<String>,
+-    pub features: ModelFeatures,
+-    pub costs: ModelCosts,
+-    pub estimated_output_tps: Option<f64>,
+-    pub aliases: Vec<String>,
+-    #[serde(default)]
+-    pub default: bool,
+-}
++pub use fabro_model::{ModelCosts, ModelFeatures, ModelInfo, ModelLimits};
+ 
+ // --- 4.7 Timeouts ---
+ 
+diff --git a/lib/crates/fabro-model/Cargo.toml b/lib/crates/fabro-model/Cargo.toml
+new file mode 100644
+index 00000000..6c80932c
+--- /dev/null
++++ b/lib/crates/fabro-model/Cargo.toml
+@@ -0,0 +1,16 @@
++[package]
++name = "fabro-model"
++edition.workspace = true
++version.workspace = true
++license.workspace = true
++description = "LLM model catalog: provider identity, model metadata, and resolution"
++
++[lib]
++doctest = false
++
++[dependencies]
++serde.workspace = true
++serde_json.workspace = true
++
++[dev-dependencies]
++insta.workspace = true
+diff --git a/lib/crates/fabro-llm/src/catalog.json b/lib/crates/fabro-model/src/catalog.json
+similarity index 100%
+rename from lib/crates/fabro-llm/src/catalog.json
+rename to lib/crates/fabro-model/src/catalog.json
+diff --git a/lib/crates/fabro-llm/src/catalog.rs b/lib/crates/fabro-model/src/catalog.rs
+similarity index 100%
+rename from lib/crates/fabro-llm/src/catalog.rs
+rename to lib/crates/fabro-model/src/catalog.rs
+diff --git a/lib/crates/fabro-model/src/lib.rs b/lib/crates/fabro-model/src/lib.rs
+new file mode 100644
+index 00000000..8913772e
+--- /dev/null
++++ b/lib/crates/fabro-model/src/lib.rs
+@@ -0,0 +1,10 @@
++pub mod catalog;
++pub mod provider;
++pub mod types;
++
++pub use catalog::{
++    build_fallback_chain, closest_model, default_model, default_model_for_provider,
++    default_model_from_env, get_model_info, list_models, probe_model_for_provider, FallbackTarget,
++};
++pub use provider::{ModelId, Provider};
++pub use types::{ModelCosts, ModelFeatures, ModelInfo, ModelLimits};
+diff --git a/lib/crates/fabro-model/src/provider.rs b/lib/crates/fabro-model/src/provider.rs
+new file mode 100644
+index 00000000..e7f33093
+--- /dev/null
++++ b/lib/crates/fabro-model/src/provider.rs
+@@ -0,0 +1,286 @@
++use serde::{Deserialize, Serialize};
++use std::fmt;
++use std::str::FromStr;
++
++// ---------------------------------------------------------------------------
++// Provider enum — compile-time safe provider identity
++// ---------------------------------------------------------------------------
++
++/// Known LLM provider variants.
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Provider {
++    Anthropic,
++    OpenAi,
++    Gemini,
++    Kimi,
++    Zai,
++    Minimax,
++    Inception,
++}
++
++impl Provider {
++    /// All known provider variants, for use in guardrail tests and iteration.
++    pub const ALL: &[Provider] = &[
++        Provider::Anthropic,
++        Provider::OpenAi,
++        Provider::Gemini,
++        Provider::Kimi,
++        Provider::Zai,
++        Provider::Minimax,
++        Provider::Inception,
++    ];
++
++    /// Environment variable names that can provide the API key for this provider.
++    /// Gemini accepts either `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
++    #[must_use]
++    pub fn api_key_env_vars(self) -> &'static [&'static str] {
++        match self {
++            Self::Anthropic => &["ANTHROPIC_API_KEY"],
++            Self::OpenAi => &["OPENAI_API_KEY"],
++            Self::Gemini => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
++            Self::Kimi => &["KIMI_API_KEY"],
++            Self::Zai => &["ZAI_API_KEY"],
++            Self::Minimax => &["MINIMAX_API_KEY"],
++            Self::Inception => &["INCEPTION_API_KEY"],
++        }
++    }
++
++    /// Returns `true` if at least one of the provider's API key env vars is set.
++    #[must_use]
++    pub fn has_api_key(self) -> bool {
++        self.api_key_env_vars()
++            .iter()
++            .any(|var| std::env::var(var).is_ok())
++    }
++
++    /// Pick the best default provider based on which API keys are available.
++    ///
++    /// Checks Anthropic → OpenAI → Gemini; falls back to Anthropic if none
++    /// have a key configured.
++    #[must_use]
++    pub fn default_from_env() -> Self {
++        Self::default_with(Self::has_api_key)
++    }
++
++    /// Testable core of [`default_from_env`]: walks the precedence list and
++    /// returns the first provider for which `is_configured` returns `true`.
++    fn default_with(is_configured: impl Fn(Self) -> bool) -> Self {
++        const PRECEDENCE: [Provider; 3] = [Provider::Anthropic, Provider::OpenAi, Provider::Gemini];
++        PRECEDENCE
++            .iter()
++            .copied()
++            .find(|&p| is_configured(p))
++            .unwrap_or(Provider::Anthropic)
++    }
++
++    /// Stable lowercase string representation used in `Request.provider`,
++    /// adapter names, and other serialization boundaries.
++    #[must_use]
++    pub fn as_str(self) -> &'static str {
++        match self {
++            Self::Anthropic => "anthropic",
++            Self::OpenAi => "openai",
++            Self::Gemini => "gemini",
++            Self::Kimi => "kimi",
++            Self::Zai => "zai",
++            Self::Minimax => "minimax",
++            Self::Inception => "inception",
++        }
++    }
++}
++
++impl fmt::Display for Provider {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        f.write_str(self.as_str())
++    }
++}
++
++impl FromStr for Provider {
++    type Err = String;
++
++    fn from_str(s: &str) -> Result<Self, Self::Err> {
++        match s {
++            "anthropic" => Ok(Self::Anthropic),
++            "openai" | "open_ai" => Ok(Self::OpenAi),
++            "gemini" => Ok(Self::Gemini),
++            "kimi" => Ok(Self::Kimi),
++            "zai" => Ok(Self::Zai),
++            "minimax" => Ok(Self::Minimax),
++            "inception" | "inception_labs" => Ok(Self::Inception),
++            other => Err(format!("unknown provider: {other}")),
++        }
++    }
++}
++
++// ---------------------------------------------------------------------------
++// ModelId — bundles a provider with a model name
++// ---------------------------------------------------------------------------
++
++/// A model identifier that pairs a [`Provider`] with the provider-specific
++/// model name (e.g. `"claude-opus-4-6"` or `"gpt-4o-mini"`).
++#[derive(Debug, Clone, PartialEq, Eq, Hash)]
++pub struct ModelId {
++    pub provider: Provider,
++    pub model: String,
++}
++
++impl ModelId {
++    #[must_use]
++    pub fn new(provider: Provider, model: impl Into<String>) -> Self {
++        Self {
++            provider,
++            model: model.into(),
++        }
++    }
++}
++
++impl fmt::Display for ModelId {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        write!(f, "{}:{}", self.provider, self.model)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn parse_kimi() {
++        assert_eq!("kimi".parse::<Provider>().unwrap(), Provider::Kimi);
++    }
++
++    #[test]
++    fn parse_zai() {
++        assert_eq!("zai".parse::<Provider>().unwrap(), Provider::Zai);
++    }
++
++    #[test]
++    fn parse_minimax() {
++        assert_eq!("minimax".parse::<Provider>().unwrap(), Provider::Minimax);
++    }
++
++    #[test]
++    fn kimi_as_str() {
++        assert_eq!(Provider::Kimi.as_str(), "kimi");
++    }
++
++    #[test]
++    fn zai_as_str() {
++        assert_eq!(Provider::Zai.as_str(), "zai");
++    }
++
++    #[test]
++    fn minimax_as_str() {
++        assert_eq!(Provider::Minimax.as_str(), "minimax");
++    }
++
++    #[test]
++    fn parse_inception() {
++        assert_eq!(
++            "inception".parse::<Provider>().unwrap(),
++            Provider::Inception
++        );
++        assert_eq!(
++            "inception_labs".parse::<Provider>().unwrap(),
++            Provider::Inception
++        );
++    }
++
++    #[test]
++    fn inception_as_str() {
++        assert_eq!(Provider::Inception.as_str(), "inception");
++    }
++
++    #[test]
++    fn default_with_all_configured_prefers_anthropic() {
++        assert_eq!(Provider::default_with(|_| true), Provider::Anthropic);
++    }
++
++    #[test]
++    fn default_with_only_openai() {
++        assert_eq!(
++            Provider::default_with(|p| p == Provider::OpenAi),
++            Provider::OpenAi
++        );
++    }
++
++    #[test]
++    fn default_with_only_gemini() {
++        assert_eq!(
++            Provider::default_with(|p| p == Provider::Gemini),
++            Provider::Gemini
++        );
++    }
++
++    #[test]
++    fn default_with_openai_and_gemini_prefers_openai() {
++        assert_eq!(
++            Provider::default_with(|p| p == Provider::OpenAi || p == Provider::Gemini),
++            Provider::OpenAi,
++        );
++    }
++
++    #[test]
++    fn default_with_none_configured_falls_back_to_anthropic() {
++        assert_eq!(Provider::default_with(|_| false), Provider::Anthropic);
++    }
++
++    #[test]
++    fn default_with_only_kimi_falls_back_to_anthropic() {
++        assert_eq!(
++            Provider::default_with(|p| p == Provider::Kimi),
++            Provider::Anthropic
++        );
++    }
++
++    #[test]
++    fn api_key_env_vars_anthropic() {
++        assert_eq!(
++            Provider::Anthropic.api_key_env_vars(),
++            &["ANTHROPIC_API_KEY"]
++        );
++    }
++
++    #[test]
++    fn api_key_env_vars_openai() {
++        assert_eq!(Provider::OpenAi.api_key_env_vars(), &["OPENAI_API_KEY"]);
++    }
++
++    #[test]
++    fn api_key_env_vars_gemini_has_two() {
++        let vars = Provider::Gemini.api_key_env_vars();
++        assert_eq!(vars.len(), 2);
++        assert_eq!(vars, &["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
++    }
++
++    #[test]
++    fn api_key_env_vars_kimi() {
++        assert_eq!(Provider::Kimi.api_key_env_vars(), &["KIMI_API_KEY"]);
++    }
++
++    #[test]
++    fn api_key_env_vars_zai() {
++        assert_eq!(Provider::Zai.api_key_env_vars(), &["ZAI_API_KEY"]);
++    }
++
++    #[test]
++    fn api_key_env_vars_minimax() {
++        assert_eq!(Provider::Minimax.api_key_env_vars(), &["MINIMAX_API_KEY"]);
++    }
++
++    #[test]
++    fn api_key_env_vars_inception() {
++        assert_eq!(
++            Provider::Inception.api_key_env_vars(),
++            &["INCEPTION_API_KEY"]
++        );
++    }
++
++    #[test]
++    fn every_provider_has_at_least_one_env_var() {
++        assert!(Provider::ALL
++            .iter()
++            .all(|p| !p.api_key_env_vars().is_empty()));
++    }
++}
+diff --git a/lib/crates/fabro-model/src/types.rs b/lib/crates/fabro-model/src/types.rs
+new file mode 100644
+index 00000000..e5e8ef97
+--- /dev/null
++++ b/lib/crates/fabro-model/src/types.rs
+@@ -0,0 +1,39 @@
++use serde::{Deserialize, Serialize};
++
++// --- 2.9 ModelInfo ---
++
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct ModelLimits {
++    pub context_window: i64,
++    pub max_output: Option<i64>,
++}
++
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct ModelFeatures {
++    pub tools: bool,
++    pub vision: bool,
++    pub reasoning: bool,
++}
++
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct ModelCosts {
++    pub input_cost_per_mtok: Option<f64>,
++    pub output_cost_per_mtok: Option<f64>,
++    pub cache_input_cost_per_mtok: Option<f64>,
++}
++
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++pub struct ModelInfo {
++    pub id: String,
++    pub provider: String,
++    pub family: String,
++    pub display_name: String,
++    pub limits: ModelLimits,
++    pub training: Option<String>,
++    pub features: ModelFeatures,
++    pub costs: ModelCosts,
++    pub estimated_output_tps: Option<f64>,
++    pub aliases: Vec<String>,
++    #[serde(default)]
++    pub default: bool,
++}
+diff --git a/lib/crates/fabro-validate/Cargo.toml b/lib/crates/fabro-validate/Cargo.toml
+index e9841c3a..cd7db2a6 100644
+--- a/lib/crates/fabro-validate/Cargo.toml
++++ b/lib/crates/fabro-validate/Cargo.toml
+@@ -10,6 +10,6 @@ doctest = false
+ 
+ [dependencies]
+ fabro-graphviz = { path = "../fabro-graphviz" }
+-fabro-llm = { path = "../fabro-llm" }
++fabro-model = { path = "../fabro-model" }
+ serde = { workspace = true }
+-thiserror = { workspace = true }
++thiserror = { workspace = true }
+\ No newline at end of file
+diff --git a/lib/crates/fabro-validate/src/rules.rs b/lib/crates/fabro-validate/src/rules.rs
+index b62b59e3..82cd09c9 100644
+--- a/lib/crates/fabro-validate/src/rules.rs
++++ b/lib/crates/fabro-validate/src/rules.rs
+@@ -934,7 +934,7 @@ impl LintRule for StylesheetModelKnownRule {
+             for decl in &rule.declarations {
+                 match decl.property.as_str() {
+                     "model" => {
+-                        if fabro_llm::catalog::get_model_info(&decl.value).is_none() {
++                        if fabro_model::get_model_info(&decl.value).is_none() {
+                             diagnostics.push(Diagnostic {
+                                 rule: self.name().to_string(),
+                                 severity: Severity::Warning,
+@@ -949,8 +949,8 @@ impl LintRule for StylesheetModelKnownRule {
+                         }
+                     }
+                     "provider" => {
+-                        if fabro_llm::Provider::from_str(&decl.value).is_err() {
+-                            let valid: Vec<&str> = fabro_llm::Provider::ALL
++                        if fabro_model::Provider::from_str(&decl.value).is_err() {
++                            let valid: Vec<&str> = fabro_model::Provider::ALL
+                                 .iter()
+                                 .map(|p| p.as_str())
+                                 .collect();
+diff --git a/lib/crates/fabro-workflows/Cargo.toml b/lib/crates/fabro-workflows/Cargo.toml
+index 99417557..0e2fcacb 100644
+--- a/lib/crates/fabro-workflows/Cargo.toml
++++ b/lib/crates/fabro-workflows/Cargo.toml
+@@ -32,6 +32,7 @@ fabro-interview = { path = "../fabro-interview" }
+ fabro-util = { path = "../fabro-util" }
+ fabro-git-storage = { path = "../fabro-git-storage" }
+ fabro-llm = { path = "../fabro-llm" }
++fabro-model = { path = "../fabro-model" }
+ fabro-retro = { path = "../fabro-retro" }
+ thiserror.workspace = true
+ serde.workspace = true
+@@ -63,4 +64,4 @@ tokio = { workspace = true, features = ["test-util", "macros"] }
+ tempfile = "3"
+ dotenvy.workspace = true
+ assert_cmd = "2"
+-predicates = "3"
++predicates = "3"
+\ No newline at end of file
+diff --git a/lib/crates/fabro-workflows/src/backend/api.rs b/lib/crates/fabro-workflows/src/backend/api.rs
+index 1844c59c..cc751bab 100644
+--- a/lib/crates/fabro-workflows/src/backend/api.rs
++++ b/lib/crates/fabro-workflows/src/backend/api.rs
+@@ -8,9 +8,9 @@ use fabro_agent::{
+     AgentEvent, AnthropicProfile, GeminiProfile, OpenAiProfile, ProviderProfile, Sandbox, Session,
+     SessionConfig, Turn,
+ };
+-use fabro_llm::catalog::FallbackTarget;
+ use fabro_llm::client::Client;
+-use fabro_llm::provider::Provider;
++use fabro_model::FallbackTarget;
++use fabro_model::Provider;
+ 
+ use crate::context::Context;
+ use crate::cost::compute_stage_cost;
+@@ -268,9 +268,9 @@ impl CodergenBackend for AgentApiBackend {
+             .map(String::from)
+             .or_else(|| Some(self.provider.as_str().to_string()));
+ 
+-        let max_tokens = node.max_tokens().or_else(|| {
+-            fabro_llm::catalog::get_model_info(model).and_then(|m| m.limits.max_output)
+-        });
++        let max_tokens = node
++            .max_tokens()
++            .or_else(|| fabro_model::get_model_info(model).and_then(|m| m.limits.max_output));
+ 
+         let mut messages = Vec::new();
+         if let Some(sys) = system_prompt {
+@@ -343,8 +343,7 @@ impl CodergenBackend for AgentApiBackend {
+                     );
+ 
+                     let max_tokens = node.max_tokens().or_else(|| {
+-                        fabro_llm::catalog::get_model_info(&target.model)
+-                            .and_then(|m| m.limits.max_output)
++                        fabro_model::get_model_info(&target.model).and_then(|m| m.limits.max_output)
+                     });
+ 
+                     let fallback_request = fabro_llm::types::Request {
+diff --git a/lib/crates/fabro-workflows/src/backend/cli.rs b/lib/crates/fabro-workflows/src/backend/cli.rs
+index 2855b12c..16af8e6d 100644
+--- a/lib/crates/fabro-workflows/src/backend/cli.rs
++++ b/lib/crates/fabro-workflows/src/backend/cli.rs
+@@ -5,7 +5,7 @@ use std::sync::Arc;
+ use async_trait::async_trait;
+ use fabro_agent::sandbox::ExecResult;
+ use fabro_agent::Sandbox;
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ 
+ use crate::context::Context;
+ use crate::cost::compute_stage_cost;
+diff --git a/lib/crates/fabro-workflows/src/cost.rs b/lib/crates/fabro-workflows/src/cost.rs
+index c5b7d4c6..09200322 100644
+--- a/lib/crates/fabro-workflows/src/cost.rs
++++ b/lib/crates/fabro-workflows/src/cost.rs
+@@ -3,7 +3,7 @@ use crate::outcome::StageUsage;
+ /// Compute the dollar cost for a stage's token usage, if pricing is available.
+ #[must_use]
+ pub fn compute_stage_cost(usage: &StageUsage) -> Option<f64> {
+-    let info = fabro_llm::catalog::get_model_info(&usage.model)?;
++    let info = fabro_model::get_model_info(&usage.model)?;
+     let input_rate = info.costs.input_cost_per_mtok?;
+     let output_rate = info.costs.output_cost_per_mtok?;
+     Some(
+diff --git a/lib/crates/fabro-workflows/src/handler/prompt.rs b/lib/crates/fabro-workflows/src/handler/prompt.rs
+index fb4caf8b..31bb5cb5 100644
+--- a/lib/crates/fabro-workflows/src/handler/prompt.rs
++++ b/lib/crates/fabro-workflows/src/handler/prompt.rs
+@@ -2,7 +2,7 @@ use std::path::Path;
+ 
+ use async_trait::async_trait;
+ 
+-use fabro_llm::provider::Provider;
++use fabro_model::Provider;
+ 
+ use crate::context::keys;
+ use crate::context::Context;
+diff --git a/lib/crates/fabro-workflows/src/transform.rs b/lib/crates/fabro-workflows/src/transform.rs
+index fcb7158f..80ea396a 100644
+--- a/lib/crates/fabro-workflows/src/transform.rs
++++ b/lib/crates/fabro-workflows/src/transform.rs
+@@ -125,7 +125,7 @@ impl Transform for ProviderInferenceTransform {
+                 .map(String::from);
+             if let Some(model) = model {
+                 if !node.attrs.contains_key("provider") {
+-                    if let Some(info) = fabro_llm::catalog::get_model_info(&model) {
++                    if let Some(info) = fabro_model::get_model_info(&model) {
+                         node.attrs
+                             .insert("provider".to_string(), AttrValue::String(info.provider));
+                     }

@@ -1,0 +1,50 @@
+diff --git a/lib/crates/fabro-workflows/src/engine.rs b/lib/crates/fabro-workflows/src/engine.rs
+index 5cc599b9..90c85b8d 100644
+--- a/lib/crates/fabro-workflows/src/engine.rs
++++ b/lib/crates/fabro-workflows/src/engine.rs
+@@ -1077,15 +1077,19 @@ impl WorkflowRunEngine {
+         let node_timeout = node.timeout();
+ 
+         for attempt in 1..=policy.max_attempts {
+-            self.services.emitter.emit(&WorkflowRunEvent::StageStarted {
+-                node_id: node.id.clone(),
+-                name: node.label().to_string(),
+-                index: stage_index,
+-                handler_type: node.handler_type().map(String::from),
+-                script: node_script(node),
+-                attempt: usize::try_from(attempt).unwrap_or(usize::MAX),
+-                max_attempts: usize::try_from(policy.max_attempts).unwrap_or(usize::MAX),
+-            });
++            // Emit StageStarted for retry attempts (attempt 1 is emitted by the caller
++            // before the StageStart hook, so that skipped nodes still get the event).
++            if attempt > 1 {
++                self.services.emitter.emit(&WorkflowRunEvent::StageStarted {
++                    node_id: node.id.clone(),
++                    name: node.label().to_string(),
++                    index: stage_index,
++                    handler_type: node.handler_type().map(String::from),
++                    script: node_script(node),
++                    attempt: usize::try_from(attempt).unwrap_or(usize::MAX),
++                    max_attempts: usize::try_from(policy.max_attempts).unwrap_or(usize::MAX),
++                });
++            }
+ 
+             // Floor to integer seconds: macOS stat reports mtime as integer seconds,
+             // so a fractional epoch would reject files created in the same second.
+@@ -1859,6 +1863,16 @@ impl WorkflowRunEngine {
+             context.set(context::keys::CURRENT_NODE, serde_json::json!(&node.id));
+             let retry_policy = build_retry_policy(node, graph);
+ 
++            self.services.emitter.emit(&WorkflowRunEvent::StageStarted {
++                node_id: node.id.clone(),
++                name: node.label().to_string(),
++                index: stage_index,
++                handler_type: node.handler_type().map(String::from),
++                script: node_script(node),
++                attempt: 1,
++                max_attempts: usize::try_from(retry_policy.max_attempts).unwrap_or(usize::MAX),
++            });
++
+             // StageStart hook (blocking — can skip node)
+             {
+                 let mut hook_ctx =

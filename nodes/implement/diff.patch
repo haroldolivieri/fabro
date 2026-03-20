@@ -1,0 +1,822 @@
+diff --git a/lib/crates/fabro-agent/src/compaction.rs b/lib/crates/fabro-agent/src/compaction.rs
+index 699a6bc5..082c4b9b 100644
+--- a/lib/crates/fabro-agent/src/compaction.rs
++++ b/lib/crates/fabro-agent/src/compaction.rs
+@@ -112,6 +112,7 @@ function names, error messages, and exact values. Omit pleasantries and conversa
+         max_tokens: Some(4096),
+         stop_sequences: None,
+         reasoning_effort: None,
++        speed: None,
+         metadata: None,
+         provider_options: None,
+     };
+diff --git a/lib/crates/fabro-agent/src/config.rs b/lib/crates/fabro-agent/src/config.rs
+index 2758dab3..dff155c5 100644
+--- a/lib/crates/fabro-agent/src/config.rs
++++ b/lib/crates/fabro-agent/src/config.rs
+@@ -64,6 +64,7 @@ pub struct SessionConfig {
+     pub default_command_timeout_ms: u64,
+     pub max_command_timeout_ms: u64,
+     pub reasoning_effort: Option<String>,
++    pub speed: Option<String>,
+     pub tool_output_limits: HashMap<String, usize>,
+     pub tool_line_limits: HashMap<String, usize>,
+     /// Override the provider's default max_tokens when set.
+@@ -133,6 +134,7 @@ impl Default for SessionConfig {
+             max_command_timeout_ms: 600_000,
+             max_tokens: None,
+             reasoning_effort: None,
++            speed: None,
+             tool_output_limits: HashMap::new(),
+             tool_line_limits: HashMap::new(),
+             enable_loop_detection: true,
+diff --git a/lib/crates/fabro-agent/src/session.rs b/lib/crates/fabro-agent/src/session.rs
+index 4fd442dc..dba09be5 100644
+--- a/lib/crates/fabro-agent/src/session.rs
++++ b/lib/crates/fabro-agent/src/session.rs
+@@ -459,6 +459,10 @@ impl Session {
+         self.config.reasoning_effort = effort;
+     }
+ 
++    pub fn set_speed(&mut self, speed: Option<String>) {
++        self.config.speed = speed;
++    }
++
+     pub const fn set_max_turns(&mut self, max_turns: usize) {
+         self.config.max_turns = max_turns;
+     }
+@@ -906,6 +910,7 @@ impl Session {
+             }),
+             stop_sequences: None,
+             reasoning_effort: self.config.reasoning_effort.clone(),
++            speed: self.config.speed.clone(),
+             metadata: None,
+             provider_options: self.provider_profile.provider_options(),
+         }
+diff --git a/lib/crates/fabro-agent/src/tools.rs b/lib/crates/fabro-agent/src/tools.rs
+index f204dadb..dc7ed382 100644
+--- a/lib/crates/fabro-agent/src/tools.rs
++++ b/lib/crates/fabro-agent/src/tools.rs
+@@ -588,6 +588,7 @@ pub(crate) fn make_web_fetch_tool(summarizer: Option<WebFetchSummarizer>) -> Reg
+                             max_tokens: None,
+                             stop_sequences: None,
+                             reasoning_effort: None,
++                            speed: None,
+                             metadata: None,
+                             provider_options: None,
+                         };
+diff --git a/lib/crates/fabro-agent/src/types.rs b/lib/crates/fabro-agent/src/types.rs
+index 8fd178b8..2f7228d7 100644
+--- a/lib/crates/fabro-agent/src/types.rs
++++ b/lib/crates/fabro-agent/src/types.rs
+@@ -624,6 +624,7 @@ mod tests {
+             cache_read_tokens: Some(80),
+             cache_write_tokens: Some(10),
+             reasoning_tokens: Some(20),
++            speed: None,
+             raw: None,
+         };
+         let event = AgentEvent::AssistantMessage {
+diff --git a/lib/crates/fabro-api/src/server.rs b/lib/crates/fabro-api/src/server.rs
+index 8da054ac..083fcf67 100644
+--- a/lib/crates/fabro-api/src/server.rs
++++ b/lib/crates/fabro-api/src/server.rs
+@@ -1232,6 +1232,7 @@ async fn create_completion(
+             Some(req.stop_sequences)
+         },
+         reasoning_effort: req.reasoning_effort,
++        speed: None,
+         metadata: None,
+         provider_options: req.provider_options,
+     };
+diff --git a/lib/crates/fabro-cli/src/doctor.rs b/lib/crates/fabro-cli/src/doctor.rs
+index 1747f40d..955b6f0b 100644
+--- a/lib/crates/fabro-cli/src/doctor.rs
++++ b/lib/crates/fabro-cli/src/doctor.rs
+@@ -877,6 +877,7 @@ async fn probe_llm_provider(
+         max_tokens: Some(16),
+         stop_sequences: None,
+         reasoning_effort: None,
++        speed: None,
+         metadata: None,
+         provider_options: None,
+     };
+diff --git a/lib/crates/fabro-graphviz/src/graph/types.rs b/lib/crates/fabro-graphviz/src/graph/types.rs
+index d6cc8cb6..5da77102 100644
+--- a/lib/crates/fabro-graphviz/src/graph/types.rs
++++ b/lib/crates/fabro-graphviz/src/graph/types.rs
+@@ -210,6 +210,11 @@ impl Node {
+         self.str_attr("reasoning_effort").unwrap_or("high")
+     }
+ 
++    #[must_use]
++    pub fn speed(&self) -> Option<&str> {
++        self.str_attr("speed")
++    }
++
+     #[must_use]
+     pub fn auto_status(&self) -> bool {
+         self.bool_attr("auto_status").unwrap_or(false)
+@@ -534,6 +539,7 @@ mod tests {
+         assert_eq!(node.model(), None);
+         assert_eq!(node.provider(), None);
+         assert_eq!(node.reasoning_effort(), "high");
++        assert_eq!(node.speed(), None);
+         assert!(!node.auto_status());
+         assert!(!node.allow_partial());
+         assert_eq!(node.retry_policy(), None);
+diff --git a/lib/crates/fabro-hooks/src/executor.rs b/lib/crates/fabro-hooks/src/executor.rs
+index 4d63e6da..bfb90306 100644
+--- a/lib/crates/fabro-hooks/src/executor.rs
++++ b/lib/crates/fabro-hooks/src/executor.rs
+@@ -343,6 +343,7 @@ impl HookExecutorImpl {
+                     max_tokens: None,
+                     stop_sequences: None,
+                     reasoning_effort: None,
++                    speed: None,
+                     metadata: None,
+                     provider_options: None,
+                 };
+diff --git a/lib/crates/fabro-llm/src/client.rs b/lib/crates/fabro-llm/src/client.rs
+index 5fb60337..00b81993 100644
+--- a/lib/crates/fabro-llm/src/client.rs
++++ b/lib/crates/fabro-llm/src/client.rs
+@@ -339,6 +339,7 @@ mod tests {
+             max_tokens: None,
+             stop_sequences: None,
+             reasoning_effort: None,
++            speed: None,
+             metadata: None,
+             provider_options: None,
+         }
+diff --git a/lib/crates/fabro-llm/src/generate.rs b/lib/crates/fabro-llm/src/generate.rs
+index 807a41f5..815feb79 100644
+--- a/lib/crates/fabro-llm/src/generate.rs
++++ b/lib/crates/fabro-llm/src/generate.rs
+@@ -69,6 +69,7 @@ fn build_request(
+         max_tokens: params.max_tokens,
+         stop_sequences: params.stop_sequences.clone(),
+         reasoning_effort: params.reasoning_effort.clone(),
++        speed: params.speed.clone(),
+         metadata: params.metadata.clone(),
+         provider_options: params.provider_options.clone(),
+     }
+@@ -288,6 +289,7 @@ pub struct GenerateParams {
+     pub max_tokens: Option<i64>,
+     pub stop_sequences: Option<Vec<String>>,
+     pub reasoning_effort: Option<String>,
++    pub speed: Option<String>,
+     pub provider: Option<String>,
+     pub provider_options: Option<serde_json::Value>,
+     pub metadata: Option<std::collections::HashMap<String, String>>,
+@@ -318,6 +320,7 @@ impl GenerateParams {
+             max_tokens: None,
+             stop_sequences: None,
+             reasoning_effort: None,
++            speed: None,
+             provider: None,
+             provider_options: None,
+             metadata: None,
+diff --git a/lib/crates/fabro-llm/src/providers/anthropic.rs b/lib/crates/fabro-llm/src/providers/anthropic.rs
+index b96b8dec..b1b9dd44 100644
+--- a/lib/crates/fabro-llm/src/providers/anthropic.rs
++++ b/lib/crates/fabro-llm/src/providers/anthropic.rs
+@@ -109,6 +109,8 @@ struct ApiRequest {
+     #[serde(skip_serializing_if = "Option::is_none")]
+     output_config: Option<serde_json::Value>,
+     #[serde(skip_serializing_if = "Option::is_none")]
++    speed: Option<String>,
++    #[serde(skip_serializing_if = "Option::is_none")]
+     metadata: Option<std::collections::HashMap<String, String>>,
+     #[serde(skip_serializing_if = "std::ops::Not::not")]
+     stream: bool,
+@@ -165,6 +167,8 @@ struct ApiUsage {
+     cache_read_input_tokens: Option<i64>,
+     #[serde(default)]
+     cache_creation_input_tokens: Option<i64>,
++    #[serde(default)]
++    speed: Option<String>,
+ }
+ 
+ /// Estimate reasoning tokens from thinking content blocks.
+@@ -508,6 +512,7 @@ fn convert_stream_event_for_json_schema(event: StreamEvent) -> StreamEvent {
+ // --- Prompt caching helpers ---
+ 
+ const CACHE_BETA_HEADER: &str = "prompt-caching-2024-07-31";
++const FAST_MODE_BETA_HEADER: &str = "fast-mode-2026-02-01";
+ 
+ /// Check whether auto-caching is disabled via `provider_options`.
+ ///
+@@ -582,6 +587,7 @@ fn apply_cache_control_to_conversation_prefix(messages: &mut [ApiMessage]) {
+ fn build_beta_header(
+     provider_options: Option<&serde_json::Value>,
+     include_cache_header: bool,
++    include_fast_mode_header: bool,
+ ) -> Option<String> {
+     let mut headers: Vec<String> = Vec::new();
+ 
+@@ -604,6 +610,11 @@ fn build_beta_header(
+         headers.push(CACHE_BETA_HEADER.to_string());
+     }
+ 
++    // Add fast-mode header if speed=fast and not already present
++    if include_fast_mode_header && !headers.iter().any(|h| h == FAST_MODE_BETA_HEADER) {
++        headers.push(FAST_MODE_BETA_HEADER.to_string());
++    }
++
+     if headers.is_empty() {
+         None
+     } else {
+@@ -698,6 +709,10 @@ impl StreamAccumulator {
+                 self.usage.cache_write_tokens = usage
+                     .get("cache_creation_input_tokens")
+                     .and_then(serde_json::Value::as_i64);
++                self.usage.speed = usage
++                    .get("speed")
++                    .and_then(serde_json::Value::as_str)
++                    .map(String::from);
+             }
+         }
+         vec![StreamEvent::StreamStart]
+@@ -1079,6 +1094,8 @@ fn build_api_request(
+         .as_ref()
+         .map(|effort| serde_json::json!({"effort": effort}));
+ 
++    let is_fast = request.speed.as_deref() == Some("fast");
++
+     let api_request = ApiRequest {
+         model: request.model.clone(),
+         messages: api_messages,
+@@ -1096,6 +1113,7 @@ fn build_api_request(
+         tool_choice: tool_choice_json,
+         thinking,
+         output_config,
++        speed: request.speed.clone(),
+         metadata: request.metadata.clone(),
+         stream,
+     };
+@@ -1112,7 +1130,9 @@ fn build_api_request(
+             .header("x-api-key", &adapter.http.api_key)
+             .header("anthropic-version", "2023-06-01");
+ 
+-        if let Some(beta_str) = build_beta_header(request.provider_options.as_ref(), auto_cache) {
++        if let Some(beta_str) =
++            build_beta_header(request.provider_options.as_ref(), auto_cache, is_fast)
++        {
+             req_builder = req_builder.header("anthropic-beta", beta_str);
+         }
+     } else {
+@@ -1196,6 +1216,7 @@ impl ProviderAdapter for Adapter {
+                 reasoning_tokens,
+                 cache_read_tokens: api_resp.usage.cache_read_input_tokens,
+                 cache_write_tokens: api_resp.usage.cache_creation_input_tokens,
++                speed: api_resp.usage.speed,
+                 ..Usage::default()
+             },
+             raw: serde_json::from_str(&body).ok(),
+@@ -1489,13 +1510,13 @@ mod tests {
+ 
+     #[test]
+     fn beta_header_includes_cache_header() {
+-        let result = build_beta_header(None, true);
++        let result = build_beta_header(None, true, false);
+         assert_eq!(result, Some(CACHE_BETA_HEADER.to_string()));
+     }
+ 
+     #[test]
+     fn beta_header_no_cache_no_user_headers() {
+-        let result = build_beta_header(None, false);
++        let result = build_beta_header(None, false, false);
+         assert_eq!(result, None);
+     }
+ 
+@@ -1506,7 +1527,7 @@ mod tests {
+                 "beta_headers": ["interleaved-thinking-2025-05-14"]
+             }
+         });
+-        let result = build_beta_header(Some(&opts), true);
++        let result = build_beta_header(Some(&opts), true, false);
+         assert_eq!(
+             result,
+             Some(format!(
+@@ -1522,7 +1543,7 @@ mod tests {
+                 "beta_headers": [CACHE_BETA_HEADER]
+             }
+         });
+-        let result = build_beta_header(Some(&opts), true);
++        let result = build_beta_header(Some(&opts), true, false);
+         // Should not duplicate the header
+         assert_eq!(result, Some(CACHE_BETA_HEADER.to_string()));
+     }
+@@ -1534,7 +1555,7 @@ mod tests {
+                 "beta_headers": ["interleaved-thinking-2025-05-14"]
+             }
+         });
+-        let result = build_beta_header(Some(&opts), false);
++        let result = build_beta_header(Some(&opts), false, false);
+         assert_eq!(result, Some("interleaved-thinking-2025-05-14".to_string()));
+     }
+ 
+@@ -1586,6 +1607,7 @@ mod tests {
+             tool_choice: None,
+             thinking: None,
+             output_config: None,
++            speed: None,
+             metadata: None,
+             stream: false,
+         };
+@@ -1625,6 +1647,7 @@ mod tests {
+             max_tokens: Some(128),
+             stop_sequences: None,
+             reasoning_effort: None,
++            speed: None,
+             metadata: None,
+             provider_options: None,
+         }
+@@ -1941,7 +1964,7 @@ mod tests {
+         ];
+ 
+         // No user headers — only cache header should appear
+-        let header = build_beta_header(None, true).unwrap_or_default();
++        let header = build_beta_header(None, true, false).unwrap_or_default();
+         for dep in &deprecated {
+             assert!(
+                 !header.contains(dep),
+@@ -1955,7 +1978,7 @@ mod tests {
+                 "beta_headers": ["interleaved-thinking-2025-05-14"]
+             }
+         });
+-        let header = build_beta_header(Some(&opts), true).unwrap_or_default();
++        let header = build_beta_header(Some(&opts), true, false).unwrap_or_default();
+         for dep in &deprecated {
+             assert!(
+                 !header.contains(dep),
+@@ -1981,6 +2004,7 @@ mod tests {
+             tool_choice: None,
+             thinking: None,
+             output_config: None,
++            speed: None,
+             metadata: None,
+             stream: false,
+         };
+@@ -2013,6 +2037,7 @@ mod tests {
+             tool_choice: None,
+             thinking: None,
+             output_config: None,
++            speed: None,
+             metadata: None,
+             stream: false,
+         };
+@@ -2073,4 +2098,52 @@ mod tests {
+         let (api_request, _req_builder) = build_api_request(&adapter, &request, false);
+         assert!(api_request.output_config.is_none());
+     }
++
++    #[test]
++    fn build_api_request_sets_speed() {
++        let adapter = Adapter::new("test-key");
++        let request = Request {
++            speed: Some("fast".to_string()),
++            ..make_base_request()
++        };
++
++        let (api_request, _req_builder) = build_api_request(&adapter, &request, false);
++        assert_eq!(api_request.speed, Some("fast".to_string()));
++    }
++
++    #[test]
++    fn build_api_request_injects_fast_mode_beta_header() {
++        let adapter = Adapter::new("test-key");
++        let request = Request {
++            speed: Some("fast".to_string()),
++            ..make_base_request()
++        };
++
++        let (_api_request, req_builder) = build_api_request(&adapter, &request, false);
++        let built = req_builder.build().expect("should build request");
++        let beta = built
++            .headers()
++            .get("anthropic-beta")
++            .expect("anthropic-beta header should be present")
++            .to_str()
++            .unwrap();
++        assert!(
++            beta.contains(FAST_MODE_BETA_HEADER),
++            "beta header should contain fast-mode header, got: {beta}"
++        );
++    }
++
++    #[test]
++    fn beta_header_includes_both_cache_and_fast_mode() {
++        let result = build_beta_header(None, true, true);
++        let header = result.expect("should produce a header");
++        assert!(
++            header.contains(CACHE_BETA_HEADER),
++            "should contain cache header"
++        );
++        assert!(
++            header.contains(FAST_MODE_BETA_HEADER),
++            "should contain fast-mode header"
++        );
++    }
+ }
+diff --git a/lib/crates/fabro-llm/src/providers/fabro_server.rs b/lib/crates/fabro-llm/src/providers/fabro_server.rs
+index 62e66fa2..604176f8 100644
+--- a/lib/crates/fabro-llm/src/providers/fabro_server.rs
++++ b/lib/crates/fabro-llm/src/providers/fabro_server.rs
+@@ -245,6 +245,7 @@ mod tests {
+             max_tokens: None,
+             stop_sequences: None,
+             reasoning_effort: None,
++            speed: None,
+             metadata: None,
+             provider_options: None,
+         }
+diff --git a/lib/crates/fabro-llm/src/providers/gemini.rs b/lib/crates/fabro-llm/src/providers/gemini.rs
+index 306d3999..ef73894d 100644
+--- a/lib/crates/fabro-llm/src/providers/gemini.rs
++++ b/lib/crates/fabro-llm/src/providers/gemini.rs
+@@ -976,6 +976,7 @@ mod tests {
+             max_tokens: None,
+             stop_sequences: None,
+             reasoning_effort: None,
++            speed: None,
+             metadata: None,
+             provider_options: None,
+         }
+diff --git a/lib/crates/fabro-llm/src/providers/openai.rs b/lib/crates/fabro-llm/src/providers/openai.rs
+index 5d4bcccd..e13b535c 100644
+--- a/lib/crates/fabro-llm/src/providers/openai.rs
++++ b/lib/crates/fabro-llm/src/providers/openai.rs
+@@ -1072,6 +1072,7 @@ mod tests {
+             max_tokens: None,
+             stop_sequences: None,
+             reasoning_effort: None,
++            speed: None,
+             metadata: None,
+             provider_options: None,
+         }
+diff --git a/lib/crates/fabro-llm/src/providers/openai_compatible.rs b/lib/crates/fabro-llm/src/providers/openai_compatible.rs
+index 77958abe..b54ed041 100644
+--- a/lib/crates/fabro-llm/src/providers/openai_compatible.rs
++++ b/lib/crates/fabro-llm/src/providers/openai_compatible.rs
+@@ -1296,6 +1296,7 @@ mod tests {
+             max_tokens: None,
+             stop_sequences: None,
+             reasoning_effort: None,
++            speed: None,
+             metadata: None,
+             provider_options: None,
+         }
+diff --git a/lib/crates/fabro-llm/src/types.rs b/lib/crates/fabro-llm/src/types.rs
+index 05f78245..54bdf2c8 100644
+--- a/lib/crates/fabro-llm/src/types.rs
++++ b/lib/crates/fabro-llm/src/types.rs
+@@ -370,6 +370,8 @@ pub struct Usage {
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub cache_write_tokens: Option<i64>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub speed: Option<String>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub raw: Option<serde_json::Value>,
+ }
+ 
+@@ -393,6 +395,7 @@ impl std::ops::Add for Usage {
+             reasoning_tokens: add_optional(self.reasoning_tokens, rhs.reasoning_tokens),
+             cache_read_tokens: add_optional(self.cache_read_tokens, rhs.cache_read_tokens),
+             cache_write_tokens: add_optional(self.cache_write_tokens, rhs.cache_write_tokens),
++            speed: self.speed,
+             raw: None,
+         }
+     }
+@@ -452,6 +455,7 @@ pub struct Request {
+     pub max_tokens: Option<i64>,
+     pub stop_sequences: Option<Vec<String>>,
+     pub reasoning_effort: Option<String>,
++    pub speed: Option<String>,
+     pub metadata: Option<HashMap<String, String>>,
+     pub provider_options: Option<serde_json::Value>,
+ }
+@@ -888,6 +892,7 @@ mod tests {
+             reasoning_tokens: None,
+             cache_read_tokens: None,
+             cache_write_tokens: None,
++            speed: None,
+             raw: None,
+         };
+         insta::assert_snapshot!(serde_json::to_string_pretty(&usage).unwrap(), @r#"
+@@ -908,6 +913,7 @@ mod tests {
+             reasoning_tokens: Some(20),
+             cache_read_tokens: Some(80),
+             cache_write_tokens: Some(10),
++            speed: None,
+             raw: None,
+         };
+         insta::assert_snapshot!(serde_json::to_string_pretty(&usage).unwrap(), @r#"
+@@ -940,6 +946,7 @@ mod tests {
+             reasoning_tokens: Some(5),
+             cache_read_tokens: Some(3),
+             cache_write_tokens: Some(1),
++            speed: None,
+             raw: None,
+         };
+         let b = Usage {
+@@ -949,6 +956,7 @@ mod tests {
+             reasoning_tokens: Some(10),
+             cache_read_tokens: Some(7),
+             cache_write_tokens: Some(2),
++            speed: None,
+             raw: None,
+         };
+         let sum = a + b;
+@@ -969,6 +977,7 @@ mod tests {
+             reasoning_tokens: Some(5),
+             cache_read_tokens: None,
+             cache_write_tokens: None,
++            speed: None,
+             raw: None,
+         };
+         let b = Usage {
+@@ -978,6 +987,7 @@ mod tests {
+             reasoning_tokens: None,
+             cache_read_tokens: Some(7),
+             cache_write_tokens: None,
++            speed: None,
+             raw: None,
+         };
+         let sum = a + b;
+diff --git a/lib/crates/fabro-llm/tests/integration.rs b/lib/crates/fabro-llm/tests/integration.rs
+index 2aa8255d..a81118c3 100644
+--- a/lib/crates/fabro-llm/tests/integration.rs
++++ b/lib/crates/fabro-llm/tests/integration.rs
+@@ -15,6 +15,7 @@ fn make_request(model: &str) -> Request {
+         max_tokens: Some(50),
+         stop_sequences: None,
+         reasoning_effort: None,
++        speed: None,
+         metadata: None,
+         provider_options: None,
+     }
+@@ -138,6 +139,7 @@ async fn run_multi_turn_cache_test(
+             max_tokens: Some(100),
+             stop_sequences: None,
+             reasoning_effort: None,
++            speed: None,
+             metadata: None,
+             provider_options: None,
+         };
+diff --git a/lib/crates/fabro-workflows/src/backend/api.rs b/lib/crates/fabro-workflows/src/backend/api.rs
+index cc751bab..d54ccb73 100644
+--- a/lib/crates/fabro-workflows/src/backend/api.rs
++++ b/lib/crates/fabro-workflows/src/backend/api.rs
+@@ -195,6 +195,7 @@ impl AgentApiBackend {
+         let config = SessionConfig {
+             max_tokens: node.max_tokens(),
+             reasoning_effort: Some(node.reasoning_effort().to_string()),
++            speed: node.speed().map(String::from),
+             tool_hooks,
+             mcp_servers,
+             ..SessionConfig::default()
+@@ -283,6 +284,7 @@ impl CodergenBackend for AgentApiBackend {
+             messages,
+             provider,
+             reasoning_effort: Some(node.reasoning_effort().to_string()),
++            speed: node.speed().map(String::from),
+             tools: None,
+             tool_choice: None,
+             response_format: None,
+@@ -393,6 +395,7 @@ impl CodergenBackend for AgentApiBackend {
+             cache_read_tokens: response.usage.cache_read_tokens,
+             cache_write_tokens: response.usage.cache_write_tokens,
+             reasoning_tokens: response.usage.reasoning_tokens,
++            speed: response.usage.speed.clone(),
+             cost: None,
+         };
+         stage_usage.cost = compute_stage_cost(&stage_usage);
+@@ -593,6 +596,7 @@ impl CodergenBackend for AgentApiBackend {
+             cache_read_tokens: total_usage.cache_read_tokens,
+             cache_write_tokens: total_usage.cache_write_tokens,
+             reasoning_tokens: total_usage.reasoning_tokens,
++            speed: total_usage.speed.clone(),
+             cost: None,
+         };
+         stage_usage.cost = compute_stage_cost(&stage_usage);
+diff --git a/lib/crates/fabro-workflows/src/backend/cli.rs b/lib/crates/fabro-workflows/src/backend/cli.rs
+index 16af8e6d..4e66884c 100644
+--- a/lib/crates/fabro-workflows/src/backend/cli.rs
++++ b/lib/crates/fabro-workflows/src/backend/cli.rs
+@@ -706,6 +706,7 @@ impl CodergenBackend for AgentCliBackend {
+             cache_read_tokens: None,
+             cache_write_tokens: None,
+             reasoning_tokens: None,
++            speed: None,
+             cost: None,
+         };
+         stage_usage.cost = compute_stage_cost(&stage_usage);
+diff --git a/lib/crates/fabro-workflows/src/cost.rs b/lib/crates/fabro-workflows/src/cost.rs
+index 09200322..0020e19a 100644
+--- a/lib/crates/fabro-workflows/src/cost.rs
++++ b/lib/crates/fabro-workflows/src/cost.rs
+@@ -6,9 +6,15 @@ pub fn compute_stage_cost(usage: &StageUsage) -> Option<f64> {
+     let info = fabro_model::get_model_info(&usage.model)?;
+     let input_rate = info.costs.input_cost_per_mtok?;
+     let output_rate = info.costs.output_cost_per_mtok?;
++    let multiplier = if usage.speed.as_deref() == Some("fast") {
++        6.0
++    } else {
++        1.0
++    };
+     Some(
+-        usage.input_tokens as f64 * input_rate / 1_000_000.0
+-            + usage.output_tokens as f64 * output_rate / 1_000_000.0,
++        (usage.input_tokens as f64 * input_rate / 1_000_000.0
++            + usage.output_tokens as f64 * output_rate / 1_000_000.0)
++            * multiplier,
+     )
+ }
+ 
+@@ -47,6 +53,7 @@ mod tests {
+             cache_read_tokens: None,
+             cache_write_tokens: None,
+             reasoning_tokens: None,
++            speed: None,
+             cost: None,
+         };
+         let cost = compute_stage_cost(&usage);
+@@ -63,8 +70,39 @@ mod tests {
+             cache_read_tokens: None,
+             cache_write_tokens: None,
+             reasoning_tokens: None,
++            speed: None,
+             cost: None,
+         };
+         assert_eq!(compute_stage_cost(&usage), None);
+     }
++
++    #[test]
++    fn compute_stage_cost_fast_mode_6x_multiplier() {
++        let standard_usage = StageUsage {
++            model: "claude-sonnet-4-5".into(),
++            input_tokens: 1000,
++            output_tokens: 500,
++            cache_read_tokens: None,
++            cache_write_tokens: None,
++            reasoning_tokens: None,
++            speed: None,
++            cost: None,
++        };
++        let fast_usage = StageUsage {
++            model: "claude-sonnet-4-5".into(),
++            input_tokens: 1000,
++            output_tokens: 500,
++            cache_read_tokens: None,
++            cache_write_tokens: None,
++            reasoning_tokens: None,
++            speed: Some("fast".into()),
++            cost: None,
++        };
++        let standard_cost = compute_stage_cost(&standard_usage).unwrap();
++        let fast_cost = compute_stage_cost(&fast_usage).unwrap();
++        assert!(
++            (fast_cost - standard_cost * 6.0).abs() < 1e-10,
++            "fast mode should be 6x standard cost: standard={standard_cost}, fast={fast_cost}"
++        );
++    }
+ }
+diff --git a/lib/crates/fabro-workflows/src/event.rs b/lib/crates/fabro-workflows/src/event.rs
+index 03c7d3bd..e8bf71f0 100644
+--- a/lib/crates/fabro-workflows/src/event.rs
++++ b/lib/crates/fabro-workflows/src/event.rs
+@@ -1199,6 +1199,7 @@ mod tests {
+                     cache_read_tokens: Some(800),
+                     cache_write_tokens: Some(50),
+                     reasoning_tokens: Some(100),
++                    speed: None,
+                     raw: None,
+                 },
+                 tool_call_count: 3,
+@@ -2286,6 +2287,7 @@ mod tests {
+                 cache_read_tokens: Some(3000),
+                 cache_write_tokens: Some(500),
+                 reasoning_tokens: Some(800),
++                speed: None,
+                 raw: None,
+             }),
+         };
+diff --git a/lib/crates/fabro-workflows/src/outcome.rs b/lib/crates/fabro-workflows/src/outcome.rs
+index 25804112..bc6313e0 100644
+--- a/lib/crates/fabro-workflows/src/outcome.rs
++++ b/lib/crates/fabro-workflows/src/outcome.rs
+@@ -58,6 +58,8 @@ pub struct StageUsage {
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub reasoning_tokens: Option<i64>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub speed: Option<String>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub cost: Option<f64>,
+ }
+ 
+@@ -70,6 +72,7 @@ impl From<&StageUsage> for fabro_llm::types::Usage {
+             cache_read_tokens: u.cache_read_tokens,
+             cache_write_tokens: u.cache_write_tokens,
+             reasoning_tokens: u.reasoning_tokens,
++            speed: u.speed.clone(),
+             raw: None,
+         }
+     }
+@@ -378,6 +381,7 @@ mod tests {
+             cache_read_tokens: Some(800),
+             cache_write_tokens: Some(50),
+             reasoning_tokens: Some(100),
++            speed: None,
+             cost: None,
+         };
+         let json = serde_json::to_string(&usage).unwrap();
+@@ -398,6 +402,7 @@ mod tests {
+             cache_read_tokens: None,
+             cache_write_tokens: None,
+             reasoning_tokens: None,
++            speed: None,
+             cost: None,
+         };
+         let json = serde_json::to_string(&usage).unwrap();
+diff --git a/lib/crates/fabro-workflows/src/preamble.rs b/lib/crates/fabro-workflows/src/preamble.rs
+index ee8a8ab7..f000da97 100644
+--- a/lib/crates/fabro-workflows/src/preamble.rs
++++ b/lib/crates/fabro-workflows/src/preamble.rs
+@@ -924,6 +924,7 @@ mod tests {
+             cache_read_tokens: None,
+             cache_write_tokens: None,
+             reasoning_tokens: None,
++            speed: None,
+             cost: None,
+         });
+         outcome.files_touched = vec!["src/lib.rs".to_string(), "src/main.rs".to_string()];
+@@ -1190,6 +1191,7 @@ mod tests {
+             cache_read_tokens: None,
+             cache_write_tokens: None,
+             reasoning_tokens: None,
++            speed: None,
+             cost: None,
+         });
+         node_outcomes.insert("report".to_string(), outcome);
+@@ -1369,6 +1371,7 @@ mod tests {
+             cache_read_tokens: None,
+             cache_write_tokens: None,
+             reasoning_tokens: None,
++            speed: None,
+             cost: None,
+         });
+         outcome.files_touched = vec!["src/lib.rs".to_string()];
+@@ -1588,6 +1591,7 @@ mod tests {
+             cache_read_tokens: None,
+             cache_write_tokens: None,
+             reasoning_tokens: None,
++            speed: None,
+             cost: None,
+         });
+         outcome.files_touched = vec!["src/lib.rs".to_string()];
+diff --git a/lib/crates/fabro-workflows/src/stylesheet.rs b/lib/crates/fabro-workflows/src/stylesheet.rs
+index 31fddb2d..37a3cdd8 100644
+--- a/lib/crates/fabro-workflows/src/stylesheet.rs
++++ b/lib/crates/fabro-workflows/src/stylesheet.rs
+@@ -2,7 +2,8 @@ use fabro_graphviz::graph::{AttrValue, Graph};
+ pub use fabro_graphviz::stylesheet::{parse_stylesheet, Declaration, Rule, Selector, Stylesheet};
+ 
+ /// Recognized stylesheet properties.
+-const STYLESHEET_PROPERTIES: &[&str] = &["model", "provider", "reasoning_effort", "backend"];
++const STYLESHEET_PROPERTIES: &[&str] =
++    &["model", "provider", "reasoning_effort", "speed", "backend"];
+ 
+ /// Apply a stylesheet to a graph. Rules are applied by specificity order;
+ /// higher specificity wins. Explicit node attributes are never overridden.
+@@ -240,4 +241,17 @@ mod tests {
+             Some(&AttrValue::String("api".into()))
+         );
+     }
++
++    #[test]
++    fn apply_speed_property() {
++        let ss = parse_stylesheet("* { speed: fast; }").unwrap();
++        let mut graph = Graph::new("test");
++        graph.nodes.insert("a".into(), Node::new("a"));
++        apply_stylesheet(&ss, &mut graph);
++
++        assert_eq!(
++            graph.nodes["a"].attrs.get("speed"),
++            Some(&AttrValue::String("fast".into()))
++        );
++    }
+ }
+diff --git a/lib/crates/fabro-workflows/tests/integration.rs b/lib/crates/fabro-workflows/tests/integration.rs
+index e1a23116..97c54fea 100644
+--- a/lib/crates/fabro-workflows/tests/integration.rs
++++ b/lib/crates/fabro-workflows/tests/integration.rs
+@@ -6071,6 +6071,7 @@ mod real_llm {
+                 max_tokens: Some(200),
+                 stop_sequences: None,
+                 reasoning_effort: None,
++                speed: None,
+                 metadata: None,
+                 provider_options: None,
+             };

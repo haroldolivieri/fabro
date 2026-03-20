@@ -1,0 +1,13 @@
+{
+  "run_id": "01KM4C5NR7A6KVFNK6DDE3FP4R",
+  "workflow_name": "ImplementAndSimplify",
+  "goal": "# Emit `StageStarted` on retry attempts\n\n## Context\n\nWhen a stage fails with a transient error and is retried, the CLI progress UI freezes because:\n\n1. `StageFailed` calls `finish_stage()`, removing the stage from `active_stages`\n2. The retry loop in the engine (`continue` at line 1198) re-enters handler execution **without emitting `StageStarted`**\n3. All subsequent agent events for the retry attempt silently drop (no matching entry in `active_stages`)\n\nThe `StageStarted` event already has `attempt` and `max_attempts` fields, so emitting it per-attempt is the intended design — it just wasn't wired up.\n\n## Changes\n\n### 1. Engine: emit `StageStarted` at the top of the retry loop\n\n**File:** `lib/crates/fabro-workflows/src/engine.rs`\n\nMove the `StageStarted` emission from before the loop (line 1852) to inside the loop, right after `for attempt in 1..=policy.max_attempts {` (line 1079). This way every attempt — including retries — emits the event with the correct `attempt` number.\n\nThe existing emission at line 1852 gets replaced, not duplicated. The `attempt` value comes directly from the loop variable (converted via `usize::try_from`).\n\n### 2. Engine: move StageStart hook inside the loop (or keep it outside)\n\nThe `StageStart` hook block (lines 1862-1895) currently runs once before the loop. It should stay outside — hooks shouldn't re-fire on retries. Only the `StageStarted` event emission moves inside.\n\n### 3. UI: no changes needed\n\n`on_stage_started` in `run_progress.rs` already handles being called for the same `node_id` — it inserts a fresh `ActiveStage` into the map, creating a new spinner. The `StageFailed` handler correctly finishes the old spinner. The natural event sequence becomes:\n\n```\nStageStarted  (attempt 1) → spinner created\nStageFailed   (will_retry) → spinner finished with ✗\nStageStarted  (attempt 2) → new spinner created\nAgent events  → attach to new spinner\nStageCompleted (attempt 2) → spinner finished with ✓\n```\n\n## Verification\n\n1. `cargo test -p fabro-workflows` — existing tests pass\n2. `cargo clippy --workspace -- -D warnings` — no warnings\n3. Manual: run a workflow that hits a transient LLM error (or mock one) and verify the CLI shows the retry spinner with tool calls\n",
+  "start_time": "2026-03-20T01:01:24.904119Z",
+  "node_count": 12,
+  "edge_count": 15,
+  "run_branch": "fabro/run/01KM4C5NR7A6KVFNK6DDE3FP4R",
+  "base_sha": "1fc3495ba93e711faaa7ea4db9819d1f61d03b78",
+  "base_branch": "main",
+  "workflow_slug": "implement",
+  "host_repo_path": "/Users/bhelmkamp/p/fabro-sh/fabro"
+}

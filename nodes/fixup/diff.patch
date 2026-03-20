@@ -1,0 +1,137 @@
+diff --git a/lib/crates/fabro-sandbox/src/worktree.rs b/lib/crates/fabro-sandbox/src/worktree.rs
+index d9806166..35c7c67d 100644
+--- a/lib/crates/fabro-sandbox/src/worktree.rs
++++ b/lib/crates/fabro-sandbox/src/worktree.rs
+@@ -89,9 +89,9 @@ impl Sandbox for WorktreeSandbox {
+     // --- Lifecycle ---
+ 
+     /// Set up the git worktree:
+-    /// 1. Unless `skip_branch_creation`: force-create the branch at `base_sha`, emit `BranchCreated`.
+-    /// 2. Best-effort remove any stale worktree, then add fresh one, emit `WorktreeAdded`.
+-    /// 3. Unless `skip_branch_creation`: hard-reset the worktree to `base_sha`, emit `Reset`.
++    /// 1. Best-effort remove any stale worktree at `path` (so the branch is free to be updated).
++    /// 2. Unless `skip_branch_creation`: force-create the branch at `base_sha`, emit `BranchCreated`.
++    /// 3. Add the worktree, emit `WorktreeAdded`.
+     ///
+     /// Does NOT call `inner.initialize()`.
+     async fn initialize(&self) -> Result<(), String> {
+@@ -99,6 +99,14 @@ impl Sandbox for WorktreeSandbox {
+         let branch = shell_quote(&self.config.branch_name);
+         let sha = shell_quote(&self.config.base_sha);
+ 
++        // Best-effort remove any stale worktree registration + directory first,
++        // so that the branch is not "in use" when we try to force-update it.
++        let rm_cmd = format!("{GIT} worktree remove --force {path}");
++        let _ = self
++            .inner
++            .exec_command(&rm_cmd, 30_000, None, None, None)
++            .await;
++
+         if !self.config.skip_branch_creation {
+             let cmd = format!("{GIT} branch --force {branch} {sha}");
+             let result = self
+@@ -118,13 +126,6 @@ impl Sandbox for WorktreeSandbox {
+             });
+         }
+ 
+-        // Best-effort remove any stale worktree registration + directory
+-        let rm_cmd = format!("{GIT} worktree remove --force {path}");
+-        let _ = self
+-            .inner
+-            .exec_command(&rm_cmd, 30_000, None, None, None)
+-            .await;
+-
+         let add_cmd = format!("{GIT} worktree add {path} {branch}");
+         let result = self
+             .inner
+@@ -334,14 +335,14 @@ mod tests {
+         wt.initialize().await.unwrap();
+ 
+         let cmds = mock.captured_commands.lock().unwrap().clone();
+-        // branch --force, worktree remove (best-effort), worktree add
++        // worktree remove (best-effort), branch --force, worktree add
+         assert_eq!(cmds.len(), 3, "expected 3 git commands, got: {cmds:?}");
+-        assert!(cmds[0].contains("branch --force"), "cmd[0]: {}", cmds[0]);
+         assert!(
+-            cmds[1].contains("worktree remove --force"),
+-            "cmd[1]: {}",
+-            cmds[1]
++            cmds[0].contains("worktree remove --force"),
++            "cmd[0]: {}",
++            cmds[0]
+         );
++        assert!(cmds[1].contains("branch --force"), "cmd[1]: {}", cmds[1]);
+         assert!(cmds[2].contains("worktree add"), "cmd[2]: {}", cmds[2]);
+     }
+ 
+@@ -381,11 +382,11 @@ mod tests {
+         wt.initialize().await.unwrap();
+ 
+         let cmds = mock.captured_commands.lock().unwrap().clone();
+-        // The path "/tmp/my worktree" should be quoted in shell commands
++        // The path "/tmp/my worktree" should be quoted in the worktree remove command (cmd[0])
+         assert!(
+-            cmds[1].contains("'/tmp/my worktree'") || cmds[1].contains("\"/tmp/my worktree\""),
++            cmds[0].contains("'/tmp/my worktree'") || cmds[0].contains("\"/tmp/my worktree\""),
+             "worktree path should be shell-quoted: {}",
+-            cmds[1]
++            cmds[0]
+         );
+     }
+ 
+diff --git a/lib/crates/fabro-workflows/src/git.rs b/lib/crates/fabro-workflows/src/git.rs
+index dbd0430e..0c6a647d 100644
+--- a/lib/crates/fabro-workflows/src/git.rs
++++ b/lib/crates/fabro-workflows/src/git.rs
+@@ -1149,51 +1149,6 @@ mod tests {
+         assert!(branch_needs_push(repo_dir, "origin", "main"));
+     }
+ 
+-    /// Helper: create a local repo with a bare remote and push main.
+-    fn init_repo_with_remote(dir: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+-        let repo_dir = dir.join("repo");
+-        let remote_dir = dir.join("remote.git");
+-
+-        Command::new("git")
+-            .args(["init", "--bare"])
+-            .arg(&remote_dir)
+-            .output()
+-            .unwrap();
+-        Command::new("git")
+-            .args(["init"])
+-            .arg(&repo_dir)
+-            .output()
+-            .unwrap();
+-        Command::new("git")
+-            .args(["remote", "add", "origin"])
+-            .arg(&remote_dir)
+-            .current_dir(&repo_dir)
+-            .output()
+-            .unwrap();
+-        Command::new("git")
+-            .args([
+-                "-c",
+-                "user.name=test",
+-                "-c",
+-                "user.email=test@test",
+-                "commit",
+-                "--allow-empty",
+-                "-m",
+-                "init",
+-            ])
+-            .current_dir(&repo_dir)
+-            .output()
+-            .unwrap();
+-        Command::new("git")
+-            .args(["branch", "-M", "main"])
+-            .current_dir(&repo_dir)
+-            .output()
+-            .unwrap();
+-        push_branch(&repo_dir, "origin", "main").unwrap();
+-
+-        (repo_dir, remote_dir)
+-    }
+-
+     #[test]
+     fn metadata_branch_name_uses_meta_prefix() {
+         assert_eq!(MetadataStore::branch_name("abc-123"), "fabro/meta/abc-123");

@@ -1,0 +1,188 @@
+diff --git a/lib/crates/fabro-llm/src/.catalog.rs.pending-snap b/lib/crates/fabro-llm/src/.catalog.rs.pending-snap
+deleted file mode 100644
+index 811b6086..00000000
+--- a/lib/crates/fabro-llm/src/.catalog.rs.pending-snap
++++ /dev/null
+@@ -1,16 +0,0 @@
+-{"run_id":"1773968658-14885991","line":492,"new":{"module_name":"fabro_llm__catalog__tests","snapshot_name":"gpt_5_4_in_catalog","metadata":{"source":"lib/crates/fabro-llm/src/catalog.rs","assertion_line":492,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"gpt-5.4\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            2.5,\n        ),\n        output_cost_per_mtok: Some(\n            15.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            0.25,\n        ),\n    },\n    estimated_output_tps: Some(\n        70.0,\n    ),\n    aliases: [\n        \"gpt54\",\n        \"gpt-54\",\n    ],\n    default: true,\n}"},"old":{"module_name":"fabro_llm__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"gpt-5.4\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            2.5,\n        ),\n        output_cost_per_mtok: Some(\n            15.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            0.25,\n        ),\n    },\n    estimated_output_tps: Some(\n        70.0,\n    ),\n    aliases: [\n        \"gpt54\",\n    ],\n    default: true,\n}"}}
+-{"run_id":"1773968658-14885991","line":537,"new":{"module_name":"fabro_llm__catalog__tests","snapshot_name":"gpt_5_4_pro_in_catalog","metadata":{"source":"lib/crates/fabro-llm/src/catalog.rs","assertion_line":537,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"gpt-5.4-pro\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4 Pro\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            30.0,\n        ),\n        output_cost_per_mtok: Some(\n            180.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            3.0,\n        ),\n    },\n    estimated_output_tps: Some(\n        20.0,\n    ),\n    aliases: [\n        \"gpt54-pro\",\n        \"gpt-54-pro\",\n    ],\n    default: false,\n}"},"old":{"module_name":"fabro_llm__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"gpt-5.4-pro\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4 Pro\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            30.0,\n        ),\n        output_cost_per_mtok: Some(\n            180.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            3.0,\n        ),\n    },\n    estimated_output_tps: Some(\n        20.0,\n    ),\n    aliases: [\n        \"gpt54-pro\",\n    ],\n    default: false,\n}"}}
+-{"run_id":"1773968695-171443032","line":604,"new":null,"old":null}
+-{"run_id":"1773968695-171443032","line":254,"new":null,"old":null}
+-{"run_id":"1773968695-171443032","line":333,"new":null,"old":null}
+-{"run_id":"1773968695-171443032","line":492,"new":null,"old":null}
+-{"run_id":"1773968695-171443032","line":538,"new":null,"old":null}
+-{"run_id":"1773968695-171443032","line":386,"new":null,"old":null}
+-{"run_id":"1773968695-171443032","line":446,"new":null,"old":null}
+-{"run_id":"1773968758-970882052","line":254,"new":null,"old":null}
+-{"run_id":"1773968758-970882052","line":604,"new":null,"old":null}
+-{"run_id":"1773968758-970882052","line":492,"new":null,"old":null}
+-{"run_id":"1773968758-970882052","line":333,"new":null,"old":null}
+-{"run_id":"1773968758-970882052","line":386,"new":null,"old":null}
+-{"run_id":"1773968758-970882052","line":446,"new":null,"old":null}
+-{"run_id":"1773968758-970882052","line":538,"new":null,"old":null}
+diff --git a/lib/crates/fabro-llm/src/catalog.json b/lib/crates/fabro-llm/src/catalog.json
+index a042b98c..f05f1301 100644
+--- a/lib/crates/fabro-llm/src/catalog.json
++++ b/lib/crates/fabro-llm/src/catalog.json
+@@ -326,4 +326,4 @@
+     "aliases": ["mercury"],
+     "default": true
+   }
+-]
+\ No newline at end of file
++]
+diff --git a/lib/crates/fabro-validate/src/rules.rs b/lib/crates/fabro-validate/src/rules.rs
+index 28e1fa71..c9296a6e 100644
+--- a/lib/crates/fabro-validate/src/rules.rs
++++ b/lib/crates/fabro-validate/src/rules.rs
+@@ -899,6 +899,53 @@ impl LintRule for ScriptAbsoluteCdRule {
+     }
+ }
+ 
++// --- Shared helpers for model/provider validation ---
++
++fn check_model_known(
++    rule_name: &str,
++    model: &str,
++    context: &str,
++    node_id: Option<String>,
++) -> Option<Diagnostic> {
++    if fabro_llm::catalog::get_model_info(model).is_some() {
++        return None;
++    }
++    Some(Diagnostic {
++        rule: rule_name.to_string(),
++        severity: Severity::Warning,
++        message: format!(
++            "Unknown model '{model}' {context}. Run `fabro model list` to see available models"
++        ),
++        node_id,
++        edge: None,
++        fix: Some("Use a model ID from `fabro model list`".to_string()),
++    })
++}
++
++fn check_provider_known(
++    rule_name: &str,
++    provider: &str,
++    context: &str,
++    node_id: Option<String>,
++) -> Option<Diagnostic> {
++    if fabro_llm::Provider::from_str(provider).is_ok() {
++        return None;
++    }
++    let valid: Vec<&str> = fabro_llm::Provider::ALL
++        .iter()
++        .map(|p| p.as_str())
++        .collect();
++    let valid_str = valid.join(", ");
++    Some(Diagnostic {
++        rule: rule_name.to_string(),
++        severity: Severity::Warning,
++        message: format!("Unknown provider '{provider}' {context}. Valid providers: {valid_str}"),
++        node_id,
++        edge: None,
++        fix: Some(format!("Use one of: {valid_str}")),
++    })
++}
++
+ // --- Rule 20: stylesheet_model_known (WARNING) ---
+ 
+ struct StylesheetModelKnownRule;
+@@ -933,40 +980,19 @@ impl LintRule for StylesheetModelKnownRule {
+         for rule in &stylesheet.rules {
+             let label = Self::selector_label(&rule.selector);
+             for decl in &rule.declarations {
++                let context = format!("in stylesheet rule '{label}'");
+                 match decl.property.as_str() {
+                     "model" => {
+-                        if fabro_llm::catalog::get_model_info(&decl.value).is_none() {
+-                            diagnostics.push(Diagnostic {
+-                                rule: self.name().to_string(),
+-                                severity: Severity::Warning,
+-                                message: format!(
+-                                    "Unknown model '{}' in stylesheet rule '{label}'. Run `fabro model list` to see available models",
+-                                    decl.value
+-                                ),
+-                                node_id: None,
+-                                edge: None,
+-                                fix: Some("Use a model ID from `fabro model list`".to_string()),
+-                            });
++                        if let Some(d) = check_model_known(self.name(), &decl.value, &context, None)
++                        {
++                            diagnostics.push(d);
+                         }
+                     }
+                     "provider" => {
+-                        if fabro_llm::Provider::from_str(&decl.value).is_err() {
+-                            let valid: Vec<&str> = fabro_llm::Provider::ALL
+-                                .iter()
+-                                .map(|p| p.as_str())
+-                                .collect();
+-                            diagnostics.push(Diagnostic {
+-                                rule: self.name().to_string(),
+-                                severity: Severity::Warning,
+-                                message: format!(
+-                                    "Unknown provider '{}' in stylesheet rule '{label}'. Valid providers: {}",
+-                                    decl.value,
+-                                    valid.join(", ")
+-                                ),
+-                                node_id: None,
+-                                edge: None,
+-                                fix: Some(format!("Use one of: {}", valid.join(", "))),
+-                            });
++                        if let Some(d) =
++                            check_provider_known(self.name(), &decl.value, &context, None)
++                        {
++                            diagnostics.push(d);
+                         }
+                     }
+                     _ => {}
+@@ -989,39 +1015,18 @@ impl LintRule for NodeModelKnownRule {
+     fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
+         let mut diagnostics = Vec::new();
+         for node in graph.nodes.values() {
++            let context = format!("on node '{}'", node.id);
++            let node_id = Some(node.id.clone());
+             if let Some(model) = node.model() {
+-                if fabro_llm::catalog::get_model_info(model).is_none() {
+-                    diagnostics.push(Diagnostic {
+-                        rule: self.name().to_string(),
+-                        severity: Severity::Warning,
+-                        message: format!(
+-                            "Unknown model '{model}' on node '{}'. Run `fabro model list` to see available models",
+-                            node.id
+-                        ),
+-                        node_id: Some(node.id.clone()),
+-                        edge: None,
+-                        fix: Some("Use a model ID from `fabro model list`".to_string()),
+-                    });
++                if let Some(d) = check_model_known(self.name(), model, &context, node_id.clone()) {
++                    diagnostics.push(d);
+                 }
+             }
+             if let Some(provider) = node.provider() {
+-                if fabro_llm::Provider::from_str(provider).is_err() {
+-                    let valid: Vec<&str> = fabro_llm::Provider::ALL
+-                        .iter()
+-                        .map(|p| p.as_str())
+-                        .collect();
+-                    diagnostics.push(Diagnostic {
+-                        rule: self.name().to_string(),
+-                        severity: Severity::Warning,
+-                        message: format!(
+-                            "Unknown provider '{provider}' on node '{}'. Valid providers: {}",
+-                            node.id,
+-                            valid.join(", ")
+-                        ),
+-                        node_id: Some(node.id.clone()),
+-                        edge: None,
+-                        fix: Some(format!("Use one of: {}", valid.join(", "))),
+-                    });
++                if let Some(d) =
++                    check_provider_known(self.name(), provider, &context, node_id.clone())
++                {
++                    diagnostics.push(d);
+                 }
+             }
+         }

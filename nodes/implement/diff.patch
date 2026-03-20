@@ -1,0 +1,252 @@
+diff --git a/lib/crates/fabro-llm/src/.catalog.rs.pending-snap b/lib/crates/fabro-llm/src/.catalog.rs.pending-snap
+new file mode 100644
+index 00000000..811b6086
+--- /dev/null
++++ b/lib/crates/fabro-llm/src/.catalog.rs.pending-snap
+@@ -0,0 +1,16 @@
++{"run_id":"1773968658-14885991","line":492,"new":{"module_name":"fabro_llm__catalog__tests","snapshot_name":"gpt_5_4_in_catalog","metadata":{"source":"lib/crates/fabro-llm/src/catalog.rs","assertion_line":492,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"gpt-5.4\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            2.5,\n        ),\n        output_cost_per_mtok: Some(\n            15.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            0.25,\n        ),\n    },\n    estimated_output_tps: Some(\n        70.0,\n    ),\n    aliases: [\n        \"gpt54\",\n        \"gpt-54\",\n    ],\n    default: true,\n}"},"old":{"module_name":"fabro_llm__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"gpt-5.4\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            2.5,\n        ),\n        output_cost_per_mtok: Some(\n            15.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            0.25,\n        ),\n    },\n    estimated_output_tps: Some(\n        70.0,\n    ),\n    aliases: [\n        \"gpt54\",\n    ],\n    default: true,\n}"}}
++{"run_id":"1773968658-14885991","line":537,"new":{"module_name":"fabro_llm__catalog__tests","snapshot_name":"gpt_5_4_pro_in_catalog","metadata":{"source":"lib/crates/fabro-llm/src/catalog.rs","assertion_line":537,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"gpt-5.4-pro\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4 Pro\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            30.0,\n        ),\n        output_cost_per_mtok: Some(\n            180.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            3.0,\n        ),\n    },\n    estimated_output_tps: Some(\n        20.0,\n    ),\n    aliases: [\n        \"gpt54-pro\",\n        \"gpt-54-pro\",\n    ],\n    default: false,\n}"},"old":{"module_name":"fabro_llm__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"gpt-5.4-pro\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4 Pro\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            30.0,\n        ),\n        output_cost_per_mtok: Some(\n            180.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            3.0,\n        ),\n    },\n    estimated_output_tps: Some(\n        20.0,\n    ),\n    aliases: [\n        \"gpt54-pro\",\n    ],\n    default: false,\n}"}}
++{"run_id":"1773968695-171443032","line":604,"new":null,"old":null}
++{"run_id":"1773968695-171443032","line":254,"new":null,"old":null}
++{"run_id":"1773968695-171443032","line":333,"new":null,"old":null}
++{"run_id":"1773968695-171443032","line":492,"new":null,"old":null}
++{"run_id":"1773968695-171443032","line":538,"new":null,"old":null}
++{"run_id":"1773968695-171443032","line":386,"new":null,"old":null}
++{"run_id":"1773968695-171443032","line":446,"new":null,"old":null}
++{"run_id":"1773968758-970882052","line":254,"new":null,"old":null}
++{"run_id":"1773968758-970882052","line":604,"new":null,"old":null}
++{"run_id":"1773968758-970882052","line":492,"new":null,"old":null}
++{"run_id":"1773968758-970882052","line":333,"new":null,"old":null}
++{"run_id":"1773968758-970882052","line":386,"new":null,"old":null}
++{"run_id":"1773968758-970882052","line":446,"new":null,"old":null}
++{"run_id":"1773968758-970882052","line":538,"new":null,"old":null}
+diff --git a/lib/crates/fabro-llm/src/catalog.json b/lib/crates/fabro-llm/src/catalog.json
+index 608dd11d..a042b98c 100644
+--- a/lib/crates/fabro-llm/src/catalog.json
++++ b/lib/crates/fabro-llm/src/catalog.json
+@@ -158,7 +158,7 @@
+       "cache_input_cost_per_mtok": 0.25
+     },
+     "estimated_output_tps": 70,
+-    "aliases": ["gpt54"],
++    "aliases": ["gpt54", "gpt-54"],
+     "default": true
+   },
+   {
+@@ -175,7 +175,7 @@
+       "cache_input_cost_per_mtok": 3.0
+     },
+     "estimated_output_tps": 20,
+-    "aliases": ["gpt54-pro"]
++    "aliases": ["gpt54-pro", "gpt-54-pro"]
+   },
+   {
+     "id": "gpt-5.4-mini",
+@@ -191,7 +191,7 @@
+       "cache_input_cost_per_mtok": 0.075
+     },
+     "estimated_output_tps": 140,
+-    "aliases": ["gpt54-mini"]
++    "aliases": ["gpt54-mini", "gpt-54-mini"]
+   },
+   {
+     "id": "gemini-3.1-pro-preview",
+@@ -326,4 +326,4 @@
+     "aliases": ["mercury"],
+     "default": true
+   }
+-]
++]
+\ No newline at end of file
+diff --git a/lib/crates/fabro-llm/src/catalog.rs b/lib/crates/fabro-llm/src/catalog.rs
+index 8095aa52..ae90f442 100644
+--- a/lib/crates/fabro-llm/src/catalog.rs
++++ b/lib/crates/fabro-llm/src/catalog.rs
+@@ -525,6 +525,7 @@ mod tests {
+             ),
+             aliases: [
+                 "gpt54",
++                "gpt-54",
+             ],
+             default: true,
+         }
+@@ -570,6 +571,7 @@ mod tests {
+             ),
+             aliases: [
+                 "gpt54-pro",
++                "gpt-54-pro",
+             ],
+             default: false,
+         }
+@@ -581,6 +583,21 @@ mod tests {
+         assert_eq!(get_model_info("gpt54").unwrap().id, "gpt-5.4");
+     }
+ 
++    #[test]
++    fn gpt_54_hyphenated_alias() {
++        assert_eq!(get_model_info("gpt-54").unwrap().id, "gpt-5.4");
++    }
++
++    #[test]
++    fn gpt_54_pro_hyphenated_alias() {
++        assert_eq!(get_model_info("gpt-54-pro").unwrap().id, "gpt-5.4-pro");
++    }
++
++    #[test]
++    fn gpt_54_mini_hyphenated_alias() {
++        assert_eq!(get_model_info("gpt-54-mini").unwrap().id, "gpt-5.4-mini");
++    }
++
+     #[test]
+     fn gpt_5_3_codex_spark_in_catalog() {
+         let m = get_model_info("gpt-5.3-codex-spark").unwrap();
+diff --git a/lib/crates/fabro-validate/src/rules.rs b/lib/crates/fabro-validate/src/rules.rs
+index b62b59e3..28e1fa71 100644
+--- a/lib/crates/fabro-validate/src/rules.rs
++++ b/lib/crates/fabro-validate/src/rules.rs
+@@ -31,6 +31,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
+         Box::new(OrphanCustomOutcomeRule),
+         Box::new(ScriptAbsoluteCdRule),
+         Box::new(StylesheetModelKnownRule),
++        Box::new(NodeModelKnownRule),
+         Box::new(UnresolvedFileRefRule),
+         Box::new(ThreadIdRequiresFidelityFullRule),
+         Box::new(SelectionValidRule),
+@@ -976,7 +977,59 @@ impl LintRule for StylesheetModelKnownRule {
+     }
+ }
+ 
+-// --- Rule 21: unresolved_file_ref (ERROR) ---
++// --- Rule 21: node_model_known (WARNING) ---
++
++struct NodeModelKnownRule;
++
++impl LintRule for NodeModelKnownRule {
++    fn name(&self) -> &'static str {
++        "node_model_known"
++    }
++
++    fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
++        let mut diagnostics = Vec::new();
++        for node in graph.nodes.values() {
++            if let Some(model) = node.model() {
++                if fabro_llm::catalog::get_model_info(model).is_none() {
++                    diagnostics.push(Diagnostic {
++                        rule: self.name().to_string(),
++                        severity: Severity::Warning,
++                        message: format!(
++                            "Unknown model '{model}' on node '{}'. Run `fabro model list` to see available models",
++                            node.id
++                        ),
++                        node_id: Some(node.id.clone()),
++                        edge: None,
++                        fix: Some("Use a model ID from `fabro model list`".to_string()),
++                    });
++                }
++            }
++            if let Some(provider) = node.provider() {
++                if fabro_llm::Provider::from_str(provider).is_err() {
++                    let valid: Vec<&str> = fabro_llm::Provider::ALL
++                        .iter()
++                        .map(|p| p.as_str())
++                        .collect();
++                    diagnostics.push(Diagnostic {
++                        rule: self.name().to_string(),
++                        severity: Severity::Warning,
++                        message: format!(
++                            "Unknown provider '{provider}' on node '{}'. Valid providers: {}",
++                            node.id,
++                            valid.join(", ")
++                        ),
++                        node_id: Some(node.id.clone()),
++                        edge: None,
++                        fix: Some(format!("Use one of: {}", valid.join(", "))),
++                    });
++                }
++            }
++        }
++        diagnostics
++    }
++}
++
++// --- Rule 22: unresolved_file_ref (ERROR) ---
+ 
+ struct UnresolvedFileRefRule;
+ 
+@@ -3035,6 +3088,76 @@ mod tests {
+         assert!(d.is_empty());
+     }
+ 
++    // node_model_known rule tests
++
++    #[test]
++    fn node_model_known_rule_valid_model() {
++        let mut g = minimal_graph();
++        let mut node = Node::new("work");
++        node.attrs.insert(
++            "model".to_string(),
++            AttrValue::String("claude-sonnet-4-5".to_string()),
++        );
++        g.nodes.insert("work".to_string(), node);
++        let rule = NodeModelKnownRule;
++        let d = rule.apply(&g);
++        assert!(d.is_empty());
++    }
++
++    #[test]
++    fn node_model_known_rule_unknown_model() {
++        let mut g = minimal_graph();
++        let mut node = Node::new("work");
++        node.attrs.insert(
++            "model".to_string(),
++            AttrValue::String("nonexistent-model-xyz".to_string()),
++        );
++        g.nodes.insert("work".to_string(), node);
++        let rule = NodeModelKnownRule;
++        let d = rule.apply(&g);
++        assert_eq!(d.len(), 1);
++        assert_eq!(d[0].severity, Severity::Warning);
++        assert!(d[0].message.contains("nonexistent-model-xyz"));
++        assert_eq!(d[0].node_id.as_deref(), Some("work"));
++    }
++
++    #[test]
++    fn node_model_known_rule_alias() {
++        let mut g = minimal_graph();
++        let mut node = Node::new("work");
++        node.attrs
++            .insert("model".to_string(), AttrValue::String("opus".to_string()));
++        g.nodes.insert("work".to_string(), node);
++        let rule = NodeModelKnownRule;
++        let d = rule.apply(&g);
++        assert!(d.is_empty());
++    }
++
++    #[test]
++    fn node_model_known_rule_unknown_provider() {
++        let mut g = minimal_graph();
++        let mut node = Node::new("work");
++        node.attrs.insert(
++            "provider".to_string(),
++            AttrValue::String("google".to_string()),
++        );
++        g.nodes.insert("work".to_string(), node);
++        let rule = NodeModelKnownRule;
++        let d = rule.apply(&g);
++        assert_eq!(d.len(), 1);
++        assert_eq!(d[0].severity, Severity::Warning);
++        assert!(d[0].message.contains("google"));
++        assert_eq!(d[0].node_id.as_deref(), Some("work"));
++    }
++
++    #[test]
++    fn node_model_known_rule_no_model_no_provider() {
++        let g = minimal_graph();
++        let rule = NodeModelKnownRule;
++        let d = rule.apply(&g);
++        assert!(d.is_empty());
++    }
++
+     // unresolved_file_ref rule tests
+ 
+     #[test]

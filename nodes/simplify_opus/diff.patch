@@ -1,0 +1,35 @@
+diff --git a/lib/crates/fabro-agent/Cargo.toml b/lib/crates/fabro-agent/Cargo.toml
+index 765bc95c..6f8f5737 100644
+--- a/lib/crates/fabro-agent/Cargo.toml
++++ b/lib/crates/fabro-agent/Cargo.toml
+@@ -52,4 +52,4 @@ tokio = { workspace = true, features = ["test-util", "macros"] }
+ tempfile = "3"
+ dotenvy = { workspace = true }
+ paste = "1"
+-fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
+\ No newline at end of file
++fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
+diff --git a/lib/crates/fabro-llm/src/cli.rs b/lib/crates/fabro-llm/src/cli.rs
+index 6b18a80f..1f74e897 100644
+--- a/lib/crates/fabro-llm/src/cli.rs
++++ b/lib/crates/fabro-llm/src/cli.rs
+@@ -119,7 +119,7 @@ fn color_if(use_color: bool, color: Color) -> Option<Color> {
+     }
+ }
+ 
+-fn model_row(model: &crate::types::ModelInfo, use_color: bool) -> Vec<CellStruct> {
++fn model_row(model: &ModelInfo, use_color: bool) -> Vec<CellStruct> {
+     let aliases = model.aliases.join(", ");
+     let cost = format!(
+         "{} / {}",
+diff --git a/lib/crates/fabro-workflows/Cargo.toml b/lib/crates/fabro-workflows/Cargo.toml
+index 0e2fcacb..731bfc59 100644
+--- a/lib/crates/fabro-workflows/Cargo.toml
++++ b/lib/crates/fabro-workflows/Cargo.toml
+@@ -64,4 +64,4 @@ tokio = { workspace = true, features = ["test-util", "macros"] }
+ tempfile = "3"
+ dotenvy.workspace = true
+ assert_cmd = "2"
+-predicates = "3"
+\ No newline at end of file
++predicates = "3"

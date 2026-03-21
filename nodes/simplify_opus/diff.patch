@@ -1,0 +1,102 @@
+diff --git a/lib/crates/fabro-cli/src/commands/run.rs b/lib/crates/fabro-cli/src/commands/run.rs
+index c5336799..264fbc48 100644
+--- a/lib/crates/fabro-cli/src/commands/run.rs
++++ b/lib/crates/fabro-cli/src/commands/run.rs
+@@ -610,7 +610,7 @@ pub async fn run_command(
+     let PreparedWorkflow {
+         source,
+         graph,
+-        run_cfg,
++        mut run_cfg,
+         sandbox_provider,
+         model,
+         provider,
+@@ -698,10 +698,11 @@ pub async fn run_command(
+         );
+     });
+ 
+-    if workflow_path.extension().is_some_and(|ext| ext == "toml") {
+-        if let Ok(toml_contents) = tokio::fs::read(workflow_path).await {
+-            tokio::fs::write(run_dir.join("run.toml"), toml_contents).await?;
+-        }
++    // Serialize the merged run config so the run dir is self-contained
++    if let Some(ref mut cfg) = run_cfg {
++        cfg.graph = "graph.fabro".to_string();
++        let toml_str = toml::to_string_pretty(&*cfg).context("Failed to serialize run config")?;
++        tokio::fs::write(run_dir.join("run.toml"), toml_str).await?;
+     }
+ 
+     // Create progress UI (used for both normal and verbose modes)
+diff --git a/lib/crates/fabro-model/src/.catalog.rs.pending-snap b/lib/crates/fabro-model/src/.catalog.rs.pending-snap
+deleted file mode 100644
+index c30cbf5d..00000000
+--- a/lib/crates/fabro-model/src/.catalog.rs.pending-snap
++++ /dev/null
+@@ -1,7 +0,0 @@
+-{"run_id":"1774108419-651283619","line":604,"new":{"module_name":"fabro_model__catalog__tests","snapshot_name":"gpt_5_3_codex_spark_in_catalog","metadata":{"source":"lib/crates/fabro-model/src/catalog.rs","assertion_line":604,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"gpt-5.3-codex-spark\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.3 Codex Spark\",\n    limits: ModelLimits {\n        context_window: 131072,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: false,\n        reasoning: true,\n        effort: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: None,\n        output_cost_per_mtok: None,\n        cache_input_cost_per_mtok: None,\n    },\n    estimated_output_tps: Some(\n        1000.0,\n    ),\n    aliases: [\n        \"codex-spark\",\n    ],\n    default: false,\n}"},"old":{"module_name":"fabro_model__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"gpt-5.3-codex-spark\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.3 Codex Spark\",\n    limits: ModelLimits {\n        context_window: 131072,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: false,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: None,\n        output_cost_per_mtok: None,\n        cache_input_cost_per_mtok: None,\n    },\n    estimated_output_tps: Some(\n        1000.0,\n    ),\n    aliases: [\n        \"codex-spark\",\n    ],\n    default: false,\n}"}}
+-{"run_id":"1774108419-651283619","line":333,"new":{"module_name":"fabro_model__catalog__tests","snapshot_name":"gemini_3_1_flash_lite_in_catalog","metadata":{"source":"lib/crates/fabro-model/src/catalog.rs","assertion_line":333,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"gemini-3.1-flash-lite-preview\",\n    provider: \"gemini\",\n    family: \"gemini-3\",\n    display_name: \"Gemini 3.1 Flash Lite (Preview)\",\n    limits: ModelLimits {\n        context_window: 1048576,\n        max_output: Some(\n            65536,\n        ),\n    },\n    training: Some(\n        \"2025-01-01\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n        effort: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            0.25,\n        ),\n        output_cost_per_mtok: Some(\n            1.5,\n        ),\n        cache_input_cost_per_mtok: Some(\n            0.0625,\n        ),\n    },\n    estimated_output_tps: Some(\n        200.0,\n    ),\n    aliases: [\n        \"gemini-flash-lite\",\n    ],\n    default: false,\n}"},"old":{"module_name":"fabro_model__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"gemini-3.1-flash-lite-preview\",\n    provider: \"gemini\",\n    family: \"gemini-3\",\n    display_name: \"Gemini 3.1 Flash Lite (Preview)\",\n    limits: ModelLimits {\n        context_window: 1048576,\n        max_output: Some(\n            65536,\n        ),\n    },\n    training: Some(\n        \"2025-01-01\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            0.25,\n        ),\n        output_cost_per_mtok: Some(\n            1.5,\n        ),\n        cache_input_cost_per_mtok: Some(\n            0.0625,\n        ),\n    },\n    estimated_output_tps: Some(\n        200.0,\n    ),\n    aliases: [\n        \"gemini-flash-lite\",\n    ],\n    default: false,\n}"}}
+-{"run_id":"1774108419-651283619","line":254,"new":{"module_name":"fabro_model__catalog__tests","snapshot_name":"get_model_info_by_id","metadata":{"source":"lib/crates/fabro-model/src/catalog.rs","assertion_line":254,"expression":"info"},"snapshot":"ModelInfo {\n    id: \"claude-opus-4-6\",\n    provider: \"anthropic\",\n    family: \"claude-4\",\n    display_name: \"Claude Opus 4.6\",\n    limits: ModelLimits {\n        context_window: 1000000,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-01\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n        effort: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            15.0,\n        ),\n        output_cost_per_mtok: Some(\n            75.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            1.5,\n        ),\n    },\n    estimated_output_tps: Some(\n        25.0,\n    ),\n    aliases: [\n        \"opus\",\n        \"claude-opus\",\n    ],\n    default: false,\n}"},"old":{"module_name":"fabro_model__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"claude-opus-4-6\",\n    provider: \"anthropic\",\n    family: \"claude-4\",\n    display_name: \"Claude Opus 4.6\",\n    limits: ModelLimits {\n        context_window: 1000000,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-01\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            15.0,\n        ),\n        output_cost_per_mtok: Some(\n            75.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            1.5,\n        ),\n    },\n    estimated_output_tps: Some(\n        25.0,\n    ),\n    aliases: [\n        \"opus\",\n        \"claude-opus\",\n    ],\n    default: false,\n}"}}
+-{"run_id":"1774108419-651283619","line":492,"new":{"module_name":"fabro_model__catalog__tests","snapshot_name":"gpt_5_4_in_catalog","metadata":{"source":"lib/crates/fabro-model/src/catalog.rs","assertion_line":492,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"gpt-5.4\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n        effort: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            2.5,\n        ),\n        output_cost_per_mtok: Some(\n            15.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            0.25,\n        ),\n    },\n    estimated_output_tps: Some(\n        70.0,\n    ),\n    aliases: [\n        \"gpt54\",\n        \"gpt-54\",\n    ],\n    default: true,\n}"},"old":{"module_name":"fabro_model__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"gpt-5.4\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            2.5,\n        ),\n        output_cost_per_mtok: Some(\n            15.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            0.25,\n        ),\n    },\n    estimated_output_tps: Some(\n        70.0,\n    ),\n    aliases: [\n        \"gpt54\",\n        \"gpt-54\",\n    ],\n    default: true,\n}"}}
+-{"run_id":"1774108419-651283619","line":538,"new":{"module_name":"fabro_model__catalog__tests","snapshot_name":"gpt_5_4_pro_in_catalog","metadata":{"source":"lib/crates/fabro-model/src/catalog.rs","assertion_line":538,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"gpt-5.4-pro\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4 Pro\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n        effort: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            30.0,\n        ),\n        output_cost_per_mtok: Some(\n            180.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            3.0,\n        ),\n    },\n    estimated_output_tps: Some(\n        20.0,\n    ),\n    aliases: [\n        \"gpt54-pro\",\n        \"gpt-54-pro\",\n    ],\n    default: false,\n}"},"old":{"module_name":"fabro_model__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"gpt-5.4-pro\",\n    provider: \"openai\",\n    family: \"gpt-5\",\n    display_name: \"GPT-5.4 Pro\",\n    limits: ModelLimits {\n        context_window: 1047576,\n        max_output: Some(\n            128000,\n        ),\n    },\n    training: Some(\n        \"2025-08-31\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            30.0,\n        ),\n        output_cost_per_mtok: Some(\n            180.0,\n        ),\n        cache_input_cost_per_mtok: Some(\n            3.0,\n        ),\n    },\n    estimated_output_tps: Some(\n        20.0,\n    ),\n    aliases: [\n        \"gpt54-pro\",\n        \"gpt-54-pro\",\n    ],\n    default: false,\n}"}}
+-{"run_id":"1774108419-651283619","line":446,"new":{"module_name":"fabro_model__catalog__tests","snapshot_name":"mercury_2_in_catalog","metadata":{"source":"lib/crates/fabro-model/src/catalog.rs","assertion_line":446,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"mercury-2\",\n    provider: \"inception\",\n    family: \"mercury\",\n    display_name: \"Mercury 2\",\n    limits: ModelLimits {\n        context_window: 131072,\n        max_output: Some(\n            50000,\n        ),\n    },\n    training: None,\n    features: ModelFeatures {\n        tools: true,\n        vision: false,\n        reasoning: true,\n        effort: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            0.25,\n        ),\n        output_cost_per_mtok: Some(\n            0.75,\n        ),\n        cache_input_cost_per_mtok: None,\n    },\n    estimated_output_tps: Some(\n        1000.0,\n    ),\n    aliases: [\n        \"mercury\",\n    ],\n    default: true,\n}"},"old":{"module_name":"fabro_model__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"mercury-2\",\n    provider: \"inception\",\n    family: \"mercury\",\n    display_name: \"Mercury 2\",\n    limits: ModelLimits {\n        context_window: 131072,\n        max_output: Some(\n            50000,\n        ),\n    },\n    training: None,\n    features: ModelFeatures {\n        tools: true,\n        vision: false,\n        reasoning: true,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            0.25,\n        ),\n        output_cost_per_mtok: Some(\n            0.75,\n        ),\n        cache_input_cost_per_mtok: None,\n    },\n    estimated_output_tps: Some(\n        1000.0,\n    ),\n    aliases: [\n        \"mercury\",\n    ],\n    default: true,\n}"}}
+-{"run_id":"1774108419-651283619","line":386,"new":{"module_name":"fabro_model__catalog__tests","snapshot_name":"kimi_k2_5_in_catalog","metadata":{"source":"lib/crates/fabro-model/src/catalog.rs","assertion_line":386,"expression":"m"},"snapshot":"ModelInfo {\n    id: \"kimi-k2.5\",\n    provider: \"kimi\",\n    family: \"kimi-k2\",\n    display_name: \"Kimi K2.5\",\n    limits: ModelLimits {\n        context_window: 262144,\n        max_output: Some(\n            16000,\n        ),\n    },\n    training: Some(\n        \"2025-10-01\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: false,\n        effort: false,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            0.6,\n        ),\n        output_cost_per_mtok: Some(\n            3.0,\n        ),\n        cache_input_cost_per_mtok: None,\n    },\n    estimated_output_tps: Some(\n        50.0,\n    ),\n    aliases: [\n        \"kimi\",\n    ],\n    default: true,\n}"},"old":{"module_name":"fabro_model__catalog__tests","metadata":{},"snapshot":"ModelInfo {\n    id: \"kimi-k2.5\",\n    provider: \"kimi\",\n    family: \"kimi-k2\",\n    display_name: \"Kimi K2.5\",\n    limits: ModelLimits {\n        context_window: 262144,\n        max_output: Some(\n            16000,\n        ),\n    },\n    training: Some(\n        \"2025-10-01\",\n    ),\n    features: ModelFeatures {\n        tools: true,\n        vision: true,\n        reasoning: false,\n    },\n    costs: ModelCosts {\n        input_cost_per_mtok: Some(\n            0.6,\n        ),\n        output_cost_per_mtok: Some(\n            3.0,\n        ),\n        cache_input_cost_per_mtok: None,\n    },\n    estimated_output_tps: Some(\n        50.0,\n    ),\n    aliases: [\n        \"kimi\",\n    ],\n    default: true,\n}"}}
+diff --git a/lib/crates/fabro-model/src/catalog.rs b/lib/crates/fabro-model/src/catalog.rs
+index ae90f442..525a0e6a 100644
+--- a/lib/crates/fabro-model/src/catalog.rs
++++ b/lib/crates/fabro-model/src/catalog.rs
+@@ -270,6 +270,7 @@ mod tests {
+                 tools: true,
+                 vision: true,
+                 reasoning: true,
++                effort: true,
+             },
+             costs: ModelCosts {
+                 input_cost_per_mtok: Some(
+@@ -349,6 +350,7 @@ mod tests {
+                 tools: true,
+                 vision: true,
+                 reasoning: true,
++                effort: true,
+             },
+             costs: ModelCosts {
+                 input_cost_per_mtok: Some(
+@@ -402,6 +404,7 @@ mod tests {
+                 tools: true,
+                 vision: true,
+                 reasoning: false,
++                effort: false,
+             },
+             costs: ModelCosts {
+                 input_cost_per_mtok: Some(
+@@ -460,6 +463,7 @@ mod tests {
+                 tools: true,
+                 vision: false,
+                 reasoning: true,
++                effort: true,
+             },
+             costs: ModelCosts {
+                 input_cost_per_mtok: Some(
+@@ -508,6 +512,7 @@ mod tests {
+                 tools: true,
+                 vision: true,
+                 reasoning: true,
++                effort: true,
+             },
+             costs: ModelCosts {
+                 input_cost_per_mtok: Some(
+@@ -554,6 +559,7 @@ mod tests {
+                 tools: true,
+                 vision: true,
+                 reasoning: true,
++                effort: true,
+             },
+             costs: ModelCosts {
+                 input_cost_per_mtok: Some(
+@@ -620,6 +626,7 @@ mod tests {
+                 tools: true,
+                 vision: false,
+                 reasoning: true,
++                effort: true,
+             },
+             costs: ModelCosts {
+                 input_cost_per_mtok: None,

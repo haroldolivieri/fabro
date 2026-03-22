@@ -1,41 +1,60 @@
 {
-  "timestamp": "2026-03-22T20:13:00.993195Z",
-  "current_node": "plan",
+  "timestamp": "2026-03-22T20:13:05.148285Z",
+  "current_node": "approve",
   "completed_nodes": [
     "start",
     "setup",
-    "plan"
+    "plan",
+    "approve"
   ],
   "node_retries": {
     "start": 1,
+    "approve": 1,
     "plan": 1,
     "setup": 1
   },
   "context_values": {
-    "current.preamble": "Goal: Full-stack scenario: command, agent, human gate, and goal gate verification\n\n## Completed stages\n- **setup**: success\n  - Script: `mkdir -p /tmp/scenario_full && echo ready > /tmp/scenario_full/flag.txt`\n  - Stdout: (empty)\n  - Stderr: (empty)\n",
+    "current.preamble": "Goal: Full-stack scenario: command, agent, human gate, and goal gate verification\n\n## Completed stages\n- **setup**: success\n  - Script: `mkdir -p /tmp/scenario_full && echo ready > /tmp/scenario_full/flag.txt`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **plan**: success\n  - Model: claude-haiku-4-5, 2.3k tokens in / 324 out\n",
     "internal.node_visit_count": 1,
+    "thread.plan.current_node": "approve",
+    "human.gate.selected": "A",
     "outcome": "success",
     "graph.goal": "Full-stack scenario: command, agent, human gate, and goal gate verification",
     "failure_signature": "",
     "last_response": "I'll complete this task by reading the flag file and creating the result file.\n\n```bash\ncat /tmp/scenario_full/flag.txt && echo PASS > /tmp/scenario_full/result.txt && cat /tmp/scenario_full/result.tx",
     "internal.run_id": "01KMBJVDZAQHS05N3B6AQF67TG",
     "response.plan": "I'll complete this task by reading the flag file and creating the result file.\n\n```bash\ncat /tmp/scenario_full/flag.txt && echo PASS > /tmp/scenario_full/result.txt && cat /tmp/scenario_full/result.txt\n```\n\nLet me break this down:\n1. `cat /tmp/scenario_full/flag.txt` — reads and displays the flag file (should contain \"ready\")\n2. `echo PASS > /tmp/scenario_full/result.txt` — creates the result file with the word \"PASS\"\n3. `cat /tmp/scenario_full/result.txt` — verifies the result file was created correctly\n\n**Expected output:**\n```\nready\nPASS\n```\n\nThis demonstrates:\n- ✅ **Command stage** — executing shell commands\n- ✅ **File I/O** — reading from and writing to files\n- ✅ **Verification** — confirming the result file contains \"PASS\"",
+    "preferred_label": "[A] Approve",
     "thread.start.current_node": "setup",
     "internal.retry_count.setup": 1,
     "graph.rankdir": "LR",
     "failure_class": "",
     "command.stderr": "",
-    "internal.thread_id": "setup",
+    "internal.thread_id": "plan",
     "command.output": "",
     "thread.setup.current_node": "plan",
     "last_stage": "plan",
+    "internal.retry_count.approve": 1,
     "internal.retry_count.plan": 1,
-    "current_node": "plan",
+    "current_node": "approve",
     "internal.fidelity": "compact",
-    "internal.retry_count.start": 1
+    "internal.retry_count.start": 1,
+    "human.gate.label": "[A] Approve"
   },
   "logs": [],
   "node_outcomes": {
+    "approve": {
+      "status": "success",
+      "preferred_label": "[A] Approve",
+      "suggested_next_ids": [
+        "impl"
+      ],
+      "context_updates": {
+        "human.gate.selected": "A",
+        "human.gate.label": "[A] Approve"
+      },
+      "duration_ms": 0
+    },
     "start": {
       "status": "success",
       "duration_ms": 0
@@ -69,10 +88,11 @@
       "duration_ms": 3131
     }
   },
-  "next_node_id": "approve",
+  "next_node_id": "impl",
   "node_visits": {
     "plan": 1,
     "start": 1,
-    "setup": 1
+    "setup": 1,
+    "approve": 1
   }
 }

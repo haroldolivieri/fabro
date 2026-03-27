@@ -1,18 +1,23 @@
 {
-  "timestamp": "2026-03-27T02:34:25.240789Z",
-  "current_node": "approve",
+  "timestamp": "2026-03-27T02:34:27.434012Z",
+  "current_node": "ship",
   "completed_nodes": [
     "start",
     "draft",
-    "approve"
+    "approve",
+    "ship"
   ],
   "node_retries": {},
   "context_values": {
+    "thread.approve.current_node": "ship",
     "internal.fidelity": "compact",
+    "internal.retry_count.ship": 0,
+    "command.stderr": "",
     "last_response": "# Hello! 👋\n\nWelcome to Fabro! I'm here to help you orchestrate and automate your workflows. Ready to build something great?\n\n---\n\nIf you're testing a human gate with auto-approve, this greeting wou",
     "thread.draft.current_node": "approve",
+    "command.output": "shipped\n",
     "response.draft": "# Hello! 👋\n\nWelcome to Fabro! I'm here to help you orchestrate and automate your workflows. Ready to build something great?\n\n---\n\nIf you're testing a human gate with auto-approve, this greeting would appear before the gate. Is there a specific workflow test scenario you'd like to set up?",
-    "current.preamble": "Goal: Test human gate with auto-approve\n\n## Completed stages\n- **draft**: success\n  - Model: claude-haiku-4-5, 2.2k tokens in / 236 out\n",
+    "current.preamble": "Goal: Test human gate with auto-approve\n\n## Completed stages\n- **draft**: success\n  - Model: claude-haiku-4-5, 2.2k tokens in / 236 out\n- **approve**: success\n\n## Context\n- human.gate.label: [A] Approve\n- human.gate.selected: A\n",
     "failure_class": "",
     "internal.node_visit_count": 1,
     "thread.start.current_node": "draft",
@@ -22,9 +27,9 @@
     "internal.run_id": "01KMPJ8R3G22FBN3J1DW03VVJH",
     "last_stage": "draft",
     "internal.retry_count.start": 0,
-    "internal.thread_id": "draft",
+    "internal.thread_id": "approve",
     "internal.retry_count.draft": 0,
-    "current_node": "approve",
+    "current_node": "ship",
     "human.gate.label": "[A] Approve",
     "internal.retry_count.approve": 0,
     "failure_signature": "",
@@ -32,6 +37,15 @@
     "preferred_label": "[A] Approve"
   },
   "node_outcomes": {
+    "ship": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "shipped\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: echo shipped",
+      "usage": null
+    },
     "start": {
       "status": "success",
       "usage": null
@@ -67,10 +81,11 @@
       }
     }
   },
-  "next_node_id": "ship",
+  "next_node_id": "exit",
   "node_visits": {
-    "draft": 1,
     "start": 1,
+    "draft": 1,
+    "ship": 1,
     "approve": 1
   }
 }

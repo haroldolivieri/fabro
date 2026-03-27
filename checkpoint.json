@@ -1,26 +1,29 @@
 {
-  "timestamp": "2026-03-27T14:36:16.507741Z",
-  "current_node": "step1",
+  "timestamp": "2026-03-27T14:36:19.738025Z",
+  "current_node": "step2",
   "completed_nodes": [
     "start",
-    "step1"
+    "step1",
+    "step2"
   ],
   "node_retries": {},
   "context_values": {
-    "command.output": "hello-from-step1\n",
-    "current_node": "step1",
+    "command.output": "hello-from-step2\n",
+    "current_node": "step2",
     "internal.fidelity": "compact",
     "outcome": "success",
     "failure_class": "",
     "failure_signature": "",
     "thread.start.current_node": "step1",
     "internal.run_id": "01KMQVJVPX7HJXFHJAMD95DTGM",
-    "current.preamble": "Goal: Run two commands in sequence\n",
+    "current.preamble": "Goal: Run two commands in sequence\n\n## Completed stages\n- **step1**: success\n  - Script: `echo hello-from-step1`\n  - Stdout:\n    ```\n    hello-from-step1\n    ```\n  - Stderr: (empty)\n",
     "command.stderr": "",
     "graph.rankdir": "LR",
-    "internal.thread_id": "start",
+    "internal.thread_id": "step1",
+    "thread.step1.current_node": "step2",
     "internal.retry_count.step1": 0,
     "graph.goal": "Run two commands in sequence",
+    "internal.retry_count.step2": 0,
     "internal.node_visit_count": 1,
     "internal.work_dir": "/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmp5sGVeR/run/worktree",
     "internal.retry_count.start": 0
@@ -38,10 +41,20 @@
       },
       "notes": "Script completed: echo hello-from-step1",
       "usage": null
+    },
+    "step2": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "hello-from-step2\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: echo hello-from-step2",
+      "usage": null
     }
   },
-  "next_node_id": "step2",
+  "next_node_id": "exit",
   "node_visits": {
+    "step2": 1,
     "start": 1,
     "step1": 1
   }

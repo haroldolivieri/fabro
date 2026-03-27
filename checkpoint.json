@@ -1,20 +1,23 @@
 {
-  "timestamp": "2026-03-27T14:58:15.485955Z",
-  "current_node": "gate",
+  "timestamp": "2026-03-27T14:58:17.817457Z",
+  "current_node": "passed",
   "completed_nodes": [
     "start",
     "cmd",
-    "gate"
+    "gate",
+    "passed"
   ],
   "node_retries": {},
   "context_values": {
     "internal.run_id": "01KMQWTV54C2JV21E1YNE5JBG0",
-    "internal.thread_id": "cmd",
+    "internal.thread_id": "gate",
     "failure_signature": "",
     "graph.rankdir": "LR",
-    "current_node": "gate",
+    "current_node": "passed",
     "command.stderr": "",
+    "thread.gate.current_node": "passed",
     "internal.fidelity": "compact",
+    "internal.retry_count.passed": 0,
     "internal.retry_count.gate": 0,
     "internal.retry_count.start": 0,
     "thread.cmd.current_node": "gate",
@@ -24,8 +27,8 @@
     "thread.start.current_node": "cmd",
     "internal.node_visit_count": 1,
     "failure_class": "",
-    "command.output": "pass\n",
-    "current.preamble": "Goal: Test conditional edge selection after a command\n\n## Completed stages\n- **cmd**: success\n  - Script: `echo pass`\n  - Stdout:\n    ```\n    pass\n    ```\n  - Stderr: (empty)\n"
+    "command.output": "branch-passed\n",
+    "current.preamble": "Goal: Test conditional edge selection after a command\n\n## Completed stages\n- **cmd**: success\n  - Script: `echo pass`\n  - Stdout:\n    ```\n    pass\n    ```\n  - Stderr: (empty)\n- **gate**: success\n"
   },
   "node_outcomes": {
     "cmd": {
@@ -45,12 +48,22 @@
     "start": {
       "status": "success",
       "usage": null
+    },
+    "passed": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": "branch-passed\n"
+      },
+      "notes": "Script completed: echo branch-passed",
+      "usage": null
     }
   },
-  "next_node_id": "passed",
+  "next_node_id": "exit",
   "node_visits": {
     "start": 1,
-    "cmd": 1,
-    "gate": 1
+    "passed": 1,
+    "gate": 1,
+    "cmd": 1
   }
 }

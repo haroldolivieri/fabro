@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-03-27T19:07:04.914668Z",
+  "current_node": "decide",
+  "completed_nodes": [
+    "start",
+    "decide"
+  ],
+  "node_retries": {},
+  "context_values": {
+    "internal.thread_id": "start",
+    "graph.goal": "Test condition evaluation with OR and parentheses",
+    "internal.node_visit_count": 1,
+    "internal.retry_count.decide": 0,
+    "current.preamble": "Goal: Test condition evaluation with OR and parentheses\n",
+    "internal.run_id": "01KMRB2JHKJ9CZP6RAJBFVP269",
+    "internal.fidelity": "compact",
+    "internal.retry_count.start": 0,
+    "failure_class": "",
+    "thread.start.current_node": "decide",
+    "outcome": "success",
+    "current_node": "decide",
+    "failure_signature": ""
+  },
+  "node_outcomes": {
+    "decide": {
+      "status": "success",
+      "notes": "[Simulated] decide",
+      "usage": null
+    },
+    "start": {
+      "status": "success",
+      "notes": "[Simulated] start",
+      "usage": null
+    }
+  },
+  "next_node_id": "path_b",
+  "node_visits": {
+    "decide": 1,
+    "start": 1
+  }
+}

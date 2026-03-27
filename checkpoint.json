@@ -1,15 +1,17 @@
 {
-  "timestamp": "2026-03-27T19:07:07.324709Z",
-  "current_node": "fork",
+  "timestamp": "2026-03-27T19:07:08.520177Z",
+  "current_node": "merge",
   "completed_nodes": [
     "start",
-    "fork"
+    "fork",
+    "merge"
   ],
   "node_retries": {},
   "context_values": {
     "internal.retry_count.fork": 0,
     "internal.run_id": "01KMRB2JHKV51KCH3B5FXPTK85",
     "failure_class": "",
+    "parallel.fan_in.best_outcome": "success",
     "parallel.results": [
       {
         "id": "branch1",
@@ -20,13 +22,16 @@
         "status": "success"
       }
     ],
-    "current.preamble": "Goal: Test parallel and fan-in execution\n",
+    "internal.retry_count.merge": 0,
+    "current.preamble": "Goal: Test parallel and fan-in execution\n\n## Completed stages\n- **fork**: success\n\n## Context\n- parallel.branch_count: 2\n- parallel.results: [{\"id\":\"branch1\",\"status\":\"success\"},{\"id\":\"branch2\",\"status\":\"success\"}]\n",
     "failure_signature": "",
     "internal.retry_count.start": 0,
     "outcome": "success",
-    "current_node": "fork",
+    "current_node": "merge",
     "parallel.branch_count": 2,
-    "internal.thread_id": "start",
+    "thread.fork.current_node": "merge",
+    "parallel.fan_in.best_id": "branch1",
+    "internal.thread_id": "fork",
     "graph.goal": "Test parallel and fan-in execution",
     "internal.fidelity": "compact",
     "internal.node_visit_count": 1,
@@ -39,15 +44,25 @@
       "notes": "[Simulated] Parallel node dispatched 2 branches",
       "usage": null
     },
+    "merge": {
+      "status": "success",
+      "context_updates": {
+        "parallel.fan_in.best_id": "branch1",
+        "parallel.fan_in.best_outcome": "success"
+      },
+      "notes": "[Simulated] Selected best candidate: branch1",
+      "usage": null
+    },
     "start": {
       "status": "success",
       "notes": "[Simulated] start",
       "usage": null
     }
   },
-  "next_node_id": "merge",
+  "next_node_id": "review",
   "node_visits": {
     "start": 1,
-    "fork": 1
+    "fork": 1,
+    "merge": 1
   }
 }

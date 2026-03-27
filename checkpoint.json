@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-03-27T14:58:17.923240Z",
+  "current_node": "draft",
+  "completed_nodes": [
+    "start",
+    "draft"
+  ],
+  "node_retries": {},
+  "context_values": {
+    "graph.rankdir": "LR",
+    "response.draft": "# Greeting Message\n\nHello! 👋 \n\nWelcome to Fabro! I'm here to help you build, test, and deploy AI-powered workflows. Whether you're orchestrating agents, running automations, or testing workflow gates, let's get started. What would you like to build today?\n\n---\n\nIf you're testing the human gate with auto-approve, this greeting message could serve as the output from a workflow stage that requires human verification. Feel free to let me know if you'd like to adjust the tone or content!",
+    "internal.retry_count.draft": 0,
+    "failure_class": "",
+    "last_response": "# Greeting Message\n\nHello! 👋 \n\nWelcome to Fabro! I'm here to help you build, test, and deploy AI-powered workflows. Whether you're orchestrating agents, running automations, or testing workflow gat",
+    "current_node": "draft",
+    "thread.start.current_node": "draft",
+    "current.preamble": "Goal: Test human gate with auto-approve\n",
+    "graph.goal": "Test human gate with auto-approve",
+    "internal.thread_id": "start",
+    "internal.fidelity": "compact",
+    "internal.node_visit_count": 1,
+    "internal.run_id": "01KMQWTV544SGDZTYEWVMSPPAS",
+    "last_stage": "draft",
+    "outcome": "success",
+    "failure_signature": "",
+    "internal.retry_count.start": 0
+  },
+  "node_outcomes": {
+    "draft": {
+      "status": "success",
+      "context_updates": {
+        "last_response": "# Greeting Message\n\nHello! 👋 \n\nWelcome to Fabro! I'm here to help you build, test, and deploy AI-powered workflows. Whether you're orchestrating agents, running automations, or testing workflow gat",
+        "response.draft": "# Greeting Message\n\nHello! 👋 \n\nWelcome to Fabro! I'm here to help you build, test, and deploy AI-powered workflows. Whether you're orchestrating agents, running automations, or testing workflow gates, let's get started. What would you like to build today?\n\n---\n\nIf you're testing the human gate with auto-approve, this greeting message could serve as the output from a workflow stage that requires human verification. Feel free to let me know if you'd like to adjust the tone or content!",
+        "last_stage": "draft"
+      },
+      "notes": "Stage completed: draft",
+      "usage": {
+        "model": "claude-haiku-4-5",
+        "input_tokens": 2206,
+        "output_tokens": 235,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "reasoning_tokens": 132,
+        "cost": 0.0027048000000000003
+      }
+    },
+    "start": {
+      "status": "success",
+      "usage": null
+    }
+  },
+  "next_node_id": "approve",
+  "node_visits": {
+    "start": 1,
+    "draft": 1
+  }
+}

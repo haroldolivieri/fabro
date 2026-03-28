@@ -1,30 +1,34 @@
 {
-  "timestamp": "2026-03-28T21:29:05.599249Z",
-  "current_node": "run_tests",
+  "timestamp": "2026-03-28T21:29:06.231620Z",
+  "current_node": "report",
   "completed_nodes": [
     "start",
-    "run_tests"
+    "run_tests",
+    "report"
   ],
   "node_retries": {},
   "context_values": {
     "internal.work_dir": "/Users/bhelmkamp/.fabro/runs/20260328-dry-run-01KMV5KFRRD5WXMKB204H8ATD2/worktree",
+    "internal.retry_count.report": 0,
     "internal.run_id": "01KMV5KFRRD5WXMKB204H8ATD2",
     "internal.fidelity": "compact",
     "outcome": "success",
-    "last_stage": "run_tests",
-    "current.preamble": "Goal: Run tests and report results\n",
+    "last_stage": "report",
+    "current.preamble": "Goal: Run tests and report results\n\n## Completed stages\n- **run_tests**: success\n",
     "graph.rankdir": "LR",
     "failure_signature": "",
-    "current_node": "run_tests",
+    "current_node": "report",
     "internal.node_visit_count": 1,
+    "response.report": "[Simulated] Response for stage: report",
     "internal.retry_count.start": 0,
     "thread.start.current_node": "run_tests",
     "response.run_tests": "[Simulated] Response for stage: run_tests",
     "failure_class": "",
     "internal.retry_count.run_tests": 0,
-    "internal.thread_id": "start",
+    "internal.thread_id": "run_tests",
     "graph.goal": "Run tests and report results",
-    "last_response": "[Simulated] Response for stage: run_tests"
+    "thread.run_tests.current_node": "report",
+    "last_response": "[Simulated] Response for stage: report"
   },
   "node_outcomes": {
     "start": {
@@ -41,10 +45,21 @@
       },
       "notes": "[Simulated] run_tests",
       "usage": null
+    },
+    "report": {
+      "status": "success",
+      "context_updates": {
+        "last_response": "[Simulated] Response for stage: report",
+        "last_stage": "report",
+        "response.report": "[Simulated] Response for stage: report"
+      },
+      "notes": "[Simulated] report",
+      "usage": null
     }
   },
-  "next_node_id": "report",
+  "next_node_id": "exit",
   "node_visits": {
+    "report": 1,
     "run_tests": 1,
     "start": 1
   }

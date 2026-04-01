@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-04-01T12:46:21.219710Z",
+  "current_node": "main",
+  "completed_nodes": [
+    "start",
+    "main"
+  ],
+  "node_retries": {},
+  "context_values": {
+    "internal.thread_id": "start",
+    "graph.rankdir": "LR",
+    "outcome": "success",
+    "internal.node_visit_count": 1,
+    "last_stage": "main",
+    "internal.retry_count.start": 0,
+    "response.main": "[Simulated] Response for stage: main",
+    "internal.fidelity": "compact",
+    "internal.work_dir": "/Users/bhelmkamp/.fabro/runs/20260401-dry-run-01KN4H96X18EJQJHX5TARY98G7/worktree",
+    "current_node": "main",
+    "last_response": "[Simulated] Response for stage: main",
+    "failure_signature": "",
+    "current.preamble": "Goal: Verify the sandbox can lint and test the project\n",
+    "thread.start.current_node": "main",
+    "internal.retry_count.main": 0,
+    "internal.run_id": "01KN4H96X18EJQJHX5TARY98G7",
+    "failure_class": "",
+    "graph.goal": "Verify the sandbox can lint and test the project"
+  },
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "notes": "[Simulated] start",
+      "usage": null
+    },
+    "main": {
+      "status": "success",
+      "context_updates": {
+        "last_response": "[Simulated] Response for stage: main",
+        "response.main": "[Simulated] Response for stage: main",
+        "last_stage": "main"
+      },
+      "notes": "[Simulated] main",
+      "usage": null
+    }
+  },
+  "next_node_id": "exit",
+  "node_visits": {
+    "start": 1,
+    "main": 1
+  }
+}

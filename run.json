@@ -1,0 +1,431 @@
+{
+  "run_id": "01KN4JD6GJTC3PHC8G80EA950B",
+  "created_at": "2026-04-01T13:05:59.828395Z",
+  "settings": {
+    "version": 1,
+    "goal": "# Add storage directory check to `fabro doctor`\n\n## Context\n\n`fabro doctor` validates the installation but doesn't check that the storage directory (where runs, store data, etc. live) exists and is usable. Adding this check surfaces misconfiguration early — e.g. a `storage_dir` override pointing to a nonexistent or read-only path.\n\n## Plan\n\n### 1. Add `check_storage_dir` pure function in `doctor.rs`\n\n**File:** `lib/crates/fabro-cli/src/commands/doctor.rs`\n\nAdd a function like the existing `check_config`:\n\n```rust\nfn check_storage_dir(path: &Path, readable: bool, writable: bool) -> CheckResult\n```\n\n- **Summary always shows the resolved path** (e.g. `/Users/you/.fabro`) — same pattern as `check_config` which puts the path in `summary`.\n- **Pass** — dir exists, readable, writable.\n- **Error** — dir doesn't exist, or not readable, or not writable. Remediation: create it or fix permissions.\n- Details (verbose): existence, read, write status as individual lines.\n\n### 2. Gather state in `run_doctor`\n\nBefore the pure-checks section, resolve the storage dir and probe it:\n\n```rust\nlet storage_dir = cli_settings.storage_dir();\nlet exists = storage_dir.is_dir();\nlet readable = std::fs::read_dir(&storage_dir).is_ok();\nlet writable = tempfile::tempfile_in(&storage_dir).is_ok();  // or write+remove a temp file\n```\n\nUse `std::fs` directly — no async/live probe needed for local filesystem checks.\n\n### 3. Add to \"Required\" section\n\nInsert `check_storage_dir` result into the \"Required\" section, after the \"Configuration\" check and before \"LLM providers\" — storage is fundamental.\n\n### 4. Add unit tests\n\nFollow the existing test pattern (pure function tests with synthetic inputs). Cover:\n- Dir exists + readable + writable → Pass\n- Dir doesn't exist → Error\n- Dir exists but not writable → Error\n\nUse a `tempdir` for real filesystem assertions in a couple of tests.\n\n### 5. Add integration tests in `it/cmd/doctor.rs`\n\n**File:** `lib/crates/fabro-cli/tests/it/cmd/doctor.rs` (existing, has 4 tests)\n\nAdd 2 tests using the existing `test_context!()` + `fabro_snapshot!` pattern:\n\n- **`storage_dir_shown_in_output`** — `TestContext` already creates a temp `storage_dir` and sets `FABRO_STORAGE_DIR`. Run `doctor --dry-run`, snapshot-assert that \"Storage directory\" line appears with the path in the summary.\n- **`storage_dir_missing_shows_error`** — Override `FABRO_STORAGE_DIR` to a nonexistent path via `.env(\"FABRO_STORAGE_DIR\", \"/tmp/nonexistent-fabro-xyz\")`. Run `doctor --dry-run`, snapshot-assert that the check shows error status with the path and remediation text.\n\nBoth tests use `--dry-run` to skip live probes and `fabro_snapshot!` for inline snapshot assertions. Add a filter to normalize the temp dir path (e.g. `[STORAGE_DIR]`).\n\n## Files to modify\n\n- `lib/crates/fabro-cli/src/commands/doctor.rs` — new check function + gather state + wire into section + unit tests\n- `lib/crates/fabro-cli/tests/it/cmd/doctor.rs` — 2 new integration tests\n\n## Verification\n\n- `cargo nextest run -p fabro-cli -- doctor` — unit + integration tests pass\n- `cargo clippy --workspace -- -D warnings` — no lint issues\n- `fabro doctor` — shows new \"Storage directory\" check with the resolved path\n- `fabro doctor -v` — shows detail lines for existence/read/write\n- `FABRO_STORAGE_DIR=/nonexistent fabro doctor` — shows error for missing dir\n",
+    "goal_file": "/Users/bhelmkamp/.claude/plans/sorted-petting-finch.md",
+    "graph": "workflow.fabro",
+    "llm": {
+      "model": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "fallbacks": null
+    },
+    "sandbox": {
+      "provider": "daytona",
+      "preserve": null,
+      "devcontainer": null,
+      "local": null,
+      "daytona": {
+        "auto_stop_interval": 30,
+        "labels": {
+          "repo": "fabro-sh/fabro"
+        },
+        "snapshot": {
+          "name": "fabro-v6",
+          "cpu": 4,
+          "memory": 8,
+          "disk": 20,
+          "dockerfile": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates build-essential pkg-config libssl-dev unzip python3 && rm -rf /var/lib/apt/lists/*\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+        },
+        "network": null,
+        "skip_clone": false
+      },
+      "env": null
+    },
+    "pull_request": {
+      "enabled": true,
+      "draft": false,
+      "auto_merge": false,
+      "merge_strategy": "squash"
+    },
+    "hooks": [
+      {
+        "name": "cargo-fmt",
+        "event": "post_tool_use",
+        "command": "cargo fmt",
+        "matcher": "write_file|edit_file|apply_patch",
+        "blocking": true,
+        "timeout_ms": null,
+        "sandbox": null
+      }
+    ],
+    "features": {
+      "session_sandboxes": false,
+      "retros": false
+    },
+    "log": {
+      "level": "debug"
+    },
+    "git": {
+      "provider": "github",
+      "app_id": "2993730",
+      "client_id": "Iv23li3Pu4pCpsmPopVN",
+      "slug": "brynary-fabro",
+      "author": {
+        "name": null,
+        "email": null
+      },
+      "webhooks": null
+    },
+    "fabro": {
+      "root": "fabro/"
+    }
+  },
+  "graph": {
+    "name": "ImplementPlan",
+    "nodes": {
+      "simplify_gpt": {
+        "id": "simplify_gpt",
+        "attrs": {
+          "label": {
+            "String": "Simplify (GPT-54)"
+          },
+          "provider": {
+            "String": "openai"
+          },
+          "prompt": {
+            "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean)."
+          },
+          "model": {
+            "String": "gpt-5.4"
+          }
+        }
+      },
+      "preflight_lint": {
+        "id": "preflight_lint",
+        "attrs": {
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "provider": {
+            "String": "anthropic"
+          },
+          "shape": {
+            "String": "parallelogram"
+          },
+          "script": {
+            "String": "cargo clippy -q --workspace -- -D warnings 2>&1"
+          },
+          "max_retries": {
+            "Integer": 0
+          },
+          "label": {
+            "String": "Preflight Lint"
+          }
+        }
+      },
+      "verify": {
+        "id": "verify",
+        "attrs": {
+          "label": {
+            "String": "Verify"
+          },
+          "shape": {
+            "String": "parallelogram"
+          },
+          "script": {
+            "String": "cargo clippy -q --workspace -- -D warnings 2>&1 && cargo nextest run --cargo-quiet --workspace --status-level fail 2>&1"
+          },
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "goal_gate": {
+            "Boolean": true
+          },
+          "retry_target": {
+            "String": "fixup"
+          },
+          "provider": {
+            "String": "anthropic"
+          }
+        }
+      },
+      "simplify_opus": {
+        "id": "simplify_opus",
+        "attrs": {
+          "prompt": {
+            "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean)."
+          },
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "provider": {
+            "String": "anthropic"
+          },
+          "label": {
+            "String": "Simplify (Opus)"
+          }
+        }
+      },
+      "fixup": {
+        "id": "fixup",
+        "attrs": {
+          "prompt": {
+            "String": "The verify step failed. Read the build output from context and fix all clippy lint warnings and test failures."
+          },
+          "max_visits": {
+            "Integer": 3
+          },
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "label": {
+            "String": "Fixup"
+          },
+          "provider": {
+            "String": "anthropic"
+          }
+        }
+      },
+      "implement": {
+        "id": "implement",
+        "attrs": {
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "provider": {
+            "String": "anthropic"
+          },
+          "prompt": {
+            "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD."
+          },
+          "label": {
+            "String": "Implement"
+          }
+        }
+      },
+      "start": {
+        "id": "start",
+        "attrs": {
+          "label": {
+            "String": "Start"
+          },
+          "shape": {
+            "String": "Mdiamond"
+          },
+          "provider": {
+            "String": "anthropic"
+          },
+          "model": {
+            "String": "claude-opus-4-6"
+          }
+        }
+      },
+      "preflight_compile": {
+        "id": "preflight_compile",
+        "attrs": {
+          "shape": {
+            "String": "parallelogram"
+          },
+          "max_retries": {
+            "Integer": 0
+          },
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "label": {
+            "String": "Preflight Compile"
+          },
+          "script": {
+            "String": "cargo check -q --workspace 2>&1"
+          },
+          "provider": {
+            "String": "anthropic"
+          }
+        }
+      },
+      "fix_lints": {
+        "id": "fix_lints",
+        "attrs": {
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "max_visits": {
+            "Integer": 3
+          },
+          "label": {
+            "String": "Fix Lints"
+          },
+          "prompt": {
+            "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+          },
+          "provider": {
+            "String": "anthropic"
+          }
+        }
+      },
+      "exit": {
+        "id": "exit",
+        "attrs": {
+          "provider": {
+            "String": "anthropic"
+          },
+          "label": {
+            "String": "Exit"
+          },
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "shape": {
+            "String": "Msquare"
+          }
+        }
+      },
+      "fmt": {
+        "id": "fmt",
+        "attrs": {
+          "script": {
+            "String": "cargo fmt --all 2>&1"
+          },
+          "provider": {
+            "String": "anthropic"
+          },
+          "label": {
+            "String": "Format"
+          },
+          "max_retries": {
+            "Integer": 0
+          },
+          "shape": {
+            "String": "parallelogram"
+          },
+          "model": {
+            "String": "claude-opus-4-6"
+          }
+        }
+      },
+      "toolchain": {
+        "id": "toolchain",
+        "attrs": {
+          "model": {
+            "String": "claude-opus-4-6"
+          },
+          "max_retries": {
+            "Integer": 0
+          },
+          "provider": {
+            "String": "anthropic"
+          },
+          "script": {
+            "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+          },
+          "label": {
+            "String": "Toolchain"
+          },
+          "shape": {
+            "String": "parallelogram"
+          }
+        }
+      }
+    },
+    "edges": [
+      {
+        "from": "start",
+        "to": "toolchain",
+        "attrs": {}
+      },
+      {
+        "from": "toolchain",
+        "to": "preflight_compile",
+        "attrs": {
+          "condition": {
+            "String": "outcome=success"
+          }
+        }
+      },
+      {
+        "from": "toolchain",
+        "to": "exit",
+        "attrs": {}
+      },
+      {
+        "from": "preflight_compile",
+        "to": "preflight_lint",
+        "attrs": {
+          "condition": {
+            "String": "outcome=success"
+          }
+        }
+      },
+      {
+        "from": "preflight_compile",
+        "to": "exit",
+        "attrs": {}
+      },
+      {
+        "from": "preflight_lint",
+        "to": "implement",
+        "attrs": {
+          "condition": {
+            "String": "outcome=success"
+          }
+        }
+      },
+      {
+        "from": "preflight_lint",
+        "to": "fix_lints",
+        "attrs": {}
+      },
+      {
+        "from": "fix_lints",
+        "to": "preflight_lint",
+        "attrs": {}
+      },
+      {
+        "from": "implement",
+        "to": "simplify_opus",
+        "attrs": {}
+      },
+      {
+        "from": "simplify_opus",
+        "to": "simplify_gpt",
+        "attrs": {}
+      },
+      {
+        "from": "simplify_gpt",
+        "to": "verify",
+        "attrs": {}
+      },
+      {
+        "from": "verify",
+        "to": "fmt",
+        "attrs": {
+          "condition": {
+            "String": "outcome=success"
+          }
+        }
+      },
+      {
+        "from": "verify",
+        "to": "fixup",
+        "attrs": {}
+      },
+      {
+        "from": "fixup",
+        "to": "verify",
+        "attrs": {}
+      },
+      {
+        "from": "fmt",
+        "to": "exit",
+        "attrs": {}
+      }
+    ],
+    "attrs": {
+      "rankdir": {
+        "String": "LR"
+      },
+      "goal": {
+        "String": "# Add storage directory check to `fabro doctor`\n\n## Context\n\n`fabro doctor` validates the installation but doesn't check that the storage directory (where runs, store data, etc. live) exists and is usable. Adding this check surfaces misconfiguration early — e.g. a `storage_dir` override pointing to a nonexistent or read-only path.\n\n## Plan\n\n### 1. Add `check_storage_dir` pure function in `doctor.rs`\n\n**File:** `lib/crates/fabro-cli/src/commands/doctor.rs`\n\nAdd a function like the existing `check_config`:\n\n```rust\nfn check_storage_dir(path: &Path, readable: bool, writable: bool) -> CheckResult\n```\n\n- **Summary always shows the resolved path** (e.g. `/Users/you/.fabro`) — same pattern as `check_config` which puts the path in `summary`.\n- **Pass** — dir exists, readable, writable.\n- **Error** — dir doesn't exist, or not readable, or not writable. Remediation: create it or fix permissions.\n- Details (verbose): existence, read, write status as individual lines.\n\n### 2. Gather state in `run_doctor`\n\nBefore the pure-checks section, resolve the storage dir and probe it:\n\n```rust\nlet storage_dir = cli_settings.storage_dir();\nlet exists = storage_dir.is_dir();\nlet readable = std::fs::read_dir(&storage_dir).is_ok();\nlet writable = tempfile::tempfile_in(&storage_dir).is_ok();  // or write+remove a temp file\n```\n\nUse `std::fs` directly — no async/live probe needed for local filesystem checks.\n\n### 3. Add to \"Required\" section\n\nInsert `check_storage_dir` result into the \"Required\" section, after the \"Configuration\" check and before \"LLM providers\" — storage is fundamental.\n\n### 4. Add unit tests\n\nFollow the existing test pattern (pure function tests with synthetic inputs). Cover:\n- Dir exists + readable + writable → Pass\n- Dir doesn't exist → Error\n- Dir exists but not writable → Error\n\nUse a `tempdir` for real filesystem assertions in a couple of tests.\n\n### 5. Add integration tests in `it/cmd/doctor.rs`\n\n**File:** `lib/crates/fabro-cli/tests/it/cmd/doctor.rs` (existing, has 4 tests)\n\nAdd 2 tests using the existing `test_context!()` + `fabro_snapshot!` pattern:\n\n- **`storage_dir_shown_in_output`** — `TestContext` already creates a temp `storage_dir` and sets `FABRO_STORAGE_DIR`. Run `doctor --dry-run`, snapshot-assert that \"Storage directory\" line appears with the path in the summary.\n- **`storage_dir_missing_shows_error`** — Override `FABRO_STORAGE_DIR` to a nonexistent path via `.env(\"FABRO_STORAGE_DIR\", \"/tmp/nonexistent-fabro-xyz\")`. Run `doctor --dry-run`, snapshot-assert that the check shows error status with the path and remediation text.\n\nBoth tests use `--dry-run` to skip live probes and `fabro_snapshot!` for inline snapshot assertions. Add a filter to normalize the temp dir path (e.g. `[STORAGE_DIR]`).\n\n## Files to modify\n\n- `lib/crates/fabro-cli/src/commands/doctor.rs` — new check function + gather state + wire into section + unit tests\n- `lib/crates/fabro-cli/tests/it/cmd/doctor.rs` — 2 new integration tests\n\n## Verification\n\n- `cargo nextest run -p fabro-cli -- doctor` — unit + integration tests pass\n- `cargo clippy --workspace -- -D warnings` — no lint issues\n- `fabro doctor` — shows new \"Storage directory\" check with the resolved path\n- `fabro doctor -v` — shows detail lines for existence/read/write\n- `FABRO_STORAGE_DIR=/nonexistent fabro doctor` — shows error for missing dir\n"
+      },
+      "model_stylesheet": {
+        "String": "\n            * { model: claude-opus-4-6; }\n        "
+      }
+    }
+  },
+  "workflow_slug": "implement-plan",
+  "working_directory": "/Users/bhelmkamp/p/fabro-sh/fabro",
+  "host_repo_path": "/Users/bhelmkamp/p/fabro-sh/fabro",
+  "base_branch": "main"
+}

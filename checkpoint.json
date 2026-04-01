@@ -1,48 +1,42 @@
 {
-  "timestamp": "2026-04-01T15:44:59.293525Z",
-  "current_node": "lint_rust",
+  "timestamp": "2026-04-01T15:48:23.035978Z",
+  "current_node": "test_rust",
   "completed_nodes": [
     "start",
     "toolchain",
     "compile_rust",
     "compile_typescript",
-    "lint_rust"
+    "lint_rust",
+    "test_rust"
   ],
   "node_retries": {},
   "context_values": {
-    "command.stderr": "",
-    "internal.retry_count.compile_typescript": 0,
-    "internal.node_visit_count": 1,
-    "internal.retry_count.toolchain": 0,
-    "graph.rankdir": "LR",
-    "internal.thread_id": "compile_typescript",
-    "thread.compile_rust.current_node": "compile_typescript",
-    "thread.compile_typescript.current_node": "lint_rust",
+    "failure_signature": "test_rust|canceled|script failed with exit code: <n> ## stdout ──────────── nextest run id <hex>-07cb-<n>-a057-<hex> with nextest profile: default starting <n> tests across <n> binaries (<n> tests skipped) [> <n>.000s] (─────",
     "graph.goal": "Verify the sandbox can lint and test the project",
-    "failure_class": "",
-    "command.output": "",
-    "thread.toolchain.current_node": "compile_rust",
-    "current.preamble": "Goal: Verify the sandbox can lint and test the project\n\n## Completed stages\n- **toolchain**: success\n  - Script: `rustc --version && cargo --version && bun --version 2>&1`\n  - Stdout:\n    ```\n    rustc 1.94.0 (4a4ef493e 2026-03-02)\n    cargo 1.94.0 (85eff7c80 2026-01-15)\n    1.3.10\n    ```\n  - Stderr: (empty)\n- **compile_rust**: success\n  - Script: `cargo check -q --workspace 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **compile_typescript**: success\n  - Script: `cd apps/fabro-web && bun install && bun run typecheck 2>&1`\n  - Stdout:\n    ```\n    (7 lines omitted)\n    + @types/react-dom@19.2.3\n    + tailwindcss@4.2.1\n    + typescript@5.9.3\n    + vite@7.3.1\n    + vite-tsconfig-paths@5.1.4\n    + @dnd-kit/core@6.3.1\n    + @dnd-kit/sortable@10.0.0\n    + @dnd-kit/utilities@3.2.2\n    + @headlessui/react@2.2.9\n    + @heroicons/react@2.2.0\n    + @pierre/diffs@1.0.11\n    + @react-router/node@7.12.0\n    + @react-router/serve@7.12.0\n    + @viz-js/viz@3.24.0\n    + arctic@3.7.0\n    + better-sqlite3@12.6.2\n    + isbot@5.1.35\n    + jose@6.1.3\n    + react@19.2.4\n    + react-dom@19.2.4\n    + react-router@7.12.0\n    + smol-toml@1.6.0\n    \n    1400 packages installed [69.57s]\n    $ react-router typegen && tsc\n    ```\n  - Stderr: (empty)\n",
-    "internal.retry_count.compile_rust": 0,
-    "outcome": "success",
-    "internal.retry_count.start": 0,
-    "failure_signature": "",
-    "internal.run_id": "01KN4V8FYMGGB2EWSH16XVSNZW",
+    "current_node": "test_rust",
     "thread.start.current_node": "toolchain",
+    "internal.retry_count.compile_typescript": 0,
+    "internal.thread_id": "lint_rust",
+    "graph.rankdir": "LR",
+    "internal.retry_count.compile_rust": 0,
     "internal.retry_count.lint_rust": 0,
-    "current_node": "lint_rust",
-    "internal.fidelity": "compact"
+    "thread.lint_rust.current_node": "test_rust",
+    "current.preamble": "Goal: Verify the sandbox can lint and test the project\n\n## Completed stages\n- **toolchain**: success\n  - Script: `rustc --version && cargo --version && bun --version 2>&1`\n  - Stdout:\n    ```\n    rustc 1.94.0 (4a4ef493e 2026-03-02)\n    cargo 1.94.0 (85eff7c80 2026-01-15)\n    1.3.10\n    ```\n  - Stderr: (empty)\n- **compile_rust**: success\n  - Script: `cargo check -q --workspace 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n- **compile_typescript**: success\n  - Script: `cd apps/fabro-web && bun install && bun run typecheck 2>&1`\n  - Stdout:\n    ```\n    (7 lines omitted)\n    + @types/react-dom@19.2.3\n    + tailwindcss@4.2.1\n    + typescript@5.9.3\n    + vite@7.3.1\n    + vite-tsconfig-paths@5.1.4\n    + @dnd-kit/core@6.3.1\n    + @dnd-kit/sortable@10.0.0\n    + @dnd-kit/utilities@3.2.2\n    + @headlessui/react@2.2.9\n    + @heroicons/react@2.2.0\n    + @pierre/diffs@1.0.11\n    + @react-router/node@7.12.0\n    + @react-router/serve@7.12.0\n    + @viz-js/viz@3.24.0\n    + arctic@3.7.0\n    + better-sqlite3@12.6.2\n    + isbot@5.1.35\n    + jose@6.1.3\n    + react@19.2.4\n    + react-dom@19.2.4\n    + react-router@7.12.0\n    + smol-toml@1.6.0\n    \n    1400 packages installed [69.57s]\n    $ react-router typegen && tsc\n    ```\n  - Stderr: (empty)\n- **lint_rust**: success\n  - Script: `cargo fmt --check --all 2>&1 && cargo clippy -q --workspace -- -D warnings 2>&1`\n  - Stdout: (empty)\n  - Stderr: (empty)\n",
+    "internal.run_id": "01KN4V8FYMGGB2EWSH16XVSNZW",
+    "internal.retry_count.start": 0,
+    "command.output": "────────────\n Nextest run ID 311409bb-07cb-4383-a057-8e81b559f278 with nextest profile: default\n    Starting 3507 tests across 49 binaries (195 tests skipped)\n[>  5.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[> 10.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[>  5.000s] (─────────) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n[> 15.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[> 10.000s] (─────────) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n        FAIL [  11.119s] (1545/3507) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n  stdout ───\n\n    running 1 test\n    test cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run ... FAILED\n\n    failures:\n\n    failures:\n        cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n\n    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 273 filtered out; finished in 11.11s\n\n  stderr ───\n\n    thread 'cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run' (26310) panicked at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/core/src/ops/function.rs:250:5:\n    Unexpected failure.\n    code=<interrupted>\n    stderr=``````\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Work  0ms\n        ✓ Exit  0ms\n    ```\n    ```\n    command=`cd \"/tmp/.tmpEjSEch/temp\" && FABRO_NO_UPGRADE_CHECK=\"true\" FABRO_STORAGE_DIR=\"/tmp/.tmpEjSEch/storage\" HOME=\"/tmp/.tmpEjSEch/home\" NO_COLOR=\"1\" \"/home/daytona/workspace/target/debug/fabro\" \"attach\" \"01ARZ3NDEKTSV4RRFFQ69G5FAE\"`\n    code=<interrupted>\n    stdout=\"\"\n    stderr=```\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Work  0ms\n        ✓ Exit  0ms\n    ```\n\n\n    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n  Cancelling due to test failure: 3 tests still running\n TERMINATING [> 20.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n     TIMEOUT [  20.006s] (1548/3507) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n  stdout ───\n\n    running 1 test\n\n    (test timed out)\n\n────────────\n     Summary [  22.107s] 1548/3507 tests run: 1546 passed, 1 failed, 1 timed out, 195 skipped\n        FAIL [  11.119s] (1545/3507) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n     TIMEOUT [  20.006s] (1548/3507) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\nwarning: 1959/3507 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)\nerror: test run failed\n",
+    "command.stderr": "",
+    "internal.node_visit_count": 1,
+    "internal.retry_count.test_rust": 0,
+    "thread.compile_typescript.current_node": "lint_rust",
+    "outcome": "fail",
+    "internal.fidelity": "compact",
+    "internal.retry_count.toolchain": 0,
+    "thread.toolchain.current_node": "compile_rust",
+    "thread.compile_rust.current_node": "compile_typescript",
+    "failure_class": "canceled"
   },
   "node_outcomes": {
-    "lint_rust": {
-      "status": "success",
-      "context_updates": {
-        "command.output": "",
-        "command.stderr": ""
-      },
-      "notes": "Script completed: cargo fmt --check --all 2>&1 && cargo clippy -q --workspace -- -D warnings 2>&1",
-      "usage": null
-    },
     "compile_rust": {
       "status": "success",
       "context_updates": {
@@ -50,15 +44,6 @@
         "command.stderr": ""
       },
       "notes": "Script completed: cargo check -q --workspace 2>&1",
-      "usage": null
-    },
-    "toolchain": {
-      "status": "success",
-      "context_updates": {
-        "command.output": "rustc 1.94.0 (4a4ef493e 2026-03-02)\ncargo 1.94.0 (85eff7c80 2026-01-15)\n1.3.10\n",
-        "command.stderr": ""
-      },
-      "notes": "Script completed: rustc --version && cargo --version && bun --version 2>&1",
       "usage": null
     },
     "compile_typescript": {
@@ -70,17 +55,48 @@
       "notes": "Script completed: cd apps/fabro-web && bun install && bun run typecheck 2>&1",
       "usage": null
     },
+    "test_rust": {
+      "status": "fail",
+      "context_updates": {
+        "command.output": "────────────\n Nextest run ID 311409bb-07cb-4383-a057-8e81b559f278 with nextest profile: default\n    Starting 3507 tests across 49 binaries (195 tests skipped)\n[>  5.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[> 10.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[>  5.000s] (─────────) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n[> 15.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[> 10.000s] (─────────) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n        FAIL [  11.119s] (1545/3507) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n  stdout ───\n\n    running 1 test\n    test cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run ... FAILED\n\n    failures:\n\n    failures:\n        cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n\n    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 273 filtered out; finished in 11.11s\n\n  stderr ───\n\n    thread 'cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run' (26310) panicked at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/core/src/ops/function.rs:250:5:\n    Unexpected failure.\n    code=<interrupted>\n    stderr=``````\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Work  0ms\n        ✓ Exit  0ms\n    ```\n    ```\n    command=`cd \"/tmp/.tmpEjSEch/temp\" && FABRO_NO_UPGRADE_CHECK=\"true\" FABRO_STORAGE_DIR=\"/tmp/.tmpEjSEch/storage\" HOME=\"/tmp/.tmpEjSEch/home\" NO_COLOR=\"1\" \"/home/daytona/workspace/target/debug/fabro\" \"attach\" \"01ARZ3NDEKTSV4RRFFQ69G5FAE\"`\n    code=<interrupted>\n    stdout=\"\"\n    stderr=```\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Work  0ms\n        ✓ Exit  0ms\n    ```\n\n\n    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n  Cancelling due to test failure: 3 tests still running\n TERMINATING [> 20.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n     TIMEOUT [  20.006s] (1548/3507) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n  stdout ───\n\n    running 1 test\n\n    (test timed out)\n\n────────────\n     Summary [  22.107s] 1548/3507 tests run: 1546 passed, 1 failed, 1 timed out, 195 skipped\n        FAIL [  11.119s] (1545/3507) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n     TIMEOUT [  20.006s] (1548/3507) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\nwarning: 1959/3507 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)\nerror: test run failed\n",
+        "command.stderr": ""
+      },
+      "failure": {
+        "message": "Script failed with exit code: 100\n\n## stdout\n────────────\n Nextest run ID 311409bb-07cb-4383-a057-8e81b559f278 with nextest profile: default\n    Starting 3507 tests across 49 binaries (195 tests skipped)\n[>  5.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[> 10.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[>  5.000s] (─────────) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n[> 15.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n[> 10.000s] (─────────) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n        FAIL [  11.119s] (1545/3507) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n  stdout ───\n\n    running 1 test\n    test cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run ... FAILED\n\n    failures:\n\n    failures:\n        cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n\n    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 273 filtered out; finished in 11.11s\n\n  stderr ───\n\n    thread 'cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run' (26310) panicked at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library/core/src/ops/function.rs:250:5:\n    Unexpected failure.\n    code=<interrupted>\n    stderr=``````\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Work  0ms\n        ✓ Exit  0ms\n    ```\n    ```\n    command=`cd \"/tmp/.tmpEjSEch/temp\" && FABRO_NO_UPGRADE_CHECK=\"true\" FABRO_STORAGE_DIR=\"/tmp/.tmpEjSEch/storage\" HOME=\"/tmp/.tmpEjSEch/home\" NO_COLOR=\"1\" \"/home/daytona/workspace/target/debug/fabro\" \"attach\" \"01ARZ3NDEKTSV4RRFFQ69G5FAE\"`\n    code=<interrupted>\n    stdout=\"\"\n    stderr=```\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Work  0ms\n        ✓ Exit  0ms\n    ```\n\n\n    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n  Cancelling due to test failure: 3 tests still running\n TERMINATING [> 20.000s] (─────────) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n     TIMEOUT [  20.006s] (1548/3507) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\n  stdout ───\n\n    running 1 test\n\n    (test timed out)\n\n────────────\n     Summary [  22.107s] 1548/3507 tests run: 1546 passed, 1 failed, 1 timed out, 195 skipped\n        FAIL [  11.119s] (1545/3507) fabro-cli::it cmd::start::start_by_workflow_name_prefers_newly_created_submitted_run\n     TIMEOUT [  20.006s] (1548/3507) fabro-cli::it cmd::attach::attach_before_completion_streams_to_finished_state\nwarning: 1959/3507 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)\nerror: test run failed\n",
+        "failure_class": "canceled"
+      },
+      "usage": null
+    },
+    "toolchain": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "rustc 1.94.0 (4a4ef493e 2026-03-02)\ncargo 1.94.0 (85eff7c80 2026-01-15)\n1.3.10\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: rustc --version && cargo --version && bun --version 2>&1",
+      "usage": null
+    },
     "start": {
       "status": "success",
       "usage": null
+    },
+    "lint_rust": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": ""
+      },
+      "notes": "Script completed: cargo fmt --check --all 2>&1 && cargo clippy -q --workspace -- -D warnings 2>&1",
+      "usage": null
     }
   },
-  "next_node_id": "test_rust",
+  "next_node_id": "test_typescript",
   "node_visits": {
     "compile_rust": 1,
+    "test_rust": 1,
+    "start": 1,
     "lint_rust": 1,
     "toolchain": 1,
-    "start": 1,
     "compile_typescript": 1
   }
 }

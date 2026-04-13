@@ -11,6 +11,7 @@ use fabro_types::settings::server::GithubIntegrationStrategy;
 use fabro_types::settings::{InterpString, ServerAuthMethod};
 use fabro_util::check_report::{CheckDetail, CheckResult, CheckSection, CheckStatus};
 use fabro_util::dev_token::validate_dev_token_format;
+use fabro_util::session_secret;
 use fabro_util::version::FABRO_VERSION;
 use regex::Regex;
 use semver::Version;
@@ -145,7 +146,7 @@ fn validate_tls_private_key(pem: &str) -> Result<(), String> {
 }
 
 fn validate_session_secret(value: &str) -> Result<(), String> {
-    fabro_util::session_secret::validate_session_secret(value)
+    session_secret::validate_session_secret(value)
 }
 
 pub async fn run_all(state: &AppState) -> DiagnosticsReport {

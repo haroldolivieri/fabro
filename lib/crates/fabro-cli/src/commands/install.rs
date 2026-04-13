@@ -18,9 +18,9 @@ use fabro_auth::{AuthCredential, AuthMethod, codex_oauth_config, credential_id_f
 use fabro_config::user::SETTINGS_CONFIG_FILENAME;
 use fabro_config::{Storage, envfile, legacy_env};
 use fabro_model::Provider;
-use fabro_util::dev_token;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
+use fabro_util::{dev_token, session_secret};
 use futures::future::BoxFuture;
 use rand::Rng;
 use tokio::io::AsyncWriteExt;
@@ -1289,7 +1289,7 @@ pub(crate) async fn run_install(
             s.dim.apply_to("Generating secrets and auth material...")
         );
 
-        let session_secret = fabro_util::session_secret::generate_session_secret();
+        let session_secret = session_secret::generate_session_secret();
         fabro_util::printerr!(
             printer,
             "  {} Session secret generated",

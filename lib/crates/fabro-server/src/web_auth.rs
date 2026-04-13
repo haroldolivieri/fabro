@@ -9,7 +9,7 @@ use axum::{Extension, Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use cookie::time::Duration;
-use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
+use cookie::{Cookie, CookieJar, Key, SameSite};
 use fabro_config::Storage;
 use fabro_types::RunAuthMethod;
 use fabro_types::settings::{InterpString, ServerAuthMethod, SettingsLayer};
@@ -18,7 +18,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{debug, error, info, warn};
 
-use crate::jwt_auth::{AuthMode, auth_method_name, dev_token_matches};
+use crate::error::ApiError;
+use crate::jwt_auth::{AuthMode, AuthenticatedSubject, auth_method_name, dev_token_matches};
 use crate::server::AppState;
 use crate::server_secrets::ServerSecrets;
 
@@ -162,6 +163,35 @@ pub fn read_private_session(headers: &HeaderMap, key: &Key) -> Option<SessionCoo
     Some(session)
 }
 
+fn read_private_oauth_state(headers: &HeaderMap, key: &Key) -> Option<String> {
+    let jar = parse_cookie_header(headers);
+    jar.private(key)
+        .get(OAUTH_STATE_COOKIE_NAME)
+        .map(|cookie| cookie.value().to_string())
+}
+
+fn add_oauth_state_cookie(jar: &mut CookieJar, key: &Key, state_token: String, secure: bool) {
+    jar.private_mut(key).add(
+        Cookie::build((OAUTH_STATE_COOKIE_NAME, state_token))
+            .path("/auth")
+            .http_only(true)
+            .same_site(SameSite::Lax)
+            .secure(secure)
+            .max_age(Duration::minutes(10))
+            .build(),
+    );
+}
+
+fn remove_oauth_state_cookie(jar: &mut CookieJar, key: &Key, secure: bool) {
+    jar.private_mut(key).remove(
+        Cookie::build((OAUTH_STATE_COOKIE_NAME, ""))
+            .path("/auth")
+            .http_only(true)
+            .secure(secure)
+            .build(),
+    );
+}
+
 fn append_jar_delta(headers: &mut HeaderMap, jar: &CookieJar) {
     for cookie in jar.delta() {
         if let Ok(value) = HeaderValue::from_str(&cookie.encoded().to_string()) {
@@ -302,6 +332,13 @@ async fn login_github(
     if !auth_method_enabled(&auth_mode, ServerAuthMethod::Github) {
         return json_response(StatusCode::UNAUTHORIZED, json!({"error": "Unauthorized"}));
     }
+    let Some(session_key) = state.session_key() else {
+        warn!("OAuth login failed: SESSION_SECRET not configured");
+        return json_response(
+            StatusCode::CONFLICT,
+            json!({"error": "SESSION_SECRET is not configured"}),
+        );
+    };
     let settings = state.server_settings();
     let Some(client_id) = settings.integrations.github.client_id.as_ref() else {
         warn!("OAuth login failed: client_id not configured");
@@ -351,13 +388,11 @@ async fn login_github(
     debug!(redirect_uri = %format!("{web_url}/auth/callback/github"), "OAuth login redirecting to GitHub");
 
     let mut jar = CookieJar::new();
-    jar.add(
-        Cookie::build((OAUTH_STATE_COOKIE_NAME, state_token))
-            .path("/")
-            .http_only(true)
-            .same_site(SameSite::Lax)
-            .max_age(Duration::minutes(10))
-            .build(),
+    add_oauth_state_cookie(
+        &mut jar,
+        &session_key,
+        state_token,
+        session_cookie_secure(state.as_ref()),
     );
     let mut response = Redirect::to(authorize_url.as_str()).into_response();
     append_jar_delta(response.headers_mut(), &jar);
@@ -381,9 +416,8 @@ async fn callback_github(
         );
     };
     let settings = state.server_settings();
-    let cookie_jar = parse_cookie_header(&headers);
-    let stored_state = cookie_jar.get(OAUTH_STATE_COOKIE_NAME).map(Cookie::value);
-    if stored_state != Some(params.state.as_str()) {
+    let stored_state = read_private_oauth_state(&headers, &session_key);
+    if stored_state.as_deref() != Some(params.state.as_str()) {
         warn!("OAuth callback failed: state mismatch");
         return Redirect::to("/login").into_response();
     }
@@ -568,13 +602,10 @@ async fn callback_github(
         .max_age(Duration::days(30))
         .build(),
     );
-    jar.add(
-        Cookie::build((OAUTH_STATE_COOKIE_NAME, ""))
-            .path("/")
-            .http_only(true)
-            .expires(Expiration::Session)
-            .max_age(Duration::seconds(0))
-            .build(),
+    remove_oauth_state_cookie(
+        &mut jar,
+        &session_key,
+        session_cookie_secure(state.as_ref()),
     );
     let mut response = Redirect::to("/start").into_response();
     append_jar_delta(response.headers_mut(), &jar);
@@ -667,10 +698,15 @@ async fn toggle_demo(Json(payload): Json<DemoToggleRequest>) -> Response {
 }
 
 async fn setup_register(
+    subject: AuthenticatedSubject,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(payload): Json<SetupRegisterRequest>,
 ) -> Response {
+    if subject.auth_method != RunAuthMethod::DevToken {
+        return ApiError::forbidden().into_response();
+    }
+
     let origin = headers
         .get(header::ORIGIN)
         .or_else(|| headers.get(header::REFERER))
@@ -934,18 +970,25 @@ fn merge_settings_keys(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use axum::Extension;
     use axum::body::{Body, to_bytes};
+    use axum::extract::State;
     use axum::http::{Request, StatusCode, header};
     use axum_extra::extract::cookie::Key;
     use fabro_types::RunAuthMethod;
     use fabro_types::settings::SettingsLayer;
-    use fabro_types::settings::server::ServerAuthMethod;
+    use fabro_types::settings::server::{
+        GithubIntegrationLayer, ServerAuthGithubLayer, ServerAuthLayer, ServerAuthMethod,
+        ServerIntegrationsLayer, ServerLayer, ServerWebLayer,
+    };
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
     use super::{
-        GitHubManifestConversion, api_routes, merge_settings_keys, read_private_session, routes,
+        GitHubManifestConversion, SessionCookie, api_routes, merge_settings_keys,
+        read_private_session, routes,
     };
     use crate::jwt_auth::{AuthMode, ConfiguredAuth};
     use crate::server;
@@ -960,16 +1003,84 @@ mod tests {
         })
     }
 
-    fn test_auth_router(_key: &Key, auth_mode: AuthMode) -> axum::Router {
+    fn github_auth_mode() -> AuthMode {
+        AuthMode::Enabled(ConfiguredAuth {
+            methods:   vec![ServerAuthMethod::Github],
+            dev_token: None,
+        })
+    }
+
+    fn github_settings(web_url: &str) -> SettingsLayer {
+        SettingsLayer {
+            server: Some(ServerLayer {
+                web: Some(ServerWebLayer {
+                    enabled: Some(true),
+                    url:     Some(web_url.into()),
+                }),
+                auth: Some(ServerAuthLayer {
+                    methods: Some(vec![ServerAuthMethod::Github]),
+                    github:  Some(ServerAuthGithubLayer {
+                        allowed_usernames: vec!["octocat".to_string()],
+                    }),
+                }),
+                integrations: Some(ServerIntegrationsLayer {
+                    github: Some(GithubIntegrationLayer {
+                        client_id: Some("github-client-id".into()),
+                        ..GithubIntegrationLayer::default()
+                    }),
+                    ..ServerIntegrationsLayer::default()
+                }),
+                ..ServerLayer::default()
+            }),
+            ..SettingsLayer::default()
+        }
+    }
+
+    fn encode_session_cookie(key: &Key, session: &SessionCookie) -> String {
+        let mut jar = cookie::CookieJar::new();
+        jar.private_mut(key).add(cookie::Cookie::new(
+            super::SESSION_COOKIE_NAME,
+            serde_json::to_string(session).unwrap(),
+        ));
+        jar.delta()
+            .next()
+            .expect("private cookie should exist")
+            .encoded()
+            .to_string()
+    }
+
+    fn test_auth_router_with_settings(
+        settings: SettingsLayer,
+        auth_mode: AuthMode,
+    ) -> axum::Router {
+        let state = server::create_test_app_state_with_session_key(
+            settings,
+            Some("web-auth-test-key-material-0123456789"),
+            false,
+        );
+        let middleware_state = state.clone();
         axum::Router::new()
             .nest("/auth", routes())
             .nest("/api/v1", api_routes())
             .layer(Extension(auth_mode))
-            .with_state(server::create_test_app_state_with_session_key(
-                SettingsLayer::default(),
-                Some("web-auth-test-key-material-0123456789"),
-                false,
+            .layer(axum::middleware::from_fn_with_state(
+                middleware_state,
+                |State(state): State<Arc<crate::server::AppState>>,
+                 mut req: axum::extract::Request,
+                 next: axum::middleware::Next| async move {
+                    if let Some(key) = state.session_key() {
+                        if let Some(session) = read_private_session(req.headers(), &key) {
+                            req.extensions_mut().insert(session);
+                        }
+                    }
+                    next.run(req).await
+                },
             ))
+            .with_state(state)
+    }
+
+    fn test_auth_router(_key: &Key, auth_mode: AuthMode) -> axum::Router {
+        test_auth_router_with_settings(SettingsLayer::default(), auth_mode)
     }
 
     async fn response_json(response: axum::response::Response) -> Value {
@@ -1204,6 +1315,118 @@ name = "claude-sonnet"
         assert_eq!(response.status(), StatusCode::OK);
         let body = response_json(response).await;
         assert_eq!(body, json!({ "methods": ["dev-token"] }));
+    }
+
+    #[tokio::test]
+    async fn setup_register_requires_authentication() {
+        let app = test_auth_router_with_settings(SettingsLayer::default(), dev_token_auth_mode());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/setup/register")
+                    .body(Body::from("not json"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn setup_register_forbids_github_sessions() {
+        let key = Key::derive_from(b"web-auth-test-key-material-0123456789");
+        let app = test_auth_router_with_settings(
+            github_settings("https://fabro.example"),
+            github_auth_mode(),
+        );
+        let now = chrono::Utc::now().timestamp();
+        let session_cookie = encode_session_cookie(&key, &SessionCookie {
+            v:           1,
+            login:       "octocat".to_string(),
+            auth_method: RunAuthMethod::Github,
+            provider_id: Some(1),
+            name:        "Octocat".to_string(),
+            email:       "octocat@example.com".to_string(),
+            avatar_url:  "https://avatars.example/octocat".to_string(),
+            user_url:    "https://github.com/octocat".to_string(),
+            iat:         now,
+            exp:         now + 60,
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/setup/register")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::COOKIE, session_cookie)
+                    .body(Body::from(json!({ "code": "fake-code" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn login_github_sets_secure_state_cookie_for_https_web_url() {
+        let app = test_auth_router_with_settings(
+            github_settings("https://fabro.example"),
+            github_auth_mode(),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/login/github")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let set_cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .expect("oauth state cookie should be set");
+        assert!(
+            set_cookie.contains("Secure"),
+            "state cookie should be marked Secure: {set_cookie}"
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_github_rejects_plain_oauth_state_cookie() {
+        let app = test_auth_router_with_settings(
+            github_settings("https://fabro.example"),
+            github_auth_mode(),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/callback/github?code=test-code&state=fabro-test-state")
+                    .header(header::COOKIE, "fabro_oauth_state=fabro-test-state")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("/login")
+        );
     }
 
     #[test]

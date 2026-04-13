@@ -9,7 +9,9 @@ use serde_json::json;
 use tokio::time::sleep;
 
 use crate::context::{AuthContextRequest, AuthContextResponse};
-use crate::credential::{AuthCredential, AuthDetails, OAuthConfig, OAuthTokens};
+use crate::credential::{
+    AuthCredential, AuthDetails, OAuthConfig, OAuthTokens, expires_at_from_now,
+};
 use crate::strategy::AuthStrategy;
 
 const DEVICE_AUTH_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -28,11 +30,6 @@ fn http_client() -> anyhow::Result<HttpClient> {
 
 fn join_url(base: &str, path: &str) -> String {
     format!("{}{}", base.trim_end_matches('/'), path)
-}
-
-fn expires_at_from_now(expires_in: Option<u64>) -> chrono::DateTime<chrono::Utc> {
-    let seconds = i64::try_from(expires_in.unwrap_or(3600)).unwrap_or(i64::MAX);
-    chrono::Utc::now() + chrono::Duration::seconds(seconds)
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,7 +152,7 @@ impl CodexDeviceStrategy {
             }
 
             match payload.status.as_deref() {
-                Some("pending") | Some("running") | None => {
+                Some("pending" | "running") | None => {
                     sleep(DEVICE_AUTH_POLL_INTERVAL).await;
                 }
                 Some(other) => {

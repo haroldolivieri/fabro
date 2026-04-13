@@ -5,6 +5,7 @@ use fabro_model::Provider;
 use fabro_vault::Vault;
 use shlex::try_quote;
 use tokio::sync::RwLock as AsyncRwLock;
+use tokio::task::spawn_blocking;
 
 use crate::credential::{ApiKeyHeader, AuthCredential, AuthDetails, credential_id_for};
 use crate::refresh::refresh_oauth_credential;
@@ -107,7 +108,7 @@ impl CredentialResolver {
                 })?;
             let refreshed_for_store = refreshed.clone();
             let vault = Arc::clone(&self.vault);
-            tokio::task::spawn_blocking(move || {
+            spawn_blocking(move || {
                 let mut vault = vault.blocking_write();
                 vault_set_credential(&mut vault, &credential_id, &refreshed_for_store)
                     .map(|_| ())
@@ -130,7 +131,7 @@ impl CredentialResolver {
                 self.to_api_credential(&vault, &credential),
             )),
             CredentialUsage::CliAgent(kind) => Ok(ResolvedCredential::Cli(
-                self.to_cli_credential(&credential, kind),
+                Self::to_cli_credential(&credential, kind),
             )),
         }
     }
@@ -147,7 +148,7 @@ impl CredentialResolver {
             }
         }
 
-        for env_var in env_vars_for(provider) {
+        for env_var in provider.api_key_env_vars() {
             if let Some(value) = self.lookup_env_or_vault(vault, env_var) {
                 return Ok(AuthCredential {
                     provider,
@@ -169,10 +170,13 @@ impl CredentialResolver {
             Provider::Anthropic => self.lookup_env_or_vault(vault, "ANTHROPIC_BASE_URL"),
             Provider::OpenAi => self.lookup_env_or_vault(vault, "OPENAI_BASE_URL"),
             Provider::Gemini => self.lookup_env_or_vault(vault, "GEMINI_BASE_URL"),
-            Provider::Kimi | Provider::Zai | Provider::Minimax | Provider::Inception => None,
-            Provider::OpenAiCompatible => None,
+            Provider::Kimi
+            | Provider::Zai
+            | Provider::Minimax
+            | Provider::Inception
+            | Provider::OpenAiCompatible => None,
         };
-        let mut api_credential = match &credential.details {
+        match &credential.details {
             AuthDetails::ApiKey { key } => ApiCredential {
                 provider: credential.provider,
                 auth_header: match credential.provider {
@@ -213,14 +217,10 @@ impl CredentialResolver {
                     project_id: self.lookup_env_or_vault(vault, "OPENAI_PROJECT_ID"),
                 }
             }
-        };
-        if api_credential.provider == Provider::OpenAi && api_credential.codex_mode {
-            api_credential.base_url = Some("https://chatgpt.com/backend-api/codex".to_string());
         }
-        api_credential
     }
 
-    fn to_cli_credential(&self, credential: &AuthCredential, kind: CliAgentKind) -> CliCredential {
+    fn to_cli_credential(credential: &AuthCredential, kind: CliAgentKind) -> CliCredential {
         let mut env_vars = HashMap::new();
         let login_command = match (&credential.provider, &credential.details, kind) {
             (Provider::OpenAi, AuthDetails::ApiKey { key }, CliAgentKind::Codex) => {
@@ -241,7 +241,7 @@ impl CredentialResolver {
                 Some(codex_login_command(&tokens.access_token))
             }
             (_, AuthDetails::ApiKey { key }, _) => {
-                if let Some(name) = env_vars_for(credential.provider).first() {
+                if let Some(name) = credential.provider.api_key_env_vars().first() {
                     env_vars.insert((*name).to_string(), key.clone());
                 }
                 None
@@ -260,22 +260,17 @@ impl CredentialResolver {
 }
 
 fn codex_login_command(api_key: &str) -> String {
-    let quoted = try_quote(api_key)
-        .map(std::borrow::Cow::into_owned)
-        .unwrap_or_else(|_| api_key.to_string());
+    let quoted =
+        try_quote(api_key).map_or_else(|_| api_key.to_string(), std::borrow::Cow::into_owned);
     format!("PATH=\"$HOME/.local/bin:$PATH\" echo {quoted} | codex login --with-api-key")
-}
-
-fn env_vars_for(provider: Provider) -> &'static [&'static str] {
-    provider.api_key_env_vars()
 }
 
 fn credential_ids_for(provider: Provider, usage: CredentialUsage) -> &'static [&'static str] {
     match (provider, usage) {
-        (Provider::OpenAi, CredentialUsage::ApiRequest) => &["openai"],
         (Provider::OpenAi, CredentialUsage::CliAgent(CliAgentKind::Codex)) => {
             &["openai_codex", "openai"]
         }
+        (Provider::OpenAi, _) => &["openai"],
         (Provider::Anthropic, _) => &["anthropic"],
         (Provider::Gemini, _) => &["gemini"],
         (Provider::Kimi, _) => &["kimi"],
@@ -283,7 +278,6 @@ fn credential_ids_for(provider: Provider, usage: CredentialUsage) -> &'static [&
         (Provider::Minimax, _) => &["minimax"],
         (Provider::Inception, _) => &["inception"],
         (Provider::OpenAiCompatible, _) => &[],
-        (Provider::OpenAi, _) => &["openai"],
     }
 }
 

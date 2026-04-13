@@ -1,11 +1,4 @@
-use chrono::{Duration, Utc};
-
-use crate::credential::{AuthCredential, AuthDetails, OAuthTokens};
-
-fn expires_at_from_now(expires_in: Option<u64>) -> chrono::DateTime<Utc> {
-    let seconds = i64::try_from(expires_in.unwrap_or(3600)).unwrap_or(i64::MAX);
-    Utc::now() + Duration::seconds(seconds)
-}
+use crate::credential::{AuthCredential, AuthDetails, OAuthTokens, expires_at_from_now};
 
 pub async fn refresh_oauth_credential(
     credential: &AuthCredential,

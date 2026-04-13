@@ -711,7 +711,7 @@ async fn persist_vault_secrets(
                 .body(CreateSecretRequest {
                     name:        secret.name.clone(),
                     value:       secret.value.clone(),
-                    type_:       secret.type_.clone(),
+                    type_:       secret.type_,
                     description: secret.description.clone(),
                 })
                 .send()
@@ -726,14 +726,14 @@ async fn persist_vault_secrets(
         store.set(
             &secret.name,
             &secret.value,
-            local_secret_type(&secret.type_),
+            local_secret_type(secret.type_),
             secret.description.as_deref(),
         )?;
     }
     Ok(())
 }
 
-fn local_secret_type(secret_type: &ApiSecretType) -> SecretType {
+fn local_secret_type(secret_type: ApiSecretType) -> SecretType {
     match secret_type {
         ApiSecretType::Environment => SecretType::Environment,
         ApiSecretType::File => SecretType::File,

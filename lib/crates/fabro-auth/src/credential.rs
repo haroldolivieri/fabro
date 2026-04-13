@@ -42,6 +42,11 @@ pub struct OAuthTokens {
     pub expires_at:    DateTime<Utc>,
 }
 
+pub(crate) fn expires_at_from_now(expires_in: Option<u64>) -> DateTime<Utc> {
+    let seconds = i64::try_from(expires_in.unwrap_or(3600)).unwrap_or(i64::MAX);
+    Utc::now() + Duration::seconds(seconds)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OAuthConfig {
     pub auth_url:     String,

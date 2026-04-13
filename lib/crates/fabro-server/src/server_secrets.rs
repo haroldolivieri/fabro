@@ -109,8 +109,7 @@ impl ProviderCredentials {
                 .await
             {
                 Ok(ResolvedCredential::Api(credential)) => api_credentials.push(credential),
-                Ok(ResolvedCredential::Cli(_)) => {}
-                Err(ResolveError::NotConfigured(_)) => {}
+                Ok(ResolvedCredential::Cli(_)) | Err(ResolveError::NotConfigured(_)) => {}
                 Err(err) => auth_issues.push((*provider, err)),
             }
         }
@@ -131,32 +130,19 @@ pub(crate) struct LlmClientResult {
     pub auth_issues: Vec<(Provider, ResolveError)>,
 }
 
-pub(crate) fn provider_display_name(provider: Provider) -> &'static str {
-    match provider {
-        Provider::Anthropic => "Anthropic",
-        Provider::OpenAi => "OpenAI",
-        Provider::Gemini => "Gemini",
-        Provider::Kimi => "Kimi",
-        Provider::Zai => "Zai",
-        Provider::Minimax => "Minimax",
-        Provider::Inception => "Inception",
-        Provider::OpenAiCompatible => "OpenAI Compatible",
-    }
-}
-
 pub(crate) fn auth_issue_message(provider: Provider, err: &ResolveError) -> String {
     match err {
         ResolveError::NotConfigured(_) => {
-            format!("{} is not configured", provider_display_name(provider))
+            format!("{} is not configured", provider.display_name())
         }
         ResolveError::RefreshFailed { source, .. } => format!(
             "{} requires re-authentication: {}",
-            provider_display_name(provider),
+            provider.display_name(),
             source
         ),
         ResolveError::RefreshTokenMissing(_) => format!(
             "{} requires re-authentication: refresh token missing",
-            provider_display_name(provider)
+            provider.display_name()
         ),
     }
 }

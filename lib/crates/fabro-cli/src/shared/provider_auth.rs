@@ -36,16 +36,7 @@ pub(crate) fn provider_key_url(provider: Provider) -> &'static str {
 }
 
 pub(crate) fn provider_display_name(provider: Provider) -> &'static str {
-    match provider {
-        Provider::Anthropic => "Anthropic",
-        Provider::OpenAi => "OpenAI",
-        Provider::Gemini => "Gemini",
-        Provider::Kimi => "Kimi",
-        Provider::Zai => "Zai",
-        Provider::Minimax => "Minimax",
-        Provider::Inception => "Inception",
-        Provider::OpenAiCompatible => "OpenAI Compatible",
-    }
+    provider.display_name()
 }
 
 // ---------------------------------------------------------------------------
@@ -176,25 +167,18 @@ pub(crate) async fn authenticate_provider_with_method(
 ) -> Result<AuthCredential> {
     let mut strategy = strategy_for(provider, method);
     let request = strategy.init().await?;
-    present_to_user(&request, s, printer)?;
+    present_to_user(&request, s, printer);
     let response = await_user_response(&request, s, printer).await?;
     strategy.complete(response).await
 }
 
-pub(crate) fn present_to_user(
-    request: &AuthContextRequest,
-    s: &Styles,
-    printer: Printer,
-) -> Result<()> {
+pub(crate) fn present_to_user(request: &AuthContextRequest, s: &Styles, printer: Printer) {
     match request {
         AuthContextRequest::ApiKey {
             provider,
             env_var_names,
         } => {
-            let env_var = env_var_names
-                .first()
-                .map(String::as_str)
-                .unwrap_or("API_KEY");
+            let env_var = env_var_names.first().map_or("API_KEY", String::as_str);
             let url = provider_key_url(*provider);
             fabro_util::printerr!(
                 printer,
@@ -224,7 +208,6 @@ pub(crate) fn present_to_user(
             );
         }
     }
-    Ok(())
 }
 
 pub(crate) async fn await_user_response(

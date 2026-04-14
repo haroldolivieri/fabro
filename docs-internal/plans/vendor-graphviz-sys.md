@@ -109,14 +109,10 @@ The build script uses `cc::Build` to compile each Graphviz library as a static a
 
 1. **Compile order**: cdt, cgraph, pathplan, xdot, label, pack, ortho, common, dotgen, gvc, plugins
 2. **Include paths**: vendor root `lib/`, plus each library's own directory, plus `generated/` for pre-generated headers
-3. **Defines**:
-   - `PACKAGE_VERSION="14.1.5"` (used by gvcontext.c)
+3. **Defines**: Most defines live in `config.h` (included via `-include config.h`). build.rs should NOT pass `-D` for values already in `config.h`. build.rs only needs:
+   - `-include config.h` (via `.flag("-include").flag("config.h")` with the crate root in the include path)
    - No `ENABLE_LTDL` (disables dynamic plugin loading -- builtins only)
    - No `HAVE_EXPAT` (disables expat XML parsing -- not needed for SVG output)
-   - `DEFAULT_DPI=96`
-   - `GVPLUGIN_CONFIG_FILE=""`
-   - `BROWSER=""`
-   - Platform-specific: `DARWIN` on macOS
 4. **Compiler flags**: `-std=c11`, `-fno-common` on macOS, suppress warnings for vendored code (`-w`)
 5. **Exclude files**: `args.c` from common (CLI argument parsing, not needed), `gvtool_tred.c` from gvc (CLI tool), `gvevent.c` from gvc (GUI events)
 6. **Static plugin registration**: Compile a small C file (`builtins.c`) that defines the `lt_preloaded_symbols` array referencing `gvplugin_core_LTX_library` and `gvplugin_dot_layout_LTX_library`
@@ -138,7 +134,7 @@ const lt_symlist_t lt_preloaded_symbols[] = {
 
 ### config.h (in crate root, hand-written)
 
-A minimal `config.h` that Graphviz source expects:
+A minimal `config.h` that Graphviz source expects. All build configuration defines (`PACKAGE_VERSION`, `DEFAULT_DPI`, etc.) live here -- do NOT duplicate them as `-D` flags in build.rs to avoid redefinition warnings.
 
 ```c
 #pragma once
@@ -246,7 +242,7 @@ pub fn render_dot_to_svg(dot_source: &str) -> Result<Vec<u8>, String> {
 }
 ```
 
-**Thread safety**: Each call creates and destroys its own `gvContext`, `graph`, and layout. No shared mutable state. The server's `spawn_blocking` pattern remains correct.
+**Thread safety**: Each call creates and destroys its own `gvContext`, `graph`, and layout. The server's `spawn_blocking` pattern remains correct. Note: Graphviz has some internal global state (error handlers, string interning). The concurrent test (Test 9) will verify correctness. If it reveals data races, fall back to wrapping `render_dot_to_svg` in a `std::sync::Mutex` -- acceptable since rendering is already offloaded to `spawn_blocking`.
 
 ## Step 3: Wire `fabro-graphviz-sys` into `fabro-graphviz`
 
@@ -305,6 +301,7 @@ pub enum GraphFormat {
 - Remove `format: GraphFormat` parameter
 - Always return `image/svg+xml` content-type
 - Call `render_dot(&source)` instead of `render_dot(&source, format)`
+- Change the error status from `BAD_GATEWAY` (502) to `BAD_REQUEST` (400) -- with vendored Graphviz, a render failure means bad DOT input, not a missing external service
 
 **`render_graph_from_manifest()`** (line ~3593):
 - Remove `GraphFormat` matching from `req.format`
@@ -313,6 +310,10 @@ pub enum GraphFormat {
 
 **`get_graph()`** (line ~6197):
 - Already hardcodes `GraphFormat::Svg` -- just drop the parameter
+
+**Test `get_graph_returns_svg()`** (line ~7792):
+- Remove the `BAD_GATEWAY` early-return guard (line ~7834)
+- The test should now always succeed since Graphviz is always available
 
 **Test `render_graph_from_manifest_returns_svg()`** (line ~7858):
 - Remove the `BAD_GATEWAY` early-return guard (line ~7889)
@@ -453,8 +454,12 @@ Update existing test in `fabro-graphviz/src/render.rs`:
 Existing `postprocess_svg_removes_white_background` test is sufficient.
 
 ### Test 5: Server API endpoints
-Update `render_graph_from_manifest_returns_svg`:
-- Remove `BAD_GATEWAY` early-exit guard
+Update `get_graph_returns_svg` (line ~7792):
+- Remove `BAD_GATEWAY` early-exit guard (line ~7834)
+- Assert response is always 200 OK with SVG content
+
+Update `render_graph_from_manifest_returns_svg` (line ~7858):
+- Remove `BAD_GATEWAY` early-exit guard (line ~7889)
 - Assert response is always 200 OK with SVG content
 
 ### Test 6: Malformed DOT error handling
@@ -531,4 +536,4 @@ If `dot` is installed on the machine:
 - **Missing C files**: Some Graphviz C files may have implicit dependencies we don't immediately see. The compiler will tell us.
 - **Pre-generated files**: If the pre-generated parser files don't work with the exact source version, regenerate them from a CMake build of the same tag.
 - **Binary size**: Statically compiled Graphviz adds ~2-3 MB. Acceptable for eliminating a system dependency.
-- **Thread safety**: Each call creates/destroys its own context. Graphviz has some global state (`graphviz_errors` counter, `emit_once` hash), but the `gvContext()`/`gvFreeContext()` lifecycle resets most of it. For the server use case (rendering independent graphs), this is safe. The concurrent test will verify.
+- **Thread safety**: Each call creates/destroys its own context. Graphviz has some global state (`graphviz_errors` counter, `emit_once` hash, string interning in `agstrfree`), and `gvContext()`/`gvFreeContext()` does not fully isolate all of it. The concurrent test (Test 9) will verify whether this causes data races. Mitigation: if races appear, wrap the FFI call in a `std::sync::Mutex` -- this is acceptable since `render_dot_to_svg` is already called via `spawn_blocking` and the rendering latency dwarfs lock contention.

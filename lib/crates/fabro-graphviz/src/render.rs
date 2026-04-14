@@ -67,7 +67,7 @@ pub fn postprocess_svg(raw: Vec<u8>) -> Vec<u8> {
 /// Render styled DOT source into SVG via the vendored Graphviz library.
 pub fn render_dot(source: &str) -> anyhow::Result<Vec<u8>> {
     let styled_source = inject_dot_style_defaults(source);
-    let raw = fabro_graphviz_sys::render_dot_to_svg(&styled_source)
+    let raw = graphviz_sys::render_dot_to_svg(&styled_source)
         .map_err(|e| anyhow::anyhow!("Graphviz rendering failed: {e}"))?;
     Ok(postprocess_svg(raw))
 }

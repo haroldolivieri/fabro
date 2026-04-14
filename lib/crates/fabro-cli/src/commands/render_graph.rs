@@ -8,7 +8,7 @@ pub(crate) fn execute() -> i32 {
         return 1;
     }
 
-    match fabro_graphviz_sys::render_dot_to_svg(&dot_source) {
+    match graphviz_sys::render_dot_to_svg(&dot_source) {
         Ok(svg) => {
             if std::io::stdout().write_all(&svg).is_err() {
                 return 1;

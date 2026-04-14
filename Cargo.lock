@@ -1588,7 +1588,6 @@ dependencies = [
  "fabro-devcontainer",
  "fabro-github",
  "fabro-graphviz",
- "fabro-graphviz-sys",
  "fabro-hooks",
  "fabro-http",
  "fabro-interview",
@@ -1611,6 +1610,7 @@ dependencies = [
  "fabro-workflow",
  "futures",
  "git2",
+ "graphviz-sys",
  "httpmock",
  "indicatif",
  "insta",
@@ -1716,19 +1716,12 @@ name = "fabro-graphviz"
 version = "0.176.2"
 dependencies = [
  "anyhow",
- "fabro-graphviz-sys",
  "fabro-types",
+ "graphviz-sys",
  "nom",
  "regex",
  "serde",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "fabro-graphviz-sys"
-version = "0.176.2"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -2728,6 +2721,14 @@ dependencies = [
  "futures-core",
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "graphviz-sys"
+version = "0.1.0"
+source = "git+https://github.com/fabro-sh/graphviz-sys#e6ed96592b8b9af8ebc3744a601d3829e5ab3b3c"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

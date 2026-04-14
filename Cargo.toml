@@ -75,6 +75,7 @@ rust-embed = "8"
 percent-encoding = "2"
 minijinja = "2"
 fabro-http = { path = "lib/crates/fabro-http" }
+graphviz-sys = { git = "https://github.com/fabro-sh/graphviz-sys" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -19,21 +19,10 @@ pub struct HttpApi {
 
 impl HttpApi {
     fn build_client(timeout: AdapterTimeout) -> fabro_http::HttpClient {
-        #[cfg(test)]
-        {
-            fabro_http::HttpClientBuilder::new()
-                .connect_timeout(Duration::from_secs_f64(timeout.connect))
-                .no_proxy()
-                .build()
-                .expect("LLM HTTP client should build")
-        }
-        #[cfg(not(test))]
-        {
-            fabro_http::HttpClientBuilder::new()
-                .connect_timeout(Duration::from_secs_f64(timeout.connect))
-                .build()
-                .expect("LLM HTTP client should build")
-        }
+        fabro_http::HttpClientBuilder::new()
+            .connect_timeout(Duration::from_secs_f64(timeout.connect))
+            .build()
+            .expect("LLM HTTP client should build")
     }
 
     #[must_use]

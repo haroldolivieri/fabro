@@ -1,2 +1,8 @@
 [alias]
 t = "test -- --format terse"
+
+[env]
+# Disable macOS proxy discovery in tests — without this, every reqwest client
+# pays ~900ms of system-proxy lookup overhead per process, which pushes tests
+# past the 3s nextest kill threshold under parallel load.
+FABRO_HTTP_PROXY_POLICY = "disabled"

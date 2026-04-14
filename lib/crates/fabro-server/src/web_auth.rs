@@ -673,7 +673,7 @@ mod tests {
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
-    use super::{SessionCookie, api_routes, read_private_session, routes};
+    use super::{api_routes, read_private_session, routes};
     use crate::jwt_auth::{AuthMode, ConfiguredAuth};
     use crate::server;
 

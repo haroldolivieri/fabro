@@ -4,11 +4,11 @@ slow-timeout = { period = "1s", terminate-after = 3 }
 leak-timeout = "500ms"
 
     [[profile.default.overrides]]
-    filter = "package(fabro-cli) & kind(test)"
+    filter = "package(fabro-cli)"
     slow-timeout = { period = "3s", terminate-after = 4 }
 
     [[profile.default.overrides]]
-    filter = "package(fabro-server) & kind(test)"
+    filter = "package(fabro-server)"
     slow-timeout = { period = "5s", terminate-after = 4 }
 
     [[profile.default.overrides]]
@@ -16,7 +16,7 @@ leak-timeout = "500ms"
     slow-timeout = { period = "15s", terminate-after = 4 }
 
     [[profile.default.overrides]]
-    filter = "package(fabro-workflow) & kind(test)"
+    filter = "package(fabro-workflow)"
     slow-timeout = { period = "2s", terminate-after = 3 }
 
     [[profile.default.overrides]]

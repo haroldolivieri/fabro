@@ -2312,7 +2312,9 @@ pub(crate) fn build_app_state_with_path(
 }
 
 fn test_secret_store_path() -> PathBuf {
-    std::env::temp_dir().join(format!("fabro-test-secrets-{}.json", Ulid::new()))
+    let dir = std::env::temp_dir().join(format!("fabro-test-{}", Ulid::new()));
+    std::fs::create_dir_all(&dir).expect("test temp dir should be creatable");
+    dir.join("secrets.json")
 }
 
 fn board_column(status: RunStatus) -> Option<&'static str> {
@@ -6852,7 +6854,11 @@ slug = "fabro"
         )
         .expect("fixture should parse");
         let app = build_router(
-            create_app_state_with_options(settings, 5),
+            create_test_app_state_with_session_key(
+                settings,
+                Some("github-redirect-test-key-0123456789"),
+                false,
+            ),
             AuthMode::Enabled(ConfiguredAuth {
                 methods:   vec![ServerAuthMethod::Github],
                 dev_token: None,

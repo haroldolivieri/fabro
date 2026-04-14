@@ -1715,6 +1715,7 @@ name = "fabro-graphviz"
 version = "0.176.2"
 dependencies = [
  "anyhow",
+ "fabro-graphviz-sys",
  "fabro-types",
  "nom",
  "regex",

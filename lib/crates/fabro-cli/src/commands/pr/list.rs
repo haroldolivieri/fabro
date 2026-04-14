@@ -1,5 +1,8 @@
 use anyhow::Result;
+use cli_table::format::{Border, Separator};
+use cli_table::{Cell, CellStruct, Color, Style, Table};
 use fabro_util::printer::Printer;
+use fabro_util::terminal::Styles;
 use futures::future::join_all;
 use serde::Serialize;
 use tracing::info;
@@ -7,7 +10,7 @@ use tracing::info;
 use crate::args::{GlobalArgs, PrListArgs};
 use crate::command_context::CommandContext;
 use crate::server_runs::ServerSummaryLookup;
-use crate::shared::print_json_pretty;
+use crate::shared::{color_if, print_json_pretty};
 
 #[derive(Serialize)]
 struct PrRow {
@@ -111,35 +114,64 @@ pub(super) async fn list_command(
         return Ok(());
     }
 
-    fabro_util::printout!(
-        printer,
-        "{:<12} {:<6} {:<8} {:<50} URL",
-        "RUN",
-        "#",
-        "STATE",
-        "TITLE"
-    );
-    for row in &rows {
-        let short_id = if row.run_id.len() > 12 {
-            &row.run_id[..12]
-        } else {
-            &row.run_id
-        };
-        let short_title = if row.title.len() > 50 {
-            format!("{}…", &row.title[..row.title.floor_char_boundary(49)])
-        } else {
-            row.title.clone()
-        };
-        fabro_util::printout!(
-            printer,
-            "{:<12} {:<6} {:<8} {:<50} {}",
-            short_id,
-            row.number,
-            row.state,
-            short_title,
-            row.url
-        );
-    }
+    let styles = Styles::detect_stdout();
+    let use_color = styles.use_color;
+
+    let title: Vec<CellStruct> = vec![
+        "RUN".cell().bold(use_color),
+        "#".cell().bold(use_color),
+        "STATE".cell().bold(use_color),
+        "TITLE".cell().bold(use_color),
+        "URL".cell().bold(use_color),
+    ];
+
+    let table_rows: Vec<Vec<CellStruct>> = rows
+        .iter()
+        .map(|row| {
+            let short_id = if row.run_id.len() > 12 {
+                &row.run_id[..12]
+            } else {
+                &row.run_id
+            };
+            let short_title = if row.title.len() > 50 {
+                format!("{}…", &row.title[..row.title.floor_char_boundary(49)])
+            } else {
+                row.title.clone()
+            };
+            let state_color = match row.state.as_str() {
+                "open" => Color::Green,
+                "closed" => Color::Red,
+                "merged" => Color::Magenta,
+                "draft" => Color::Yellow,
+                _ => Color::Ansi256(8),
+            };
+            vec![
+                short_id
+                    .cell()
+                    .foreground_color(color_if(use_color, Color::Ansi256(8))),
+                row.number.cell(),
+                row.state
+                    .clone()
+                    .cell()
+                    .foreground_color(color_if(use_color, state_color)),
+                short_title.cell(),
+                row.url.clone().cell(),
+            ]
+        })
+        .collect();
+
+    let color_choice = if use_color {
+        cli_table::ColorChoice::Auto
+    } else {
+        cli_table::ColorChoice::Never
+    };
+    let table = table_rows
+        .table()
+        .title(title)
+        .color_choice(color_choice)
+        .border(Border::builder().build())
+        .separator(Separator::builder().build());
+    fabro_util::printout!(printer, "{}", table.display()?);
 
     info!(count = rows.len(), "Listed pull requests");
     Ok(())

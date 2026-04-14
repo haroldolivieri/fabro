@@ -2,6 +2,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
+use cli_table::format::{Border, Justify, Separator};
+use cli_table::{Cell, CellStruct, Style, Table};
 use fabro_api::types;
 use fabro_types::{
     PullRequestRecord, RunBlobId, RunId, parse_blob_ref, parse_legacy_blob_file_ref,
@@ -364,33 +366,39 @@ async fn print_assets_with_client(
         return Ok(());
     }
 
-    let node_width = entries
+    let use_color = styles.use_color;
+
+    let title: Vec<CellStruct> = vec![
+        "NODE".cell().bold(use_color),
+        "RETRY".cell().bold(use_color).justify(Justify::Right),
+        "PATH".cell().bold(use_color),
+    ];
+
+    let rows: Vec<Vec<CellStruct>> = entries
         .iter()
-        .map(|(node_slug, _, _)| node_slug.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
-    let retry_width = entries
-        .iter()
-        .map(|(_, retry, _)| retry.to_string().len())
-        .max()
-        .unwrap_or(5)
-        .max(5);
+        .map(|(node_slug, retry, relative_path)| {
+            vec![
+                node_slug.clone().cell().bold(use_color),
+                retry.cell().justify(Justify::Right),
+                relative_path.clone().cell(),
+            ]
+        })
+        .collect();
+
+    let color_choice = if use_color {
+        cli_table::ColorChoice::Auto
+    } else {
+        cli_table::ColorChoice::Never
+    };
+    let table = rows
+        .table()
+        .title(title)
+        .color_choice(color_choice)
+        .border(Border::builder().build())
+        .separator(Separator::builder().build());
 
     fabro_util::printerr!(printer, "\n{}", styles.bold.apply_to("=== Artifacts ==="));
-    fabro_util::printerr!(
-        printer,
-        "{:<node_width$}  {:>retry_width$}  PATH",
-        "NODE",
-        "RETRY"
-    );
-    for (node_slug, retry, relative_path) in &entries {
-        fabro_util::printerr!(
-            printer,
-            "{node_slug:<node_width$}  {retry:>retry_width$}  {relative_path}"
-        );
-    }
-    fabro_util::printerr!(printer, "");
+    fabro_util::printerr!(printer, "{}", table.display().unwrap());
     fabro_util::printerr!(
         printer,
         "{}",

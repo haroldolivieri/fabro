@@ -1,4 +1,6 @@
 use anyhow::{Result, bail};
+use cli_table::format::{Border, Separator};
+use cli_table::{Cell, CellStruct, Color, Style, Table};
 use fabro_config::project::{
     WorkflowInfo, WorkflowSource, discover_project_config, list_workflows_detailed,
     resolve_fabro_root,
@@ -7,7 +9,7 @@ use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
 
 use crate::args::{GlobalArgs, WorkflowListArgs};
-use crate::shared::{print_json_pretty, relative_path};
+use crate::shared::{color_if, print_json_pretty, relative_path};
 
 const GOAL_MAX_LEN: usize = 60;
 
@@ -46,8 +48,6 @@ pub(super) fn list_command(
         .filter(|w| w.source == WorkflowSource::User)
         .collect();
 
-    let name_width = workflows.iter().map(|w| w.name.len()).max().unwrap_or(0);
-
     fabro_util::printerr!(
         printer,
         "{} workflow(s) found\n",
@@ -57,14 +57,7 @@ pub(super) fn list_command(
     let user_path = user_wf_dir
         .as_deref()
         .map_or_else(|| "~/.fabro/workflows".to_string(), relative_path);
-    print_section(
-        "User Workflows",
-        &user_path,
-        &user,
-        name_width,
-        &styles,
-        printer,
-    );
+    print_section("User Workflows", &user_path, &user, &styles, printer);
 
     fabro_util::printerr!(printer, "");
 
@@ -72,7 +65,6 @@ pub(super) fn list_command(
         "Project Workflows",
         &relative_path(&project_wf_dir),
         &project,
-        name_width,
         &styles,
         printer,
     );
@@ -84,7 +76,6 @@ fn print_section(
     title: &str,
     path: &str,
     workflows: &[&WorkflowInfo],
-    name_width: usize,
     styles: &Styles,
     printer: Printer,
 ) {
@@ -98,26 +89,45 @@ fn print_section(
         fabro_util::printerr!(printer, "  {}", styles.dim.apply_to("(none)"));
         return;
     }
-    fabro_util::printerr!(printer, "");
-    fabro_util::printerr!(
-        printer,
-        "  {:<name_width$}  {}",
-        styles.bold_dim.apply_to("NAME"),
-        styles.bold_dim.apply_to("DESCRIPTION"),
-    );
-    for w in workflows {
-        let goal_str = w
-            .goal
-            .as_deref()
-            .map(|g| truncate_str(g, GOAL_MAX_LEN))
-            .unwrap_or_default();
-        fabro_util::printerr!(
-            printer,
-            "  {:<name_width$}  {}",
-            styles.cyan.apply_to(&w.name),
-            styles.dim.apply_to(goal_str),
-        );
-    }
+
+    let use_color = styles.use_color;
+    let title_row: Vec<CellStruct> = vec![
+        "NAME".cell().bold(use_color),
+        "DESCRIPTION".cell().bold(use_color),
+    ];
+
+    let rows: Vec<Vec<CellStruct>> = workflows
+        .iter()
+        .map(|w| {
+            let goal_str = w
+                .goal
+                .as_deref()
+                .map(|g| truncate_str(g, GOAL_MAX_LEN))
+                .unwrap_or_default();
+            vec![
+                w.name
+                    .clone()
+                    .cell()
+                    .foreground_color(color_if(use_color, Color::Cyan)),
+                goal_str
+                    .cell()
+                    .foreground_color(color_if(use_color, Color::Ansi256(8))),
+            ]
+        })
+        .collect();
+
+    let color_choice = if use_color {
+        cli_table::ColorChoice::Auto
+    } else {
+        cli_table::ColorChoice::Never
+    };
+    let table = rows
+        .table()
+        .title(title_row)
+        .color_choice(color_choice)
+        .border(Border::builder().build())
+        .separator(Separator::builder().build());
+    fabro_util::printerr!(printer, "{}", table.display().unwrap());
 }
 
 fn truncate_str(s: &str, max: usize) -> String {

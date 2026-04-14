@@ -1,5 +1,8 @@
 use anyhow::Result;
+use cli_table::format::{Border, Justify, Separator};
+use cli_table::{Cell, CellStruct, Style, Table};
 use fabro_util::printer::Printer;
+use fabro_util::terminal::Styles;
 
 use crate::args::{ArtifactListArgs, GlobalArgs};
 
@@ -27,36 +30,40 @@ pub(super) async fn list_command(
         return Ok(());
     }
 
-    let node_width = entries
-        .iter()
-        .map(|entry| entry.node_slug.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
-    let retry_width = entries
-        .iter()
-        .map(|entry| entry.retry.to_string().len())
-        .max()
-        .unwrap_or(5)
-        .max(5);
+    let styles = Styles::detect_stdout();
+    let use_color = styles.use_color;
 
-    fabro_util::printout!(
-        printer,
-        "{:<node_width$}  {:>retry_width$}  PATH",
-        "NODE",
-        "RETRY"
-    );
-    for entry in &entries {
-        fabro_util::printout!(
-            printer,
-            "{:<node_width$}  {:>retry_width$}  {}",
-            entry.node_slug,
-            entry.retry,
-            entry.relative_path
-        );
-    }
-    fabro_util::printout!(printer, "");
-    fabro_util::printout!(printer, "{} artifact(s)", entries.len());
+    let title: Vec<CellStruct> = vec![
+        "NODE".cell().bold(use_color),
+        "RETRY".cell().bold(use_color).justify(Justify::Right),
+        "PATH".cell().bold(use_color),
+    ];
+
+    let rows: Vec<Vec<CellStruct>> = entries
+        .iter()
+        .map(|entry| {
+            vec![
+                entry.node_slug.clone().cell().bold(use_color),
+                entry.retry.cell().justify(Justify::Right),
+                entry.relative_path.clone().cell(),
+            ]
+        })
+        .collect();
+
+    let color_choice = if use_color {
+        cli_table::ColorChoice::Auto
+    } else {
+        cli_table::ColorChoice::Never
+    };
+    let table = rows
+        .table()
+        .title(title)
+        .color_choice(color_choice)
+        .border(Border::builder().build())
+        .separator(Separator::builder().build());
+    fabro_util::printout!(printer, "{}", table.display()?);
+
+    fabro_util::printerr!(printer, "\n{} artifact(s)", entries.len());
 
     Ok(())
 }

@@ -143,7 +143,7 @@ fn use_in_memory_store() -> bool {
     )
 }
 
-fn build_object_store_with_preference(
+fn build_local_object_store_with_preference(
     store_path: &Path,
     use_in_memory: bool,
 ) -> anyhow::Result<Arc<dyn ObjectStore>> {
@@ -155,8 +155,33 @@ fn build_object_store_with_preference(
     Ok(Arc::new(LocalFileSystem::new_with_prefix(store_path)?))
 }
 
-fn build_object_store(store_path: &Path) -> anyhow::Result<Arc<dyn ObjectStore>> {
-    build_object_store_with_preference(store_path, use_in_memory_store())
+fn build_object_store_from_settings(
+    settings: &ObjectStoreSettings,
+) -> anyhow::Result<Arc<dyn ObjectStore>> {
+    if use_in_memory_store() {
+        return Ok(Arc::new(InMemory::new()));
+    }
+
+    match settings {
+        ObjectStoreSettings::Local { root } => {
+            build_local_object_store_with_preference(&resolve_interp_path(root)?, false)
+        }
+        ObjectStoreSettings::S3 {
+            bucket,
+            region,
+            endpoint,
+            path_style,
+        } => {
+            let mut builder = AmazonS3Builder::from_env()
+                .with_bucket_name(resolve_interp(bucket)?)
+                .with_region(resolve_interp(region)?)
+                .with_virtual_hosted_style_request(!*path_style);
+            if let Some(endpoint) = endpoint.as_ref() {
+                builder = builder.with_endpoint(resolve_interp(endpoint)?);
+            }
+            Ok(Arc::new(builder.build()?))
+        }
+    }
 }
 
 fn resolve_server_settings(file: &SettingsLayer) -> anyhow::Result<ResolvedServerSettings> {
@@ -228,39 +253,20 @@ fn resolve_interp_path(value: &InterpString) -> anyhow::Result<PathBuf> {
     Ok(PathBuf::from(resolve_interp(value)?))
 }
 
-fn build_artifact_object_store(
+pub fn build_artifact_object_store(
     settings: &ResolvedServerSettings,
 ) -> anyhow::Result<(Arc<dyn ObjectStore>, String)> {
     let prefix = resolve_interp(&settings.artifacts.prefix)?;
+    let object_store = build_object_store_from_settings(&settings.artifacts.store)?;
+    Ok((object_store, prefix))
+}
 
-    if use_in_memory_store() {
-        return Ok((Arc::new(InMemory::new()), prefix));
-    }
-
-    match &settings.artifacts.store {
-        ObjectStoreSettings::Local { root } => {
-            let root = resolve_interp_path(root)?;
-            std::fs::create_dir_all(&root)?;
-            let object_store = Arc::new(LocalFileSystem::new_with_prefix(&root)?);
-            Ok((object_store, prefix))
-        }
-        ObjectStoreSettings::S3 {
-            bucket,
-            region,
-            endpoint,
-            path_style,
-        } => {
-            let mut builder = AmazonS3Builder::from_env()
-                .with_bucket_name(resolve_interp(bucket)?)
-                .with_region(resolve_interp(region)?)
-                .with_virtual_hosted_style_request(!*path_style);
-            if let Some(endpoint) = endpoint.as_ref() {
-                builder = builder.with_endpoint(resolve_interp(endpoint)?);
-            }
-            let object_store = Arc::new(builder.build()?);
-            Ok((object_store, prefix))
-        }
-    }
+fn build_slatedb_store(
+    settings: &ResolvedServerSettings,
+) -> anyhow::Result<(Arc<dyn ObjectStore>, String, Duration)> {
+    let prefix = resolve_interp(&settings.slatedb.prefix)?;
+    let object_store = build_object_store_from_settings(&settings.slatedb.store)?;
+    Ok((object_store, prefix, settings.slatedb.flush_interval))
 }
 
 /// Start the HTTP API server.
@@ -310,12 +316,12 @@ where
     };
     let web_enabled = router_web_enabled(&resolved_server_settings);
 
-    let store_path = storage.store_dir();
-    let object_store = build_object_store(&store_path)?;
+    let (object_store, slatedb_prefix, flush_interval) =
+        build_slatedb_store(&resolved_server_settings)?;
     let store = Arc::new(fabro_store::Database::new(
-        Arc::clone(&object_store),
-        "",
-        Duration::from_millis(1),
+        object_store,
+        slatedb_prefix,
+        flush_interval,
     ));
     let (artifact_object_store, artifact_prefix) =
         build_artifact_object_store(&resolved_server_settings)?;
@@ -653,6 +659,7 @@ fn server_bind_title(bind: &Bind) -> String {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::time::Duration;
 
     use fabro_config::parse_settings_layer;
     use fabro_types::settings::SettingsLayer;
@@ -660,8 +667,9 @@ mod tests {
 
     use super::{
         ServeArgs, ServerTitlePhase, apply_runtime_settings, bind_tcp_host_with_fallback,
-        build_object_store_with_preference, resolve_bind_request_from_settings,
-        resolve_server_settings, router_web_enabled, server_bind_title, server_title,
+        build_local_object_store_with_preference, build_slatedb_store,
+        resolve_bind_request_from_settings, resolve_server_settings, router_web_enabled,
+        server_bind_title, server_title,
     };
     use crate::bind::{Bind, BindRequest};
 
@@ -851,7 +859,7 @@ strategy = "token"
         let temp = tempfile::tempdir().unwrap();
         let store_path = temp.path().join("store");
 
-        let disk_store = build_object_store_with_preference(&store_path, false)
+        let disk_store = build_local_object_store_with_preference(&store_path, false)
             .expect("disk-backed store should build");
         assert!(
             store_path.exists(),
@@ -860,13 +868,36 @@ strategy = "token"
         drop(disk_store);
 
         let mem_path = temp.path().join("memory-store");
-        let mem_store = build_object_store_with_preference(&mem_path, true)
+        let mem_store = build_local_object_store_with_preference(&mem_path, true)
             .expect("memory-backed store should build");
         assert!(
             !mem_path.exists(),
             "memory-backed store should not create on-disk store dir"
         );
         drop(mem_store);
+    }
+
+    #[test]
+    fn build_slatedb_store_uses_configured_local_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("custom-slatedb");
+        let settings = parse_settings(&format!(
+            r#"
+_version = 1
+
+[server.slatedb.local]
+root = "{}"
+"#,
+            root.display()
+        ));
+
+        let resolved = resolve_server_settings(&settings).expect("settings should resolve");
+        let (_object_store, prefix, flush_interval) =
+            build_slatedb_store(&resolved).expect("slatedb store should build");
+
+        assert!(root.exists(), "configured SlateDB root should be created");
+        assert_eq!(prefix, "");
+        assert_eq!(flush_interval, Duration::from_millis(1));
     }
 
     #[tokio::test]

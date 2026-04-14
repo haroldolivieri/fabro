@@ -166,7 +166,7 @@ fn resolve_artifacts(
             provider,
             layer.and_then(|artifacts| artifacts.local.as_ref()),
             layer.and_then(|artifacts| artifacts.s3.as_ref()),
-            storage_root,
+            &object_store_default_root(storage_root, "artifacts"),
             "server.artifacts",
             errors,
         ),
@@ -190,7 +190,7 @@ fn resolve_slatedb(
             provider,
             layer.and_then(|slatedb| slatedb.local.as_ref()),
             layer.and_then(|slatedb| slatedb.s3.as_ref()),
-            storage_root,
+            &object_store_default_root(storage_root, "slatedb"),
             "server.slatedb",
             errors,
         ),
@@ -234,6 +234,12 @@ fn resolve_object_store(
             }
         }
     }
+}
+
+fn object_store_default_root(storage_root: &InterpString, domain: &str) -> InterpString {
+    let root = storage_root.as_source();
+    let root = root.trim_end_matches('/');
+    InterpString::parse(&format!("{root}/objects/{domain}"))
 }
 
 fn resolve_integrations(layer: Option<&ServerIntegrationsLayer>) -> ServerIntegrationsSettings {

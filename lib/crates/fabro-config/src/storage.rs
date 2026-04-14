@@ -58,13 +58,18 @@ impl Storage {
     }
 
     #[must_use]
-    pub fn store_dir(&self) -> PathBuf {
-        self.root.join("store")
+    pub fn objects_dir(&self) -> PathBuf {
+        self.root.join("objects")
     }
 
     #[must_use]
-    pub fn artifact_store_dir(&self) -> PathBuf {
-        self.root.join("artifacts")
+    pub fn slatedb_dir(&self) -> PathBuf {
+        self.objects_dir().join("slatedb")
+    }
+
+    #[must_use]
+    pub fn artifacts_dir(&self) -> PathBuf {
+        self.objects_dir().join("artifacts")
     }
 }
 
@@ -164,12 +169,16 @@ mod tests {
             std::path::Path::new("/tmp/fabro-data/vaults/default/secrets.json")
         );
         assert_eq!(
-            storage.store_dir(),
-            std::path::Path::new("/tmp/fabro-data/store")
+            storage.objects_dir(),
+            std::path::Path::new("/tmp/fabro-data/objects")
         );
         assert_eq!(
-            storage.artifact_store_dir(),
-            std::path::Path::new("/tmp/fabro-data/artifacts")
+            storage.slatedb_dir(),
+            std::path::Path::new("/tmp/fabro-data/objects/slatedb")
+        );
+        assert_eq!(
+            storage.artifacts_dir(),
+            std::path::Path::new("/tmp/fabro-data/objects/artifacts")
         );
         assert_eq!(
             storage.server_state().record_path(),

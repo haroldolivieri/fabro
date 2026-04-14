@@ -16,12 +16,15 @@ use dialoguer::{MultiSelect, Select};
 use fabro_api::types::{CreateSecretRequest, SecretType as ApiSecretType};
 use fabro_auth::{AuthCredential, AuthMethod, codex_oauth_config, credential_id_for};
 use fabro_config::user::SETTINGS_CONFIG_FILENAME;
-use fabro_config::{Storage, envfile, legacy_env};
+use fabro_config::{ResolveError, Storage, envfile, legacy_env};
 use fabro_model::Provider;
-use fabro_types::settings::CliSettings;
+use fabro_server::serve;
+use fabro_store::ArtifactStore;
+use fabro_types::settings::{CliSettings, SettingsLayer};
 use fabro_types::settings::cli::{CliLayer, OutputFormat};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
+use fabro_util::version::FABRO_VERSION;
 use fabro_util::{dev_token, session_secret};
 use futures::future::BoxFuture;
 use rand::Rng;
@@ -1190,6 +1193,29 @@ async fn persist_install_outputs(
     .await
 }
 
+fn render_server_resolve_errors(errors: Vec<ResolveError>) -> anyhow::Error {
+    anyhow::anyhow!(
+        "failed to resolve server settings:\n{}",
+        errors
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
+}
+
+async fn write_artifact_store_metadata(
+    settings: &SettingsLayer,
+    fabro_version: &str,
+) -> Result<()> {
+    let resolved =
+        fabro_config::resolve_server_from_file(settings).map_err(render_server_resolve_errors)?;
+    let (object_store, prefix) = serve::build_artifact_object_store(&resolved)?;
+    let artifact_store = ArtifactStore::new(object_store, prefix);
+    artifact_store.write_metadata(fabro_version).await?;
+    Ok(())
+}
+
 async fn persist_install_outputs_with_settings(
     storage_dir: &Path,
     server_env_secrets: &[(String, String)],
@@ -1505,6 +1531,18 @@ async fn run_install_inner(
         server_was_running,
     )
     .await?;
+    let install_settings = user_config::apply_storage_dir_override(
+        fabro_config::parse_settings_layer(&settings_toml)
+            .context("failed to parse generated settings.toml")?,
+        args.storage_dir.as_deref(),
+    );
+    if let Err(err) = write_artifact_store_metadata(&install_settings, FABRO_VERSION).await {
+        fabro_util::printerr!(
+            printer,
+            "  {} failed to write artifact store metadata: {err}",
+            s.yellow.apply_to("Warning:")
+        );
+    }
     fabro_util::printerr!(
         printer,
         "  {} Saved {} runtime secrets to {}",
@@ -2116,6 +2154,38 @@ client_id = "client-id"
             std::fs::read_to_string(&settings_path).unwrap(),
             "_version = 1\n[server]\n"
         );
+    }
+
+    #[tokio::test]
+    async fn write_artifact_store_metadata_creates_marker_in_resolved_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = fabro_config::parse_settings_layer(&format!(
+            r#"
+_version = 1
+
+[server.storage]
+root = "{}"
+"#,
+            dir.path().display()
+        ))
+        .unwrap();
+
+        write_artifact_store_metadata(&settings, "test-version")
+            .await
+            .unwrap();
+
+        let value: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(
+                dir.path()
+                    .join("objects")
+                    .join("artifacts")
+                    .join("store-metadata.json"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(value["fabro_version"], "test-version");
+        assert!(value["created_at"].as_str().is_some());
     }
 
     #[test]

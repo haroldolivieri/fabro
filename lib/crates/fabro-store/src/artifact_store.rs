@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
+use chrono::Utc;
 use fabro_types::RunId;
 use futures::StreamExt;
 use object_store::ObjectStore;
@@ -146,6 +147,19 @@ impl ArtifactStore {
         Ok(())
     }
 
+    pub async fn write_metadata(&self, fabro_version: &str) -> Result<()> {
+        let path = parse_object_path(&self.prefixed_raw("store-metadata.json"))?;
+        let body = serde_json::to_vec(&serde_json::json!({
+            "created_at": Utc::now().to_rfc3339(),
+            "fabro_version": fabro_version,
+        }))
+        .map_err(|err| Error::Other(format!("artifact metadata serialization failed: {err}")))?;
+        self.object_store
+            .put(&path, Bytes::from(body).into())
+            .await?;
+        Ok(())
+    }
+
     fn run_prefix(&self, run_id: &RunId) -> Result<ObjectPath> {
         parse_object_path(&self.prefixed_raw(&run_id.to_string()))
     }
@@ -284,6 +298,25 @@ mod tests {
     fn test_store() -> ArtifactStore {
         let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         ArtifactStore::new(object_store, "artifacts")
+    }
+
+    #[tokio::test]
+    async fn write_metadata_persists_store_marker() {
+        let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let store = ArtifactStore::new(object_store.clone(), "artifacts");
+
+        store.write_metadata("test-version").await.unwrap();
+
+        let bytes = object_store
+            .get(&ObjectPath::from("artifacts/store-metadata.json"))
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["fabro_version"], "test-version");
+        assert!(value["created_at"].as_str().is_some());
     }
 
     #[tokio::test]

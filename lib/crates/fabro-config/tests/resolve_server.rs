@@ -36,12 +36,30 @@ fn resolves_server_defaults_from_empty_settings() {
         ObjectStoreSettings::Local { root } => {
             assert_eq!(
                 root.as_source(),
-                Home::from_env().storage_dir().to_string_lossy()
+                Home::from_env()
+                    .storage_dir()
+                    .join("objects")
+                    .join("artifacts")
+                    .to_string_lossy()
             );
         }
         ObjectStoreSettings::S3 { .. } => panic!("expected local artifact store by default"),
     }
-    assert_eq!(settings.artifacts.prefix.as_source(), "artifacts");
+    assert_eq!(settings.artifacts.prefix.as_source(), "");
+
+    match settings.slatedb.store {
+        ObjectStoreSettings::Local { root } => {
+            assert_eq!(
+                root.as_source(),
+                Home::from_env()
+                    .storage_dir()
+                    .join("objects")
+                    .join("slatedb")
+                    .to_string_lossy()
+            );
+        }
+        ObjectStoreSettings::S3 { .. } => panic!("expected local slatedb store by default"),
+    }
 }
 
 #[test]

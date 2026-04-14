@@ -48,7 +48,7 @@ impl Database {
     }
 
     fn shared_db_prefix(&self) -> String {
-        format!("{}slatedb", self.base_prefix)
+        self.base_prefix.clone()
     }
 
     async fn open_db(&self) -> Result<slatedb::Db> {
@@ -399,7 +399,7 @@ mod tests {
         let remaining = store.list_runs(&ListRunsQuery::default()).await.unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].run_id, test_run_id("run-2"));
-        assert!(!list_paths(object_store, "runs/slatedb").await.is_empty());
+        assert!(!list_paths(object_store, "runs/").await.is_empty());
     }
 
     #[tokio::test]

@@ -46,7 +46,7 @@ max_concurrent_runs = 5
 
 [server.artifacts]
 provider = "local"
-prefix = "artifacts"
+prefix = ""
 
 [server.slatedb]
 provider = "local"

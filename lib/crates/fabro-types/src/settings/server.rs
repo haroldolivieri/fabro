@@ -388,7 +388,7 @@ pub enum ObjectStoreProvider {
 #[serde(deny_unknown_fields)]
 pub struct ObjectStoreLocalLayer {
     /// Overrides the default root, which otherwise falls back to
-    /// `server.storage.root`.
+    /// `{server.storage.root}/objects/{domain}`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root: Option<InterpString>,
 }

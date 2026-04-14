@@ -6201,35 +6201,34 @@ async fn create_completion(
 fn render_graph_subprocess_exe(
     exe_override: Option<&std::path::Path>,
 ) -> Result<PathBuf, RenderSubprocessError> {
-    match exe_override {
-        Some(path) => Ok(path.to_path_buf()),
-        None => {
-            if let Some(path) = std::env::var_os("CARGO_BIN_EXE_fabro").map(PathBuf::from) {
-                return Ok(path);
-            }
-
-            let current = std::env::current_exe()
-                .map_err(|err| RenderSubprocessError::SpawnFailed(err.to_string()))?;
-            let current_name = current.file_stem().and_then(|name| name.to_str());
-            if current_name == Some("fabro") {
-                return Ok(current);
-            }
-
-            let candidate = current
-                .parent()
-                .and_then(|parent| parent.parent())
-                .map(|parent| parent.join(if cfg!(windows) { "fabro.exe" } else { "fabro" }));
-            if let Some(candidate) = candidate.filter(|path| path.is_file()) {
-                return Ok(candidate);
-            }
-
-            Ok(current)
+    if let Some(path) = exe_override {
+        Ok(path.to_path_buf())
+    } else {
+        if let Some(path) = std::env::var_os("CARGO_BIN_EXE_fabro").map(PathBuf::from) {
+            return Ok(path);
         }
+
+        let current = std::env::current_exe()
+            .map_err(|err| RenderSubprocessError::SpawnFailed(err.to_string()))?;
+        let current_name = current.file_stem().and_then(|name| name.to_str());
+        if current_name == Some("fabro") {
+            return Ok(current);
+        }
+
+        let candidate = current
+            .parent()
+            .and_then(|parent| parent.parent())
+            .map(|parent| parent.join(if cfg!(windows) { "fabro.exe" } else { "fabro" }));
+        if let Some(candidate) = candidate.filter(|path| path.is_file()) {
+            return Ok(candidate);
+        }
+
+        Ok(current)
     }
 }
 
 fn render_subprocess_failure(
-    status: &std::process::ExitStatus,
+    status: std::process::ExitStatus,
     stderr: &[u8],
 ) -> RenderSubprocessError {
     #[cfg(unix)]
@@ -6288,7 +6287,7 @@ async fn render_dot_subprocess(
             .map_err(|wait_err| RenderSubprocessError::SpawnFailed(wait_err.to_string()))?;
         return Err(RenderSubprocessError::ChildCrashed(format!(
             "failed writing DOT to child stdin: {err}; {}",
-            render_subprocess_failure(&output.status, &output.stderr)
+            render_subprocess_failure(output.status, &output.stderr)
         )));
     }
     drop(stdin);
@@ -6299,7 +6298,7 @@ async fn render_dot_subprocess(
         .map_err(|err| RenderSubprocessError::SpawnFailed(err.to_string()))?;
 
     if !output.status.success() {
-        return Err(render_subprocess_failure(&output.status, &output.stderr));
+        return Err(render_subprocess_failure(output.status, &output.stderr));
     }
 
     if let Some(error) = output.stdout.strip_prefix(RENDER_ERROR_PREFIX) {

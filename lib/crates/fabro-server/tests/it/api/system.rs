@@ -14,9 +14,26 @@ use tokio::time::timeout;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, body_json, minimal_manifest_json_with_dry_run, test_app_state_with_options,
-    test_app_with_scheduler, test_settings, wait_for_run_status,
+    MINIMAL_DOT, POLL_ATTEMPTS, POLL_INTERVAL, api, body_json, minimal_manifest_json,
+    minimal_manifest_json_with_dry_run, test_app_state_with_options, test_app_with_scheduler,
+    test_settings, wait_for_run_status,
 };
+
+const HUMAN_GATE_DOT: &str = r#"digraph GateTest {
+    graph [goal="Test gate"]
+    start [shape=Mdiamond]
+    exit  [shape=Msquare]
+    work  [shape=box, prompt="Do work"]
+    gate  [shape=hexagon, type="human", label="Approve?"]
+    done  [shape=box, prompt="Finish"]
+    revise [shape=box, prompt="Revise"]
+
+    start -> work -> gate
+    gate -> done   [label="[A] Approve"]
+    gate -> revise [label="[R] Revise"]
+    done -> exit
+    revise -> gate
+}"#;
 
 fn temp_storage_settings() -> (tempfile::TempDir, SettingsLayer, PathBuf) {
     let temp = tempdir().expect("tempdir should create");
@@ -51,6 +68,34 @@ async fn start_run(app: &axum::Router, run_id: &str) {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
+async fn wait_for_question(app: &axum::Router, run_id: &str) -> serde_json::Value {
+    for _ in 0..POLL_ATTEMPTS {
+        let request = Request::builder()
+            .method("GET")
+            .uri(api(&format!("/runs/{run_id}/questions")))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        let body = body_json(response.into_body()).await;
+        if let Some(question) = body["data"].as_array().and_then(|items| items.first()) {
+            return question.clone();
+        }
+        tokio::time::sleep(POLL_INTERVAL).await;
+    }
+    panic!("question should have appeared for {run_id}");
+}
+
+async fn load_questions(app: &axum::Router, run_id: &str) -> serde_json::Value {
+    let request = Request::builder()
+        .method("GET")
+        .uri(api(&format!("/runs/{run_id}/questions")))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    body_json(response.into_body()).await
+}
+
 #[tokio::test]
 async fn get_system_info_returns_runtime_fields() {
     let (_temp, settings, expected_storage_dir) = temp_storage_settings();
@@ -77,6 +122,30 @@ async fn get_system_info_returns_runtime_fields() {
     assert_eq!(body["runs"]["total"], 0);
     assert_eq!(body["runs"]["active"], 0);
     assert!(body["uptime_secs"].as_i64().is_some());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_app_state_with_options_respects_max_concurrent_runs() {
+    let app = test_app_with_scheduler(test_app_state_with_options(test_settings(), 1));
+
+    let first_run = create_run(&app, minimal_manifest_json(HUMAN_GATE_DOT)).await;
+    let second_run = create_run(&app, minimal_manifest_json(HUMAN_GATE_DOT)).await;
+
+    start_run(&app, &first_run).await;
+    start_run(&app, &second_run).await;
+
+    let question = wait_for_question(&app, &first_run).await;
+    assert_eq!(question["stage"], "gate");
+
+    tokio::time::sleep(POLL_INTERVAL * 5).await;
+
+    let second_questions = load_questions(&app, &second_run).await;
+    assert!(
+        second_questions["data"]
+            .as_array()
+            .is_some_and(|items| items.is_empty()),
+        "second run should still be queued while the first waits at the human gate: {second_questions}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

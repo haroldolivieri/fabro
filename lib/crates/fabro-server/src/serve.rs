@@ -27,7 +27,7 @@ use crate::bind::{self, Bind, BindRequest};
 use crate::github_webhooks::WebhookManager;
 use crate::jwt_auth::resolve_auth_mode_with_lookup;
 use crate::server::{
-    RouterOptions, build_app_state_with_path, build_router_with_options,
+    AppStateConfig, RouterOptions, build_app_state, build_router_with_options,
     reconcile_incomplete_runs_on_startup, shutdown_active_workers, spawn_scheduler,
 };
 use crate::server_secrets::ServerSecrets;
@@ -326,17 +326,17 @@ where
         build_artifact_object_store(&resolved_server_settings)?;
     let artifact_store = fabro_store::ArtifactStore::new(artifact_object_store, artifact_prefix);
     let env_lookup: EnvLookup = Arc::new(|name| std::env::var(name).ok());
-    let state = build_app_state_with_path(
-        Arc::clone(&shared_settings),
-        None,
+    let state = build_app_state(AppStateConfig {
+        settings: Arc::clone(&shared_settings),
+        registry_factory_override: None,
         max_concurrent_runs,
         store,
         artifact_store,
-        &vault_path,
-        &server_env_path,
-        true,
-        &env_lookup,
-    )?;
+        vault_path,
+        server_env_path,
+        local_daemon_mode: true,
+        env_lookup,
+    })?;
     let reconciled = reconcile_incomplete_runs_on_startup(&state).await?;
     if reconciled > 0 {
         info!(

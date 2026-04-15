@@ -6,7 +6,7 @@ use axum::http::{Request, StatusCode};
 use fabro_server::jwt_auth::AuthMode;
 use fabro_server::server::{
     AppState, build_router, create_app_state, create_app_state_with_env_lookup,
-    create_app_state_with_settings_and_registry_factory, spawn_scheduler,
+    create_app_state_with_options_and_registry_factory, spawn_scheduler,
 };
 use fabro_types::settings::SettingsLayer;
 use fabro_types::settings::run::{LocalSandboxLayer, RunLayer, RunSandboxLayer, WorktreeMode};
@@ -31,10 +31,13 @@ pub(crate) fn test_app_state_with_options(
     settings: SettingsLayer,
     max_concurrent_runs: usize,
 ) -> Arc<AppState> {
-    let _ = max_concurrent_runs;
-    create_app_state_with_settings_and_registry_factory(settings, |interviewer| {
+    create_app_state_with_options_and_registry_factory(
+        settings,
+        max_concurrent_runs,
+        |interviewer| {
         fabro_workflow::handler::default_registry(interviewer, || None)
-    })
+    },
+    )
 }
 
 pub(crate) fn test_settings() -> SettingsLayer {

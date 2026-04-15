@@ -1,0 +1,377 @@
+diff --git a/apps/fabro-web/app/routes/run-overview.tsx b/apps/fabro-web/app/routes/run-overview.tsx
+index d0d370a8..16b2a6c3 100644
+--- a/apps/fabro-web/app/routes/run-overview.tsx
++++ b/apps/fabro-web/app/routes/run-overview.tsx
+@@ -93,8 +93,8 @@ export default function RunOverview({ loaderData }: any) {
+       }
+ 
+       // Color exit node based on run outcome
+-      if (nodeId === "exit" && (runStatus === "succeeded" || runStatus === "failed" || runStatus === "dead")) {
+-        const isSuccess = runStatus === "succeeded";
++      if (nodeId === "exit" && (runStatus === "completed" || runStatus === "failed" || runStatus === "cancelled")) {
++        const isSuccess = runStatus === "completed";
+         const fill = isSuccess ? gt.completedFill : gt.failedFill;
+         const border = isSuccess ? gt.completedBorder : gt.failedBorder;
+         const text = isSuccess ? gt.completedText : gt.failedText;
+diff --git a/lib/crates/fabro-cli/src/commands/run/wait.rs b/lib/crates/fabro-cli/src/commands/run/wait.rs
+index ed599f2c..2f6c6eee 100644
+--- a/lib/crates/fabro-cli/src/commands/run/wait.rs
++++ b/lib/crates/fabro-cli/src/commands/run/wait.rs
+@@ -43,18 +43,17 @@ pub(crate) async fn run(
+     let started_waiting_at = std::time::Instant::now();
+ 
+     let final_status = loop {
+-        let status = client
++        let polled_status = client
+             .get_run_state(&run_id)
+             .await?
+             .status
+             .map(|record| record.status);
+-        let status = status.unwrap_or_else(|| {
+-            if started_waiting_at.elapsed() < WAIT_STARTUP_GRACE {
+-                RunStatus::Submitted
+-            } else {
+-                RunStatus::Failed
+-            }
+-        });
++        let Some(status) = fallback_polled_status(polled_status, started_waiting_at) else {
++            bail!(
++                "Run '{}' has no status record yet. Try again in a moment.",
++                run_id
++            );
++        };
+ 
+         if status.is_terminal() {
+             break status;
+@@ -93,6 +92,15 @@ pub(crate) async fn run(
+     }
+ }
+ 
++fn fallback_polled_status(
++    status: Option<RunStatus>,
++    started_waiting_at: std::time::Instant,
++) -> Option<RunStatus> {
++    status.or_else(|| {
++        (started_waiting_at.elapsed() < WAIT_STARTUP_GRACE).then_some(RunStatus::Submitted)
++    })
++}
++
+ fn build_json_output(
+     status: RunStatus,
+     run_id: &RunId,
+@@ -290,14 +298,10 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn missing_status_treated_as_failed() {
+-        let status = match std::fs::read_to_string(std::path::Path::new("/nonexistent/status.json"))
+-        {
+-            Ok(data) => serde_json::from_str::<RunStatusRecord>(&data)
+-                .map(|record| record.status)
+-                .unwrap_or(RunStatus::Failed),
+-            Err(_) => RunStatus::Failed,
+-        };
+-        assert_eq!(status, RunStatus::Failed);
++    fn missing_status_remains_unknown_after_startup_grace() {
++        let started_waiting_at =
++            std::time::Instant::now() - WAIT_STARTUP_GRACE - std::time::Duration::from_millis(1);
++
++        assert_eq!(fallback_polled_status(None, started_waiting_at), None);
+     }
+ }
+diff --git a/lib/crates/fabro-cli/src/commands/runs/inspect.rs b/lib/crates/fabro-cli/src/commands/runs/inspect.rs
+index 4aeb0f24..8de4d7fb 100644
+--- a/lib/crates/fabro-cli/src/commands/runs/inspect.rs
++++ b/lib/crates/fabro-cli/src/commands/runs/inspect.rs
+@@ -13,7 +13,7 @@ use crate::server_runs::{ServerRunSummaryInfo, ServerSummaryLookup};
+ #[derive(Debug, Serialize)]
+ pub(crate) struct InspectOutput {
+     pub run_id: String,
+-    pub status: RunStatus,
++    pub status: Option<RunStatus>,
+     pub run_record: Option<serde_json::Value>,
+     pub start_record: Option<serde_json::Value>,
+     pub conclusion: Option<serde_json::Value>,
+@@ -44,7 +44,8 @@ fn inspect_run_state(run: &ServerRunSummaryInfo, state: RunProjection) -> Inspec
+         status: state
+             .status
+             .as_ref()
+-            .map_or(run.status(), |record| record.status),
++            .map(|record| record.status)
++            .or(run.status()),
+         run_record: state
+             .run
+             .and_then(|record| serde_json::to_value(record).ok()),
+diff --git a/lib/crates/fabro-cli/src/commands/runs/list.rs b/lib/crates/fabro-cli/src/commands/runs/list.rs
+index 3a7d91f1..0e4622c6 100644
+--- a/lib/crates/fabro-cli/src/commands/runs/list.rs
++++ b/lib/crates/fabro-cli/src/commands/runs/list.rs
+@@ -43,7 +43,7 @@ pub(crate) async fn list_command(
+                     "run_id": run.run_id(),
+                     "workflow_name": run.workflow_name(),
+                     "workflow_slug": run.workflow_slug(),
+-                    "status": run.status(),
++                    "status": run.status().map(|status| status.to_string()),
+                     "status_reason": run.status_reason(),
+                     "start_time": run.start_time(),
+                     "labels": run.labels(),
+@@ -143,16 +143,21 @@ pub(crate) async fn list_command(
+     Ok(())
+ }
+ 
+-fn status_cell(status: RunStatus, use_color: bool) -> CellStruct {
+-    let text = status.to_string();
+-    let color = match status {
+-        RunStatus::Completed => Some(Color::Green),
+-        RunStatus::Failed | RunStatus::Cancelled => Some(Color::Red),
+-        RunStatus::Running | RunStatus::Starting | RunStatus::Submitted | RunStatus::Queued => {
+-            Some(Color::Cyan)
++fn status_cell(status: Option<RunStatus>, use_color: bool) -> CellStruct {
++    let (text, color) = match status {
++        Some(status) => {
++            let color = match status {
++                RunStatus::Completed => Some(Color::Green),
++                RunStatus::Failed | RunStatus::Cancelled => Some(Color::Red),
++                RunStatus::Running | RunStatus::Starting | RunStatus::Submitted | RunStatus::Queued => {
++                    Some(Color::Cyan)
++                }
++                RunStatus::Blocked | RunStatus::Removing => Some(Color::Yellow),
++                RunStatus::Paused => Some(Color::Magenta),
++            };
++            (status.to_string(), color)
+         }
+-        RunStatus::Blocked | RunStatus::Removing => Some(Color::Yellow),
+-        RunStatus::Paused => Some(Color::Magenta),
++        None => ("unknown".to_string(), None),
+     };
+     text.cell()
+         .bold(use_color)
+diff --git a/lib/crates/fabro-cli/src/commands/runs/rm.rs b/lib/crates/fabro-cli/src/commands/runs/rm.rs
+index 590e5bca..77104986 100644
+--- a/lib/crates/fabro-cli/src/commands/runs/rm.rs
++++ b/lib/crates/fabro-cli/src/commands/runs/rm.rs
+@@ -51,22 +51,39 @@ async fn remove_from(
+             }
+         };
+ 
+-        if run.status().is_active() && !args.force {
+-            let run_id = run.run_id().to_string();
+-            let error = format!(
+-                "cannot remove active run {} (status: {}, use -f to force)",
+-                short_run_id(&run_id),
+-                run.status()
+-            );
+-            if !json {
+-                fabro_util::printerr!(printer, "{error}");
++        if !args.force {
++            match run.status() {
++                Some(status) if status.is_active() => {
++                    let run_id = run.run_id().to_string();
++                    let error = format!(
++                        "cannot remove active run {} (status: {}, use -f to force)",
++                        short_run_id(&run_id),
++                        status
++                    );
++                    if !json {
++                        fabro_util::printerr!(printer, "{error}");
++                    }
++                    errors.push(serde_json::json!({
++                        "identifier": identifier,
++                        "error": error,
++                    }));
++                    had_errors = true;
++                    continue;
++                }
++                None => {
++                    let error = "cannot determine run status; use -f to force removal".to_string();
++                    if !json {
++                        fabro_util::printerr!(printer, "error: {identifier}: {error}");
++                    }
++                    errors.push(serde_json::json!({
++                        "identifier": identifier,
++                        "error": error,
++                    }));
++                    had_errors = true;
++                    continue;
++                }
++                Some(_) => {}
+             }
+-            errors.push(serde_json::json!({
+-                "identifier": identifier,
+-                "error": error,
+-            }));
+-            had_errors = true;
+-            continue;
+         }
+ 
+         let run_id = run.run_id().to_string();
+diff --git a/lib/crates/fabro-cli/src/server_runs.rs b/lib/crates/fabro-cli/src/server_runs.rs
+index 2eee54fe..4a8665b3 100644
+--- a/lib/crates/fabro-cli/src/server_runs.rs
++++ b/lib/crates/fabro-cli/src/server_runs.rs
+@@ -62,8 +62,12 @@ impl ServerRunSummaryInfo {
+         self.summary.workflow_slug.as_deref()
+     }
+ 
+-    pub(crate) fn status(&self) -> RunStatus {
+-        self.summary.status.unwrap_or(RunStatus::Failed)
++    pub(crate) fn status(&self) -> Option<RunStatus> {
++        self.summary.status
++    }
++
++    pub(crate) fn is_active(&self) -> bool {
++        self.summary.status.is_some_and(RunStatus::is_active)
+     }
+ 
+     pub(crate) fn status_reason(&self) -> Option<StatusReason> {
+@@ -151,7 +155,7 @@ pub(crate) fn filter_server_runs(
+     running_only: bool,
+ ) -> Vec<ServerRunSummaryInfo> {
+     runs.iter()
+-        .filter(|run| !running_only || run.status().is_active())
++        .filter(|run| !running_only || run.is_active())
+         .filter(|run| {
+             before.is_none_or(|before| {
+                 let start_time = run.start_time();
+diff --git a/lib/crates/fabro-server/src/demo/mod.rs b/lib/crates/fabro-server/src/demo/mod.rs
+index 84118acb..e70a5a59 100644
+--- a/lib/crates/fabro-server/src/demo/mod.rs
++++ b/lib/crates/fabro-server/src/demo/mod.rs
+@@ -58,7 +58,7 @@ pub(crate) async fn list_board_runs(
+     data.truncate(limit);
+     let columns = json!([
+         {"id": "working", "name": "Working"},
+-        {"id": "pending", "name": "Pending"},
++        {"id": "blocked", "name": "Blocked"},
+         {"id": "review", "name": "Review"},
+         {"id": "merge", "name": "Merge"},
+     ]);
+@@ -209,6 +209,11 @@ pub(crate) async fn get_run_status(
+                 .as_ref()
+                 .and_then(|t| Duration::try_from_secs_f64(t.elapsed_secs).ok())
+                 .and_then(|duration| u64::try_from(duration.as_millis()).ok());
++            let (status, blocked_reason) = match item.id.as_str() {
++                "run-4" | "run-5" => ("blocked", Some("human_input_required")),
++                "run-8" | "run-9" | "run-10" => ("completed", None),
++                _ => ("running", None),
++            };
+             (
+                 StatusCode::OK,
+                 Json(json!({
+@@ -219,8 +224,9 @@ pub(crate) async fn get_run_status(
+                     "host_repo_path": format!("/demo/{}", item.repository.name),
+                     "labels": {},
+                     "start_time": item.created_at.to_rfc3339(),
+-                    "status": "running",
++                    "status": status,
+                     "status_reason": null,
++                    "blocked_reason": blocked_reason,
+                     "pending_control": null,
+                     "duration_ms": elapsed_ms,
+                     "total_usd_micros": null,
+diff --git a/lib/crates/fabro-server/src/server.rs b/lib/crates/fabro-server/src/server.rs
+index 282ed6ee..4b86f567 100644
+--- a/lib/crates/fabro-server/src/server.rs
++++ b/lib/crates/fabro-server/src/server.rs
+@@ -229,6 +229,7 @@ struct ManagedRun {
+     // Populated when running:
+     answer_transport: Option<RunAnswerTransport>,
+     accepted_questions: HashSet<String>,
++    pending_interviews: HashSet<String>,
+     event_tx: Option<broadcast::Sender<RunEvent>>,
+     checkpoint: Option<Checkpoint>,
+     cancel_tx: Option<oneshot::Sender<()>>,
+@@ -2870,6 +2871,7 @@ fn api_event_envelope_from_store(event: &EventEnvelope) -> Result<ApiEventEnvelo
+ fn clear_live_run_state(run: &mut ManagedRun) {
+     run.answer_transport = None;
+     run.accepted_questions.clear();
++    run.pending_interviews.clear();
+     run.event_tx = None;
+     run.cancel_tx = None;
+     run.cancel_token = None;
+@@ -2879,17 +2881,26 @@ fn clear_live_run_state(run: &mut ManagedRun) {
+ 
+ fn reconcile_live_interview_state_for_event(run: &mut ManagedRun, event: &RunEvent) {
+     match &event.body {
++        EventBody::InterviewStarted(props) => {
++            if !props.question_id.is_empty() {
++                run.pending_interviews.insert(props.question_id.clone());
++            }
++        }
+         EventBody::InterviewCompleted(props) => {
+             run.accepted_questions.remove(&props.question_id);
++            run.pending_interviews.remove(&props.question_id);
+         }
+         EventBody::InterviewTimeout(props) => {
+             run.accepted_questions.remove(&props.question_id);
++            run.pending_interviews.remove(&props.question_id);
+         }
+         EventBody::InterviewInterrupted(props) => {
+             run.accepted_questions.remove(&props.question_id);
++            run.pending_interviews.remove(&props.question_id);
+         }
+         EventBody::RunCompleted(_) | EventBody::RunFailed(_) | EventBody::RunRewound(_) => {
+             run.accepted_questions.clear();
++            run.pending_interviews.clear();
+         }
+         _ => {}
+     }
+@@ -3157,6 +3168,7 @@ fn managed_run(
+         enqueued_at: Instant::now(),
+         answer_transport: None,
+         accepted_questions: HashSet::new(),
++        pending_interviews: HashSet::new(),
+         event_tx: None,
+         checkpoint: None,
+         cancel_tx: None,
+@@ -3176,9 +3188,10 @@ fn api_status_from_workflow(
+         WorkflowRunStatus::Submitted => RunStatus::Submitted,
+         WorkflowRunStatus::Queued => RunStatus::Queued,
+         WorkflowRunStatus::Starting => RunStatus::Starting,
+-        WorkflowRunStatus::Running | WorkflowRunStatus::Removing => RunStatus::Running,
++        WorkflowRunStatus::Running => RunStatus::Running,
+         WorkflowRunStatus::Blocked => RunStatus::Blocked,
+         WorkflowRunStatus::Paused => RunStatus::Paused,
++        WorkflowRunStatus::Removing => RunStatus::Removing,
+         WorkflowRunStatus::Completed => RunStatus::Completed,
+         WorkflowRunStatus::Failed if reason == Some(WorkflowStatusReason::Cancelled) => {
+             RunStatus::Cancelled
+@@ -3269,20 +3282,27 @@ fn update_live_run_from_event(state: &Arc<AppState>, run_id: RunId, event: &RunE
+         EventBody::RunPaused(_) => managed_run.status = RunStatus::Paused,
+         EventBody::InterviewStarted(props) => {
+             if !props.question_id.is_empty() {
++                managed_run
++                    .pending_interviews
++                    .insert(props.question_id.clone());
+                 managed_run.status = RunStatus::Blocked;
+             }
+         }
+-        EventBody::InterviewCompleted(_)
+-        | EventBody::InterviewTimeout(_)
+-        | EventBody::InterviewInterrupted(_) => {
+-            // Return to Running only when no more pending interviews.
+-            // We cannot check the projection here, but the interview reconciliation
+-            // handler has already removed the question from accepted_questions.
+-            // The durable projection is the source of truth for pending interview
+-            // count; for the live model, we optimistically return to Running.
+-            // If another interview is still pending, the next InterviewStarted
+-            // event will set Blocked again.
+-            if managed_run.status == RunStatus::Blocked {
++        EventBody::InterviewCompleted(props) => {
++            managed_run.pending_interviews.remove(&props.question_id);
++            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
++                managed_run.status = RunStatus::Running;
++            }
++        }
++        EventBody::InterviewTimeout(props) => {
++            managed_run.pending_interviews.remove(&props.question_id);
++            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
++                managed_run.status = RunStatus::Running;
++            }
++        }
++        EventBody::InterviewInterrupted(props) => {
++            managed_run.pending_interviews.remove(&props.question_id);
++            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
+                 managed_run.status = RunStatus::Running;
+             }
+         }

@@ -32,6 +32,15 @@ pub(crate) async fn execute(
     ))
     .await?;
 
+    if !quiet {
+        fabro_util::printerr!(
+            printer,
+            "{} {}",
+            styles.dim.apply_to("Run:"),
+            styles.dim.apply_to(&created_run.run_id),
+        );
+    }
+
     #[cfg(feature = "sleep_inhibitor")]
     let _sleep_guard = crate::sleep_inhibitor::guard(prevent_idle_sleep);
 

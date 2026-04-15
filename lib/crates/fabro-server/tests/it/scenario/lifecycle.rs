@@ -155,8 +155,8 @@ async fn full_http_lifecycle_approve_and_complete() {
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     // 4. Poll until the run reaches a terminal success or failure state.
-    let final_status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
-    assert_eq!(final_status, "succeeded");
+    let final_status = wait_for_run_status(&app, &run_id, &["completed", "failed"]).await;
+    assert_eq!(final_status, "completed");
 
     // 5. Verify no pending questions
     let req = Request::builder()
@@ -280,8 +280,11 @@ async fn cancel_at_human_gate_persists_cancelled_terminal_event() {
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(failed_reasons, vec![(
-        Some("cancelled".to_string()),
-        Some("Pipeline cancelled".to_string())
-    )]);
+    assert_eq!(
+        failed_reasons,
+        vec![(
+            Some("cancelled".to_string()),
+            Some("Pipeline cancelled".to_string())
+        )]
+    );
 }

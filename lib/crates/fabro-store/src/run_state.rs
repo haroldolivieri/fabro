@@ -8,10 +8,10 @@ use fabro_types::run_event::{
     RunFailedProps, StageCompletedProps, StagePromptProps,
 };
 use fabro_types::{
-    BilledModelUsage, Checkpoint, Conclusion, EventBody, FailureSignature, InterviewQuestionRecord,
-    InterviewQuestionType, NodeStatusRecord, Outcome, PullRequestRecord, Retro, RunControlAction,
-    RunEvent, RunId, RunRecord, RunStatus, RunStatusRecord, SandboxRecord, StageStatus,
-    StartRecord, StatusReason,
+    BilledModelUsage, BlockedReason, Checkpoint, Conclusion, EventBody, FailureSignature,
+    InterviewQuestionRecord, InterviewQuestionType, NodeStatusRecord, Outcome, PullRequestRecord,
+    Retro, RunControlAction, RunEvent, RunId, RunRecord, RunStatus, RunStatusRecord, SandboxRecord,
+    StageStatus, StartRecord, StatusReason,
 };
 use serde_json::Value;
 
@@ -20,48 +20,48 @@ use crate::{Error, EventEnvelope, Result, RunSummary, StageId};
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct RunProjection {
-    pub run:                Option<RunRecord>,
-    pub graph_source:       Option<String>,
-    pub start:              Option<StartRecord>,
-    pub status:             Option<RunStatusRecord>,
-    pub pending_control:    Option<RunControlAction>,
-    pub checkpoint:         Option<Checkpoint>,
-    pub checkpoints:        Vec<(u32, Checkpoint)>,
-    pub conclusion:         Option<Conclusion>,
-    pub retro:              Option<Retro>,
-    pub retro_prompt:       Option<String>,
-    pub retro_response:     Option<String>,
-    pub sandbox:            Option<SandboxRecord>,
-    pub final_patch:        Option<String>,
-    pub pull_request:       Option<PullRequestRecord>,
+    pub run: Option<RunRecord>,
+    pub graph_source: Option<String>,
+    pub start: Option<StartRecord>,
+    pub status: Option<RunStatusRecord>,
+    pub pending_control: Option<RunControlAction>,
+    pub checkpoint: Option<Checkpoint>,
+    pub checkpoints: Vec<(u32, Checkpoint)>,
+    pub conclusion: Option<Conclusion>,
+    pub retro: Option<Retro>,
+    pub retro_prompt: Option<String>,
+    pub retro_response: Option<String>,
+    pub sandbox: Option<SandboxRecord>,
+    pub final_patch: Option<String>,
+    pub pull_request: Option<PullRequestRecord>,
     pub pending_interviews: BTreeMap<String, PendingInterviewRecord>,
-    nodes:                  HashMap<StageId, NodeState>,
+    nodes: HashMap<StageId, NodeState>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PendingInterviewRecord {
-    pub question:   InterviewQuestionRecord,
+    pub question: InterviewQuestionRecord,
     pub started_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeState {
-    pub prompt:            Option<String>,
-    pub response:          Option<String>,
-    pub status:            Option<NodeStatusRecord>,
-    pub provider_used:     Option<serde_json::Value>,
-    pub diff:              Option<String>,
+    pub prompt: Option<String>,
+    pub response: Option<String>,
+    pub status: Option<NodeStatusRecord>,
+    pub provider_used: Option<serde_json::Value>,
+    pub diff: Option<String>,
     pub script_invocation: Option<serde_json::Value>,
-    pub script_timing:     Option<serde_json::Value>,
-    pub parallel_results:  Option<serde_json::Value>,
-    pub stdout:            Option<String>,
-    pub stderr:            Option<String>,
+    pub script_timing: Option<serde_json::Value>,
+    pub parallel_results: Option<serde_json::Value>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct EventProjectionCache {
     pub last_seq: u32,
-    pub state:    RunProjection,
+    pub state: RunProjection,
 }
 
 impl RunProjection {
@@ -140,14 +140,19 @@ impl RunProjection {
                 self.pending_control = None;
             }
             EventBody::RunCompleted(props) => {
-                self.status = Some(run_status_record(RunStatus::Succeeded, props.reason, ts));
+                self.status = Some(run_status_record(RunStatus::Completed, props.reason, ts));
                 self.pending_control = None;
                 self.conclusion = Some(conclusion_from_completed(props, ts)?);
                 self.final_patch.clone_from(&props.final_patch);
                 self.pending_interviews.clear();
             }
             EventBody::RunFailed(props) => {
-                self.status = Some(run_status_record(RunStatus::Failed, props.reason, ts));
+                let canonical_status = if props.reason == Some(StatusReason::Cancelled) {
+                    RunStatus::Cancelled
+                } else {
+                    RunStatus::Failed
+                };
+                self.status = Some(run_status_record(canonical_status, props.reason, ts));
                 self.pending_control = None;
                 self.conclusion = Some(conclusion_from_failed(props, ts));
                 self.pending_interviews.clear();
@@ -172,11 +177,11 @@ impl RunProjection {
             }
             EventBody::SandboxInitialized(props) => {
                 self.sandbox = Some(SandboxRecord {
-                    provider:               props.provider.clone(),
-                    working_directory:      props.working_directory.clone(),
-                    identifier:             props.identifier.clone(),
+                    provider: props.provider.clone(),
+                    working_directory: props.working_directory.clone(),
+                    identifier: props.identifier.clone(),
                     host_working_directory: props.host_working_directory.clone(),
-                    container_mount_point:  props.container_mount_point.clone(),
+                    container_mount_point: props.container_mount_point.clone(),
                 });
             }
             EventBody::RetroStarted(props) => {
@@ -193,49 +198,67 @@ impl RunProjection {
             }
             EventBody::PullRequestCreated(props) => {
                 self.pull_request = Some(PullRequestRecord {
-                    html_url:    props.pr_url.clone(),
-                    number:      props.pr_number,
-                    owner:       props.owner.clone(),
-                    repo:        props.repo.clone(),
+                    html_url: props.pr_url.clone(),
+                    number: props.pr_number,
+                    owner: props.owner.clone(),
+                    repo: props.repo.clone(),
                     base_branch: props.base_branch.clone(),
                     head_branch: props.head_branch.clone(),
-                    title:       props.title.clone(),
+                    title: props.title.clone(),
                 });
             }
             EventBody::InterviewStarted(props) => {
                 if props.question_id.is_empty() {
                     return Ok(());
                 }
-                self.pending_interviews
-                    .insert(props.question_id.clone(), PendingInterviewRecord {
-                        question:   InterviewQuestionRecord {
-                            id:              props.question_id.clone(),
-                            text:            props.question.clone(),
-                            stage:           props.stage.clone(),
-                            question_type:   InterviewQuestionType::from_wire_name(
+                self.pending_interviews.insert(
+                    props.question_id.clone(),
+                    PendingInterviewRecord {
+                        question: InterviewQuestionRecord {
+                            id: props.question_id.clone(),
+                            text: props.question.clone(),
+                            stage: props.stage.clone(),
+                            question_type: InterviewQuestionType::from_wire_name(
                                 &props.question_type,
                             ),
-                            options:         props.options.clone(),
-                            allow_freeform:  props.allow_freeform,
+                            options: props.options.clone(),
+                            allow_freeform: props.allow_freeform,
                             timeout_seconds: props.timeout_seconds,
                             context_display: props.context_display.clone(),
                         },
                         started_at: Some(ts),
-                    });
+                    },
+                );
+                // Any pending interview means the run is blocked.
+                self.status = Some(RunStatusRecord {
+                    status: RunStatus::Blocked,
+                    reason: None,
+                    blocked_reason: Some(BlockedReason::HumanInputRequired),
+                    updated_at: ts,
+                });
             }
             EventBody::InterviewCompleted(props) => {
                 if !props.question_id.is_empty() {
                     self.pending_interviews.remove(&props.question_id);
+                }
+                if self.pending_interviews.is_empty() {
+                    self.status = Some(run_status_record(RunStatus::Running, None, ts));
                 }
             }
             EventBody::InterviewTimeout(props) => {
                 if !props.question_id.is_empty() {
                     self.pending_interviews.remove(&props.question_id);
                 }
+                if self.pending_interviews.is_empty() {
+                    self.status = Some(run_status_record(RunStatus::Running, None, ts));
+                }
             }
             EventBody::InterviewInterrupted(props) => {
                 if !props.question_id.is_empty() {
                     self.pending_interviews.remove(&props.question_id);
+                }
+                if self.pending_interviews.is_empty() {
+                    self.status = Some(run_status_record(RunStatus::Running, None, ts));
                 }
             }
             EventBody::StagePrompt(props) => {
@@ -385,6 +408,10 @@ impl RunProjection {
             start_time: self.start.as_ref().map(|start| start.start_time),
             status: self.status.as_ref().map(|status| status.status),
             status_reason: self.status.as_ref().and_then(|status| status.reason),
+            blocked_reason: self
+                .status
+                .as_ref()
+                .and_then(|status| status.blocked_reason),
             pending_control: self.pending_control,
             duration_ms: self
                 .conclusion
@@ -435,6 +462,7 @@ fn run_status_record(
     RunStatusRecord {
         status,
         reason,
+        blocked_reason: None,
         updated_at,
     }
 }
@@ -511,21 +539,21 @@ fn stage_visit(
 
 fn stage_outcome_from_props(props: &StageCompletedProps) -> Outcome<Option<BilledModelUsage>> {
     Outcome {
-        status:             props.status.clone(),
-        preferred_label:    props.preferred_label.clone(),
+        status: props.status.clone(),
+        preferred_label: props.preferred_label.clone(),
         suggested_next_ids: props.suggested_next_ids.clone(),
-        context_updates:    props
+        context_updates: props
             .context_updates
             .clone()
             .unwrap_or_default()
             .into_iter()
             .collect(),
-        jump_to_node:       props.jump_to_node.clone(),
-        notes:              props.notes.clone(),
-        failure:            props.failure.clone(),
-        usage:              props.billing.clone(),
-        files_touched:      props.files_touched.clone(),
-        duration_ms:        Some(props.duration_ms),
+        jump_to_node: props.jump_to_node.clone(),
+        notes: props.notes.clone(),
+        failure: props.failure.clone(),
+        usage: props.billing.clone(),
+        files_touched: props.files_touched.clone(),
+        duration_ms: Some(props.duration_ms),
     }
 }
 
@@ -587,11 +615,14 @@ mod tests {
     use std::collections::HashMap;
 
     use chrono::Utc;
-    use fabro_types::run_event::{InterviewCompletedProps, InterviewOption, InterviewStartedProps};
+    use fabro_types::run_event::{
+        InterviewCompletedProps, InterviewInterruptedProps, InterviewOption, InterviewStartedProps,
+        InterviewTimeoutProps, RunFailedProps,
+    };
     use fabro_types::settings::SettingsLayer;
     use fabro_types::{
-        Checkpoint, EventBody, InterviewQuestionType, RunBlobId, RunControlAction, RunEvent,
-        fixtures,
+        BlockedReason, Checkpoint, EventBody, InterviewQuestionType, RunBlobId, RunControlAction,
+        RunEvent, RunStatus, StatusReason, fixtures,
     };
     use serde_json::json;
 
@@ -682,25 +713,31 @@ mod tests {
     fn set_node_round_trips_through_json() {
         let mut state = RunProjection {
             pending_control: Some(RunControlAction::Unpause),
-            checkpoints: vec![(7, Checkpoint {
-                timestamp:                  "2026-04-07T12:00:00Z".parse().unwrap(),
-                current_node:               "build".to_string(),
-                completed_nodes:            vec!["build".to_string()],
-                node_retries:               HashMap::new(),
-                context_values:             HashMap::new(),
-                node_outcomes:              HashMap::new(),
-                next_node_id:               None,
-                git_commit_sha:             None,
-                loop_failure_signatures:    HashMap::new(),
-                restart_failure_signatures: HashMap::new(),
-                node_visits:                HashMap::from([("build".to_string(), 2usize)]),
-            })],
+            checkpoints: vec![(
+                7,
+                Checkpoint {
+                    timestamp: "2026-04-07T12:00:00Z".parse().unwrap(),
+                    current_node: "build".to_string(),
+                    completed_nodes: vec!["build".to_string()],
+                    node_retries: HashMap::new(),
+                    context_values: HashMap::new(),
+                    node_outcomes: HashMap::new(),
+                    next_node_id: None,
+                    git_commit_sha: None,
+                    loop_failure_signatures: HashMap::new(),
+                    restart_failure_signatures: HashMap::new(),
+                    node_visits: HashMap::from([("build".to_string(), 2usize)]),
+                },
+            )],
             ..RunProjection::default()
         };
-        state.set_node(StageId::new("build", 2), NodeState {
-            stdout: Some("done".to_string()),
-            ..NodeState::default()
-        });
+        state.set_node(
+            StageId::new("build", 2),
+            NodeState {
+                stdout: Some("done".to_string()),
+                ..NodeState::default()
+            },
+        );
 
         let round_tripped: RunProjection =
             serde_json::from_value(serde_json::to_value(&state).unwrap()).unwrap();
@@ -727,21 +764,21 @@ mod tests {
             .apply_event(&test_event(
                 1,
                 EventBody::InterviewStarted(InterviewStartedProps {
-                    question_id:     "q-1".to_string(),
-                    question:        "Approve deploy?".to_string(),
-                    stage:           "gate".to_string(),
-                    question_type:   "multiple_choice".to_string(),
-                    options:         vec![
+                    question_id: "q-1".to_string(),
+                    question: "Approve deploy?".to_string(),
+                    stage: "gate".to_string(),
+                    question_type: "multiple_choice".to_string(),
+                    options: vec![
                         InterviewOption {
-                            key:   "approve".to_string(),
+                            key: "approve".to_string(),
                             label: "Approve".to_string(),
                         },
                         InterviewOption {
-                            key:   "revise".to_string(),
+                            key: "revise".to_string(),
                             label: "Revise".to_string(),
                         },
                     ],
-                    allow_freeform:  true,
+                    allow_freeform: true,
                     timeout_seconds: Some(30.0),
                     context_display: Some("Latest draft".to_string()),
                 }),
@@ -772,8 +809,8 @@ mod tests {
                 2,
                 EventBody::InterviewCompleted(InterviewCompletedProps {
                     question_id: "q-1".to_string(),
-                    question:    "Approve deploy?".to_string(),
-                    answer:      "approve".to_string(),
+                    question: "Approve deploy?".to_string(),
+                    answer: "approve".to_string(),
                     duration_ms: 42,
                 }),
                 Some("gate"),
@@ -793,7 +830,7 @@ mod tests {
             RunBlobId::new(br#"{"version":1,"workflow_path":"workflow.fabro"}"#).to_string();
         let events = vec![
             EventEnvelope {
-                seq:     1,
+                seq: 1,
                 payload: EventPayload::new(
                     json!({
                         "id": "evt-run-created",
@@ -819,7 +856,7 @@ mod tests {
                 .unwrap(),
             },
             EventEnvelope {
-                seq:     2,
+                seq: 2,
                 payload: EventPayload::new(
                     json!({
                         "id": "evt-run-submitted",
@@ -846,6 +883,343 @@ mod tests {
         assert_eq!(
             value["run"]["definition_blob"],
             events[1].payload.as_value()["properties"]["definition_blob"]
+        );
+    }
+
+    #[test]
+    fn interview_started_sets_blocked_with_human_input_required() {
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::InterviewStarted(InterviewStartedProps {
+                    question_id: "q-1".to_string(),
+                    question: "Approve deploy?".to_string(),
+                    stage: "gate".to_string(),
+                    question_type: "confirm".to_string(),
+                    options: vec![],
+                    allow_freeform: false,
+                    timeout_seconds: None,
+                    context_display: None,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+
+        let status_record = state.status.as_ref().expect("status should be set");
+        assert_eq!(status_record.status, RunStatus::Blocked);
+        assert_eq!(
+            status_record.blocked_reason,
+            Some(BlockedReason::HumanInputRequired)
+        );
+    }
+
+    #[test]
+    fn interview_completion_returns_to_running_when_no_pending() {
+        let mut state = RunProjection::default();
+        // Start an interview → Blocked.
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::InterviewStarted(InterviewStartedProps {
+                    question_id: "q-1".to_string(),
+                    question: "Approve?".to_string(),
+                    stage: "gate".to_string(),
+                    question_type: "confirm".to_string(),
+                    options: vec![],
+                    allow_freeform: false,
+                    timeout_seconds: None,
+                    context_display: None,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Blocked);
+
+        // Complete the interview → Running.
+        state
+            .apply_event(&test_event(
+                2,
+                EventBody::InterviewCompleted(InterviewCompletedProps {
+                    question_id: "q-1".to_string(),
+                    question: "Approve?".to_string(),
+                    answer: "yes".to_string(),
+                    duration_ms: 10,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+
+        assert!(state.pending_interviews.is_empty());
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Running);
+        assert_eq!(state.status.as_ref().unwrap().blocked_reason, None);
+    }
+
+    #[test]
+    fn interview_timeout_returns_to_running() {
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::InterviewStarted(InterviewStartedProps {
+                    question_id: "q-1".to_string(),
+                    question: "Approve?".to_string(),
+                    stage: "gate".to_string(),
+                    question_type: "confirm".to_string(),
+                    options: vec![],
+                    allow_freeform: false,
+                    timeout_seconds: Some(10.0),
+                    context_display: None,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+
+        state
+            .apply_event(&test_event(
+                2,
+                EventBody::InterviewTimeout(InterviewTimeoutProps {
+                    question_id: "q-1".to_string(),
+                    question: "Approve?".to_string(),
+                    stage: "gate".to_string(),
+                    duration_ms: 10000,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+
+        assert!(state.pending_interviews.is_empty());
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Running);
+    }
+
+    #[test]
+    fn interview_interrupted_returns_to_running() {
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::InterviewStarted(InterviewStartedProps {
+                    question_id: "q-1".to_string(),
+                    question: "Approve?".to_string(),
+                    stage: "gate".to_string(),
+                    question_type: "confirm".to_string(),
+                    options: vec![],
+                    allow_freeform: false,
+                    timeout_seconds: None,
+                    context_display: None,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+
+        state
+            .apply_event(&test_event(
+                2,
+                EventBody::InterviewInterrupted(InterviewInterruptedProps {
+                    question_id: "q-1".to_string(),
+                    question: "Approve?".to_string(),
+                    stage: "gate".to_string(),
+                    reason: "cancelled".to_string(),
+                    duration_ms: 100,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+
+        assert!(state.pending_interviews.is_empty());
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Running);
+    }
+
+    #[test]
+    fn multiple_interviews_stay_blocked_until_all_resolved() {
+        let mut state = RunProjection::default();
+        // Start two interviews.
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::InterviewStarted(InterviewStartedProps {
+                    question_id: "q-1".to_string(),
+                    question: "First?".to_string(),
+                    stage: "gate".to_string(),
+                    question_type: "confirm".to_string(),
+                    options: vec![],
+                    allow_freeform: false,
+                    timeout_seconds: None,
+                    context_display: None,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_event(
+                2,
+                EventBody::InterviewStarted(InterviewStartedProps {
+                    question_id: "q-2".to_string(),
+                    question: "Second?".to_string(),
+                    stage: "gate".to_string(),
+                    question_type: "confirm".to_string(),
+                    options: vec![],
+                    allow_freeform: false,
+                    timeout_seconds: None,
+                    context_display: None,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+
+        // Complete first — still blocked.
+        state
+            .apply_event(&test_event(
+                3,
+                EventBody::InterviewCompleted(InterviewCompletedProps {
+                    question_id: "q-1".to_string(),
+                    question: "First?".to_string(),
+                    answer: "yes".to_string(),
+                    duration_ms: 10,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+        assert_eq!(state.pending_interviews.len(), 1);
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Blocked);
+
+        // Complete second — now Running.
+        state
+            .apply_event(&test_event(
+                4,
+                EventBody::InterviewCompleted(InterviewCompletedProps {
+                    question_id: "q-2".to_string(),
+                    question: "Second?".to_string(),
+                    answer: "no".to_string(),
+                    duration_ms: 20,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+        assert!(state.pending_interviews.is_empty());
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Running);
+    }
+
+    #[test]
+    fn pause_unpause_yields_paused_running_not_blocked() {
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::RunPaused(Default::default()),
+                None,
+            ))
+            .unwrap();
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Paused);
+
+        state
+            .apply_event(&test_event(
+                2,
+                EventBody::RunUnpaused(Default::default()),
+                None,
+            ))
+            .unwrap();
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Running);
+        assert_eq!(state.status.as_ref().unwrap().blocked_reason, None);
+    }
+
+    #[test]
+    fn cancelled_failure_projects_to_cancelled() {
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::RunFailed(RunFailedProps {
+                    error: "cancelled".to_string(),
+                    duration_ms: 100,
+                    reason: Some(StatusReason::Cancelled),
+                    git_commit_sha: None,
+                }),
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Cancelled);
+        assert_eq!(
+            state.status.as_ref().unwrap().reason,
+            Some(StatusReason::Cancelled)
+        );
+    }
+
+    #[test]
+    fn non_cancelled_failure_stays_failed() {
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::RunFailed(RunFailedProps {
+                    error: "something broke".to_string(),
+                    duration_ms: 100,
+                    reason: Some(StatusReason::WorkflowError),
+                    git_commit_sha: None,
+                }),
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(state.status.as_ref().unwrap().status, RunStatus::Failed);
+    }
+
+    #[test]
+    fn queued_status_round_trips_through_serialization() {
+        let record = fabro_types::RunStatusRecord::new(RunStatus::Queued, None);
+        let json = serde_json::to_value(&record).unwrap();
+        assert_eq!(json["status"], "queued");
+        let parsed: fabro_types::RunStatusRecord = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed.status, RunStatus::Queued);
+    }
+
+    #[test]
+    fn blocked_reason_serialization_round_trips() {
+        let record = fabro_types::RunStatusRecord::blocked(BlockedReason::HumanInputRequired);
+        let json = serde_json::to_value(&record).unwrap();
+        assert_eq!(json["status"], "blocked");
+        assert_eq!(json["blocked_reason"], "human_input_required");
+        let parsed: fabro_types::RunStatusRecord = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed.status, RunStatus::Blocked);
+        assert_eq!(
+            parsed.blocked_reason,
+            Some(BlockedReason::HumanInputRequired)
+        );
+    }
+
+    #[test]
+    fn blocked_reason_absent_for_non_blocked_status() {
+        let record = fabro_types::RunStatusRecord::new(RunStatus::Running, None);
+        let json = serde_json::to_value(&record).unwrap();
+        assert!(json.get("blocked_reason").is_none());
+    }
+
+    #[test]
+    fn build_summary_includes_blocked_reason() {
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::InterviewStarted(InterviewStartedProps {
+                    question_id: "q-1".to_string(),
+                    question: "Approve?".to_string(),
+                    stage: "gate".to_string(),
+                    question_type: "confirm".to_string(),
+                    options: vec![],
+                    allow_freeform: false,
+                    timeout_seconds: None,
+                    context_display: None,
+                }),
+                Some("gate"),
+            ))
+            .unwrap();
+
+        let summary = state.build_summary(&fixtures::RUN_1);
+        assert_eq!(summary.status, Some(RunStatus::Blocked));
+        assert_eq!(
+            summary.blocked_reason,
+            Some(BlockedReason::HumanInputRequired)
         );
     }
 }

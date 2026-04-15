@@ -8,45 +8,65 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum RunStatus {
     Submitted,
+    Queued,
     Starting,
     Running,
+    Blocked,
     Paused,
     Removing,
-    Succeeded,
+    Completed,
     Failed,
-    Dead,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlockedReason {
+    HumanInputRequired,
 }
 
 impl RunStatus {
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::Succeeded | Self::Failed | Self::Dead)
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
     }
 
     pub fn is_active(self) -> bool {
         matches!(
             self,
-            Self::Submitted | Self::Starting | Self::Running | Self::Paused | Self::Removing
+            Self::Submitted
+                | Self::Queued
+                | Self::Starting
+                | Self::Running
+                | Self::Blocked
+                | Self::Paused
+                | Self::Removing
         )
     }
 
     pub fn can_transition_to(self, to: Self) -> bool {
-        if to == Self::Dead {
-            return true;
-        }
         if self.is_terminal() {
             return false;
         }
+        if to == Self::Cancelled {
+            // Any non-terminal status can be cancelled.
+            return true;
+        }
         matches!(
             (self, to),
-            (Self::Submitted, Self::Starting)
-                | (Self::Starting | Self::Paused, Self::Running)
+            (Self::Submitted, Self::Queued | Self::Starting)
+                | (Self::Queued, Self::Starting)
+                | (Self::Starting | Self::Paused | Self::Blocked, Self::Running)
                 | (
-                    Self::Starting | Self::Running | Self::Paused | Self::Removing,
+                    Self::Starting | Self::Running | Self::Paused | Self::Blocked | Self::Removing,
                     Self::Failed
                 )
                 | (
                     Self::Running,
-                    Self::Succeeded | Self::Paused | Self::Removing
+                    Self::Completed | Self::Blocked | Self::Paused | Self::Removing
+                )
+                | (
+                    Self::Blocked,
+                    Self::Completed | Self::Paused | Self::Removing
                 )
                 | (Self::Paused, Self::Removing)
         )
@@ -65,15 +85,25 @@ impl fmt::Display for RunStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::Submitted => "submitted",
+            Self::Queued => "queued",
             Self::Starting => "starting",
             Self::Running => "running",
+            Self::Blocked => "blocked",
             Self::Paused => "paused",
             Self::Removing => "removing",
-            Self::Succeeded => "succeeded",
+            Self::Completed => "completed",
             Self::Failed => "failed",
-            Self::Dead => "dead",
+            Self::Cancelled => "cancelled",
         };
         f.write_str(s)
+    }
+}
+
+impl fmt::Display for BlockedReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::HumanInputRequired => f.write_str("human_input_required"),
+        }
     }
 }
 
@@ -83,13 +113,15 @@ impl FromStr for RunStatus {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "submitted" => Ok(Self::Submitted),
+            "queued" => Ok(Self::Queued),
             "starting" => Ok(Self::Starting),
             "running" => Ok(Self::Running),
+            "blocked" => Ok(Self::Blocked),
             "paused" => Ok(Self::Paused),
             "removing" => Ok(Self::Removing),
-            "succeeded" => Ok(Self::Succeeded),
+            "completed" => Ok(Self::Completed),
             "failed" => Ok(Self::Failed),
-            "dead" => Ok(Self::Dead),
+            "cancelled" => Ok(Self::Cancelled),
             _ => Err(ParseRunStatusError(s.to_string())),
         }
     }
@@ -109,7 +141,7 @@ impl std::error::Error for ParseRunStatusError {}
 #[derive(Debug, Clone, PartialEq)]
 pub struct InvalidTransition {
     pub from: RunStatus,
-    pub to:   RunStatus,
+    pub to: RunStatus,
 }
 
 impl fmt::Display for InvalidTransition {
@@ -146,9 +178,11 @@ pub enum RunControlAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunStatusRecord {
-    pub status:     RunStatus,
+    pub status: RunStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reason:     Option<StatusReason>,
+    pub reason: Option<StatusReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_reason: Option<BlockedReason>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -157,6 +191,16 @@ impl RunStatusRecord {
         Self {
             status,
             reason,
+            blocked_reason: None,
+            updated_at: Utc::now(),
+        }
+    }
+
+    pub fn blocked(blocked_reason: BlockedReason) -> Self {
+        Self {
+            status: RunStatus::Blocked,
+            reason: None,
+            blocked_reason: Some(blocked_reason),
             updated_at: Utc::now(),
         }
     }

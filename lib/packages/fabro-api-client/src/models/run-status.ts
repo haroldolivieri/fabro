@@ -23,10 +23,12 @@ export const RunStatus = {
     QUEUED: 'queued',
     STARTING: 'starting',
     RUNNING: 'running',
+    BLOCKED: 'blocked',
+    PAUSED: 'paused',
+    REMOVING: 'removing',
     COMPLETED: 'completed',
     FAILED: 'failed',
-    CANCELLED: 'cancelled',
-    PAUSED: 'paused'
+    CANCELLED: 'cancelled'
 } as const;
 
 export type RunStatus = typeof RunStatus[keyof typeof RunStatus];

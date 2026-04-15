@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mapRunSummaryToRunItem } from "./runs";
+import { mapRunSummaryToRunItem, isRunStatus } from "./runs";
 
 describe("mapRunSummaryToRunItem", () => {
   test("maps store run summary to RunItem", () => {
@@ -45,5 +45,25 @@ describe("mapRunSummaryToRunItem", () => {
     expect(item.title).toBe("Untitled run");
     expect(item.workflow).toBe("unknown");
     expect(item.repo).toBe("unknown");
+  });
+});
+
+describe("isRunStatus", () => {
+  test("accepts blocked, paused, completed, and cancelled", () => {
+    expect(isRunStatus("blocked")).toBe(true);
+    expect(isRunStatus("paused")).toBe(true);
+    expect(isRunStatus("completed")).toBe(true);
+    expect(isRunStatus("cancelled")).toBe(true);
+    expect(isRunStatus("queued")).toBe(true);
+  });
+
+  test("rejects removed legacy statuses", () => {
+    expect(isRunStatus("dead")).toBe(false);
+    expect(isRunStatus("succeeded")).toBe(false);
+  });
+
+  test("rejects unknown values", () => {
+    expect(isRunStatus("waiting")).toBe(false);
+    expect(isRunStatus("unknown")).toBe(false);
   });
 });

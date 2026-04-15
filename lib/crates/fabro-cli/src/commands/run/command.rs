@@ -35,7 +35,7 @@ pub(crate) async fn execute(
     if !quiet {
         fabro_util::printerr!(
             printer,
-            "{} {}",
+            "    {} {}",
             styles.dim.apply_to("Run:"),
             styles.dim.apply_to(&created_run.run_id),
         );

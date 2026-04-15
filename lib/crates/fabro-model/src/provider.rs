@@ -72,7 +72,7 @@ impl Provider {
 
     /// Pick the best default provider based on an explicit configured list.
     #[must_use]
-    pub fn default_for_configured(configured: &[Provider]) -> Self {
+    pub fn default_for_configured(configured: &[Self]) -> Self {
         Self::default_with(|provider| configured.contains(&provider))
     }
 

@@ -1,13 +1,14 @@
 {
-  "timestamp": "2026-04-15T15:36:30.061798Z",
-  "current_node": "test_rust",
+  "timestamp": "2026-04-15T15:36:34.712143Z",
+  "current_node": "test_typescript",
   "completed_nodes": [
     "start",
     "toolchain",
     "compile_rust",
     "compile_typescript",
     "lint_rust",
-    "test_rust"
+    "test_rust",
+    "test_typescript"
   ],
   "node_retries": {},
   "context_values": {
@@ -15,40 +16,30 @@
     "thread.toolchain.current_node": "compile_rust",
     "graph.rankdir": "LR",
     "internal.retry_count.toolchain": 0,
-    "outcome": "fail",
+    "outcome": "success",
     "internal.retry_count.compile_rust": 0,
     "thread.compile_rust.current_node": "compile_typescript",
     "internal.retry_count.start": 0,
-    "failure_signature": "test_rust|canceled|script failed with exit code: <n> ## stdout ──────────── nextest run id <hex>-b061-48d5-9f16-<hex> with nextest profile: default starting <n> tests across <n> binaries (<n> tests skipped) [> <n>.000s] (────",
+    "failure_signature": "",
     "internal.retry_count.compile_typescript": 0,
     "internal.retry_count.lint_rust": 0,
-    "internal.thread_id": "lint_rust",
-    "failure_class": "canceled",
-    "current_node": "test_rust",
+    "internal.thread_id": "test_rust",
+    "failure_class": "",
+    "current_node": "test_typescript",
     "thread.start.current_node": "toolchain",
     "graph.retry_target": "exit",
-    "command.output": "────────────\n Nextest run ID ab6cb501-b061-48d5-9f16-3d142e6fae8e with nextest profile: default\n    Starting 3980 tests across 66 binaries (182 tests skipped)\n[>  3.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\n  stdout ───\n\n    running 1 test\n    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Snapshot Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n    Snapshot: dry_run_simple\n    Source: lib/crates/fabro-cli/tests/it/cmd/run.rs:642\n    ────────────────────────────────────────────────────────────────────────────────\n    Expression: snapshot\n    ────────────────────────────────────────────────────────────────────────────────\n    -old snapshot\n    +new results\n    ────────────┬───────────────────────────────────────────────────────────────────\n        2     2 │ exit_code: 0\n        3     3 │ ----- stdout -----\n        4     4 │ ----- stderr -----\n        5     5 │ Workflow: Simple (4 nodes, 3 edges)\n        6       │-Graph: [TEMP_DIR]/simple.fabro\n              6 │+Graph: simple.fabro\n        7     7 │ Goal: Run tests and report results\n        8     8 │ \n        9     9 │     Run: [ULID]\n       10    10 │     Sandbox: local (ready in [TIME])\n    ────────────┴───────────────────────────────────────────────────────────────────\n    To update snapshots run `cargo insta review`\n    Stopped on the first failure. Run `cargo insta test` to run all snapshots.\n    test cmd::run::dry_run_simple ... FAILED\n\n    failures:\n\n    failures:\n        cmd::run::dry_run_simple\n\n    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 346 filtered out; finished in 0.20s\n\n  stderr ───\n    Workflow: Simple (4 nodes, 3 edges)\n    Graph: simple.fabro\n    Goal: Run tests and report results\n\n        Run: 01KP8WJKDQC7P2WFHGTS3W2B4W\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Run Tests  0ms\n        ✓ Report  0ms\n        ✓ Exit  0ms\n\n    === Run Result ===\n    Run:       01KP8WJKDQC7P2WFHGTS3W2B4W\n    Status:    SUCCESS\n    Duration:  0 seconds\n    Run:       /tmp/fx/n-ab6cb501b061/storage/scratch/20260415-01KP8WJKDQC7P2WFHGTS3W2B4W\n\n    === Output ===\n    [Simulated] Response for stage: report\n\n    thread 'cmd::run::dry_run_simple' (27545) panicked at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/insta-1.46.3/src/runtime.rs:719:13:\n    snapshot assertion for 'dry_run_simple' failed in line 642\n    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n  Cancelling due to test failure: 3 tests still running\n[>  6.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n[>  9.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n────────────\n     Summary [  15.545s] 624/3980 tests run: 623 passed (1 slow), 1 failed, 182 skipped\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\nwarning: 3356/3980 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)\nerror: test run failed\n",
+    "command.output": "bun test v1.3.10 (30e609e0)\n\napp/api.test.ts:\n(pass) isNotAvailable > returns true for 501 status [1.00ms]\n(pass) isNotAvailable > returns true for 404 status\n(pass) isNotAvailable > returns false for 200 status\n(pass) auth helpers > getAuthConfig fetches auth methods without triggering auth redirect behavior [1.00ms]\n(pass) auth helpers > loginDevToken posts the token payload\n\napp/router.test.tsx:\n(pass) browser router > uses /login for the sign-in page instead of the backend auth namespace\n(pass) browser router > exposes /setup but not the removed /setup/complete route [1.00ms]\n\nscripts/build.test.ts:\n(pass) watch mode keeps running until interrupted [1031.00ms]\n\napp/data/runs.test.ts:\n(pass) mapRunSummaryToRunItem > maps store run summary to RunItem\n(pass) mapRunSummaryToRunItem > handles missing optional fields\n\napp/layouts/app-shell.test.tsx:\n(pass) getVisibleNavigation > shows all nav items in demo mode [1.00ms]\n(pass) getVisibleNavigation > hides Workflows and Insights in production mode\n\napp/lib/demo-mode.test.tsx:\n(pass) DemoModeProvider > provides demo mode value to children [6.00ms]\n(pass) DemoModeProvider > defaults to false\n\napp/lib/theme-selection.test.ts:\n(pass) resolveTheme > defaults to dark when no saved theme exists\n(pass) resolveTheme > uses the saved theme when it is valid\n(pass) buildThemeBootScript > defaults the boot script to dark without using system preference\n\n 17 pass\n 0 fail\n 37 expect() calls\nRan 17 tests across 7 files. [1339.00ms]\n",
     "internal.retry_count.test_rust": 0,
+    "internal.retry_count.test_typescript": 0,
     "internal.fidelity": "compact",
     "internal.run_id": "01KP8W5AM70ZNGCF1BBGJYBWGR",
     "command.stderr": "",
     "thread.compile_typescript.current_node": "lint_rust",
     "thread.lint_rust.current_node": "test_rust",
-    "graph.goal": "Verify the sandbox can lint and test the project"
+    "graph.goal": "Verify the sandbox can lint and test the project",
+    "thread.test_rust.current_node": "test_typescript"
   },
   "node_outcomes": {
-    "test_rust": {
-      "status": "fail",
-      "context_updates": {
-        "command.output": "────────────\n Nextest run ID ab6cb501-b061-48d5-9f16-3d142e6fae8e with nextest profile: default\n    Starting 3980 tests across 66 binaries (182 tests skipped)\n[>  3.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\n  stdout ───\n\n    running 1 test\n    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Snapshot Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n    Snapshot: dry_run_simple\n    Source: lib/crates/fabro-cli/tests/it/cmd/run.rs:642\n    ────────────────────────────────────────────────────────────────────────────────\n    Expression: snapshot\n    ────────────────────────────────────────────────────────────────────────────────\n    -old snapshot\n    +new results\n    ────────────┬───────────────────────────────────────────────────────────────────\n        2     2 │ exit_code: 0\n        3     3 │ ----- stdout -----\n        4     4 │ ----- stderr -----\n        5     5 │ Workflow: Simple (4 nodes, 3 edges)\n        6       │-Graph: [TEMP_DIR]/simple.fabro\n              6 │+Graph: simple.fabro\n        7     7 │ Goal: Run tests and report results\n        8     8 │ \n        9     9 │     Run: [ULID]\n       10    10 │     Sandbox: local (ready in [TIME])\n    ────────────┴───────────────────────────────────────────────────────────────────\n    To update snapshots run `cargo insta review`\n    Stopped on the first failure. Run `cargo insta test` to run all snapshots.\n    test cmd::run::dry_run_simple ... FAILED\n\n    failures:\n\n    failures:\n        cmd::run::dry_run_simple\n\n    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 346 filtered out; finished in 0.20s\n\n  stderr ───\n    Workflow: Simple (4 nodes, 3 edges)\n    Graph: simple.fabro\n    Goal: Run tests and report results\n\n        Run: 01KP8WJKDQC7P2WFHGTS3W2B4W\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Run Tests  0ms\n        ✓ Report  0ms\n        ✓ Exit  0ms\n\n    === Run Result ===\n    Run:       01KP8WJKDQC7P2WFHGTS3W2B4W\n    Status:    SUCCESS\n    Duration:  0 seconds\n    Run:       /tmp/fx/n-ab6cb501b061/storage/scratch/20260415-01KP8WJKDQC7P2WFHGTS3W2B4W\n\n    === Output ===\n    [Simulated] Response for stage: report\n\n    thread 'cmd::run::dry_run_simple' (27545) panicked at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/insta-1.46.3/src/runtime.rs:719:13:\n    snapshot assertion for 'dry_run_simple' failed in line 642\n    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n  Cancelling due to test failure: 3 tests still running\n[>  6.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n[>  9.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n────────────\n     Summary [  15.545s] 624/3980 tests run: 623 passed (1 slow), 1 failed, 182 skipped\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\nwarning: 3356/3980 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)\nerror: test run failed\n",
-        "command.stderr": ""
-      },
-      "failure": {
-        "message": "Script failed with exit code: 100\n\n## stdout\n────────────\n Nextest run ID ab6cb501-b061-48d5-9f16-3d142e6fae8e with nextest profile: default\n    Starting 3980 tests across 66 binaries (182 tests skipped)\n[>  3.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\n  stdout ───\n\n    running 1 test\n    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Snapshot Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n    Snapshot: dry_run_simple\n    Source: lib/crates/fabro-cli/tests/it/cmd/run.rs:642\n    ────────────────────────────────────────────────────────────────────────────────\n    Expression: snapshot\n    ────────────────────────────────────────────────────────────────────────────────\n    -old snapshot\n    +new results\n    ────────────┬───────────────────────────────────────────────────────────────────\n        2     2 │ exit_code: 0\n        3     3 │ ----- stdout -----\n        4     4 │ ----- stderr -----\n        5     5 │ Workflow: Simple (4 nodes, 3 edges)\n        6       │-Graph: [TEMP_DIR]/simple.fabro\n              6 │+Graph: simple.fabro\n        7     7 │ Goal: Run tests and report results\n        8     8 │ \n        9     9 │     Run: [ULID]\n       10    10 │     Sandbox: local (ready in [TIME])\n    ────────────┴───────────────────────────────────────────────────────────────────\n    To update snapshots run `cargo insta review`\n    Stopped on the first failure. Run `cargo insta test` to run all snapshots.\n    test cmd::run::dry_run_simple ... FAILED\n\n    failures:\n\n    failures:\n        cmd::run::dry_run_simple\n\n    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 346 filtered out; finished in 0.20s\n\n  stderr ───\n    Workflow: Simple (4 nodes, 3 edges)\n    Graph: simple.fabro\n    Goal: Run tests and report results\n\n        Run: 01KP8WJKDQC7P2WFHGTS3W2B4W\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Run Tests  0ms\n        ✓ Report  0ms\n        ✓ Exit  0ms\n\n    === Run Result ===\n    Run:       01KP8WJKDQC7P2WFHGTS3W2B4W\n    Status:    SUCCESS\n    Duration:  0 seconds\n    Run:       /tmp/fx/n-ab6cb501b061/storage/scratch/20260415-01KP8WJKDQC7P2WFHGTS3W2B4W\n\n    === Output ===\n    [Simulated] Response for stage: report\n\n    thread 'cmd::run::dry_run_simple' (27545) panicked at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/insta-1.46.3/src/runtime.rs:719:13:\n    snapshot assertion for 'dry_run_simple' failed in line 642\n    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n  Cancelling due to test failure: 3 tests still running\n[>  6.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n[>  9.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n────────────\n     Summary [  15.545s] 624/3980 tests run: 623 passed (1 slow), 1 failed, 182 skipped\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\nwarning: 3356/3980 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)\nerror: test run failed\n",
-        "failure_class": "canceled"
-      },
-      "usage": null
-    },
     "toolchain": {
       "status": "success",
       "context_updates": {
@@ -67,6 +58,36 @@
       "notes": "Script completed: cargo check -q --workspace 2>&1",
       "usage": null
     },
+    "lint_rust": {
+      "status": "success",
+      "context_updates": {
+        "command.output": "info: syncing channel updates for nightly-x86_64-unknown-linux-gnu\ninfo: latest update on 2026-04-15 for version 1.97.0-nightly (a5c825cd8 2026-04-14)\ninfo: downloading 6 components\n",
+        "command.stderr": ""
+      },
+      "notes": "Script completed: cargo +nightly fmt --check --all 2>&1 && cargo clippy -q --workspace -- -D warnings 2>&1",
+      "usage": null
+    },
+    "test_typescript": {
+      "status": "success",
+      "context_updates": {
+        "command.stderr": "",
+        "command.output": "bun test v1.3.10 (30e609e0)\n\napp/api.test.ts:\n(pass) isNotAvailable > returns true for 501 status [1.00ms]\n(pass) isNotAvailable > returns true for 404 status\n(pass) isNotAvailable > returns false for 200 status\n(pass) auth helpers > getAuthConfig fetches auth methods without triggering auth redirect behavior [1.00ms]\n(pass) auth helpers > loginDevToken posts the token payload\n\napp/router.test.tsx:\n(pass) browser router > uses /login for the sign-in page instead of the backend auth namespace\n(pass) browser router > exposes /setup but not the removed /setup/complete route [1.00ms]\n\nscripts/build.test.ts:\n(pass) watch mode keeps running until interrupted [1031.00ms]\n\napp/data/runs.test.ts:\n(pass) mapRunSummaryToRunItem > maps store run summary to RunItem\n(pass) mapRunSummaryToRunItem > handles missing optional fields\n\napp/layouts/app-shell.test.tsx:\n(pass) getVisibleNavigation > shows all nav items in demo mode [1.00ms]\n(pass) getVisibleNavigation > hides Workflows and Insights in production mode\n\napp/lib/demo-mode.test.tsx:\n(pass) DemoModeProvider > provides demo mode value to children [6.00ms]\n(pass) DemoModeProvider > defaults to false\n\napp/lib/theme-selection.test.ts:\n(pass) resolveTheme > defaults to dark when no saved theme exists\n(pass) resolveTheme > uses the saved theme when it is valid\n(pass) buildThemeBootScript > defaults the boot script to dark without using system preference\n\n 17 pass\n 0 fail\n 37 expect() calls\nRan 17 tests across 7 files. [1339.00ms]\n"
+      },
+      "notes": "Script completed: cd apps/fabro-web && bun test 2>&1",
+      "usage": null
+    },
+    "test_rust": {
+      "status": "fail",
+      "context_updates": {
+        "command.output": "────────────\n Nextest run ID ab6cb501-b061-48d5-9f16-3d142e6fae8e with nextest profile: default\n    Starting 3980 tests across 66 binaries (182 tests skipped)\n[>  3.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\n  stdout ───\n\n    running 1 test\n    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Snapshot Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n    Snapshot: dry_run_simple\n    Source: lib/crates/fabro-cli/tests/it/cmd/run.rs:642\n    ────────────────────────────────────────────────────────────────────────────────\n    Expression: snapshot\n    ────────────────────────────────────────────────────────────────────────────────\n    -old snapshot\n    +new results\n    ────────────┬───────────────────────────────────────────────────────────────────\n        2     2 │ exit_code: 0\n        3     3 │ ----- stdout -----\n        4     4 │ ----- stderr -----\n        5     5 │ Workflow: Simple (4 nodes, 3 edges)\n        6       │-Graph: [TEMP_DIR]/simple.fabro\n              6 │+Graph: simple.fabro\n        7     7 │ Goal: Run tests and report results\n        8     8 │ \n        9     9 │     Run: [ULID]\n       10    10 │     Sandbox: local (ready in [TIME])\n    ────────────┴───────────────────────────────────────────────────────────────────\n    To update snapshots run `cargo insta review`\n    Stopped on the first failure. Run `cargo insta test` to run all snapshots.\n    test cmd::run::dry_run_simple ... FAILED\n\n    failures:\n\n    failures:\n        cmd::run::dry_run_simple\n\n    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 346 filtered out; finished in 0.20s\n\n  stderr ───\n    Workflow: Simple (4 nodes, 3 edges)\n    Graph: simple.fabro\n    Goal: Run tests and report results\n\n        Run: 01KP8WJKDQC7P2WFHGTS3W2B4W\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Run Tests  0ms\n        ✓ Report  0ms\n        ✓ Exit  0ms\n\n    === Run Result ===\n    Run:       01KP8WJKDQC7P2WFHGTS3W2B4W\n    Status:    SUCCESS\n    Duration:  0 seconds\n    Run:       /tmp/fx/n-ab6cb501b061/storage/scratch/20260415-01KP8WJKDQC7P2WFHGTS3W2B4W\n\n    === Output ===\n    [Simulated] Response for stage: report\n\n    thread 'cmd::run::dry_run_simple' (27545) panicked at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/insta-1.46.3/src/runtime.rs:719:13:\n    snapshot assertion for 'dry_run_simple' failed in line 642\n    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n  Cancelling due to test failure: 3 tests still running\n[>  6.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n[>  9.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n────────────\n     Summary [  15.545s] 624/3980 tests run: 623 passed (1 slow), 1 failed, 182 skipped\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\nwarning: 3356/3980 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)\nerror: test run failed\n",
+        "command.stderr": ""
+      },
+      "failure": {
+        "message": "Script failed with exit code: 100\n\n## stdout\n────────────\n Nextest run ID ab6cb501-b061-48d5-9f16-3d142e6fae8e with nextest profile: default\n    Starting 3980 tests across 66 binaries (182 tests skipped)\n[>  3.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\n  stdout ───\n\n    running 1 test\n    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Snapshot Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n    Snapshot: dry_run_simple\n    Source: lib/crates/fabro-cli/tests/it/cmd/run.rs:642\n    ────────────────────────────────────────────────────────────────────────────────\n    Expression: snapshot\n    ────────────────────────────────────────────────────────────────────────────────\n    -old snapshot\n    +new results\n    ────────────┬───────────────────────────────────────────────────────────────────\n        2     2 │ exit_code: 0\n        3     3 │ ----- stdout -----\n        4     4 │ ----- stderr -----\n        5     5 │ Workflow: Simple (4 nodes, 3 edges)\n        6       │-Graph: [TEMP_DIR]/simple.fabro\n              6 │+Graph: simple.fabro\n        7     7 │ Goal: Run tests and report results\n        8     8 │ \n        9     9 │     Run: [ULID]\n       10    10 │     Sandbox: local (ready in [TIME])\n    ────────────┴───────────────────────────────────────────────────────────────────\n    To update snapshots run `cargo insta review`\n    Stopped on the first failure. Run `cargo insta test` to run all snapshots.\n    test cmd::run::dry_run_simple ... FAILED\n\n    failures:\n\n    failures:\n        cmd::run::dry_run_simple\n\n    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 346 filtered out; finished in 0.20s\n\n  stderr ───\n    Workflow: Simple (4 nodes, 3 edges)\n    Graph: simple.fabro\n    Goal: Run tests and report results\n\n        Run: 01KP8WJKDQC7P2WFHGTS3W2B4W\n        Sandbox: local (ready in 0ms)\n        ✓ Start  0ms\n        ✓ Run Tests  0ms\n        ✓ Report  0ms\n        ✓ Exit  0ms\n\n    === Run Result ===\n    Run:       01KP8WJKDQC7P2WFHGTS3W2B4W\n    Status:    SUCCESS\n    Duration:  0 seconds\n    Run:       /tmp/fx/n-ab6cb501b061/storage/scratch/20260415-01KP8WJKDQC7P2WFHGTS3W2B4W\n\n    === Output ===\n    [Simulated] Response for stage: report\n\n    thread 'cmd::run::dry_run_simple' (27545) panicked at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/insta-1.46.3/src/runtime.rs:719:13:\n    snapshot assertion for 'dry_run_simple' failed in line 642\n    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n  Cancelling due to test failure: 3 tests still running\n[>  6.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n[>  9.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n────────────\n     Summary [  15.545s] 624/3980 tests run: 623 passed (1 slow), 1 failed, 182 skipped\n        FAIL [   0.215s] ( 621/3980) fabro-cli::it cmd::run::dry_run_simple\nwarning: 3356/3980 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)\nerror: test run failed\n",
+        "failure_class": "canceled"
+      },
+      "usage": null
+    },
     "compile_typescript": {
       "status": "success",
       "context_updates": {
@@ -79,20 +100,12 @@
     "start": {
       "status": "success",
       "usage": null
-    },
-    "lint_rust": {
-      "status": "success",
-      "context_updates": {
-        "command.output": "info: syncing channel updates for nightly-x86_64-unknown-linux-gnu\ninfo: latest update on 2026-04-15 for version 1.97.0-nightly (a5c825cd8 2026-04-14)\ninfo: downloading 6 components\n",
-        "command.stderr": ""
-      },
-      "notes": "Script completed: cargo +nightly fmt --check --all 2>&1 && cargo clippy -q --workspace -- -D warnings 2>&1",
-      "usage": null
     }
   },
-  "next_node_id": "test_typescript",
+  "next_node_id": "exit",
   "node_visits": {
     "toolchain": 1,
+    "test_typescript": 1,
     "compile_rust": 1,
     "start": 1,
     "compile_typescript": 1,

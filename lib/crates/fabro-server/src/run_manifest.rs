@@ -580,11 +580,13 @@ async fn run_llm_check(
                 .collect::<Vec<_>>();
             let auth_issues = result.auth_issues;
             let mut model_providers = std::collections::BTreeSet::new();
+            let mut has_llm_nodes = false;
 
             for node in graph.nodes.values() {
                 if !is_llm_handler_type(node.handler_type()) {
                     continue;
                 }
+                has_llm_nodes = true;
                 let node_model = node.model().unwrap_or(&model);
                 let node_provider = node.provider().unwrap_or(default_provider);
                 let (resolved_model, resolved_provider) =
@@ -599,6 +601,10 @@ async fn run_llm_check(
                     resolved_provider
                 };
                 model_providers.insert((resolved_model, final_provider));
+            }
+
+            if !has_llm_nodes {
+                return true;
             }
 
             if model_providers.is_empty() {

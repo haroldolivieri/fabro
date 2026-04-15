@@ -102,7 +102,12 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
         test_store_dir(&run_dir)
     };
     let object_store = Arc::new(LocalFileSystem::new_with_prefix(store_dir)?);
-    let store = Arc::new(Database::new(object_store, "", Duration::from_millis(1)));
+    let store = Arc::new(Database::new(
+        object_store,
+        "",
+        Duration::from_millis(1),
+        None,
+    ));
     let state = if tokio::runtime::Handle::try_current().is_ok() {
         std::thread::spawn(
             move || -> Result<_, Box<dyn std::error::Error + Send + Sync>> {

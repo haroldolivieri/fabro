@@ -125,6 +125,7 @@ mod tests {
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),
+            None,
         ));
         store.create_run(&fixtures::RUN_1).await.unwrap()
     }

@@ -2,6 +2,7 @@ mod catalog;
 mod run_store;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,6 +20,7 @@ pub struct Database {
     object_store:   Arc<dyn ObjectStore>,
     base_prefix:    String,
     flush_interval: Duration,
+    cache_path:     Option<PathBuf>,
     db:             Arc<OnceCell<slatedb::Db>>,
     active_runs:    Arc<Mutex<HashMap<RunId, Arc<RunDatabaseInner>>>>,
 }
@@ -28,6 +30,7 @@ impl std::fmt::Debug for Database {
         f.debug_struct("Database")
             .field("base_prefix", &self.base_prefix)
             .field("flush_interval", &self.flush_interval)
+            .field("cache_path", &self.cache_path)
             .finish_non_exhaustive()
     }
 }
@@ -37,11 +40,13 @@ impl Database {
         object_store: Arc<dyn ObjectStore>,
         base_prefix: impl Into<String>,
         flush_interval: Duration,
+        cache_path: Option<PathBuf>,
     ) -> Self {
         Self {
             object_store,
             base_prefix: normalize_base_prefix(base_prefix.into()),
             flush_interval,
+            cache_path,
             db: Arc::new(OnceCell::new()),
             active_runs: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -55,12 +60,16 @@ impl Database {
         let db = self
             .db
             .get_or_try_init(|| async {
+                let mut settings = Settings {
+                    flush_interval: Some(self.flush_interval),
+                    compression_codec: Some(CompressionCodec::Zstd),
+                    ..Settings::default()
+                };
+                if let Some(ref cache_path) = self.cache_path {
+                    settings.object_store_cache_options.root_folder = Some(cache_path.clone());
+                }
                 slatedb::Db::builder(self.shared_db_prefix(), self.object_store.clone())
-                    .with_settings(Settings {
-                        flush_interval: Some(self.flush_interval),
-                        compression_codec: Some(CompressionCodec::Zstd),
-                        ..Settings::default()
-                    })
+                    .with_settings(settings)
                     .build()
                     .await
             })
@@ -267,7 +276,12 @@ mod tests {
 
     fn make_store() -> (Arc<dyn ObjectStore>, Database) {
         let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        let store = Database::new(object_store.clone(), "runs/", Duration::from_millis(1));
+        let store = Database::new(
+            object_store.clone(),
+            "runs/",
+            Duration::from_millis(1),
+            None,
+        );
         (object_store, store)
     }
 
@@ -563,7 +577,7 @@ mod tests {
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
-        let reopened = Database::new(object_store, "runs", Duration::from_millis(1));
+        let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
         let summary = reopened.list_runs(&ListRunsQuery::default()).await.unwrap();
         assert_eq!(summary.len(), 1);
         assert_eq!(summary[0].run_id, test_run_id("run-1"));

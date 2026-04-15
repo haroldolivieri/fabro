@@ -166,6 +166,7 @@ async fn test_run_store(run_id: &RunId) -> fabro_store::RunDatabase {
         Arc::new(InMemory::new()),
         "",
         Duration::from_millis(1),
+        None,
     ));
     store.create_run(run_id).await.unwrap()
 }

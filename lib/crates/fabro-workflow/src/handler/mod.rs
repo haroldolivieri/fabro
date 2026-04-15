@@ -102,6 +102,7 @@ impl EngineServices {
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),
+            None,
         ));
         Self {
             registry:         Arc::new(HandlerRegistry::new(Box::new(start::StartHandler))),

@@ -182,11 +182,23 @@ fn resolve_slatedb(
         .and_then(|slatedb| slatedb.provider)
         .expect("defaults.toml should provide server.slatedb.provider");
 
+    let disk_cache = layer
+        .and_then(|slatedb| slatedb.disk_cache)
+        .expect("defaults.toml should provide server.slatedb.disk_cache");
+
+    if disk_cache && provider == ObjectStoreProvider::Local {
+        tracing::warn!(
+            "disk_cache enabled with local provider; \
+             disk cache is designed for S3-backed deployments \
+             and adds overhead on local filesystems"
+        );
+    }
+
     ServerSlateDbSettings {
-        prefix:         layer
+        prefix: layer
             .and_then(|slatedb| slatedb.prefix.clone())
             .expect("defaults.toml should provide server.slatedb.prefix"),
-        store:          resolve_object_store(
+        store: resolve_object_store(
             provider,
             layer.and_then(|slatedb| slatedb.local.as_ref()),
             layer.and_then(|slatedb| slatedb.s3.as_ref()),
@@ -198,6 +210,7 @@ fn resolve_slatedb(
             .and_then(|slatedb| slatedb.flush_interval)
             .map(|duration| duration.as_std())
             .expect("defaults.toml should provide server.slatedb.flush_interval"),
+        disk_cache,
     }
 }
 

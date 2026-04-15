@@ -239,6 +239,7 @@ impl Handler for SubWorkflowHandler {
             object_store.clone(),
             "",
             Duration::from_millis(1),
+            None,
         ));
         let run_store = store
             .create_run(&child_run_options.run_id)

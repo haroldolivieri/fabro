@@ -13,6 +13,7 @@ pub(crate) async fn rebuild_run_store(
         Arc::new(InMemory::new()),
         "",
         Duration::from_millis(1),
+        None,
     ));
     let run_store = store.create_run(run_id).await?;
     for event in events {

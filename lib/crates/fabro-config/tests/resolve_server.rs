@@ -60,6 +60,8 @@ fn resolves_server_defaults_from_empty_settings() {
         }
         ObjectStoreSettings::S3 { .. } => panic!("expected local slatedb store by default"),
     }
+
+    assert!(!settings.slatedb.disk_cache);
 }
 
 #[test]
@@ -194,4 +196,20 @@ enabled = true
         settings.integrations.github.strategy,
         GithubIntegrationStrategy::Token
     );
+}
+
+#[test]
+fn resolves_disk_cache_true_from_settings() {
+    let file = parse(
+        r"
+_version = 1
+
+[server.slatedb]
+disk_cache = true
+",
+    );
+
+    let settings = fabro_config::resolve_server_from_file(&file).expect("settings should resolve");
+
+    assert!(settings.slatedb.disk_cache);
 }

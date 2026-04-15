@@ -3077,6 +3077,7 @@ mod tests {
             std::sync::Arc::new(object_store::memory::InMemory::new()),
             "",
             std::time::Duration::from_millis(1),
+            None,
         );
         let run_store = store.create_run(&fixtures::RUN_7).await.unwrap();
         let stored = to_run_event(&fixtures::RUN_7, &Event::RunNotice {

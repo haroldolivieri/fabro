@@ -332,6 +332,7 @@ mod tests {
             Arc::clone(&object_store),
             "",
             Duration::from_millis(1),
+            None,
         ));
         let artifact_store = ArtifactStore::new(object_store, "artifacts");
         (store, artifact_store)

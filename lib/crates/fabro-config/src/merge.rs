@@ -467,6 +467,7 @@ fn combine_server_slatedb(
         flush_interval: higher.flush_interval.or(lower.flush_interval),
         local:          higher.local.or(lower.local),
         s3:             higher.s3.or(lower.s3),
+        disk_cache:     higher.disk_cache.or(lower.disk_cache),
     }
 }
 

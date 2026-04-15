@@ -143,6 +143,7 @@ mod tests {
                         root: InterpString::parse("/srv/slatedb"),
                     },
                     flush_interval: StdDuration::from_secs(30),
+                    disk_cache:     false,
                 },
                 ..ServerSettings::default()
             },

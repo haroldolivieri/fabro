@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-04-15T13:54:57.950757Z",
+  "current_node": "greet",
+  "completed_nodes": [
+    "start",
+    "greet"
+  ],
+  "node_retries": {},
+  "context_values": {
+    "internal.thread_id": "start",
+    "thread.start.current_node": "greet",
+    "internal.retry_count.greet": 0,
+    "failure_class": "",
+    "current_node": "greet",
+    "internal.run_id": "01KP8PR4WMRM0HRJEZ6C99NHS9",
+    "internal.fidelity": "compact",
+    "last_response": "Hello! Starting with the first basic Fabro workflow step: inspect the repo root.\n\nTop-level files and directories in this repo:\n\n```text\nAGENTS.md\n.ai\napps\nbin\nbun.lock\n.cargo\nCargo.lock\nCargo.toml\n.c",
+    "internal.retry_count.start": 0,
+    "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+    "graph.rankdir": "LR",
+    "response.greet": "Hello! Starting with the first basic Fabro workflow step: inspect the repo root.\n\nTop-level files and directories in this repo:\n\n```text\nAGENTS.md\n.ai\napps\nbin\nbun.lock\n.cargo\nCargo.lock\nCargo.toml\n.claude\nCLAUDE.md\nclippy.toml\n.config\nCONTRIBUTING.md\ndocker\ndocs\ndocs-internal\n.env.example\nevals\n.fabro\nfiles-internal\n.git\n.gitattributes\n.github\n.gitignore\ninstaller\ninstall.md\ninstall.sh\nlib\nLICENSE.md\npackage.json\nREADME.md\nrustfmt.toml\nscripts\ntest\n```\n\nIf you want, I can continue the demo workflow by:\n1. identifying the main Fabro app entrypoints,\n2. showing a simple example workflow definition, or\n3. walking through how to run one locally.",
+    "internal.node_visit_count": 1,
+    "outcome": "success",
+    "last_stage": "greet",
+    "failure_signature": ""
+  },
+  "node_outcomes": {
+    "greet": {
+      "status": "success",
+      "context_updates": {
+        "response.greet": "Hello! Starting with the first basic Fabro workflow step: inspect the repo root.\n\nTop-level files and directories in this repo:\n\n```text\nAGENTS.md\n.ai\napps\nbin\nbun.lock\n.cargo\nCargo.lock\nCargo.toml\n.claude\nCLAUDE.md\nclippy.toml\n.config\nCONTRIBUTING.md\ndocker\ndocs\ndocs-internal\n.env.example\nevals\n.fabro\nfiles-internal\n.git\n.gitattributes\n.github\n.gitignore\ninstaller\ninstall.md\ninstall.sh\nlib\nLICENSE.md\npackage.json\nREADME.md\nrustfmt.toml\nscripts\ntest\n```\n\nIf you want, I can continue the demo workflow by:\n1. identifying the main Fabro app entrypoints,\n2. showing a simple example workflow definition, or\n3. walking through how to run one locally.",
+        "last_response": "Hello! Starting with the first basic Fabro workflow step: inspect the repo root.\n\nTop-level files and directories in this repo:\n\n```text\nAGENTS.md\n.ai\napps\nbin\nbun.lock\n.cargo\nCargo.lock\nCargo.toml\n.c",
+        "last_stage": "greet"
+      },
+      "notes": "Stage completed: greet",
+      "usage": {
+        "input": {
+          "usage": {
+            "model": {
+              "provider": "openai",
+              "model_id": "gpt-5.4"
+            },
+            "tokens": {
+              "input_tokens": 16189,
+              "output_tokens": 310,
+              "reasoning_tokens": 143,
+              "cache_read_tokens": 0,
+              "cache_write_tokens": 0
+            }
+          },
+          "facts": {
+            "provider": "open_ai"
+          }
+        },
+        "total_usd_micros": 47267
+      }
+    },
+    "start": {
+      "status": "success",
+      "usage": null
+    }
+  },
+  "next_node_id": "exit",
+  "node_visits": {
+    "greet": 1,
+    "start": 1
+  }
+}

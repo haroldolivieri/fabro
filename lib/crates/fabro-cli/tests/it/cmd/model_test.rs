@@ -86,6 +86,11 @@ fn bulk_skip_exits_zero_and_prints_summary() {
     success: true
     exit_code: 0
     ----- stdout -----
+    MODEL              PROVIDER   ALIASES                CONTEXT          COST      SPEED  RESULT 
+     claude-opus-4-6    anthropic  opus, claude-opus           1m  $5.0 / $25.0   25 tok/s  ok     
+     claude-sonnet-4-5  anthropic                            200k  $3.0 / $15.0   50 tok/s  ok     
+     claude-sonnet-4-6  anthropic  sonnet, claude-sonnet     200k  $3.0 / $15.0   50 tok/s  ok     
+     claude-haiku-4-5   anthropic  haiku, claude-haiku       200k   $0.8 / $4.0  100 tok/s  ok
     ----- stderr -----
     Testing claude-opus-4-6... done
     Testing claude-sonnet-4-5... done
@@ -107,7 +112,7 @@ fn bulk_skip_exits_zero_and_prints_summary() {
     Testing glm-4.7... done
     Testing minimax-m2.5... done
     Testing mercury-2... done
-    Skipped 20 model(s) (no credentials: Anthropic, OpenAI, Gemini, Kimi, Zai, Minimax, Inception)
+    Skipped 16 model(s) (no credentials: OpenAI, Gemini, Kimi, Zai, Minimax, Inception)
     ");
 }
 

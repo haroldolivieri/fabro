@@ -550,7 +550,7 @@ fn remote_foreground_run_consumes_paginated_events_and_prints_server_backed_summ
             .lines()
             .filter(|line| line.trim_start().starts_with("Run:"))
             .count(),
-        1,
+        2,
         "{stderr}"
     );
     assert!(!stderr.contains("=== Artifacts ==="), "{stderr}");
@@ -642,6 +642,7 @@ fn dry_run_simple() {
     Graph: [FIXTURES]/simple.fabro
     Goal: Run tests and report results
 
+        Run: [ULID]
         Sandbox: local (ready in [TIME])
         ✓ Start  [TIME]
         ✓ Run Tests  [TIME]

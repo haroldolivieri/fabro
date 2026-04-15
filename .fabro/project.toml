@@ -6,7 +6,6 @@ draft = false
 
 [run.sandbox]
 provider = "daytona"
-preserve = true
 
 [run.sandbox.daytona]
 auto_stop_interval = 30

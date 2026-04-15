@@ -1,0 +1,7 @@
+{
+  "stdout": "────────────\n Nextest run ID 66cf05b0-54f3-4e3b-ac30-b8244e94afd5 with nextest profile: default\n    Starting 3980 tests across 66 binaries (182 tests skipped)\n[>  6.000s] (─────────) fabro-cli::it cmd::ps::ps_accepts_local_tcp_server_target\n[>  6.000s] (─────────) fabro-cli::it cmd::server_start::start_already_running_exits_with_error\n[>  6.000s] (─────────) fabro-cli::it cmd::server_start::start_with_tcp_host_only_bind_resolves_to_host_and_port\n[>  6.000s] (─────────) fabro-cli::it cmd::server_start::start_without_bind_uses_configured_tcp_listen_address\n[>  6.000s] (─────────) fabro-cli::it cmd::server_start::start_without_bind_uses_home_socket_instead_of_storage_socket\n[>  6.000s] (─────────) fabro-cli::it scenario::server_lifecycle::start_status_stop_lifecycle\n────────────\n     Summary [  19.980s] 3980 tests run: 3980 passed (6 slow), 182 skipped\n",
+  "stderr": "",
+  "exit_code": 0,
+  "duration_ms": 56639,
+  "timed_out": false
+}

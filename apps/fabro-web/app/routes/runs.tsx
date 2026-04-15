@@ -27,26 +27,39 @@ export function meta({}: any) {
   return [{ title: "Runs — Fabro" }];
 }
 
-const columnConfig: {
-  id: ColumnStatus;
-  name: string;
+interface ColumnStyle {
   accent: string;
   iconColor: string;
   iconType: "branch" | "pr";
   actions: string[];
-}[] = [
-  { id: "working", name: "Working", accent: "bg-teal-500", iconColor: "text-teal-500", iconType: "branch", actions: ["Watch", "Steer"] },
-  { id: "pending", name: "Pending", accent: "bg-amber", iconColor: "text-amber", iconType: "branch", actions: ["Answer Question"] },
-  { id: "merge", name: "Complete", accent: "bg-teal-300", iconColor: "text-teal-300", iconType: "pr", actions: ["Merge"] },
-];
+}
+
+const columnStyles: Record<string, ColumnStyle> = {
+  working:   { accent: "bg-teal-500", iconColor: "text-teal-500", iconType: "branch", actions: ["Watch", "Steer"] },
+  pending:   { accent: "bg-amber",    iconColor: "text-amber",    iconType: "branch", actions: [] },
+  review:    { accent: "bg-mint",     iconColor: "text-mint",     iconType: "pr",     actions: [] },
+  merge:     { accent: "bg-teal-300", iconColor: "text-teal-300", iconType: "pr",     actions: ["Merge"] },
+  running:   { accent: "bg-teal-500", iconColor: "text-teal-500", iconType: "branch", actions: ["Watch", "Steer"] },
+  waiting:   { accent: "bg-amber",    iconColor: "text-amber",    iconType: "branch", actions: ["Answer Question"] },
+  succeeded: { accent: "bg-teal-300", iconColor: "text-teal-300", iconType: "pr",     actions: [] },
+  failed:    { accent: "bg-coral",    iconColor: "text-coral",    iconType: "branch", actions: [] },
+};
+
+const defaultColumnStyle: ColumnStyle = { accent: "bg-fg-muted", iconColor: "text-fg-muted", iconType: "branch", actions: [] };
+
+interface BoardRunsResponse {
+  columns: { id: string; name: string }[];
+  data: PaginatedRunList["data"];
+  meta: PaginatedRunList["meta"];
+}
 
 export async function loader({ request }: any) {
-  const response = await apiJson<PaginatedRunList>("/boards/runs", { request });
+  const response = await apiJson<BoardRunsResponse>("/boards/runs", { request });
   const apiRuns = response.data;
 
-  const grouped = new Map<ColumnStatus, RunItem[]>();
-  for (const cfg of columnConfig) {
-    grouped.set(cfg.id, []);
+  const grouped = new Map<string, RunItem[]>();
+  for (const col of response.columns) {
+    grouped.set(col.id, []);
   }
   for (const apiRun of apiRuns) {
     if (grouped.has(apiRun.status)) {
@@ -54,9 +67,11 @@ export async function loader({ request }: any) {
     }
   }
 
-  const columns = columnConfig.map((cfg) => ({
-    ...cfg,
-    items: grouped.get(cfg.id) ?? [],
+  const columns = response.columns.map((col) => ({
+    id: col.id as ColumnStatus,
+    name: col.name,
+    ...(columnStyles[col.id] ?? defaultColumnStyle),
+    items: grouped.get(col.id) ?? [],
   }));
 
   return { columns };
@@ -592,9 +607,11 @@ export default function Runs({ loaderData }: any) {
         </div>
 
         {view === "columns" ? (
-          <div className="grid grid-cols-3 gap-5 pb-4">
+          <div className="flex gap-5 overflow-x-auto pb-4">
             {filteredColumns.map((col) => (
-              <BoardColumn key={col.id} column={col} />
+              <div key={col.id} className="w-72 shrink-0">
+                <BoardColumn column={col} />
+              </div>
             ))}
           </div>
         ) : (

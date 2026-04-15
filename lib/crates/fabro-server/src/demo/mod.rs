@@ -46,11 +46,27 @@ pub(crate) async fn list_runs(
 }
 
 pub(crate) async fn list_board_runs(
-    auth: AuthenticatedService,
-    state: State<Arc<AppState>>,
-    pagination: Query<PaginationParams>,
+    _auth: AuthenticatedService,
+    State(_state): State<Arc<AppState>>,
+    Query(pagination): Query<PaginationParams>,
 ) -> Response {
-    list_runs(auth, state, pagination).await
+    let items = runs::list_items();
+    let limit = pagination.limit.clamp(1, 100) as usize;
+    let offset = pagination.offset as usize;
+    let mut data: Vec<_> = items.into_iter().skip(offset).take(limit + 1).collect();
+    let has_more = data.len() > limit;
+    data.truncate(limit);
+    let columns = json!([
+        {"id": "working", "name": "Working"},
+        {"id": "pending", "name": "Pending"},
+        {"id": "review", "name": "Review"},
+        {"id": "merge", "name": "Merge"},
+    ]);
+    (
+        StatusCode::OK,
+        Json(json!({ "columns": columns, "data": data, "meta": { "has_more": has_more } })),
+    )
+        .into_response()
 }
 
 pub(crate) async fn create_run_stub(

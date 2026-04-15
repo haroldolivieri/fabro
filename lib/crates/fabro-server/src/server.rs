@@ -2148,10 +2148,7 @@ async fn list_run_stages(
     // The checkpoint's current_node is the last *completed* stage; next_node_id
     // is the stage that is currently executing.
     if let Some(next_id) = &checkpoint.next_node_id {
-        if run_is_active
-            && next_id != "exit"
-            && !checkpoint.completed_nodes.contains(next_id)
-        {
+        if run_is_active && next_id != "exit" && !checkpoint.completed_nodes.contains(next_id) {
             stages.push(RunStage {
                 id:            next_id.clone(),
                 name:          next_id.clone(),
@@ -6517,7 +6514,8 @@ async fn get_graph(
     };
     let live_dot_source = {
         let runs = state.runs.lock().expect("runs lock poisoned");
-        runs.get(&id).map(|managed_run| managed_run.dot_source.clone())
+        runs.get(&id)
+            .map(|managed_run| managed_run.dot_source.clone())
     };
     if let Some(dot) = &live_dot_source {
         if !dot.is_empty() {

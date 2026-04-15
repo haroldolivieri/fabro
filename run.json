@@ -1,0 +1,201 @@
+{
+  "run_id": "01KP8QZ17J44G5STS7WWY9ZVRH",
+  "settings": {
+    "_version": 1,
+    "project": {
+      "directory": "."
+    },
+    "workflow": {
+      "graph": "workflow.fabro"
+    },
+    "run": {
+      "goal": "Say hello and demonstrate a basic Fabro workflow",
+      "model": {
+        "provider": "openai",
+        "name": "gpt-5.4"
+      },
+      "prepare": {
+        "timeout": "5m"
+      },
+      "execution": {
+        "mode": "normal",
+        "approval": "prompt",
+        "retros": true
+      },
+      "sandbox": {
+        "provider": "daytona",
+        "preserve": false,
+        "devcontainer": false,
+        "local": {
+          "worktree_mode": "clean"
+        },
+        "daytona": {
+          "auto_stop_interval": 30,
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "snapshot": {
+            "name": "fabro-v6",
+            "cpu": 4,
+            "memory": "8GB",
+            "disk": "20GB",
+            "dockerfile": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates build-essential pkg-config libssl-dev unzip python3 && rm -rf /var/lib/apt/lists/*\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+          }
+        }
+      },
+      "hooks": [
+        {
+          "id": "cargo-fmt",
+          "name": "cargo-fmt",
+          "event": "post_tool_use",
+          "matcher": "write_file|edit_file|apply_patch",
+          "blocking": true,
+          "script": "cargo fmt"
+        }
+      ],
+      "pull_request": {
+        "enabled": true,
+        "draft": false
+      }
+    },
+    "cli": {
+      "target": {
+        "type": "http",
+        "url": "http://127.0.0.1:32276",
+        "tls": null
+      },
+      "exec": {
+        "prevent_idle_sleep": false
+      },
+      "output": {
+        "format": "text",
+        "verbosity": "normal"
+      },
+      "updates": {
+        "check": true
+      }
+    },
+    "server": {
+      "listen": {
+        "type": "tcp",
+        "address": "127.0.0.1:32276",
+        "tls": null
+      },
+      "api": {
+        "url": "http://127.0.0.1:32276/api/v1"
+      },
+      "web": {
+        "enabled": true,
+        "url": "http://127.0.0.1:32276"
+      },
+      "auth": {
+        "methods": [
+          "dev-token"
+        ]
+      },
+      "storage": {
+        "root": "/Users/bhelmkamp/.fabro/storage"
+      },
+      "artifacts": {
+        "provider": "local",
+        "prefix": ""
+      },
+      "slatedb": {
+        "provider": "local",
+        "prefix": "",
+        "flush_interval": "1ms",
+        "disk_cache": false
+      },
+      "scheduler": {
+        "max_concurrent_runs": 5
+      },
+      "integrations": {
+        "github": {
+          "strategy": "token"
+        }
+      }
+    },
+    "features": {
+      "session_sandboxes": false
+    }
+  },
+  "graph": {
+    "name": "Hello",
+    "nodes": {
+      "start": {
+        "id": "start",
+        "attrs": {
+          "shape": {
+            "String": "Mdiamond"
+          },
+          "label": {
+            "String": "Start"
+          }
+        }
+      },
+      "exit": {
+        "id": "exit",
+        "attrs": {
+          "label": {
+            "String": "Exit"
+          },
+          "shape": {
+            "String": "Msquare"
+          }
+        }
+      },
+      "greet": {
+        "id": "greet",
+        "attrs": {
+          "prompt": {
+            "String": "Print a listing of the top-level files and directories in this repo."
+          },
+          "label": {
+            "String": "Greet"
+          }
+        }
+      }
+    },
+    "edges": [
+      {
+        "from": "start",
+        "to": "greet",
+        "attrs": {}
+      },
+      {
+        "from": "greet",
+        "to": "exit",
+        "attrs": {}
+      }
+    ],
+    "attrs": {
+      "rankdir": {
+        "String": "LR"
+      },
+      "goal": {
+        "String": "Say hello and demonstrate a basic Fabro workflow"
+      }
+    }
+  },
+  "workflow_slug": "hello",
+  "working_directory": "/Users/bhelmkamp/p/fabro-sh/fabro",
+  "host_repo_path": "/Users/bhelmkamp/p/fabro-sh/fabro",
+  "repo_origin_url": "https://github.com/fabro-sh/fabro",
+  "base_branch": "main",
+  "provenance": {
+    "server": {
+      "version": "0.176.2"
+    },
+    "client": {
+      "user_agent": "fabro-cli/0.176.2",
+      "name": "fabro-cli",
+      "version": "0.176.2"
+    },
+    "subject": {
+      "login": "dev",
+      "auth_method": "dev_token"
+    }
+  },
+  "manifest_blob": "d78e874f48bc7d1701812eb952834bbeb13b5d2a5622003b289541296eb0665d",
+  "definition_blob": "8e4620be8ef1236135d34ea602e73fd9ec5f0db88681ea784df87105d9f0481a"
+}

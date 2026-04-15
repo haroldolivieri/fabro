@@ -43,12 +43,8 @@ pub(crate) struct RunDatabaseInner {
 
 impl RunDatabase {
     pub(crate) async fn open_writer(run_id: RunId, db: Db) -> Result<Self> {
-        let event_seq = recover_next_seq(
-            &db,
-            &keys::run_events_prefix(&run_id),
-            keys::parse_event_seq,
-        )
-        .await?;
+        let event_seq =
+            recover_next_seq(&db, keys::run_events_prefix(&run_id), keys::parse_event_seq).await?;
         let (event_tx, _) = broadcast::channel(DEFAULT_EVENT_TAIL_LIMIT.max(16));
         Ok(Self {
             inner:     Arc::new(RunDatabaseInner {
@@ -67,12 +63,8 @@ impl RunDatabase {
     }
 
     pub(crate) async fn open_reader(run_id: RunId, db: Db) -> Result<Self> {
-        let event_seq = recover_next_seq(
-            &db,
-            &keys::run_events_prefix(&run_id),
-            keys::parse_event_seq,
-        )
-        .await?;
+        let event_seq =
+            recover_next_seq(&db, keys::run_events_prefix(&run_id), keys::parse_event_seq).await?;
         let (event_tx, _) = broadcast::channel(DEFAULT_EVENT_TAIL_LIMIT.max(16));
         Ok(Self {
             inner:     Arc::new(RunDatabaseInner {
@@ -129,9 +121,7 @@ impl RunDatabase {
     where
         R: DbRead + Sync,
     {
-        let mut iter = db
-            .scan_prefix(keys::run_events_prefix(run_id).as_bytes())
-            .await?;
+        let mut iter = db.scan_prefix(keys::run_events_prefix(run_id)).await?;
         Ok(iter.next().await?.is_some())
     }
 
@@ -316,11 +306,15 @@ impl RunDatabase {
     }
 }
 
-async fn recover_next_seq<R>(db: &R, prefix: &str, parse: fn(&str) -> Option<u32>) -> Result<u32>
+async fn recover_next_seq<R>(
+    db: &R,
+    prefix: keys::SlateKey,
+    parse: fn(&str) -> Option<u32>,
+) -> Result<u32>
 where
     R: DbRead + Sync,
 {
-    let mut iter = db.scan_prefix(prefix.as_bytes()).await?;
+    let mut iter = db.scan_prefix(prefix).await?;
     let mut max_seq = 0;
     while let Some(entry) = iter.next().await? {
         let key = key_to_string(&entry.key)?;
@@ -335,9 +329,7 @@ async fn list_events_from<R>(db: &R, run_id: &RunId, start_seq: u32) -> Result<V
 where
     R: DbRead + Sync,
 {
-    let mut iter = db
-        .scan_prefix(keys::run_events_prefix(run_id).as_bytes())
-        .await?;
+    let mut iter = db.scan_prefix(keys::run_events_prefix(run_id)).await?;
     let mut events = Vec::new();
     while let Some(entry) = iter.next().await? {
         let key = key_to_string(&entry.key)?;
@@ -374,7 +366,7 @@ async fn list_blobs<R>(db: &R) -> Result<Vec<RunBlobId>>
 where
     R: DbRead + Sync,
 {
-    let mut iter = db.scan_prefix(keys::blobs_prefix().as_bytes()).await?;
+    let mut iter = db.scan_prefix(keys::blobs_prefix()).await?;
     let mut blob_ids = Vec::new();
     while let Some(entry) = iter.next().await? {
         let key = key_to_string(&entry.key)?;

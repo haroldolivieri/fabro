@@ -174,7 +174,7 @@ impl Database {
         let db = self.open_db().await?;
         let mut keys_to_delete = Vec::new();
         for prefix in [keys::run_data_prefix(run_id)] {
-            let mut iter = db.scan_prefix(prefix.as_bytes()).await?;
+            let mut iter = db.scan_prefix(&prefix).await?;
             while let Some(entry) = iter.next().await? {
                 keys_to_delete.push(String::from_utf8(entry.key.to_vec()).map_err(|err| {
                     Error::Other(format!("stored key is not valid UTF-8: {err}"))

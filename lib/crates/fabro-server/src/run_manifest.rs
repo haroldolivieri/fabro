@@ -384,12 +384,14 @@ async fn build_preflight_report(
         None
     };
 
+    let daytona_api_key = state.vault_or_env("DAYTONA_API_KEY");
     let sandbox_ok = run_sandbox_check(
         &mut checks,
         sandbox_provider,
         prepared,
         &resolved_run,
         github_app.clone(),
+        daytona_api_key,
     )
     .await;
     let llm_ok = run_llm_check(
@@ -489,6 +491,7 @@ async fn run_sandbox_check(
     prepared: &PreparedManifest,
     resolved_run: &RunSettings,
     github_app: Option<fabro_github::GitHubCredentials>,
+    daytona_api_key: Option<String>,
 ) -> bool {
     let daytona_config = resolve_daytona_config(resolved_run);
     let sandbox_result: Result<Arc<dyn Sandbox>, String> = match sandbox_provider {
@@ -512,6 +515,7 @@ async fn run_sandbox_check(
             github_app,
             run_id: None,
             clone_branch: prepared.git.as_ref().map(|git| git.branch.clone()),
+            api_key: daytona_api_key,
         }
         .build(None)
         .await

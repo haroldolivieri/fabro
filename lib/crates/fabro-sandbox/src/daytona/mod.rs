@@ -26,6 +26,19 @@ pub use crate::config::{
     DaytonaSnapshotSettings as DaytonaSnapshotConfig, DockerfileSource,
 };
 
+/// Build a [`daytona_sdk::Client`], forwarding an optional API key from the
+/// vault so the SDK doesn't have to rely on `DAYTONA_API_KEY` being in the
+/// process environment.
+async fn build_daytona_client(
+    api_key: Option<String>,
+) -> Result<daytona_sdk::Client, daytona_sdk::DaytonaError> {
+    let sdk_config = daytona_sdk::DaytonaConfig {
+        api_key,
+        ..Default::default()
+    };
+    daytona_sdk::Client::new_with_config(sdk_config).await
+}
+
 /// Sandbox that runs all operations inside a Daytona cloud sandbox.
 pub struct DaytonaSandbox {
     config:         DaytonaConfig,
@@ -46,13 +59,17 @@ pub struct DaytonaSandbox {
 
 impl DaytonaSandbox {
     /// Create a new `DaytonaSandbox`, creating the Daytona client internally.
+    ///
+    /// `api_key` is the Daytona API key, typically resolved from the vault.
+    /// When `None`, the SDK falls back to the `DAYTONA_API_KEY` env var.
     pub async fn new(
         config: DaytonaConfig,
         github_app: Option<GitHubCredentials>,
         run_id: Option<RunId>,
         clone_branch: Option<String>,
+        api_key: Option<String>,
     ) -> Result<Self, String> {
-        let client = daytona_sdk::Client::new()
+        let client = build_daytona_client(api_key)
             .await
             .map_err(|e| format!("Failed to create Daytona client: {e}"))?;
         Ok(Self {
@@ -72,8 +89,8 @@ impl DaytonaSandbox {
     ///
     /// Creates the client internally and fetches the sandbox, replacing the old
     /// `from_existing()` + manual client/get boilerplate at call sites.
-    pub async fn reconnect(sandbox_name: &str) -> Result<Self, String> {
-        let client = daytona_sdk::Client::new()
+    pub async fn reconnect(sandbox_name: &str, api_key: Option<String>) -> Result<Self, String> {
+        let client = build_daytona_client(api_key)
             .await
             .map_err(|e| format!("Failed to create Daytona client: {e}"))?;
         let sdk_sandbox = client

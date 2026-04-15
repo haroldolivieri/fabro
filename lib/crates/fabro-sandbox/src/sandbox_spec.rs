@@ -31,6 +31,7 @@ pub enum SandboxSpec {
         github_app:   Option<GitHubCredentials>,
         run_id:       Option<RunId>,
         clone_branch: Option<String>,
+        api_key:      Option<String>,
     },
 }
 
@@ -178,12 +179,14 @@ impl SandboxSpec {
                 github_app,
                 run_id,
                 clone_branch,
+                api_key,
             } => {
                 let mut sandbox = DaytonaSandbox::new(
                     config.clone(),
                     github_app.clone(),
                     *run_id,
                     clone_branch.clone(),
+                    api_key.clone(),
                 )
                 .await
                 .map_err(|e| anyhow!(e))?;

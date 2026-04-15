@@ -5545,7 +5545,8 @@ async fn reconnect_run_sandbox(
     run_id: &RunId,
 ) -> Result<Box<dyn Sandbox>, Response> {
     let record = load_run_sandbox_record(state, run_id).await?;
-    reconnect(&record)
+    let daytona_api_key = state.vault_or_env("DAYTONA_API_KEY");
+    reconnect(&record, daytona_api_key)
         .await
         .map_err(|err| ApiError::new(StatusCode::CONFLICT, format!("{err}")).into_response())
 }
@@ -5569,7 +5570,8 @@ async fn reconnect_daytona_sandbox(
         )
         .into_response());
     };
-    DaytonaSandbox::reconnect(name)
+    let daytona_api_key = state.vault_or_env("DAYTONA_API_KEY");
+    DaytonaSandbox::reconnect(name, daytona_api_key)
         .await
         .map_err(|err| ApiError::new(StatusCode::CONFLICT, err.clone()).into_response())
 }

@@ -524,8 +524,11 @@ pub(crate) enum SecretTypeArg {
 pub(crate) struct SecretSetArgs {
     /// Name of the secret
     pub(crate) key:         String,
-    /// Value to store
-    pub(crate) value:       String,
+    /// Value to store (omit to enter interactively)
+    pub(crate) value:       Option<String>,
+    /// Read the secret value from stdin
+    #[arg(long, conflicts_with = "value")]
+    pub(crate) value_stdin: bool,
     #[arg(long, value_enum, default_value = "environment")]
     pub(crate) r#type:      SecretTypeArg,
     #[arg(long)]

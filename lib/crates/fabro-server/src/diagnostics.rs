@@ -438,8 +438,7 @@ async fn check_brave_search(state: &AppState) -> CheckResult {
             summary:     "optional, not configured".to_string(),
             details:     Vec::new(),
             remediation: Some(
-                "Run `fabro secret set BRAVE_SEARCH_API_KEY <value>` to enable web search"
-                    .to_string(),
+                "Run `fabro secret set BRAVE_SEARCH_API_KEY` to enable web search".to_string(),
             ),
         };
     };

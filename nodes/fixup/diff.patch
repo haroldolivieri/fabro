@@ -1,0 +1,64 @@
+diff --git a/lib/crates/fabro-cli/src/commands/run/wait.rs b/lib/crates/fabro-cli/src/commands/run/wait.rs
+index 2f6c6eee..bf743093 100644
+--- a/lib/crates/fabro-cli/src/commands/run/wait.rs
++++ b/lib/crates/fabro-cli/src/commands/run/wait.rs
+@@ -49,10 +49,7 @@ pub(crate) async fn run(
+             .status
+             .map(|record| record.status);
+         let Some(status) = fallback_polled_status(polled_status, started_waiting_at) else {
+-            bail!(
+-                "Run '{}' has no status record yet. Try again in a moment.",
+-                run_id
+-            );
++            bail!("Run '{run_id}' has no status record yet. Try again in a moment.");
+         };
+ 
+         if status.is_terminal() {
+diff --git a/lib/crates/fabro-cli/src/commands/runs/list.rs b/lib/crates/fabro-cli/src/commands/runs/list.rs
+index 0e4622c6..153edd4c 100644
+--- a/lib/crates/fabro-cli/src/commands/runs/list.rs
++++ b/lib/crates/fabro-cli/src/commands/runs/list.rs
+@@ -149,9 +149,10 @@ fn status_cell(status: Option<RunStatus>, use_color: bool) -> CellStruct {
+             let color = match status {
+                 RunStatus::Completed => Some(Color::Green),
+                 RunStatus::Failed | RunStatus::Cancelled => Some(Color::Red),
+-                RunStatus::Running | RunStatus::Starting | RunStatus::Submitted | RunStatus::Queued => {
+-                    Some(Color::Cyan)
+-                }
++                RunStatus::Running
++                | RunStatus::Starting
++                | RunStatus::Submitted
++                | RunStatus::Queued => Some(Color::Cyan),
+                 RunStatus::Blocked | RunStatus::Removing => Some(Color::Yellow),
+                 RunStatus::Paused => Some(Color::Magenta),
+             };
+diff --git a/lib/crates/fabro-server/src/server.rs b/lib/crates/fabro-server/src/server.rs
+index 4b86f567..9e224c0e 100644
+--- a/lib/crates/fabro-server/src/server.rs
++++ b/lib/crates/fabro-server/src/server.rs
+@@ -3290,19 +3290,22 @@ fn update_live_run_from_event(state: &Arc<AppState>, run_id: RunId, event: &RunE
+         }
+         EventBody::InterviewCompleted(props) => {
+             managed_run.pending_interviews.remove(&props.question_id);
+-            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
++            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty()
++            {
+                 managed_run.status = RunStatus::Running;
+             }
+         }
+         EventBody::InterviewTimeout(props) => {
+             managed_run.pending_interviews.remove(&props.question_id);
+-            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
++            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty()
++            {
+                 managed_run.status = RunStatus::Running;
+             }
+         }
+         EventBody::InterviewInterrupted(props) => {
+             managed_run.pending_interviews.remove(&props.question_id);
+-            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
++            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty()
++            {
+                 managed_run.status = RunStatus::Running;
+             }
+         }

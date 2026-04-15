@@ -296,7 +296,8 @@ where
     };
     let storage = Storage::new(&data_dir);
     let vault_path = storage.secrets_path();
-    let server_secrets = ServerSecrets::load(storage.server_state().env_path())?;
+    let server_env_path = storage.server_state().env_path();
+    let server_secrets = ServerSecrets::load(server_env_path.clone())?;
 
     // Shared config for live reloading
     let effective_settings = apply_runtime_settings(&disk_settings, &args, &data_dir);
@@ -332,6 +333,7 @@ where
         store,
         artifact_store,
         &vault_path,
+        &server_env_path,
         true,
         &env_lookup,
     )?;

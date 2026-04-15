@@ -2160,13 +2160,16 @@ pub fn create_app_state_with_settings_and_registry_factory(
 ) -> Arc<AppState> {
     let (store, artifact_store) = test_store_bundle();
     let env_lookup = default_env_lookup();
+    let secrets_path = test_secret_store_path();
+    let server_env_path = secrets_path.with_file_name("server.env");
     build_app_state_with_path(
         Arc::new(RwLock::new(settings)),
         Some(Box::new(registry_factory_override)),
         5,
         store,
         artifact_store,
-        &test_secret_store_path(),
+        &secrets_path,
+        &server_env_path,
         false,
         &env_lookup,
     )
@@ -2233,6 +2236,7 @@ pub(crate) fn create_test_app_state_with_session_key(
         store,
         artifact_store,
         &secrets_path,
+        &server_env_path,
         local_daemon_mode,
         &env_lookup,
     )
@@ -2273,13 +2277,16 @@ fn create_app_state_with_store_and_env_lookup(
     artifact_store: ArtifactStore,
     env_lookup: &EnvLookup,
 ) -> Arc<AppState> {
+    let secrets_path = test_secret_store_path();
+    let server_env_path = secrets_path.with_file_name("server.env");
     build_app_state_with_path(
         settings,
         None,
         max_concurrent_runs,
         store,
         artifact_store,
-        &test_secret_store_path(),
+        &secrets_path,
+        &server_env_path,
         false,
         env_lookup,
     )
@@ -2297,15 +2304,12 @@ pub(crate) fn build_app_state_with_path(
     store: Arc<Database>,
     artifact_store: ArtifactStore,
     vault_path: &std::path::Path,
+    server_env_path: &std::path::Path,
     local_daemon_mode: bool,
     env_lookup: &EnvLookup,
 ) -> anyhow::Result<Arc<AppState>> {
     let vault = Arc::new(AsyncRwLock::new(Vault::load(vault_path.to_path_buf())?));
-    let server_env_path = vault_path.parent().map_or_else(
-        || PathBuf::from("server.env"),
-        |parent| parent.join("server.env"),
-    );
-    let server_secrets = ServerSecrets::with_env_lookup(server_env_path, {
+    let server_secrets = ServerSecrets::with_env_lookup(server_env_path.to_path_buf(), {
         let env_lookup = Arc::clone(env_lookup);
         move |name| env_lookup(name)
     })?;

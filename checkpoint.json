@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-04-15T14:10:28.405586Z",
+  "current_node": "greet",
+  "completed_nodes": [
+    "start",
+    "greet"
+  ],
+  "node_retries": {},
+  "context_values": {
+    "internal.run_id": "01KP8QMERRBJX7JKSPQJ9J5PZM",
+    "graph.rankdir": "LR",
+    "current_node": "greet",
+    "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+    "internal.retry_count.start": 0,
+    "failure_signature": "",
+    "thread.start.current_node": "greet",
+    "internal.retry_count.greet": 0,
+    "failure_class": "",
+    "response.greet": "Hello! Here’s the top-level listing of this Fabro repo:\n\n```text\n.\n├── AGENTS.md\n├── .ai/\n├── apps/\n├── bin/\n├── bun.lock\n├── .cargo/\n├── Cargo.lock\n├── Cargo.toml\n├── .claude/\n├── CLAUDE.md -> AGENTS.md\n├── clippy.toml\n├── .config/\n├── CONTRIBUTING.md\n├── docker/\n├── docs/\n├── docs-internal/\n├── .env.example\n├── evals/\n├── .fabro/\n├── files-internal/\n├── .git/\n├── .gitattributes\n├── .github/\n├── .gitignore\n├── installer/\n├── install.md -> apps/marketing/public/install.md\n├── install.sh -> apps/marketing/public/install.sh\n├── lib/\n├── LICENSE.md\n├── package.json\n├── README.md\n├── rustfmt.toml\n├── scripts/\n└── test/\n```\n\nIf you want, I can next demonstrate a basic Fabro workflow by showing a simple workflow file and how to run it.",
+    "last_stage": "greet",
+    "outcome": "success",
+    "last_response": "Hello! Here’s the top-level listing of this Fabro repo:\n\n```text\n.\n├── AGENTS.md\n├── .ai/\n├── apps/\n├── bin/\n├── bun.lock\n├── .cargo/\n├── Cargo.lock\n├─",
+    "internal.fidelity": "compact",
+    "internal.thread_id": "start",
+    "internal.node_visit_count": 1
+  },
+  "node_outcomes": {
+    "greet": {
+      "status": "success",
+      "context_updates": {
+        "last_response": "Hello! Here’s the top-level listing of this Fabro repo:\n\n```text\n.\n├── AGENTS.md\n├── .ai/\n├── apps/\n├── bin/\n├── bun.lock\n├── .cargo/\n├── Cargo.lock\n├─",
+        "response.greet": "Hello! Here’s the top-level listing of this Fabro repo:\n\n```text\n.\n├── AGENTS.md\n├── .ai/\n├── apps/\n├── bin/\n├── bun.lock\n├── .cargo/\n├── Cargo.lock\n├── Cargo.toml\n├── .claude/\n├── CLAUDE.md -> AGENTS.md\n├── clippy.toml\n├── .config/\n├── CONTRIBUTING.md\n├── docker/\n├── docs/\n├── docs-internal/\n├── .env.example\n├── evals/\n├── .fabro/\n├── files-internal/\n├── .git/\n├── .gitattributes\n├── .github/\n├── .gitignore\n├── installer/\n├── install.md -> apps/marketing/public/install.md\n├── install.sh -> apps/marketing/public/install.sh\n├── lib/\n├── LICENSE.md\n├── package.json\n├── README.md\n├── rustfmt.toml\n├── scripts/\n└── test/\n```\n\nIf you want, I can next demonstrate a basic Fabro workflow by showing a simple workflow file and how to run it.",
+        "last_stage": "greet"
+      },
+      "notes": "Stage completed: greet",
+      "usage": {
+        "input": {
+          "usage": {
+            "model": {
+              "provider": "openai",
+              "model_id": "gpt-5.4"
+            },
+            "tokens": {
+              "input_tokens": 22430,
+              "output_tokens": 364,
+              "reasoning_tokens": 194,
+              "cache_read_tokens": 0,
+              "cache_write_tokens": 0
+            }
+          },
+          "facts": {
+            "provider": "open_ai"
+          }
+        },
+        "total_usd_micros": 64445
+      }
+    },
+    "start": {
+      "status": "success",
+      "usage": null
+    }
+  },
+  "next_node_id": "exit",
+  "node_visits": {
+    "greet": 1,
+    "start": 1
+  }
+}

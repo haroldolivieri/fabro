@@ -229,6 +229,7 @@ struct ManagedRun {
     // Populated when running:
     answer_transport: Option<RunAnswerTransport>,
     accepted_questions: HashSet<String>,
+    pending_interviews: HashSet<String>,
     event_tx: Option<broadcast::Sender<RunEvent>>,
     checkpoint: Option<Checkpoint>,
     cancel_tx: Option<oneshot::Sender<()>>,
@@ -2870,6 +2871,7 @@ fn api_event_envelope_from_store(event: &EventEnvelope) -> Result<ApiEventEnvelo
 fn clear_live_run_state(run: &mut ManagedRun) {
     run.answer_transport = None;
     run.accepted_questions.clear();
+    run.pending_interviews.clear();
     run.event_tx = None;
     run.cancel_tx = None;
     run.cancel_token = None;
@@ -2879,17 +2881,26 @@ fn clear_live_run_state(run: &mut ManagedRun) {
 
 fn reconcile_live_interview_state_for_event(run: &mut ManagedRun, event: &RunEvent) {
     match &event.body {
+        EventBody::InterviewStarted(props) => {
+            if !props.question_id.is_empty() {
+                run.pending_interviews.insert(props.question_id.clone());
+            }
+        }
         EventBody::InterviewCompleted(props) => {
             run.accepted_questions.remove(&props.question_id);
+            run.pending_interviews.remove(&props.question_id);
         }
         EventBody::InterviewTimeout(props) => {
             run.accepted_questions.remove(&props.question_id);
+            run.pending_interviews.remove(&props.question_id);
         }
         EventBody::InterviewInterrupted(props) => {
             run.accepted_questions.remove(&props.question_id);
+            run.pending_interviews.remove(&props.question_id);
         }
         EventBody::RunCompleted(_) | EventBody::RunFailed(_) | EventBody::RunRewound(_) => {
             run.accepted_questions.clear();
+            run.pending_interviews.clear();
         }
         _ => {}
     }
@@ -3157,6 +3168,7 @@ fn managed_run(
         enqueued_at: Instant::now(),
         answer_transport: None,
         accepted_questions: HashSet::new(),
+        pending_interviews: HashSet::new(),
         event_tx: None,
         checkpoint: None,
         cancel_tx: None,
@@ -3176,9 +3188,10 @@ fn api_status_from_workflow(
         WorkflowRunStatus::Submitted => RunStatus::Submitted,
         WorkflowRunStatus::Queued => RunStatus::Queued,
         WorkflowRunStatus::Starting => RunStatus::Starting,
-        WorkflowRunStatus::Running | WorkflowRunStatus::Removing => RunStatus::Running,
+        WorkflowRunStatus::Running => RunStatus::Running,
         WorkflowRunStatus::Blocked => RunStatus::Blocked,
         WorkflowRunStatus::Paused => RunStatus::Paused,
+        WorkflowRunStatus::Removing => RunStatus::Removing,
         WorkflowRunStatus::Completed => RunStatus::Completed,
         WorkflowRunStatus::Failed if reason == Some(WorkflowStatusReason::Cancelled) => {
             RunStatus::Cancelled
@@ -3269,20 +3282,27 @@ fn update_live_run_from_event(state: &Arc<AppState>, run_id: RunId, event: &RunE
         EventBody::RunPaused(_) => managed_run.status = RunStatus::Paused,
         EventBody::InterviewStarted(props) => {
             if !props.question_id.is_empty() {
+                managed_run
+                    .pending_interviews
+                    .insert(props.question_id.clone());
                 managed_run.status = RunStatus::Blocked;
             }
         }
-        EventBody::InterviewCompleted(_)
-        | EventBody::InterviewTimeout(_)
-        | EventBody::InterviewInterrupted(_) => {
-            // Return to Running only when no more pending interviews.
-            // We cannot check the projection here, but the interview reconciliation
-            // handler has already removed the question from accepted_questions.
-            // The durable projection is the source of truth for pending interview
-            // count; for the live model, we optimistically return to Running.
-            // If another interview is still pending, the next InterviewStarted
-            // event will set Blocked again.
-            if managed_run.status == RunStatus::Blocked {
+        EventBody::InterviewCompleted(props) => {
+            managed_run.pending_interviews.remove(&props.question_id);
+            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
+                managed_run.status = RunStatus::Running;
+            }
+        }
+        EventBody::InterviewTimeout(props) => {
+            managed_run.pending_interviews.remove(&props.question_id);
+            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
+                managed_run.status = RunStatus::Running;
+            }
+        }
+        EventBody::InterviewInterrupted(props) => {
+            managed_run.pending_interviews.remove(&props.question_id);
+            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
                 managed_run.status = RunStatus::Running;
             }
         }

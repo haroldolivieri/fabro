@@ -62,8 +62,12 @@ impl ServerRunSummaryInfo {
         self.summary.workflow_slug.as_deref()
     }
 
-    pub(crate) fn status(&self) -> RunStatus {
-        self.summary.status.unwrap_or(RunStatus::Failed)
+    pub(crate) fn status(&self) -> Option<RunStatus> {
+        self.summary.status
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.summary.status.is_some_and(RunStatus::is_active)
     }
 
     pub(crate) fn status_reason(&self) -> Option<StatusReason> {
@@ -151,7 +155,7 @@ pub(crate) fn filter_server_runs(
     running_only: bool,
 ) -> Vec<ServerRunSummaryInfo> {
     runs.iter()
-        .filter(|run| !running_only || run.status().is_active())
+        .filter(|run| !running_only || run.is_active())
         .filter(|run| {
             before.is_none_or(|before| {
                 let start_time = run.start_time();

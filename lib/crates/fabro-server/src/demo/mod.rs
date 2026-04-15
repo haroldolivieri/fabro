@@ -58,7 +58,7 @@ pub(crate) async fn list_board_runs(
     data.truncate(limit);
     let columns = json!([
         {"id": "working", "name": "Working"},
-        {"id": "pending", "name": "Pending"},
+        {"id": "blocked", "name": "Blocked"},
         {"id": "review", "name": "Review"},
         {"id": "merge", "name": "Merge"},
     ]);
@@ -209,6 +209,11 @@ pub(crate) async fn get_run_status(
                 .as_ref()
                 .and_then(|t| Duration::try_from_secs_f64(t.elapsed_secs).ok())
                 .and_then(|duration| u64::try_from(duration.as_millis()).ok());
+            let (status, blocked_reason) = match item.id.as_str() {
+                "run-4" | "run-5" => ("blocked", Some("human_input_required")),
+                "run-8" | "run-9" | "run-10" => ("completed", None),
+                _ => ("running", None),
+            };
             (
                 StatusCode::OK,
                 Json(json!({
@@ -219,8 +224,9 @@ pub(crate) async fn get_run_status(
                     "host_repo_path": format!("/demo/{}", item.repository.name),
                     "labels": {},
                     "start_time": item.created_at.to_rfc3339(),
-                    "status": "running",
+                    "status": status,
                     "status_reason": null,
+                    "blocked_reason": blocked_reason,
                     "pending_control": null,
                     "duration_ms": elapsed_ms,
                     "total_usd_micros": null,

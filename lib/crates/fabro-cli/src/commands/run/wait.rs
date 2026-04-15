@@ -43,18 +43,17 @@ pub(crate) async fn run(
     let started_waiting_at = std::time::Instant::now();
 
     let final_status = loop {
-        let status = client
+        let polled_status = client
             .get_run_state(&run_id)
             .await?
             .status
             .map(|record| record.status);
-        let status = status.unwrap_or_else(|| {
-            if started_waiting_at.elapsed() < WAIT_STARTUP_GRACE {
-                RunStatus::Submitted
-            } else {
-                RunStatus::Failed
-            }
-        });
+        let Some(status) = fallback_polled_status(polled_status, started_waiting_at) else {
+            bail!(
+                "Run '{}' has no status record yet. Try again in a moment.",
+                run_id
+            );
+        };
 
         if status.is_terminal() {
             break status;
@@ -91,6 +90,15 @@ pub(crate) async fn run(
     } else {
         std::process::exit(1);
     }
+}
+
+fn fallback_polled_status(
+    status: Option<RunStatus>,
+    started_waiting_at: std::time::Instant,
+) -> Option<RunStatus> {
+    status.or_else(|| {
+        (started_waiting_at.elapsed() < WAIT_STARTUP_GRACE).then_some(RunStatus::Submitted)
+    })
 }
 
 fn build_json_output(
@@ -290,14 +298,10 @@ mod tests {
     }
 
     #[test]
-    fn missing_status_treated_as_failed() {
-        let status = match std::fs::read_to_string(std::path::Path::new("/nonexistent/status.json"))
-        {
-            Ok(data) => serde_json::from_str::<RunStatusRecord>(&data)
-                .map(|record| record.status)
-                .unwrap_or(RunStatus::Failed),
-            Err(_) => RunStatus::Failed,
-        };
-        assert_eq!(status, RunStatus::Failed);
+    fn missing_status_remains_unknown_after_startup_grace() {
+        let started_waiting_at =
+            std::time::Instant::now() - WAIT_STARTUP_GRACE - std::time::Duration::from_millis(1);
+
+        assert_eq!(fallback_polled_status(None, started_waiting_at), None);
     }
 }

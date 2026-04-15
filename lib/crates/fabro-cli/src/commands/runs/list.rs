@@ -43,7 +43,7 @@ pub(crate) async fn list_command(
                     "run_id": run.run_id(),
                     "workflow_name": run.workflow_name(),
                     "workflow_slug": run.workflow_slug(),
-                    "status": run.status(),
+                    "status": run.status().map(|status| status.to_string()),
                     "status_reason": run.status_reason(),
                     "start_time": run.start_time(),
                     "labels": run.labels(),
@@ -143,16 +143,21 @@ pub(crate) async fn list_command(
     Ok(())
 }
 
-fn status_cell(status: RunStatus, use_color: bool) -> CellStruct {
-    let text = status.to_string();
-    let color = match status {
-        RunStatus::Completed => Some(Color::Green),
-        RunStatus::Failed | RunStatus::Cancelled => Some(Color::Red),
-        RunStatus::Running | RunStatus::Starting | RunStatus::Submitted | RunStatus::Queued => {
-            Some(Color::Cyan)
+fn status_cell(status: Option<RunStatus>, use_color: bool) -> CellStruct {
+    let (text, color) = match status {
+        Some(status) => {
+            let color = match status {
+                RunStatus::Completed => Some(Color::Green),
+                RunStatus::Failed | RunStatus::Cancelled => Some(Color::Red),
+                RunStatus::Running | RunStatus::Starting | RunStatus::Submitted | RunStatus::Queued => {
+                    Some(Color::Cyan)
+                }
+                RunStatus::Blocked | RunStatus::Removing => Some(Color::Yellow),
+                RunStatus::Paused => Some(Color::Magenta),
+            };
+            (status.to_string(), color)
         }
-        RunStatus::Blocked | RunStatus::Removing => Some(Color::Yellow),
-        RunStatus::Paused => Some(Color::Magenta),
+        None => ("unknown".to_string(), None),
     };
     text.cell()
         .bold(use_color)

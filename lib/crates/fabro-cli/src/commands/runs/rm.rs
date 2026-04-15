@@ -51,22 +51,39 @@ async fn remove_from(
             }
         };
 
-        if run.status().is_active() && !args.force {
-            let run_id = run.run_id().to_string();
-            let error = format!(
-                "cannot remove active run {} (status: {}, use -f to force)",
-                short_run_id(&run_id),
-                run.status()
-            );
-            if !json {
-                fabro_util::printerr!(printer, "{error}");
+        if !args.force {
+            match run.status() {
+                Some(status) if status.is_active() => {
+                    let run_id = run.run_id().to_string();
+                    let error = format!(
+                        "cannot remove active run {} (status: {}, use -f to force)",
+                        short_run_id(&run_id),
+                        status
+                    );
+                    if !json {
+                        fabro_util::printerr!(printer, "{error}");
+                    }
+                    errors.push(serde_json::json!({
+                        "identifier": identifier,
+                        "error": error,
+                    }));
+                    had_errors = true;
+                    continue;
+                }
+                None => {
+                    let error = "cannot determine run status; use -f to force removal".to_string();
+                    if !json {
+                        fabro_util::printerr!(printer, "error: {identifier}: {error}");
+                    }
+                    errors.push(serde_json::json!({
+                        "identifier": identifier,
+                        "error": error,
+                    }));
+                    had_errors = true;
+                    continue;
+                }
+                Some(_) => {}
             }
-            errors.push(serde_json::json!({
-                "identifier": identifier,
-                "error": error,
-            }));
-            had_errors = true;
-            continue;
         }
 
         let run_id = run.run_id().to_string();

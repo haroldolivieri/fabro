@@ -93,8 +93,8 @@ export default function RunOverview({ loaderData }: any) {
       }
 
       // Color exit node based on run outcome
-      if (nodeId === "exit" && (runStatus === "succeeded" || runStatus === "failed" || runStatus === "dead")) {
-        const isSuccess = runStatus === "succeeded";
+      if (nodeId === "exit" && (runStatus === "completed" || runStatus === "failed" || runStatus === "cancelled")) {
+        const isSuccess = runStatus === "completed";
         const fill = isSuccess ? gt.completedFill : gt.failedFill;
         const border = isSuccess ? gt.completedBorder : gt.failedBorder;
         const text = isSuccess ? gt.completedText : gt.failedText;

@@ -49,10 +49,7 @@ pub(crate) async fn run(
             .status
             .map(|record| record.status);
         let Some(status) = fallback_polled_status(polled_status, started_waiting_at) else {
-            bail!(
-                "Run '{}' has no status record yet. Try again in a moment.",
-                run_id
-            );
+            bail!("Run '{run_id}' has no status record yet. Try again in a moment.");
         };
 
         if status.is_terminal() {

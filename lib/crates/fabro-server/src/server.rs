@@ -3290,19 +3290,22 @@ fn update_live_run_from_event(state: &Arc<AppState>, run_id: RunId, event: &RunE
         }
         EventBody::InterviewCompleted(props) => {
             managed_run.pending_interviews.remove(&props.question_id);
-            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
+            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty()
+            {
                 managed_run.status = RunStatus::Running;
             }
         }
         EventBody::InterviewTimeout(props) => {
             managed_run.pending_interviews.remove(&props.question_id);
-            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
+            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty()
+            {
                 managed_run.status = RunStatus::Running;
             }
         }
         EventBody::InterviewInterrupted(props) => {
             managed_run.pending_interviews.remove(&props.question_id);
-            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty() {
+            if managed_run.status == RunStatus::Blocked && managed_run.pending_interviews.is_empty()
+            {
                 managed_run.status = RunStatus::Running;
             }
         }

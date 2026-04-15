@@ -1,57 +1,121 @@
+use std::fmt::{self, Write};
+
 use fabro_types::{RunBlobId, RunId};
 
-const RUNS_PREFIX: &str = "runs#";
-const RUNS_INDEX_BY_START_PREFIX: &str = "runs#_index#by-start#";
-const BLOBS_PREFIX: &str = "blobs#sha256#";
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct SlateKey(String);
 
-pub(crate) fn runs_index_by_start_prefix() -> &'static str {
-    RUNS_INDEX_BY_START_PREFIX
+impl SlateKey {
+    const SEP: char = '\0';
+
+    fn new(segment: impl fmt::Display) -> Self {
+        Self(segment.to_string())
+    }
+
+    fn with(mut self, segment: impl fmt::Display) -> Self {
+        self.0.push(Self::SEP);
+        write!(&mut self.0, "{segment}").expect("write to String cannot fail");
+        self
+    }
+
+    fn into_prefix(mut self) -> Self {
+        self.0.push(Self::SEP);
+        self
+    }
+
+    #[cfg(test)]
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn segments(raw: &str) -> impl Iterator<Item = &str> {
+        raw.split(Self::SEP)
+    }
 }
 
-pub(crate) fn runs_index_by_start_key(run_id: &RunId) -> String {
-    format!(
-        "{RUNS_INDEX_BY_START_PREFIX}{}#{run_id}",
-        run_id.created_at().format("%Y-%m-%d")
-    )
+impl AsRef<[u8]> for SlateKey {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
 }
 
-pub(crate) fn run_data_prefix(run_id: &RunId) -> String {
-    format!("{RUNS_PREFIX}{run_id}#")
+// --- Construction ---
+
+pub(crate) fn runs_index_by_start_prefix() -> SlateKey {
+    SlateKey::new("runs")
+        .with("_index")
+        .with("by-start")
+        .into_prefix()
 }
 
-pub(crate) fn run_events_prefix(run_id: &RunId) -> String {
-    format!("{}events#", run_data_prefix(run_id))
+pub(crate) fn runs_index_by_start_key(run_id: &RunId) -> SlateKey {
+    SlateKey::new("runs")
+        .with("_index")
+        .with("by-start")
+        .with(run_id.created_at().format("%Y-%m-%d"))
+        .with(run_id)
 }
 
-pub(crate) fn run_event_key(run_id: &RunId, seq: u32, epoch_ms: i64) -> String {
-    format!("{}{seq:06}-{epoch_ms}", run_events_prefix(run_id))
+pub(crate) fn run_data_prefix(run_id: &RunId) -> SlateKey {
+    SlateKey::new("runs").with(run_id).into_prefix()
 }
 
-pub(crate) fn blobs_prefix() -> &'static str {
-    BLOBS_PREFIX
+pub(crate) fn run_events_prefix(run_id: &RunId) -> SlateKey {
+    SlateKey::new("runs")
+        .with(run_id)
+        .with("events")
+        .into_prefix()
 }
 
-pub(crate) fn blob_key(id: &RunBlobId) -> String {
-    format!("{BLOBS_PREFIX}{id}")
+pub(crate) fn run_event_key(run_id: &RunId, seq: u32, epoch_ms: i64) -> SlateKey {
+    SlateKey::new("runs")
+        .with(run_id)
+        .with("events")
+        .with(format!("{seq:06}-{epoch_ms}"))
 }
+
+pub(crate) fn blobs_prefix() -> SlateKey {
+    SlateKey::new("blobs").with("sha256").into_prefix()
+}
+
+pub(crate) fn blob_key(id: &RunBlobId) -> SlateKey {
+    SlateKey::new("blobs").with("sha256").with(id)
+}
+
+// --- Parsing ---
 
 pub(crate) fn parse_event_seq(key: &str) -> Option<u32> {
-    key.rsplit_once("#events#")?
-        .1
-        .split_once('-')?
-        .0
-        .parse()
-        .ok()
+    let mut segments = SlateKey::segments(key);
+    let _ = segments.next()?; // "runs"
+    let _ = segments.next()?; // run_id
+    if segments.next()? != "events" {
+        return None;
+    }
+    segments.next()?.split_once('-')?.0.parse().ok()
 }
 
 pub(crate) fn parse_blob_id(key: &str) -> Option<RunBlobId> {
-    key.strip_prefix(BLOBS_PREFIX)?.parse().ok()
+    let mut segments = SlateKey::segments(key);
+    if segments.next()? != "blobs" {
+        return None;
+    }
+    if segments.next()? != "sha256" {
+        return None;
+    }
+    let id = segments.next()?;
+    if segments.next().is_some() {
+        return None;
+    }
+    id.parse().ok()
 }
 
 pub(crate) fn parse_run_id_from_index_key(key: &str) -> Option<RunId> {
-    let rest = key.strip_prefix(RUNS_INDEX_BY_START_PREFIX)?;
-    let (_, run_id) = rest.split_once('#')?;
-    run_id.parse().ok()
+    let mut segments = SlateKey::segments(key);
+    let _ = segments.next()?; // "runs"
+    let _ = segments.next()?; // "_index"
+    let _ = segments.next()?; // "by-start"
+    let _ = segments.next()?; // date
+    segments.next()?.parse().ok()
 }
 
 #[cfg(test)]
@@ -61,61 +125,100 @@ mod tests {
     use super::*;
 
     #[test]
-    fn top_level_keys_match_spec() {
+    fn builder_joins_segments_with_null_byte() {
+        let key = SlateKey::new("a").with("b").with("c");
+        assert_eq!(key.as_ref(), b"a\0b\0c");
+    }
+
+    #[test]
+    fn into_prefix_appends_trailing_null_byte() {
+        let key = SlateKey::new("a").with("b").into_prefix();
+        assert_eq!(key.as_ref(), b"a\0b\0");
+    }
+
+    #[test]
+    fn event_key_segments() {
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
-        assert_eq!(
-            run_event_key(&run_id, 7, 123),
-            "runs#01JT56VE4Z5NZ814GZN2JZD65A#events#000007-123"
-        );
-        assert_eq!(
-            runs_index_by_start_key(&run_id),
-            format!(
-                "runs#_index#by-start#{}#{run_id}",
-                run_id.created_at().format("%Y-%m-%d")
-            )
-        );
+        let key = run_event_key(&run_id, 7, 123);
+        let segments: Vec<&str> = SlateKey::segments(key.as_str()).collect();
+        assert_eq!(segments, [
+            "runs",
+            "01JT56VE4Z5NZ814GZN2JZD65A",
+            "events",
+            "000007-123"
+        ]);
+    }
+
+    #[test]
+    fn index_key_segments() {
+        let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
+        let key = runs_index_by_start_key(&run_id);
+        let segments: Vec<&str> = SlateKey::segments(key.as_str()).collect();
+        assert_eq!(segments, [
+            "runs",
+            "_index",
+            "by-start",
+            &run_id.created_at().format("%Y-%m-%d").to_string(),
+            &run_id.to_string(),
+        ]);
+    }
+
+    #[test]
+    fn blob_key_segments() {
+        let blob_id = RunBlobId::new(b"summary");
+        let key = blob_key(&blob_id);
+        let segments: Vec<&str> = SlateKey::segments(key.as_str()).collect();
+        assert_eq!(segments, ["blobs", "sha256", &blob_id.to_string()]);
     }
 
     #[test]
     fn sequence_keys_are_zero_padded() {
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
-        assert_eq!(
-            run_event_key(&run_id, 7, 123),
-            "runs#01JT56VE4Z5NZ814GZN2JZD65A#events#000007-123"
-        );
+        let key = run_event_key(&run_id, 7, 123);
+        let leaf = SlateKey::segments(key.as_str()).last().unwrap();
+        assert_eq!(leaf, "000007-123");
     }
 
     #[test]
-    fn blob_keys_match_spec() {
-        let blob_id = RunBlobId::new(b"summary");
-        assert_eq!(blob_key(&blob_id), format!("blobs#sha256#{blob_id}"));
-    }
-
-    #[test]
-    fn parse_helpers_extract_sequences_and_blob_ids() {
+    fn parse_helpers_roundtrip() {
+        let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         assert_eq!(
-            parse_event_seq("runs#01JT56VE4Z5NZ814GZN2JZD65A#events#000007-123"),
+            parse_event_seq(run_event_key(&run_id, 7, 123).as_str()),
             Some(7)
         );
+
         let blob_id = RunBlobId::new(b"summary");
+        assert_eq!(parse_blob_id(blob_key(&blob_id).as_str()), Some(blob_id));
+
         assert_eq!(
-            parse_blob_id(&format!("blobs#sha256#{blob_id}")),
-            Some(blob_id)
-        );
-        assert_eq!(
-            parse_run_id_from_index_key(
-                "runs#_index#by-start#2026-03-27#01JT56VE4Z5NZ814GZN2JZD65A"
-            ),
-            Some("01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap())
+            parse_run_id_from_index_key(runs_index_by_start_key(&run_id).as_str()),
+            Some(run_id)
         );
     }
 
     #[test]
     fn parse_helpers_reject_invalid_keys() {
-        assert_eq!(parse_event_seq("runs#not-a-run#events#not-a-seq"), None);
-        assert_eq!(parse_blob_id("blobs#not-a-uuid"), None);
         assert_eq!(
-            parse_blob_id("blobs#01JT56VE4Z5NZ814GZN2JZD65A#not-a-blob"),
+            parse_event_seq(
+                SlateKey::new("runs")
+                    .with("not-a-run")
+                    .with("events")
+                    .with("not-a-seq")
+                    .as_str()
+            ),
+            None
+        );
+        assert_eq!(
+            parse_blob_id(SlateKey::new("blobs").with("not-a-uuid").as_str()),
+            None
+        );
+        assert_eq!(
+            parse_blob_id(
+                SlateKey::new("blobs")
+                    .with("01JT56VE4Z5NZ814GZN2JZD65A")
+                    .with("not-a-blob")
+                    .as_str()
+            ),
             None
         );
     }

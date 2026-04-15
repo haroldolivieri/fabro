@@ -11,16 +11,17 @@ fn help() {
     ----- stdout -----
     Set a secret value
 
-    Usage: fabro secret set [OPTIONS] <KEY> <VALUE>
+    Usage: fabro secret set [OPTIONS] <KEY> [VALUE]
 
     Arguments:
       <KEY>    Name of the secret
-      <VALUE>  Value to store
+      [VALUE]  Value to store (omit to enter interactively)
 
     Options:
           --json                       Output as JSON [env: FABRO_JSON=]
-          --type <TYPE>                [default: environment] [possible values: environment, file]
+          --value-stdin                Read the secret value from stdin
           --debug                      Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --type <TYPE>                [default: environment] [possible values: environment, file]
           --description <DESCRIPTION>  
           --no-upgrade-check           Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
           --quiet                      Suppress non-essential output [env: FABRO_QUIET=]

@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-04-15T13:45:01.042135Z",
+  "current_node": "greet",
+  "completed_nodes": [
+    "start",
+    "greet"
+  ],
+  "node_retries": {},
+  "context_values": {
+    "response.greet": "Hello! I’m an AI coding assistant, and I took a quick look around this repo.\n\nFabro is a Rust-based workflow engine for Graphviz/DOT-defined AI pipelines. It supports multi-stage workflows, human approval gates, parallel branches, checkpoints, and retries.\n\nThis message is a simple test of the Fabro workflow engine.\n\nA basic Fabro workflow looks like this:\n\n```dot\ndigraph HelloFabro {\n  graph [goal=\"Say hello and confirm the workflow engine works\"]\n\n  start [shape=Mdiamond, label=\"Start\"]\n  greet [label=\"Greet\"]\n  exit  [shape=Msquare, label=\"Exit\"]\n\n  start -> greet -> exit\n}\n```\n\nIn plain terms:\n\n1. Start\n2. Say hello\n3. Finish\n\nIf you want, I can also help draft a slightly more realistic Fabro workflow, like a plan → implement → validate flow.",
+    "internal.node_visit_count": 1,
+    "graph.rankdir": "LR",
+    "thread.start.current_node": "greet",
+    "internal.retry_count.greet": 0,
+    "internal.retry_count.start": 0,
+    "failure_class": "",
+    "failure_signature": "",
+    "outcome": "success",
+    "current_node": "greet",
+    "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+    "internal.fidelity": "compact",
+    "last_response": "Hello! I’m an AI coding assistant, and I took a quick look around this repo.\n\nFabro is a Rust-based workflow engine for Graphviz/DOT-defined AI pipelines. It supports multi-stage workflows, human ap",
+    "last_stage": "greet",
+    "internal.thread_id": "start",
+    "internal.run_id": "01KP8P61Y147J6QZ712GQ96DV2"
+  },
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "usage": null
+    },
+    "greet": {
+      "status": "success",
+      "context_updates": {
+        "last_response": "Hello! I’m an AI coding assistant, and I took a quick look around this repo.\n\nFabro is a Rust-based workflow engine for Graphviz/DOT-defined AI pipelines. It supports multi-stage workflows, human ap",
+        "response.greet": "Hello! I’m an AI coding assistant, and I took a quick look around this repo.\n\nFabro is a Rust-based workflow engine for Graphviz/DOT-defined AI pipelines. It supports multi-stage workflows, human approval gates, parallel branches, checkpoints, and retries.\n\nThis message is a simple test of the Fabro workflow engine.\n\nA basic Fabro workflow looks like this:\n\n```dot\ndigraph HelloFabro {\n  graph [goal=\"Say hello and confirm the workflow engine works\"]\n\n  start [shape=Mdiamond, label=\"Start\"]\n  greet [label=\"Greet\"]\n  exit  [shape=Msquare, label=\"Exit\"]\n\n  start -> greet -> exit\n}\n```\n\nIn plain terms:\n\n1. Start\n2. Say hello\n3. Finish\n\nIf you want, I can also help draft a slightly more realistic Fabro workflow, like a plan → implement → validate flow.",
+        "last_stage": "greet"
+      },
+      "notes": "Stage completed: greet",
+      "usage": {
+        "input": {
+          "usage": {
+            "model": {
+              "provider": "openai",
+              "model_id": "gpt-5.4-mini"
+            },
+            "tokens": {
+              "input_tokens": 19705,
+              "output_tokens": 377,
+              "reasoning_tokens": 511,
+              "cache_read_tokens": 4096,
+              "cache_write_tokens": 0
+            }
+          },
+          "facts": {
+            "provider": "open_ai"
+          }
+        },
+        "total_usd_micros": 19081
+      }
+    }
+  },
+  "next_node_id": "exit",
+  "node_visits": {
+    "start": 1,
+    "greet": 1
+  }
+}

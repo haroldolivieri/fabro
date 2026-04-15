@@ -2412,13 +2412,25 @@ fn test_secret_store_path() -> PathBuf {
     dir.join("secrets.json")
 }
 
-fn board_column(status: RunStatus) -> Option<&'static str> {
+fn board_column(status: WorkflowRunStatus) -> Option<&'static str> {
     match status {
-        RunStatus::Running => Some("working"),
-        RunStatus::Paused => Some("pending"),
-        RunStatus::Completed => Some("merge"),
-        _ => None,
+        WorkflowRunStatus::Submitted | WorkflowRunStatus::Starting => Some("pending"),
+        WorkflowRunStatus::Running => Some("running"),
+        WorkflowRunStatus::Paused => Some("waiting"),
+        WorkflowRunStatus::Succeeded => Some("succeeded"),
+        WorkflowRunStatus::Failed | WorkflowRunStatus::Dead => Some("failed"),
+        WorkflowRunStatus::Removing => None,
     }
+}
+
+fn board_columns() -> serde_json::Value {
+    serde_json::json!([
+        {"id": "pending", "name": "Pending"},
+        {"id": "running", "name": "Running"},
+        {"id": "waiting", "name": "Waiting"},
+        {"id": "succeeded", "name": "Succeeded"},
+        {"id": "failed", "name": "Failed"},
+    ])
 }
 
 async fn list_board_runs(
@@ -2426,49 +2438,34 @@ async fn list_board_runs(
     State(state): State<Arc<AppState>>,
     Query(pagination): Query<PaginationParams>,
 ) -> Response {
-    let live_runs: Vec<(RunId, RunStatus, chrono::DateTime<chrono::Utc>)> = {
-        let runs = state.runs.lock().expect("runs lock poisoned");
-        runs.iter()
-            .map(|(id, managed_run)| (*id, managed_run.status, managed_run.created_at))
-            .collect()
-    };
     let summaries = match state
         .store
         .list_runs(&fabro_store::ListRunsQuery::default())
         .await
     {
-        Ok(runs) => runs
-            .into_iter()
-            .map(|summary| (summary.run_id, summary))
-            .collect::<HashMap<_, _>>(),
+        Ok(runs) => runs,
         Err(err) => {
             return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
                 .into_response();
         }
     };
-    let all_items: Vec<serde_json::Value> = live_runs
-        .iter()
-        .filter_map(|(id, status, created_at)| {
-            let column = board_column(*status)?;
-            let summary = summaries.get(id);
-            let title = summary
-                .and_then(|s| s.goal.as_deref())
-                .unwrap_or("Untitled run");
-            let workflow_slug = summary
-                .and_then(|s| s.workflow_slug.as_deref())
-                .unwrap_or("unknown");
-            let workflow_name = summary
-                .and_then(|s| s.workflow_name.as_deref())
-                .unwrap_or(workflow_slug);
+    let all_items: Vec<serde_json::Value> = summaries
+        .into_iter()
+        .filter_map(|summary| {
+            let status = summary.status?;
+            let column = board_column(status)?;
+            let title = summary.goal.as_deref().unwrap_or("Untitled run");
+            let workflow_slug = summary.workflow_slug.as_deref().unwrap_or("unknown");
+            let workflow_name = summary.workflow_name.as_deref().unwrap_or(workflow_slug);
             let repo_name = summary
-                .and_then(|s| s.host_repo_path.as_deref())
+                .host_repo_path
+                .as_deref()
                 .and_then(|p| p.rsplit('/').next())
                 .unwrap_or("unknown");
-            let elapsed_secs = summary
-                .and_then(|s| s.duration_ms)
-                .map(|ms| ms as f64 / 1000.0);
+            let elapsed_secs = summary.duration_ms.map(|ms| ms as f64 / 1000.0);
+            let created_at = summary.run_id.created_at();
             Some(serde_json::json!({
-                "id": id.to_string(),
+                "id": summary.run_id.to_string(),
                 "title": title,
                 "repository": { "name": repo_name },
                 "workflow": { "slug": workflow_slug, "name": workflow_name },
@@ -2486,6 +2483,7 @@ async fn list_board_runs(
     (
         StatusCode::OK,
         Json(serde_json::json!({
+            "columns": board_columns(),
             "data": data,
             "meta": { "has_more": has_more }
         })),
@@ -8506,7 +8504,7 @@ level = "debug"
         let body = body_json(response.into_body()).await;
         assert_eq!(body["pending_control"].as_str(), Some("pause"));
 
-        // Verify the run appears on the board with "working" status
+        // Verify the run appears on the board (store has Submitted status → "pending" column)
         let req = Request::builder()
             .method("GET")
             .uri(api("/boards/runs"))
@@ -8520,7 +8518,7 @@ level = "debug"
             .iter()
             .find(|item| item["id"].as_str() == Some(run_id_str.as_str()))
             .expect("board item should exist");
-        assert_eq!(item["status"].as_str(), Some("working"));
+        assert_eq!(item["status"].as_str(), Some("pending"));
     }
 
     #[tokio::test]
@@ -8997,18 +8995,22 @@ timeout = "30s"
     }
 
     #[tokio::test]
-    async fn boards_runs_excludes_non_board_statuses() {
+    async fn boards_runs_excludes_removing_status() {
         let state = create_app_state();
         let app = build_router(Arc::clone(&state), AuthMode::Disabled);
-        let run_id_str = create_and_start_run(&app, MINIMAL_DOT).await;
-        let run_id = run_id_str.parse::<RunId>().unwrap();
+        let run_id = fixtures::RUN_1;
 
-        // Set run to Failed — should not appear on the board
-        {
-            let mut runs = state.runs.lock().expect("runs lock poisoned");
-            let managed_run = runs.get_mut(&run_id).expect("run should exist");
-            managed_run.status = RunStatus::Failed;
-        }
+        // A run in Removing status should not appear on the board
+        create_durable_run_with_events(&state, run_id, &[
+            workflow_event::Event::RunSubmitted {
+                reason:          None,
+                definition_blob: None,
+            },
+            workflow_event::Event::RunStarting { reason: None },
+            workflow_event::Event::RunRunning { reason: None },
+            workflow_event::Event::RunRemoving { reason: None },
+        ])
+        .await;
 
         let req = Request::builder()
             .method("GET")
@@ -9019,25 +9021,49 @@ timeout = "30s"
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_json(response.into_body()).await;
         let data = body["data"].as_array().expect("data should be array");
-        let found = data.iter().any(|i| i["id"].as_str() == Some(&run_id_str));
-        assert!(!found, "failed run should not appear on the board");
+        let found = data
+            .iter()
+            .any(|i| i["id"].as_str() == Some(&run_id.to_string()));
+        assert!(!found, "removing run should not appear on the board");
     }
 
     #[tokio::test]
-    async fn boards_runs_maps_paused_to_pending_and_completed_to_merge() {
+    async fn boards_runs_maps_statuses_to_columns() {
         let state = create_app_state();
         let app = build_router(Arc::clone(&state), AuthMode::Disabled);
 
-        let paused_id_str = create_and_start_run(&app, MINIMAL_DOT).await;
-        let paused_id = paused_id_str.parse::<RunId>().unwrap();
-        let completed_id_str = create_and_start_run(&app, MINIMAL_DOT).await;
-        let completed_id = completed_id_str.parse::<RunId>().unwrap();
+        let paused_id = fixtures::RUN_1;
+        let succeeded_id = fixtures::RUN_2;
 
-        {
-            let mut runs = state.runs.lock().expect("runs lock poisoned");
-            runs.get_mut(&paused_id).unwrap().status = RunStatus::Paused;
-            runs.get_mut(&completed_id).unwrap().status = RunStatus::Completed;
-        }
+        create_durable_run_with_events(&state, paused_id, &[
+            workflow_event::Event::RunSubmitted {
+                reason:          None,
+                definition_blob: None,
+            },
+            workflow_event::Event::RunStarting { reason: None },
+            workflow_event::Event::RunRunning { reason: None },
+            workflow_event::Event::RunPaused,
+        ])
+        .await;
+        create_durable_run_with_events(&state, succeeded_id, &[
+            workflow_event::Event::RunSubmitted {
+                reason:          None,
+                definition_blob: None,
+            },
+            workflow_event::Event::RunStarting { reason: None },
+            workflow_event::Event::RunRunning { reason: None },
+            workflow_event::Event::WorkflowRunCompleted {
+                duration_ms:          1000,
+                artifact_count:       0,
+                status:               "success".to_string(),
+                reason:               None,
+                total_usd_micros:     None,
+                final_git_commit_sha: None,
+                final_patch:          None,
+                billing:              None,
+            },
+        ])
+        .await;
 
         let req = Request::builder()
             .method("GET")
@@ -9050,14 +9076,22 @@ timeout = "30s"
 
         let paused_item = data
             .iter()
-            .find(|i| i["id"].as_str() == Some(&paused_id_str))
+            .find(|i| i["id"].as_str() == Some(&paused_id.to_string()))
             .expect("paused run should be on board");
-        assert_eq!(paused_item["status"].as_str().unwrap(), "pending");
+        assert_eq!(paused_item["status"].as_str().unwrap(), "waiting");
 
-        let completed_item = data
+        let succeeded_item = data
             .iter()
-            .find(|i| i["id"].as_str() == Some(&completed_id_str))
-            .expect("completed run should be on board");
-        assert_eq!(completed_item["status"].as_str().unwrap(), "merge");
+            .find(|i| i["id"].as_str() == Some(&succeeded_id.to_string()))
+            .expect("succeeded run should be on board");
+        assert_eq!(succeeded_item["status"].as_str().unwrap(), "succeeded");
+
+        // Verify columns are included in the response
+        let columns = body["columns"].as_array().expect("columns should be array");
+        assert!(columns.len() > 0);
+        assert!(columns.iter().any(|c| c["id"].as_str() == Some("waiting")));
+        assert!(columns
+            .iter()
+            .any(|c| c["id"].as_str() == Some("succeeded")));
     }
 }

@@ -29,13 +29,17 @@ export interface RunItem {
   sandboxId?: string;
 }
 
-export type ColumnStatus = "working" | "pending" | "review" | "merge";
+export type ColumnStatus = "working" | "pending" | "review" | "merge" | "running" | "waiting" | "succeeded" | "failed";
 
 export const columnNames: Record<ColumnStatus, string> = {
   working: "Working",
   pending: "Pending",
   review: "Verify",
   merge: "Merge",
+  running: "Running",
+  waiting: "Waiting",
+  succeeded: "Succeeded",
+  failed: "Failed",
 };
 
 export interface RunWithStatus extends RunItem {
@@ -107,6 +111,10 @@ export const statusColors: Record<ColumnStatus, { dot: string; text: string }> =
   pending: { dot: "bg-amber", text: "text-amber" },
   review: { dot: "bg-mint", text: "text-mint" },
   merge: { dot: "bg-teal-300", text: "text-teal-300" },
+  running: { dot: "bg-teal-500", text: "text-teal-500" },
+  waiting: { dot: "bg-amber", text: "text-amber" },
+  succeeded: { dot: "bg-teal-300", text: "text-teal-300" },
+  failed: { dot: "bg-coral", text: "text-coral" },
 };
 
 export const ciConfig: Record<CiStatus, { label: string; dot: string; text: string }> = {

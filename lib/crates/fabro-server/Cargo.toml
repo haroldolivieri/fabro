@@ -79,6 +79,9 @@ walkdir.workspace = true
 multer = "3"
 thiserror.workspace = true
 
+[build-dependencies]
+chrono = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tower = "0.5"

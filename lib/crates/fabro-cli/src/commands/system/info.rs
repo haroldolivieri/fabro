@@ -66,10 +66,6 @@ pub(super) async fn info_command(
                 .and_then(|runs| runs.active)
                 .unwrap_or_default()
         );
-        println!(
-            "Sandbox: {}",
-            response.sandbox_provider.as_deref().unwrap_or("unknown")
-        );
         println!("Uptime: {}s", response.uptime_secs.unwrap_or_default());
     }
 

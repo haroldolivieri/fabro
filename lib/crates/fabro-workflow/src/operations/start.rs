@@ -352,12 +352,19 @@ impl RunSession {
                     ..Default::default()
                 },
             },
-            SandboxProvider::Daytona => SandboxSpec::Daytona {
-                config:       resolve_daytona_config(&resolved).unwrap_or_default(),
-                github_app:   services.github_app.clone(),
-                run_id:       Some(record.run_id),
-                clone_branch: detected_base_branch.or_else(|| record.base_branch.clone()),
-            },
+            SandboxProvider::Daytona => {
+                let api_key = match &services.vault {
+                    Some(v) => v.read().await.get("DAYTONA_API_KEY").map(str::to_string),
+                    None => None,
+                };
+                SandboxSpec::Daytona {
+                    config: resolve_daytona_config(&resolved).unwrap_or_default(),
+                    github_app: services.github_app.clone(),
+                    run_id: Some(record.run_id),
+                    clone_branch: detected_base_branch.or_else(|| record.base_branch.clone()),
+                    api_key,
+                }
+            }
         };
 
         let toml_env: HashMap<String, String> = resolved

@@ -167,7 +167,7 @@ fn test_artifact_store(run_dir: &Path) -> ArtifactStore {
 async fn create_env_with_github_app(
     github_app: Option<fabro_github::GitHubCredentials>,
 ) -> DaytonaSandbox {
-    DaytonaSandbox::new(DaytonaConfig::default(), github_app, None, None)
+    DaytonaSandbox::new(DaytonaConfig::default(), github_app, None, None, None)
         .await
         .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?")
 }
@@ -372,7 +372,7 @@ async fn daytona_snapshot_sandbox() {
     };
 
     let creds = load_github_app_credentials();
-    let env = DaytonaSandbox::new(config, Some(creds), None, None)
+    let env = DaytonaSandbox::new(config, Some(creds), None, None, None)
         .await
         .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
     env.initialize().await.unwrap();
@@ -997,7 +997,7 @@ async fn run_daytona_cli_test(provider: Provider, model: &str, install_command: 
         }),
         ..DaytonaConfig::default()
     };
-    let env = DaytonaSandbox::new(config, Some(creds), None, None)
+    let env = DaytonaSandbox::new(config, Some(creds), None, None, None)
         .await
         .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
     env.initialize().await.unwrap();
@@ -1833,7 +1833,9 @@ async fn daytona_cp_upload_download_round_trip() {
 
     // 3. Reconnect via the real cp::reconnect path
     let tmp = tempfile::tempdir().unwrap();
-    let reconnected = reconnect(&record).await.expect("reconnect should succeed");
+    let reconnected = reconnect(&record, None)
+        .await
+        .expect("reconnect should succeed");
 
     // 4. Upload: write a local file, then upload it to the sandbox
     let upload_content = b"hello from fabro cp e2e test\n";
@@ -1909,7 +1911,7 @@ async fn daytona_computer_use_browser_screenshot() {
         skip_clone: true,
         ..DaytonaConfig::default()
     };
-    let env = DaytonaSandbox::new(config, None, None, None)
+    let env = DaytonaSandbox::new(config, None, None, None, None)
         .await
         .expect("DAYTONA_API_KEY must be set");
     env.initialize().await.unwrap();
@@ -2063,7 +2065,7 @@ async fn daytona_playwright_mcp_sandbox_transport() {
         skip_clone: true,
         ..DaytonaConfig::default()
     };
-    let sandbox = DaytonaSandbox::new(config, None, None, None)
+    let sandbox = DaytonaSandbox::new(config, None, None, None, None)
         .await
         .expect("DAYTONA_API_KEY must be set");
     sandbox.initialize().await.unwrap();

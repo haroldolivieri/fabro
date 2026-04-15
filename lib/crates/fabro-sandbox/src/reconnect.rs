@@ -12,8 +12,12 @@ use crate::sandbox_record::SandboxRecord;
 
 /// Reconnect to a sandbox from a saved record.
 ///
-/// Returns a sandbox that can perform file operations.
-pub async fn reconnect(record: &SandboxRecord) -> Result<Box<dyn crate::Sandbox>> {
+/// `daytona_api_key` is forwarded to the Daytona SDK when the provider is
+/// `"daytona"`. Pass `None` to fall back to the `DAYTONA_API_KEY` env var.
+pub async fn reconnect(
+    record: &SandboxRecord,
+    daytona_api_key: Option<String>,
+) -> Result<Box<dyn crate::Sandbox>> {
     match record.provider.as_str() {
         "local" => {
             let sandbox = LocalSandbox::new(PathBuf::from(&record.working_directory));
@@ -46,7 +50,7 @@ pub async fn reconnect(record: &SandboxRecord) -> Result<Box<dyn crate::Sandbox>
                 .as_deref()
                 .context("Daytona sandbox record missing identifier (sandbox name)")?;
 
-            let sandbox = DaytonaSandbox::reconnect(name)
+            let sandbox = DaytonaSandbox::reconnect(name, daytona_api_key)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             Ok(Box::new(sandbox))

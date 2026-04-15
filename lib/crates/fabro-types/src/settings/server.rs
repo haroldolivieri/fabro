@@ -146,6 +146,7 @@ pub struct ServerSlateDbSettings {
     pub store:          ObjectStoreSettings,
     #[serde(serialize_with = "serialize_std_duration")]
     pub flush_interval: StdDuration,
+    pub disk_cache:     bool,
 }
 
 impl Default for ServerSlateDbSettings {
@@ -154,6 +155,7 @@ impl Default for ServerSlateDbSettings {
             prefix:         InterpString::parse(""),
             store:          ObjectStoreSettings::default(),
             flush_interval: StdDuration::ZERO,
+            disk_cache:     false,
         }
     }
 }
@@ -373,6 +375,8 @@ pub struct ServerSlateDbLayer {
     pub local:          Option<ObjectStoreLocalLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub s3:             Option<ObjectStoreS3Layer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_cache:     Option<bool>,
 }
 
 /// Closed enum of object-store providers. Unknown providers hard-fail

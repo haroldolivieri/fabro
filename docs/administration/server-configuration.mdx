@@ -58,6 +58,14 @@ strategy = "tailscale_funnel"
 [server.storage]
 root = "/var/lib/fabro"
 
+[server.slatedb]
+provider = "s3"
+disk_cache = true
+
+[server.slatedb.s3]
+bucket = "my-fabro-data"
+region = "us-east-1"
+
 [server.scheduler]
 max_concurrent_runs = 8
 
@@ -146,6 +154,33 @@ GitHub-specific auth policy.
 | `allowed_usernames` | GitHub usernames allowed to complete OAuth login |
 
 The GitHub OAuth client ID still lives under `[server.integrations.github].client_id`.
+
+### `[server.slatedb]` section
+
+Configure the embedded SlateDB key-value store used for run event storage.
+
+| Key | Description | Default |
+|---|---|---|
+| `provider` | Object store backend: `local` or `s3` | `"local"` |
+| `prefix` | Key prefix within the object store | `""` |
+| `flush_interval` | How often to flush the write-ahead log | `"1ms"` |
+| `disk_cache` | Enable a local disk cache for object store reads | `false` |
+
+When `disk_cache = true`, Fabro creates a cache directory at `<storage_root>/cache/slatedb` and
+configures SlateDB to cache object store bytes on local disk (16 GB max, 4 MB parts). This
+significantly reduces read latency and costs for S3-backed deployments. A warning is emitted if
+enabled with `provider = "local"` since the disk cache adds overhead when the object store is
+already local.
+
+```toml title="settings.toml"
+[server.slatedb]
+provider = "s3"
+disk_cache = true
+
+[server.slatedb.s3]
+bucket = "{{ env.SLATEDB_BUCKET }}"
+region = "us-east-1"
+```
 
 ### Run defaults
 

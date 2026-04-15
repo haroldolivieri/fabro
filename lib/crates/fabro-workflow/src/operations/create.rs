@@ -438,6 +438,7 @@ mod tests {
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),
+            None,
         ))
     }
 
@@ -965,7 +966,12 @@ mod tests {
         std::fs::create_dir_all(storage_dir.join("store")).unwrap();
         let object_store =
             Arc::new(LocalFileSystem::new_with_prefix(storage_dir.join("store")).unwrap());
-        let store = Arc::new(Database::new(object_store, "", Duration::from_millis(1)));
+        let store = Arc::new(Database::new(
+            object_store,
+            "",
+            Duration::from_millis(1),
+            None,
+        ));
         let created = create(store.as_ref(), CreateRunInput {
             workflow: WorkflowInput::DotSource {
                 source:   MINIMAL_DOT.to_string(),
@@ -1001,7 +1007,12 @@ mod tests {
         std::fs::create_dir_all(storage_dir.join("store")).unwrap();
         let object_store =
             Arc::new(LocalFileSystem::new_with_prefix(storage_dir.join("store")).unwrap());
-        let store = Arc::new(Database::new(object_store, "", Duration::from_millis(1)));
+        let store = Arc::new(Database::new(
+            object_store,
+            "",
+            Duration::from_millis(1),
+            None,
+        ));
         let created = create(store.as_ref(), CreateRunInput {
             workflow: WorkflowInput::DotSource {
                 source:   MINIMAL_DOT.to_string(),

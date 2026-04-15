@@ -65,6 +65,7 @@ async fn initialized(
         ),
         "",
         Duration::from_millis(1),
+        None,
     ));
     let inner_store = store
         .create_run(&run_options.run_id)

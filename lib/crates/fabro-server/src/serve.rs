@@ -263,10 +263,15 @@ pub fn build_artifact_object_store(
 
 fn build_slatedb_store(
     settings: &ResolvedServerSettings,
-) -> anyhow::Result<(Arc<dyn ObjectStore>, String, Duration)> {
+) -> anyhow::Result<(Arc<dyn ObjectStore>, String, Duration, bool)> {
     let prefix = resolve_interp(&settings.slatedb.prefix)?;
     let object_store = build_object_store_from_settings(&settings.slatedb.store)?;
-    Ok((object_store, prefix, settings.slatedb.flush_interval))
+    Ok((
+        object_store,
+        prefix,
+        settings.slatedb.flush_interval,
+        settings.slatedb.disk_cache,
+    ))
 }
 
 /// Start the HTTP API server.
@@ -315,12 +320,18 @@ where
     };
     let web_enabled = router_web_enabled(&resolved_server_settings);
 
-    let (object_store, slatedb_prefix, flush_interval) =
+    let (object_store, slatedb_prefix, flush_interval, disk_cache) =
         build_slatedb_store(&resolved_server_settings)?;
+    let cache_path = if disk_cache {
+        Some(data_dir.join("cache").join("slatedb"))
+    } else {
+        None
+    };
     let store = Arc::new(fabro_store::Database::new(
         object_store,
         slatedb_prefix,
         flush_interval,
+        cache_path,
     ));
     let (artifact_object_store, artifact_prefix) =
         build_artifact_object_store(&resolved_server_settings)?;
@@ -892,12 +903,31 @@ root = "{}"
         ));
 
         let resolved = resolve_server_settings(&settings).expect("settings should resolve");
-        let (_object_store, prefix, flush_interval) =
+        let (_object_store, prefix, flush_interval, disk_cache) =
             build_slatedb_store(&resolved).expect("slatedb store should build");
 
         assert!(root.exists(), "configured SlateDB root should be created");
         assert_eq!(prefix, "");
         assert_eq!(flush_interval, Duration::from_millis(1));
+        assert!(!disk_cache);
+    }
+
+    #[test]
+    fn build_slatedb_store_returns_disk_cache_when_enabled() {
+        let settings = parse_settings(
+            r"
+_version = 1
+
+[server.slatedb]
+disk_cache = true
+",
+        );
+
+        let resolved = resolve_server_settings(&settings).expect("settings should resolve");
+        let (_object_store, _prefix, _flush_interval, disk_cache) =
+            build_slatedb_store(&resolved).expect("slatedb store should build");
+
+        assert!(disk_cache);
     }
 
     #[tokio::test]

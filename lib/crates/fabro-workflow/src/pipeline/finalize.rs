@@ -338,6 +338,7 @@ mod tests {
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),
+            None,
         ))
     }
 

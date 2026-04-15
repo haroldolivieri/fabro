@@ -395,7 +395,7 @@ mod tests {
     #[tokio::test]
     async fn list_blobs_reads_global_cas_namespace() {
         let object_store = Arc::new(InMemory::new());
-        let store = Database::new(object_store, "", Duration::from_millis(1));
+        let store = Database::new(object_store, "", Duration::from_millis(1), None);
         let run_id = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         let run = store.create_run(&run_id).await.unwrap();
         let first_blob = br#"{"a":1}"#;

@@ -71,6 +71,7 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
         object_store,
         "",
         std::time::Duration::from_millis(1),
+        None,
     ));
     let state = if tokio::runtime::Handle::try_current().is_ok() {
         std::thread::spawn(

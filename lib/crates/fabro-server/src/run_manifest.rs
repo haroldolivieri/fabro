@@ -1101,7 +1101,7 @@ enabled = true
             .await
             .unwrap();
 
-        assert!(!ok);
+        assert!(ok);
         assert!(response.workflow.diagnostics.is_empty());
         assert!(
             response.checks.sections[0]

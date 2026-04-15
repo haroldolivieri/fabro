@@ -18,6 +18,7 @@ fn dry_run_branching() {
     Goal: Implement and validate a feature
 
     warning [node: implement]: Node 'implement' has goal_gate=true but no retry_target or fallback_retry_target (goal_gate_has_retry)
+        Run: [ULID]
         Sandbox: local (ready in [TIME])
         ✓ Start  [TIME]
         ✓ Plan  [TIME]
@@ -52,6 +53,7 @@ fn dry_run_conditions() {
     Graph: [FIXTURES]/conditions.fabro
     Goal: Test condition evaluation with OR and parentheses
 
+        Run: [ULID]
         Sandbox: local (ready in [TIME])
         ✓ start  [TIME]
         ✓ Decide  [TIME]
@@ -84,6 +86,7 @@ fn dry_run_parallel() {
     Graph: [FIXTURES]/parallel.fabro
     Goal: Test parallel and fan-in execution
 
+        Run: [ULID]
         Sandbox: local (ready in [TIME])
         ✓ start  [TIME]
         ✓ Fork Work  [TIME]
@@ -117,6 +120,7 @@ fn dry_run_styled() {
     Graph: [FIXTURES]/styled.fabro
     Goal: Build a styled pipeline
 
+        Run: [ULID]
         Sandbox: local (ready in [TIME])
         ✓ start  [TIME]
         ✓ Plan  [TIME]
@@ -150,6 +154,7 @@ fn dry_run_legacy_tool() {
     Graph: [FIXTURES]/legacy_tool.fabro
     Goal: Verify backwards compatibility with old tool naming
 
+        Run: [ULID]
         Sandbox: local (ready in [TIME])
         ✓ Start  [TIME]
         ✓ Echo  [TIME]

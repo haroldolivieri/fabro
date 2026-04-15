@@ -2096,7 +2096,7 @@ async fn list_run_stages(
                     let active = run_state
                         .status
                         .as_ref()
-                        .map_or(false, |s| !s.status.is_terminal());
+                        .is_some_and(|s| !s.status.is_terminal());
                     (run_state.checkpoint, active)
                 }
                 Err(_) => (None, false),
@@ -2126,13 +2126,15 @@ async fn list_run_stages(
     for node_id in &checkpoint.completed_nodes {
         let duration_ms = stage_durations.get(node_id).copied().unwrap_or(0);
         let status = match checkpoint.node_outcomes.get(node_id) {
-            Some(outcome) => match outcome.status {
-                fabro_types::outcome::StageStatus::Success
-                | fabro_types::outcome::StageStatus::PartialSuccess => ApiStageStatus::Completed,
-                fabro_types::outcome::StageStatus::Fail => ApiStageStatus::Failed,
-                fabro_types::outcome::StageStatus::Skipped => ApiStageStatus::Cancelled,
-                fabro_types::outcome::StageStatus::Retry => ApiStageStatus::Pending,
-            },
+            Some(outcome) => {
+                use fabro_types::outcome::StageStatus;
+                match outcome.status {
+                    StageStatus::Success | StageStatus::PartialSuccess => ApiStageStatus::Completed,
+                    StageStatus::Fail => ApiStageStatus::Failed,
+                    StageStatus::Skipped => ApiStageStatus::Cancelled,
+                    StageStatus::Retry => ApiStageStatus::Pending,
+                }
+            }
             None => ApiStageStatus::Completed,
         };
         stages.push(RunStage {
@@ -6503,36 +6505,56 @@ async fn render_graph_bytes_with_exe_override(
     render_graph_response(dot_source, exe_override).await
 }
 
+#[derive(serde::Deserialize)]
+struct GraphParams {
+    #[serde(default)]
+    direction: Option<String>,
+}
+
 async fn get_graph(
     _auth: AuthenticatedService,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(params): Query<GraphParams>,
 ) -> Response {
     let id = match parse_run_id_path(&id) {
         Ok(id) => id,
         Err(response) => return response,
     };
+
     let live_dot_source = {
         let runs = state.runs.lock().expect("runs lock poisoned");
         runs.get(&id)
             .map(|managed_run| managed_run.dot_source.clone())
     };
-    if let Some(dot) = &live_dot_source {
-        if !dot.is_empty() {
-            return render_graph_bytes(dot).await;
-        }
-    }
 
-    match state.store.open_run_reader(&id).await {
-        Ok(run_store) => match run_store.state().await {
-            Ok(run_state) => match run_state.graph_source {
-                Some(dot_source) => render_graph_bytes(&dot_source).await,
-                None => ApiError::new(StatusCode::NOT_FOUND, "Graph not found.").into_response(),
+    let dot_source = if let Some(dot) = live_dot_source.filter(|d| !d.is_empty()) {
+        Some(dot)
+    } else {
+        match state.store.open_run_reader(&id).await {
+            Ok(run_store) => match run_store.state().await {
+                Ok(run_state) => run_state.graph_source,
+                Err(err) => {
+                    return ApiError::new(StatusCode::BAD_GATEWAY, err.to_string()).into_response();
+                }
             },
-            Err(err) => ApiError::new(StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
-        },
-        Err(_) => ApiError::new(StatusCode::NOT_FOUND, "Run not found.").into_response(),
-    }
+            Err(_) => return ApiError::not_found("Run not found.").into_response(),
+        }
+    };
+
+    let Some(dot) = dot_source else {
+        return ApiError::new(StatusCode::NOT_FOUND, "Graph not found.").into_response();
+    };
+
+    let dot = match params.direction.as_deref() {
+        Some(dir @ ("LR" | "TB" | "BT" | "RL")) => {
+            use fabro_graphviz::render;
+            render::apply_direction(&dot, dir).into_owned()
+        }
+        _ => dot,
+    };
+
+    render_graph_bytes(&dot).await
 }
 
 #[cfg(test)]
@@ -8506,7 +8528,7 @@ level = "debug"
         assert_eq!(body["status"].as_str().unwrap(), "failed");
         assert_eq!(body["status_reason"].as_str().unwrap(), "cancelled");
 
-        // Cancelled (failed) runs are excluded from the board
+        // Cancelled runs appear on the board in the "failed" column
         let req = Request::builder()
             .method("GET")
             .uri(api("/boards/runs"))
@@ -8515,12 +8537,20 @@ level = "debug"
         let response = app.clone().oneshot(req).await.unwrap();
         let body = body_json(response.into_body()).await;
         let run_id_str = run_id.to_string();
-        let found = body["data"]
+        let board_item = body["data"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|item| item["id"].as_str() == Some(run_id_str.as_str()));
-        assert!(!found, "cancelled run should not appear on the board");
+            .find(|item| item["id"].as_str() == Some(run_id_str.as_str()));
+        assert!(
+            board_item.is_some(),
+            "cancelled run should appear on the board"
+        );
+        assert_eq!(
+            board_item.unwrap()["status"].as_str(),
+            Some("failed"),
+            "cancelled run should be in the failed column"
+        );
 
         let run_store = state.store.open_run_reader(&run_id).await.unwrap();
         let status = run_store.state().await.unwrap().status.unwrap();

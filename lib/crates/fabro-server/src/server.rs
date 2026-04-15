@@ -116,7 +116,7 @@ use crate::server_secrets::{
 };
 use crate::{demo, diagnostics, run_manifest, settings_view, static_files, web_auth};
 
-type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+pub(crate) type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
 pub fn default_page_limit() -> u32 {
     20
@@ -326,7 +326,8 @@ struct BillingAccumulator {
     by_model:           HashMap<String, ModelBillingTotals>,
 }
 
-type RegistryFactoryOverride = dyn Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync;
+pub(crate) type RegistryFactoryOverride =
+    dyn Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync;
 
 #[derive(Clone)]
 enum RunAnswerTransport {
@@ -546,6 +547,18 @@ pub struct AppState {
     registry_factory_override:       Option<Box<RegistryFactoryOverride>>,
     slack_service:                   Option<Arc<SlackService>>,
     slack_started:                   AtomicBool,
+}
+
+pub(crate) struct AppStateConfig {
+    pub(crate) settings:                  Arc<RwLock<SettingsLayer>>,
+    pub(crate) registry_factory_override: Option<Box<RegistryFactoryOverride>>,
+    pub(crate) max_concurrent_runs:       usize,
+    pub(crate) store:                     Arc<Database>,
+    pub(crate) artifact_store:            ArtifactStore,
+    pub(crate) vault_path:                PathBuf,
+    pub(crate) server_env_path:           PathBuf,
+    pub(crate) local_daemon_mode:         bool,
+    pub(crate) env_lookup:                EnvLookup,
 }
 
 fn nonzero_i64(value: i64) -> Option<i64> {
@@ -2147,8 +2160,9 @@ pub fn create_app_state() -> Arc<AppState> {
 pub fn create_app_state_with_registry_factory(
     registry_factory_override: impl Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync + 'static,
 ) -> Arc<AppState> {
-    create_app_state_with_settings_and_registry_factory(
+    create_app_state_with_options_and_registry_factory(
         SettingsLayer::default(),
+        5,
         registry_factory_override,
     )
 }
@@ -2158,22 +2172,23 @@ pub fn create_app_state_with_settings_and_registry_factory(
     settings: SettingsLayer,
     registry_factory_override: impl Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync + 'static,
 ) -> Arc<AppState> {
-    let (store, artifact_store) = test_store_bundle();
+    create_app_state_with_options_and_registry_factory(settings, 5, registry_factory_override)
+}
+
+#[doc(hidden)]
+pub fn create_app_state_with_options_and_registry_factory(
+    settings: SettingsLayer,
+    max_concurrent_runs: usize,
+    registry_factory_override: impl Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync + 'static,
+) -> Arc<AppState> {
     let env_lookup = default_env_lookup();
-    let secrets_path = test_secret_store_path();
-    let server_env_path = secrets_path.with_file_name("server.env");
-    build_app_state_with_path(
+    let mut config = default_test_app_state_config(
         Arc::new(RwLock::new(settings)),
-        Some(Box::new(registry_factory_override)),
-        5,
-        store,
-        artifact_store,
-        &secrets_path,
-        &server_env_path,
-        false,
-        &env_lookup,
-    )
-    .expect("test app state should build")
+        max_concurrent_runs,
+        env_lookup,
+    );
+    config.registry_factory_override = Some(Box::new(registry_factory_override));
+    build_app_state(config).expect("test app state should build")
 }
 
 /// Create an `AppState` with the given settings and concurrency limit.
@@ -2181,15 +2196,13 @@ pub fn create_app_state_with_options(
     settings: SettingsLayer,
     max_concurrent_runs: usize,
 ) -> Arc<AppState> {
-    let (store, artifact_store) = test_store_bundle();
     let env_lookup = default_env_lookup();
-    create_app_state_with_store_and_env_lookup(
+    build_app_state(default_test_app_state_config(
         Arc::new(RwLock::new(settings)),
         max_concurrent_runs,
-        store,
-        artifact_store,
-        &env_lookup,
-    )
+        env_lookup,
+    ))
+    .expect("test app state should build")
 }
 
 #[doc(hidden)]
@@ -2200,13 +2213,14 @@ pub fn create_app_state_with_env_lookup(
 ) -> Arc<AppState> {
     let (store, artifact_store) = test_store_bundle();
     let env_lookup: EnvLookup = Arc::new(env_lookup);
-    create_app_state_with_store_and_env_lookup(
+    let mut config = default_test_app_state_config(
         Arc::new(RwLock::new(settings)),
         max_concurrent_runs,
-        store,
-        artifact_store,
-        &env_lookup,
-    )
+        env_lookup,
+    );
+    config.store = store;
+    config.artifact_store = artifact_store;
+    build_app_state(config).expect("test app state should build")
 }
 
 #[cfg(test)]
@@ -2215,8 +2229,8 @@ pub(crate) fn create_test_app_state_with_session_key(
     session_secret: Option<&str>,
     local_daemon_mode: bool,
 ) -> Arc<AppState> {
-    let secrets_path = test_secret_store_path();
-    let server_env_path = secrets_path
+    let vault_path = test_secret_store_path();
+    let server_env_path = vault_path
         .parent()
         .expect("test secrets path should have parent")
         .join("server.env");
@@ -2229,17 +2243,17 @@ pub(crate) fn create_test_app_state_with_session_key(
     }
     let (store, artifact_store) = test_store_bundle();
     let env_lookup = default_env_lookup();
-    build_app_state_with_path(
-        Arc::new(RwLock::new(settings)),
-        None,
-        5,
+    build_app_state(AppStateConfig {
+        settings: Arc::new(RwLock::new(settings)),
+        registry_factory_override: None,
+        max_concurrent_runs: 5,
         store,
         artifact_store,
-        &secrets_path,
-        &server_env_path,
+        vault_path,
+        server_env_path,
         local_daemon_mode,
-        &env_lookup,
-    )
+        env_lookup,
+    })
     .expect("test app state should build")
 }
 
@@ -2252,6 +2266,27 @@ fn test_store_bundle() -> (Arc<Database>, ArtifactStore) {
     ));
     let artifact_store = ArtifactStore::new(object_store, "artifacts");
     (store, artifact_store)
+}
+
+fn default_test_app_state_config(
+    settings: Arc<RwLock<SettingsLayer>>,
+    max_concurrent_runs: usize,
+    env_lookup: EnvLookup,
+) -> AppStateConfig {
+    let (store, artifact_store) = test_store_bundle();
+    let vault_path = test_secret_store_path();
+    let server_env_path = vault_path.with_file_name("server.env");
+    AppStateConfig {
+        settings,
+        registry_factory_override: None,
+        max_concurrent_runs,
+        store,
+        artifact_store,
+        vault_path,
+        server_env_path,
+        local_daemon_mode: false,
+        env_lookup,
+    }
 }
 
 pub fn create_app_state_with_store(
@@ -2277,44 +2312,37 @@ fn create_app_state_with_store_and_env_lookup(
     artifact_store: ArtifactStore,
     env_lookup: &EnvLookup,
 ) -> Arc<AppState> {
-    let secrets_path = test_secret_store_path();
-    let server_env_path = secrets_path.with_file_name("server.env");
-    build_app_state_with_path(
-        settings,
-        None,
-        max_concurrent_runs,
-        store,
-        artifact_store,
-        &secrets_path,
-        &server_env_path,
-        false,
-        env_lookup,
-    )
-    .expect("test app state should build")
+    let mut config =
+        default_test_app_state_config(settings, max_concurrent_runs, Arc::clone(env_lookup));
+    config.store = store;
+    config.artifact_store = artifact_store;
+    build_app_state(config).expect("test app state should build")
 }
 
 fn default_env_lookup() -> EnvLookup {
     Arc::new(|name| std::env::var(name).ok())
 }
 
-pub(crate) fn build_app_state_with_path(
-    settings: Arc<RwLock<SettingsLayer>>,
-    registry_factory_override: Option<Box<RegistryFactoryOverride>>,
-    max_concurrent_runs: usize,
-    store: Arc<Database>,
-    artifact_store: ArtifactStore,
-    vault_path: &std::path::Path,
-    server_env_path: &std::path::Path,
-    local_daemon_mode: bool,
-    env_lookup: &EnvLookup,
-) -> anyhow::Result<Arc<AppState>> {
-    let vault = Arc::new(AsyncRwLock::new(Vault::load(vault_path.to_path_buf())?));
-    let server_secrets = ServerSecrets::with_env_lookup(server_env_path.to_path_buf(), {
-        let env_lookup = Arc::clone(env_lookup);
+pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppState>> {
+    let AppStateConfig {
+        settings,
+        registry_factory_override,
+        max_concurrent_runs,
+        store,
+        artifact_store,
+        vault_path,
+        server_env_path,
+        local_daemon_mode,
+        env_lookup,
+    } = config;
+
+    let vault = Arc::new(AsyncRwLock::new(Vault::load(vault_path)?));
+    let server_secrets = ServerSecrets::with_env_lookup(server_env_path, {
+        let env_lookup = Arc::clone(&env_lookup);
         move |name| env_lookup(name)
     })?;
     let provider_credentials = ProviderCredentials::with_env_lookup(Arc::clone(&vault), {
-        let env_lookup = Arc::clone(env_lookup);
+        let env_lookup = Arc::clone(&env_lookup);
         move |name| env_lookup(name)
     });
     let (global_event_tx, _) = broadcast::channel(4096);

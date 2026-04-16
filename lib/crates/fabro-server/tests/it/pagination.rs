@@ -79,23 +79,19 @@ async fn paginated_endpoints_return_correct_shape() {
     let app = build_router(state, AuthMode::Disabled);
 
     for ep in ENDPOINTS {
-        // Default request: paginated shape, has_more = false (fixtures fit in default
-        // page)
-        let json = get_json(app.clone(), ep.path).await;
+        // Large limit: paginated shape, has_more = false (all fixture items fit).
+        // Using an explicit large limit instead of the server default so the test
+        // stays robust when datasets (e.g. the built-in model catalog) grow.
+        let json = get_json(app.clone(), &format!("{}?page[limit]=100", ep.path)).await;
         assert_paginated_shape(&json, ep.name);
         assert_eq!(
             json["meta"]["has_more"], false,
-            "{}: default request should have has_more=false",
+            "{}: large limit should have has_more=false",
             ep.name
         );
 
         // limit=1: at most 1 item, has_more = true (all fixtures have >1 item)
-        let uri = if ep.path.contains('?') {
-            format!("{}&page[limit]=1", ep.path)
-        } else {
-            format!("{}?page[limit]=1", ep.path)
-        };
-        let json = get_json(app.clone(), &uri).await;
+        let json = get_json(app.clone(), &format!("{}?page[limit]=1", ep.path)).await;
         assert_paginated_shape(&json, &format!("{} limit=1", ep.name));
         assert!(
             json["data"].as_array().unwrap().len() <= 1,

@@ -9,7 +9,8 @@ export async function loader() {
 
 export default function AuthLogin({ loaderData }: any) {
   const methods = loaderData?.methods ?? [];
-  const isDevToken = methods.includes("dev-token");
+  const hasDevToken = methods.includes("dev-token");
+  const hasGitHub = methods.includes("github");
   const navigate = useNavigate();
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -32,12 +33,28 @@ export default function AuthLogin({ loaderData }: any) {
         Sign in to Fabro
       </h1>
       <p className="mt-2 text-center text-sm text-fg-3">
-        {isDevToken
-          ? "Paste your dev token to continue."
-          : "Authenticate with your GitHub account to continue."}
+        {hasGitHub
+          ? "Authenticate with your GitHub account to continue."
+          : "Paste your dev token to continue."}
       </p>
-      <div className="mt-6">
-        {isDevToken ? (
+      <div className="mt-6 space-y-4">
+        {hasGitHub ? (
+          <a
+            href="/auth/login/github"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-300"
+          >
+            <GitHubMark />
+            Sign in with GitHub
+          </a>
+        ) : null}
+        {hasDevToken && hasGitHub ? (
+          <DevTokenCollapsible
+            token={token}
+            setToken={setToken}
+            error={error}
+            onSubmit={handleSubmit}
+          />
+        ) : hasDevToken ? (
           <form className="space-y-3" onSubmit={handleSubmit}>
             <input
               type="password"
@@ -53,23 +70,77 @@ export default function AuthLogin({ loaderData }: any) {
               Sign in with Dev Token
             </button>
             <p className="text-center text-xs text-fg-muted">
-              Paste the dev token from your terminal or <code>cat ~/.fabro/dev-token</code>
+              Paste the dev token from your terminal or{" "}
+              <code>cat ~/.fabro/dev-token</code>
             </p>
             {error ? (
               <p className="text-center text-sm text-red-500">{error}</p>
             ) : null}
           </form>
-        ) : (
-          <a
-            href="/auth/login/github"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-300"
-          >
-            <GitHubMark />
-            Sign in with GitHub
-          </a>
-        )}
+        ) : null}
       </div>
     </AuthLayout>
+  );
+}
+
+function DevTokenCollapsible({
+  token,
+  setToken,
+  error,
+  onSubmit,
+}: {
+  token: string;
+  setToken: (v: string) => void;
+  error: string | null;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="mx-auto flex items-center gap-1 text-xs text-fg-3 hover:text-fg-2 transition-colors"
+      >
+        Use a dev token instead
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path
+            d="M3 4.5L6 7.5L9 4.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {open ? (
+        <form className="mt-3 space-y-3" onSubmit={onSubmit}>
+          <input
+            type="password"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            placeholder="fabro_dev_..."
+            className="w-full rounded-lg border border-line-strong bg-panel px-4 py-2.5 text-sm text-fg outline-none focus:border-teal-500"
+          />
+          <button
+            type="submit"
+            className="flex w-full items-center justify-center rounded-lg border border-line-strong bg-panel px-4 py-2.5 text-sm font-medium text-fg transition-colors hover:bg-panel-2"
+          >
+            Sign in with Dev Token
+          </button>
+          {error ? (
+            <p className="text-center text-sm text-red-500">{error}</p>
+          ) : null}
+        </form>
+      ) : null}
+    </div>
   );
 }
 

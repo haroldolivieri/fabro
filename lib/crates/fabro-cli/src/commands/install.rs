@@ -158,7 +158,7 @@ fn ensure_table<'a>(table: &'a mut toml::Table, key: &str) -> Result<&'a mut tom
 
 /// Default web URL used by `fabro install` when `--web-url` is omitted.
 pub(crate) fn default_web_url() -> String {
-    format!("http://127.0.0.1:{}", fabro_server::serve::DEFAULT_TCP_PORT)
+    format!("http://127.0.0.1:{}", serve::DEFAULT_TCP_PORT)
 }
 
 fn merge_server_settings(doc: &mut toml::Value, web_url: &str) -> Result<()> {

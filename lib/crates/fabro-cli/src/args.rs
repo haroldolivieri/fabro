@@ -1388,8 +1388,9 @@ pub(crate) struct InstallArgs {
     #[command(flatten)]
     pub(crate) storage_dir: StorageDirArgs,
 
-    /// Base URL for the web UI (used for OAuth callback URLs)
-    #[arg(long, default_value = "http://localhost:3000")]
+    /// Base URL for the web UI (used for OAuth callback URLs and generated
+    /// settings)
+    #[arg(long, default_value_t = crate::commands::install::default_web_url())]
     pub(crate) web_url: String,
 
     /// Run install without prompts; use hidden scripted flags for inputs

@@ -156,7 +156,21 @@ fn ensure_table<'a>(table: &'a mut toml::Table, key: &str) -> Result<&'a mut tom
         .with_context(|| format!("settings.toml [{key}] is not a table"))
 }
 
-fn merge_server_settings(doc: &mut toml::Value) -> Result<()> {
+/// Default web URL used by `fabro install` when `--web-url` is omitted.
+pub(crate) fn default_web_url() -> String {
+    format!("http://127.0.0.1:{}", fabro_server::serve::DEFAULT_TCP_PORT)
+}
+
+fn merge_server_settings(doc: &mut toml::Value, web_url: &str) -> Result<()> {
+    // Extract host:port from a URL like "http://127.0.0.1:32276"
+    let authority = web_url
+        .split("://")
+        .nth(1)
+        .unwrap_or(web_url)
+        .split('/')
+        .next()
+        .unwrap_or(web_url);
+
     let root = root_table_mut(doc)?;
     root.insert("_version".to_string(), toml::Value::Integer(1));
 
@@ -165,22 +179,19 @@ fn merge_server_settings(doc: &mut toml::Value) -> Result<()> {
     let api = ensure_table(server, "api")?;
     api.insert(
         "url".to_string(),
-        toml::Value::String("http://127.0.0.1:32276/api/v1".to_string()),
+        toml::Value::String(format!("{web_url}/api/v1")),
     );
 
     let listen = ensure_table(server, "listen")?;
     listen.insert("type".to_string(), toml::Value::String("tcp".to_string()));
     listen.insert(
         "address".to_string(),
-        toml::Value::String("127.0.0.1:32276".to_string()),
+        toml::Value::String(authority.to_string()),
     );
 
     let web = ensure_table(server, "web")?;
     web.insert("enabled".to_string(), toml::Value::Boolean(true));
-    web.insert(
-        "url".to_string(),
-        toml::Value::String("http://127.0.0.1:32276".to_string()),
-    );
+    web.insert("url".to_string(), toml::Value::String(web_url.to_string()));
 
     let auth = ensure_table(server, "auth")?;
     auth.insert(
@@ -191,10 +202,7 @@ fn merge_server_settings(doc: &mut toml::Value) -> Result<()> {
     let cli = ensure_table(root, "cli")?;
     let target = ensure_table(cli, "target")?;
     target.insert("type".to_string(), toml::Value::String("http".to_string()));
-    target.insert(
-        "url".to_string(),
-        toml::Value::String("http://127.0.0.1:32276".to_string()),
-    );
+    target.insert("url".to_string(), toml::Value::String(web_url.to_string()));
 
     Ok(())
 }
@@ -293,7 +301,8 @@ fn write_github_app_settings(
 #[cfg(test)]
 fn format_config_toml() -> String {
     let mut doc = toml::Value::Table(toml::Table::default());
-    merge_server_settings(&mut doc).expect("default server config should be valid");
+    merge_server_settings(&mut doc, &default_web_url())
+        .expect("default server config should be valid");
     toml::to_string_pretty(&doc).expect("default server config should serialize")
 }
 
@@ -1923,7 +1932,7 @@ async fn run_install_inner(
                 );
             }
             ServerConfigSelection::Write => {
-                merge_server_settings(&mut doc)?;
+                merge_server_settings(&mut doc, web_url)?;
             }
         }
 
@@ -2126,7 +2135,7 @@ mod tests {
     fn install_args(non_interactive: bool, scripted: InstallNonInteractiveArgs) -> InstallArgs {
         InstallArgs {
             storage_dir: crate::args::StorageDirArgs::default(),
-            web_url: "http://localhost:3000".to_string(),
+            web_url: default_web_url(),
             non_interactive,
             scripted,
         }
@@ -2293,7 +2302,7 @@ name = "custom"
         )
         .unwrap();
 
-        merge_server_settings(&mut doc).unwrap();
+        merge_server_settings(&mut doc, &default_web_url()).unwrap();
 
         // Existing top-level [project] stays.
         assert_eq!(
@@ -2410,7 +2419,7 @@ client_id = "client-id"
     #[test]
     fn write_github_app_settings_uses_server_integrations_github() {
         let mut doc = toml::Value::Table(toml::Table::default());
-        merge_server_settings(&mut doc).unwrap();
+        merge_server_settings(&mut doc, &default_web_url()).unwrap();
 
         write_github_app_settings(&mut doc, "123", "fabro-app", "client-id", &[
             "brynary".to_string()

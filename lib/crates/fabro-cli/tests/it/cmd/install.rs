@@ -23,7 +23,7 @@ fn help() {
           --json                       Output as JSON [env: FABRO_JSON=]
           --storage-dir <STORAGE_DIR>  Local storage directory (default: ~/.fabro/storage) [env: FABRO_STORAGE_DIR=]
           --debug                      Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
-          --web-url <WEB_URL>          Base URL for the web UI (used for OAuth callback URLs) [default: http://localhost:3000]
+          --web-url <WEB_URL>          Base URL for the web UI (used for OAuth callback URLs and generated settings) [default: http://127.0.0.1:32276]
           --no-upgrade-check           Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
           --non-interactive            Run install without prompts; use hidden scripted flags for inputs
           --quiet                      Suppress non-essential output [env: FABRO_QUIET=]

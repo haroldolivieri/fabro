@@ -63,7 +63,7 @@ When you choose the GitHub App strategy, the CLI opens GitHub with a pre-filled 
 
 The installer:
 
-1. Lets you choose where to register the app. If you have the `gh` CLI installed, Fabro detects your GitHub username and any organizations you administer and lets you pick. If `gh` is not available, the app is registered under your personal account.
+1. Lets you choose where to register the app. If you have the `gh` CLI installed, Fabro detects your GitHub username and any organizations you administer and lets you pick. If `gh` is not available, the installer prompts for a GitHub token and uses it to look up your identity and organizations.
 2. Opens GitHub in your browser so you can review the manifest and click **Create GitHub App**.
 3. Receives GitHub's temporary callback on localhost, exchanges it for permanent app credentials, and writes:
    - `app_id`, `client_id`, and `slug` to `~/.fabro/settings.toml`
@@ -124,6 +124,16 @@ Fabro stores the GitHub App secrets in `<data_dir>/server.env` under these keys:
 - `GITHUB_APP_PRIVATE_KEY`
 
 The private key is stored as base64-encoded PEM. Fabro also accepts raw PEM format (starting with `-----BEGIN`).
+
+### Reconfigure GitHub after install
+
+To switch GitHub strategies or re-register the app without re-running the full install wizard, use `fabro install github`:
+
+```bash
+fabro install github
+```
+
+This walks through just the GitHub setup steps — choosing a strategy, registering an app, or storing a token — and restarts the server when done. Stale settings and secrets from the previous strategy are cleaned up automatically.
 
 ## `token` mode
 

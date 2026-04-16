@@ -381,6 +381,22 @@ fabro server stop --timeout 30
 |---|---|---|
 | `--timeout <SECONDS>` | Seconds to wait for graceful shutdown before SIGKILL | `10` |
 
+## `fabro server restart`
+
+Stop the running server and start a fresh one. Passes through the same flags as `server start` (`--bind`, `--foreground`, `--no-web`, etc.). Works even if no server is currently running.
+
+```bash
+fabro server restart
+fabro server restart --foreground
+```
+
+| Flag | Description | Default |
+|---|---|---|
+| `--timeout <SECONDS>` | Seconds to wait for graceful shutdown before SIGKILL | `10` |
+| `--foreground` | Run in the foreground instead of daemonizing | — |
+
+All `fabro server start` flags are also accepted.
+
 ## `fabro server status`
 
 Show whether the server daemon is running, along with PID, bind address, and uptime.
@@ -841,7 +857,22 @@ fabro install --non-interactive --llm-provider anthropic --llm-api-key-env ANTHR
 | `--web-url <URL>` | Web UI base URL for OAuth callback endpoints | `http://localhost:3000` |
 | `--non-interactive` | Run without prompts; supply inputs via scripted flags | — |
 
-When configuring a GitHub App, the wizard detects your GitHub organizations (via the `gh` CLI) and lets you choose whether to register the app under your personal account or an organization. Use `--non-interactive` for headless or CI environments where no TTY is available.
+When configuring a GitHub App, the wizard detects your GitHub organizations (via the `gh` CLI) and lets you choose whether to register the app under your personal account or an organization. If the `gh` CLI is not available, the installer prompts for a GitHub token directly. Use `--non-interactive` for headless or CI environments where no TTY is available.
+
+### `fabro install github`
+
+Reconfigure just the GitHub integration on an existing install without re-running the full setup wizard.
+
+```bash
+fabro install github
+fabro install github --strategy token
+fabro install github --strategy app --owner org:my-org
+```
+
+| Flag | Description |
+|---|---|
+| `--strategy <STRATEGY>` | GitHub auth strategy: `token` or `app` (requires `--non-interactive` on the parent) |
+| `--owner <OWNER>` | GitHub App owner: `personal` or `org:<slug>` (app strategy only, requires `--non-interactive`) |
 
 ## `fabro uninstall`
 
@@ -860,16 +891,19 @@ fabro uninstall --yes
 
 ## `fabro secret set`
 
-Store or update a server-owned secret on the connected Fabro server.
+Store or update a server-owned secret on the connected Fabro server. The value can be provided as a positional argument, piped via `--value-stdin`, or entered interactively when stdin is a TTY.
 
 ```bash
 fabro secret set ANTHROPIC_API_KEY sk-ant-...
+echo "sk-ant-..." | fabro secret set ANTHROPIC_API_KEY --value-stdin
+fabro secret set ANTHROPIC_API_KEY                        # interactive prompt
 ```
 
-| Argument | Description |
+| Argument / Flag | Description |
 |---|---|
 | `<KEY>` | Name of the secret (required) |
-| `<VALUE>` | Value to store (required) |
+| `[VALUE]` | Value to store (omit to enter interactively) |
+| `--value-stdin` | Read the secret value from stdin |
 
 ## `fabro secret list`
 

@@ -1,0 +1,25 @@
+---
+title: "Server restart command and startup improvements"
+date: "2026-04-16"
+---
+
+## `fabro server restart`
+
+You can now restart the Fabro server without manually stopping and starting it. This is useful after configuration changes or when the server needs a fresh start. The command stops the running server and starts a new one in a single step.
+
+```bash
+fabro server restart
+```
+
+## More
+
+<Accordion title="CLI">
+- `fabro server start` now displays the Web UI URL and active auth methods in its output
+- Added `--watch-web` flag to `fabro server start` for auto-rebuilding web assets during development (debug builds only)
+</Accordion>
+
+<Accordion title="Fixes">
+- Fixed device code login output missing blank line spacing, improving readability
+- Fixed Web UI login page not showing both GitHub and dev-token options when both auth methods are enabled
+- Fixed install generating inconsistent web URLs for GitHub App callback and settings
+</Accordion>

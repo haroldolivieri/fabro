@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-04-16T20:17:48.693026Z",
+  "current_node": "greet",
+  "completed_nodes": [
+    "start",
+    "greet"
+  ],
+  "node_retries": {},
+  "context_values": {
+    "internal.fidelity": "compact",
+    "internal.retry_count.start": 0,
+    "internal.retry_count.greet": 0,
+    "failure_class": "",
+    "graph.rankdir": "LR",
+    "last_response": "Here's a breakdown of the top-level contents of the **Fabro** repository:\n\n### 📁 Directories\n| Directory | Description |\n|---|---|\n| `.ai` | AI-related configuration/assets |\n| `.cargo` | Cargo (Ru",
+    "failure_signature": "",
+    "response.greet": "Here's a breakdown of the top-level contents of the **Fabro** repository:\n\n### 📁 Directories\n| Directory | Description |\n|---|---|\n| `.ai` | AI-related configuration/assets |\n| `.cargo` | Cargo (Rust) configuration |\n| `.claude` | Claude AI assistant config |\n| `.config` | General config files |\n| `.fabro` | Fabro workflow definitions (e.g. `.fabro/workflows/`) |\n| `.git` | Git repository metadata |\n| `.github` | GitHub Actions CI/CD workflows |\n| `apps` | Frontend applications (e.g. `fabro-web` React UI, `marketing` Astro site) |\n| `bin` | Binary/script entrypoints |\n| `docker` | Dockerfiles and container setup |\n| `docs` | Public documentation (Mintlify), including the OpenAPI spec |\n| `docs-internal` | Internal strategy docs (logging, events, testing) |\n| `evals` | Evaluation harnesses |\n| `files-internal` | Internal reference files |\n| `installer` | Install scripts/tooling |\n| `lib` | Rust crates (`lib/crates/`) and TypeScript packages (`lib/packages/`) |\n| `scripts` | Utility/build scripts |\n| `test` | Test fixtures, scenarios, and helpers |\n\n### 📄 Key Files\n| File | Description |\n|---|---|\n| `README.md` | Project overview |\n| `AGENTS.md` / `CLAUDE.md` | AI assistant guidance (CLAUDE.md is a symlink to AGENTS.md) |\n| `CONTRIBUTING.md` | Contribution guidelines |\n| `Cargo.toml` / `Cargo.lock` | Rust workspace manifest and lockfile |\n| `package.json` / `bun.lock` | Root JS/TS package config and lockfile (Bun) |\n| `rustfmt.toml` / `clippy.toml` | Rust formatting and lint config |\n| `.env.example` | Example environment variables for local dev |\n| `install.sh` / `install.md` | Installer script and docs (symlinked from `apps/marketing/public/`) |\n| `LICENSE.md` | Project license |\n\nThe repo is a **monorepo** combining Rust (workspace of crates under `lib/crates/`) and TypeScript (apps under `apps/` and packages under `lib/packages/`) — all orchestrated around the Fabro AI workflow platform. 🚀",
+    "internal.node_visit_count": 1,
+    "internal.thread_id": "start",
+    "outcome": "success",
+    "last_stage": "greet",
+    "thread.start.current_node": "greet",
+    "internal.run_id": "01KPBZ204VXR61TAA67Y48R33C",
+    "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+    "current_node": "greet"
+  },
+  "node_outcomes": {
+    "start": {
+      "status": "success",
+      "usage": null
+    },
+    "greet": {
+      "status": "success",
+      "context_updates": {
+        "response.greet": "Here's a breakdown of the top-level contents of the **Fabro** repository:\n\n### 📁 Directories\n| Directory | Description |\n|---|---|\n| `.ai` | AI-related configuration/assets |\n| `.cargo` | Cargo (Rust) configuration |\n| `.claude` | Claude AI assistant config |\n| `.config` | General config files |\n| `.fabro` | Fabro workflow definitions (e.g. `.fabro/workflows/`) |\n| `.git` | Git repository metadata |\n| `.github` | GitHub Actions CI/CD workflows |\n| `apps` | Frontend applications (e.g. `fabro-web` React UI, `marketing` Astro site) |\n| `bin` | Binary/script entrypoints |\n| `docker` | Dockerfiles and container setup |\n| `docs` | Public documentation (Mintlify), including the OpenAPI spec |\n| `docs-internal` | Internal strategy docs (logging, events, testing) |\n| `evals` | Evaluation harnesses |\n| `files-internal` | Internal reference files |\n| `installer` | Install scripts/tooling |\n| `lib` | Rust crates (`lib/crates/`) and TypeScript packages (`lib/packages/`) |\n| `scripts` | Utility/build scripts |\n| `test` | Test fixtures, scenarios, and helpers |\n\n### 📄 Key Files\n| File | Description |\n|---|---|\n| `README.md` | Project overview |\n| `AGENTS.md` / `CLAUDE.md` | AI assistant guidance (CLAUDE.md is a symlink to AGENTS.md) |\n| `CONTRIBUTING.md` | Contribution guidelines |\n| `Cargo.toml` / `Cargo.lock` | Rust workspace manifest and lockfile |\n| `package.json` / `bun.lock` | Root JS/TS package config and lockfile (Bun) |\n| `rustfmt.toml` / `clippy.toml` | Rust formatting and lint config |\n| `.env.example` | Example environment variables for local dev |\n| `install.sh` / `install.md` | Installer script and docs (symlinked from `apps/marketing/public/`) |\n| `LICENSE.md` | Project license |\n\nThe repo is a **monorepo** combining Rust (workspace of crates under `lib/crates/`) and TypeScript (apps under `apps/` and packages under `lib/packages/`) — all orchestrated around the Fabro AI workflow platform. 🚀",
+        "last_stage": "greet",
+        "last_response": "Here's a breakdown of the top-level contents of the **Fabro** repository:\n\n### 📁 Directories\n| Directory | Description |\n|---|---|\n| `.ai` | AI-related configuration/assets |\n| `.cargo` | Cargo (Ru"
+      },
+      "notes": "Stage completed: greet",
+      "usage": {
+        "input": {
+          "usage": {
+            "model": {
+              "provider": "anthropic",
+              "model_id": "claude-sonnet-4-6"
+            },
+            "tokens": {
+              "input_tokens": 1519,
+              "output_tokens": 680,
+              "reasoning_tokens": 0,
+              "cache_read_tokens": 5613,
+              "cache_write_tokens": 5960
+            }
+          },
+          "facts": {
+            "provider": "anthropic",
+            "cache_write_5m_tokens": 5960,
+            "cache_write_1h_tokens": 0
+          }
+        },
+        "total_usd_micros": 38790
+      }
+    }
+  },
+  "next_node_id": "exit",
+  "node_visits": {
+    "greet": 1,
+    "start": 1
+  }
+}

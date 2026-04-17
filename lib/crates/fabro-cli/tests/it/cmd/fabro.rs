@@ -74,30 +74,29 @@ fn no_args_prints_curated_landing() {
 
     Set up
 
-      fabro install           Set up the Fabro environment (LLMs, certs, GitHub)
-      fabro doctor            Check environment and integration health
-      fabro repo init         Initialize Fabro in a repository
-      fabro server start      Start the Fabro API server
-      fabro secret set        Store a server-owned secret
+      fabro install        Set up the Fabro environment (LLMs, certs, GitHub)
+      fabro doctor         Check environment and integration health
+      fabro repo init      Initialize Fabro in a repository
+      fabro server start   Start the Fabro API server
+      fabro secret set     Store a server-owned secret
 
     Run workflows
 
-      fabro validate          Validate a workflow
-      fabro preflight         Validate run configuration without executing
-      fabro run               Launch a workflow run
+      fabro validate       Validate a workflow
+      fabro preflight      Validate run configuration without executing
+      fabro run            Launch a workflow run
 
     Inspect runs
 
-      fabro logs              View the event log of a workflow run
-      fabro sandbox ssh       SSH into a run's sandbox
-      fabro sandbox preview   Get a preview URL for a port on a run's sandbox
-      fabro sandbox cp        Copy files to/from a run's sandbox
+      fabro logs           View the event log of a workflow run
+      fabro sandbox ssh    SSH into a run's sandbox
 
     If you need help along the way:
 
-      Run fabro help for the full command reference.
-      Run fabro <command> --help for details on a specific command.
-      Visit https://docs.fabro.sh for docs and examples.
+      Run fabro <command> --help for more information about a command.
+      Join our Discord at https://fabro.sh/discord to get help from the Fabro community.
+
+    For a full list of commands, run `fabro help`.
     ----- stderr -----
     ");
 }

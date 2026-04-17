@@ -51,11 +51,13 @@ jobs:
           rustup default stable
           rustup target add ${{ matrix.target }}
 
+      - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
+
       - name: Build
         run: cargo build --target ${{ matrix.target }} --release
 
       - name: Test
-        run: cargo test --target ${{ matrix.target }} --release
+        run: cargo nextest run --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci
 
       - name: Package
         run: |

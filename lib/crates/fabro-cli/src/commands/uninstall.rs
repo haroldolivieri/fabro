@@ -63,6 +63,13 @@ pub(crate) async fn run_uninstall(
         return Ok(());
     }
 
+    // Tear down telemetry before removal so the post-command
+    // `track!("CLI Executed", ...)` in main() can't queue an event that
+    // would make the background flush call
+    // `spawn_fabro_subcommand` → `create_dir_all(~/.fabro/tmp)` and
+    // silently recreate the directory we are about to delete.
+    fabro_telemetry::shutdown();
+
     execute_uninstall(&inventory, json, printer).await
 }
 

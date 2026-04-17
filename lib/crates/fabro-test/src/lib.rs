@@ -955,7 +955,8 @@ impl TestContext {
         cmd.env("NO_COLOR", "1");
         cmd.env("HOME", &self.home_dir);
         cmd.env("FABRO_NO_UPGRADE_CHECK", "true")
-            .env("FABRO_HTTP_PROXY_POLICY", "disabled");
+            .env("FABRO_HTTP_PROXY_POLICY", "disabled")
+            .env("FABRO_TELEMETRY", "off");
         cmd.env("FABRO_SERVER_MAX_CONCURRENT_RUNS", "64");
         cmd.env(TEST_IN_MEMORY_STORE_ENV, "1");
         cmd

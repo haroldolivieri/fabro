@@ -2,30 +2,37 @@ use assert_cmd::Command;
 use fabro_test::{TestContext, fabro_snapshot, test_context};
 
 fn hard_link_or_copy(src: &std::path::Path, dest: &std::path::Path) {
-    match std::fs::hard_link(src, dest) {
-        Ok(()) => {}
-        Err(_) => {
-            std::fs::copy(src, dest).expect("copy test binary into fake Cellar");
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
+    if std::fs::hard_link(src, dest).is_ok() {
+        return;
+    }
 
-                let perms = std::fs::metadata(src)
-                    .expect("read source binary metadata")
-                    .permissions()
-                    .mode();
-                std::fs::set_permissions(dest, std::fs::Permissions::from_mode(perms))
-                    .expect("preserve executable permissions");
-            }
-        }
+    std::fs::copy(src, dest).expect("copy test binary into fake Cellar");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let perms = std::fs::metadata(src)
+            .expect("read source binary metadata")
+            .permissions()
+            .mode();
+        std::fs::set_permissions(dest, std::fs::Permissions::from_mode(perms))
+            .expect("preserve executable permissions");
     }
 }
 
 fn brew_command(context: &TestContext, formula: &str, version: &str) -> Command {
-    let bin_dir = context.temp_dir.join("Cellar").join(formula).join(version).join("bin");
+    let bin_dir = context
+        .temp_dir
+        .join("Cellar")
+        .join(formula)
+        .join(version)
+        .join("bin");
     std::fs::create_dir_all(&bin_dir).expect("create fake Cellar bin dir");
     let brew_fabro = bin_dir.join("fabro");
-    hard_link_or_copy(std::path::Path::new(env!("CARGO_BIN_EXE_fabro")), &brew_fabro);
+    hard_link_or_copy(
+        std::path::Path::new(env!("CARGO_BIN_EXE_fabro")),
+        &brew_fabro,
+    );
 
     let mut cmd = Command::new(&brew_fabro);
     cmd.current_dir(&context.temp_dir);

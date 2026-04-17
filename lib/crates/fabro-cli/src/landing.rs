@@ -10,7 +10,7 @@
 use console::style;
 
 pub(crate) fn print() {
-    let cmd_width = "sandbox preview".len();
+    let cmd_width = "server start".len();
 
     println!(
         "{} AI-powered workflow orchestration.",
@@ -55,11 +55,6 @@ pub(crate) fn print() {
         &[
             ("logs", "View the event log of a workflow run"),
             ("sandbox ssh", "SSH into a run's sandbox"),
-            (
-                "sandbox preview",
-                "Get a preview URL for a port on a run's sandbox",
-            ),
-            ("sandbox cp", "Copy files to/from a run's sandbox"),
         ],
         cmd_width,
     );
@@ -67,16 +62,19 @@ pub(crate) fn print() {
     println!("{}", style("If you need help along the way:").bold());
     println!();
     println!(
-        "  Run {} for the full command reference.",
-        style("fabro help").cyan().bold()
-    );
-    println!(
-        "  Run {} for details on a specific command.",
+        "  Run {} for more information about a command.",
         style("fabro <command> --help").cyan().bold()
     );
     println!(
-        "  Visit {} for docs and examples.",
-        style("https://docs.fabro.sh").cyan().bold()
+        "  Join our Discord at {} to get help from the Fabro community.",
+        style("https://fabro.sh/discord").cyan().bold()
+    );
+    println!();
+    println!(
+        "{}{}{}",
+        style("For a full list of commands, run `").dim(),
+        style("fabro help").cyan().bold(),
+        style("`.").dim()
     );
 }
 

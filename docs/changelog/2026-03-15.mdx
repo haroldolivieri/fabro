@@ -15,7 +15,7 @@ fabro fork <run_id> @3          # fork from checkpoint index 3
 
 ## Self-update with fabro upgrade
 
-Fabro can now update itself. `fabro upgrade` downloads the latest release from GitHub, verifies its SHA256 checksum, and atomically replaces the binary. Downgrade protection prevents accidentally installing an older version (override with `--force`). A daily background check notifies you when a new version is available — disable it with `upgrade_check = false` in `~/.fabro/cli.toml` or `--no-upgrade-check`.
+Fabro can now update itself. For self-managed installs, `fabro upgrade` downloads the latest release from GitHub, verifies its SHA256 checksum, and atomically replaces the binary. Downgrade protection prevents accidentally installing an older version (override with `--force`). On Homebrew installs, `fabro upgrade` leaves the Homebrew-managed binary alone and prints the matching `brew upgrade fabro` or `brew upgrade fabro-nightly` command instead. A daily background check notifies you when a new version is available — disable it with `upgrade_check = false` in `~/.fabro/cli.toml` or `--no-upgrade-check`.
 
 ```bash
 fabro upgrade             # upgrade to latest

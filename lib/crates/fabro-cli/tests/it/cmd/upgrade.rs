@@ -1,4 +1,50 @@
-use fabro_test::{fabro_snapshot, test_context};
+use assert_cmd::Command;
+use fabro_test::{TestContext, fabro_snapshot, test_context};
+
+fn hard_link_or_copy(src: &std::path::Path, dest: &std::path::Path) {
+    match std::fs::hard_link(src, dest) {
+        Ok(()) => {}
+        Err(_) => {
+            std::fs::copy(src, dest).expect("copy test binary into fake Cellar");
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+
+                let perms = std::fs::metadata(src)
+                    .expect("read source binary metadata")
+                    .permissions()
+                    .mode();
+                std::fs::set_permissions(dest, std::fs::Permissions::from_mode(perms))
+                    .expect("preserve executable permissions");
+            }
+        }
+    }
+}
+
+fn brew_command(context: &TestContext, formula: &str, version: &str) -> Command {
+    let bin_dir = context.temp_dir.join("Cellar").join(formula).join(version).join("bin");
+    std::fs::create_dir_all(&bin_dir).expect("create fake Cellar bin dir");
+    let brew_fabro = bin_dir.join("fabro");
+    hard_link_or_copy(std::path::Path::new(env!("CARGO_BIN_EXE_fabro")), &brew_fabro);
+
+    let mut cmd = Command::new(&brew_fabro);
+    cmd.current_dir(&context.temp_dir);
+    for (key, _) in std::env::vars_os() {
+        if let Some(s) = key.to_str() {
+            if s.starts_with("FABRO_") {
+                cmd.env_remove(&key);
+            }
+        }
+    }
+    cmd.env("NO_COLOR", "1");
+    cmd.env("HOME", &context.home_dir);
+    cmd.env("FABRO_NO_UPGRADE_CHECK", "true")
+        .env("FABRO_HTTP_PROXY_POLICY", "disabled")
+        .env("FABRO_TELEMETRY", "off")
+        .env("FABRO_SERVER_MAX_CONCURRENT_RUNS", "64")
+        .env("FABRO_TEST_IN_MEMORY_STORE", "1");
+    cmd
+}
 
 #[test]
 fn help() {
@@ -131,5 +177,58 @@ esac
     Would upgrade fabro from [VERSION] to 999.0.0
       tag: v999.0.0
       target: [TARGET]
+    ");
+}
+
+#[test]
+fn upgrade_brew_install_refuses_and_prints_brew_command() {
+    let context = test_context!();
+    let mut cmd = brew_command(&context, "fabro", "0.176.2");
+    cmd.args(["upgrade"]);
+
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+    fabro was installed via Homebrew.
+    Run `brew upgrade fabro` to update.
+    error: refusing to overwrite a Homebrew-managed binary
+    ");
+}
+
+#[test]
+fn upgrade_brew_install_dry_run_json_reports_brew_command() {
+    let context = test_context!();
+    let mut cmd = brew_command(&context, "fabro-nightly", "0.205.0-nightly.0");
+    cmd.args(["--json", "upgrade", "--dry-run"]);
+
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    {
+      "install_source": "homebrew",
+      "formula": "fabro-nightly",
+      "brew_command": "brew upgrade fabro-nightly",
+      "dry_run": true,
+      "note": "fabro is Homebrew-managed; no in-place upgrade attempted"
+    }
+    ----- stderr -----
+    "#);
+}
+
+#[test]
+fn upgrade_brew_install_rejects_version_flag() {
+    let context = test_context!();
+    let mut cmd = brew_command(&context, "fabro", "0.176.2");
+    cmd.args(["upgrade", "--version", "0.1.0"]);
+
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+    error: fabro is managed by Homebrew (formula `fabro`); Homebrew selects the version and channel. Use `brew upgrade fabro` (or reinstall with a different formula) instead of `fabro upgrade --version`/`--prerelease`/`--force`.
     ");
 }

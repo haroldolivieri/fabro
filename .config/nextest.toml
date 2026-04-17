@@ -27,3 +27,10 @@ leak-timeout = "500ms"
 # E2E (ignored) tests: flag SLOW after 10s, hard-kill after 30s
 slow-timeout = { period = "10s", terminate-after = 3 }
 leak-timeout = "500ms"
+
+[profile.ci]
+# CI runners are slower and more variable than dev machines; give tests room
+# before flagging them as hung. Does not inherit default's per-package
+# overrides — CI uses one uniform timeout for every test.
+slow-timeout = { period = "30s", terminate-after = 4 }
+leak-timeout = "2s"

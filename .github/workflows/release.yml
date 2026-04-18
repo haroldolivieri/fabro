@@ -35,6 +35,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -97,6 +99,11 @@ jobs:
           tar czf fabro-${{ matrix.target }}.tar.gz fabro-${{ matrix.target }}
           shasum -a 256 fabro-${{ matrix.target }}.tar.gz > fabro-${{ matrix.target }}.tar.gz.sha256
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: fabro-${{ matrix.target }}.tar.gz
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: artifacts-fabro-${{ matrix.target }}
@@ -139,6 +146,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -181,7 +190,8 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
             type=raw,value=nightly,enable=${{ contains(github.ref_name, '-nightly.') }}
 
-      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+      - id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .
           file: Dockerfile
@@ -189,6 +199,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/fabro-sh/fabro
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
   update-homebrew:
     name: Update Homebrew Formula

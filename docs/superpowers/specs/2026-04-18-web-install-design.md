@@ -6,9 +6,13 @@
 
 ## Summary
 
-Add a browser-based installation wizard as an alternative to `fabro install`. When `fabro server` boots without `~/.fabro/settings.toml`, it enters **install mode**: prints a one-time install token, mounts an install-only HTTP router, and serves a wizard from the existing `fabro-web` bundle. On successful completion, the server persists the same on-disk state the CLI install produces and exits cleanly so the supervisor restarts it into normal mode.
+Add a browser-based installation wizard as an alternative to `fabro install`. When the operator runs `fabro server start` (the **explicit** command, no `--config` / `FABRO_CONFIG`) on a machine with no `~/.fabro/settings.toml`, the server enters **install mode**: prints a one-time install token, mounts an install-only HTTP router, and serves a wizard from the existing `fabro-web` bundle. On successful completion, the server persists the same on-disk state the CLI install produces and exits cleanly.
 
-This unblocks remote-first deployments (Docker, Railway, VPS) where the operator has no terminal-time access to run `fabro install`. The CLI wizard remains supported.
+In supervised deployments (Docker `restart: unless-stopped`, Railway, systemd) the supervisor restarts the process and it boots into normal mode automatically. On a local laptop without a supervisor, the wizard's completion screen tells the operator to re-run `fabro server start` themselves.
+
+This unblocks remote-first deployments (Docker, Railway, VPS) where the operator has no terminal-time access to run `fabro install`, and gives local users a browser alternative if they prefer it. The CLI `fabro install` wizard remains fully supported.
+
+Other CLI commands that auto-start the local server (`fabro run attach`, etc.) do **not** trigger install mode — they fail with a clear "configure first" message. Only the explicit `fabro server start` enters install mode.
 
 ## Goals
 
@@ -35,7 +39,7 @@ The following decisions were made during brainstorming and are load-bearing for 
 | 2 | Trust = one-time install token, printed to stdout/log on startup | Operator must already have log access; matches Jupyter / Gitea / Vaultwarden prior art |
 | 3 | Friendly landing page when token is missing/invalid (not 401) | First-time users will hit `/` before they read the logs; explain instead of error |
 | 4 | Regular `fabro server` self-detects unconfigured state and enters install mode | Single mental model: "I started the app, it told me how to finish setup." Required for Docker/Railway. |
-| 5 | On wizard completion: persist, respond, exit cleanly with code 0 | Avoids in-process mode transition. Supervisor restarts into normal mode. |
+| 5 | On wizard completion: persist, respond, exit cleanly with code 0 | Avoids in-process mode transition. In supervised deployments the supervisor restarts into normal mode; on local laptops the operator re-runs `fabro server start`. |
 | 6 | Update orchestration configs (Docker Compose, Railway) with restart policies | Required for (5) to work end-to-end |
 | 7 | Full parity with CLI install (long-term) | The CLI is the source of truth for "configured." A web flow that diverges is half a feature. |
 | 8 | v1 ships API-key LLM providers only | Defers OAuth-based provider flows to v2 |
@@ -50,12 +54,18 @@ The following decisions were made during brainstorming and are load-bearing for 
 | 17 | Install mode persists vault secrets directly to disk (`Vault::load(...).set(...)`), not via the API client | The CLI helper goes through `connect_api_client(storage_dir)` which would call back into the install-mode server itself, hitting `/api/v1/secrets` which is not mounted. |
 | 18 | Install mode triggers only when no explicit `--config` / `FABRO_CONFIG` was provided AND the default `~/.fabro/settings.toml` is absent | A typo in `--config /typo` must error, not silently install on top of the wrong target. Matches the asymmetry the existing config loader already enforces. |
 | 19 | v1 inherits the existing helper's partial-state semantics on `/install/finish` failure (settings.toml rolled back, server.env not). Atomic rollback deferred. | Real atomic rollback requires temp-dir + rename refactor; partial state is acceptable because env keys are deterministic and idempotent on retry. |
+| 20 | Only the explicit `fabro server start` (and `restart`) command enters install mode. Auto-start callers (`run attach`, `server runs`, etc.) fail with a "configure first" message. | Auto-start callers spawn-and-block; an install-mode server has no `/api/v1/*` to connect to, so they would hang waiting for a route that doesn't exist. |
+| 21 | Local laptops without a supervisor: the wizard completion screen shows a "run `fabro server start` to launch the configured server" message after a 30s polling timeout. Built-in supervisor for local is a follow-up. | Today's `fabro server start` does not stay around to restart its `__serve` child (`start.rs:318`). v1 keeps that path unchanged; one extra command is acceptable for local users who could have used `fabro install` instead. |
 
 ## Architecture
 
 ### Process model
 
-The detection fork happens at the **dispatch layer**, not inside `serve::run`. Today `commands::server::dispatch` (`lib/crates/fabro-cli/src/commands/server/mod.rs:31`) calls `user_config::load_settings_with_config_and_storage_dir` and then `resolve_bind_request_from_settings` before `serve::execute` is ever invoked — both of those would error on missing `settings.toml`. The bootstrap therefore has to fork before the settings-load:
+The detection fork happens at the **dispatch layer**, in `commands::server::dispatch` (`lib/crates/fabro-cli/src/commands/server/mod.rs:31`). It is not strictly required there for technical reasons — the existing config loader handles the missing-default case gracefully (`fabro-config/src/user.rs:77` returns defaults; `fabro-server/src/serve.rs:820-824` falls back to a default Unix socket; `tests/it/cmd/server_start.rs:111` covers `fabro server start` with no config). Today, `fabro server start` on an unconfigured machine cheerfully boots into a non-functional state (no LLM credentials, no integrations, the `/api/v1/auth/me` route returns 401). That non-functional default boot is exactly what install mode displaces. Forking at dispatch lets us mount the install router *instead of* the normal one, rather than letting the normal one come up empty.
+
+The fork is also explicitly scoped to the `Start` (and equivalent `Restart`) variant of `ServerCommand`. Other commands that auto-start the server (see *Auto-start callers* below) do not trigger install mode.
+
+The fork:
 
 1. **Determine whether install mode is even eligible.** Install mode is *only* triggered when no explicit config path was given (no `--config` flag, no `FABRO_CONFIG` env var) AND the default `~/.fabro/settings.toml` is absent. The current loader (`fabro-config/src/user.rs:81-112`) treats explicit-path-missing as an error and default-path-missing as "fall back to defaults" — install mode follows the same asymmetry. A typo in `--config` or `FABRO_CONFIG` must error out, not silently install on top of the wrong location.
 2. **If config is explicit (--config or FABRO_CONFIG):** existing path. Load settings (errors loudly if the file is missing or malformed), resolve storage_dir / bind, continue into `start::execute` / `serve::execute` as today. Never enters install mode regardless of file presence — operators using explicit config paths are doing something deliberate and the safe default is "fail loud, don't auto-install."
@@ -70,9 +80,32 @@ The detection fork happens at the **dispatch layer**, not inside `serve::run`. T
    - **Skip** the eager `load_or_create_local_dev_token` / `load_or_create_local_session_secret` calls that `start.rs:247-248, 389-390` perform — the install router authenticates via its own middleware and doesn't use the JWT/session machinery.
    - Run the same daemonization or foreground machinery as a normal start (lock file, server record, log files), so `fabro server status` / `stop` work uniformly.
 
-When `POST /install/finish` succeeds, the handler persists outputs to disk, returns 202, then schedules a clean process exit (~500ms after responding). The supervisor restarts the process; the new process finds `settings.toml` present and boots into normal mode (which now does its own eager dev-token/session-secret creation as today).
+When `POST /install/finish` succeeds, the handler persists outputs to disk, returns 202, then schedules a clean process exit (~500ms after responding). What happens next depends on whether the process has a supervisor:
+
+- **Supervised deployments** (Docker `restart: unless-stopped`, systemd, Railway, fly.io). The supervisor restarts the process; the new process finds `settings.toml` present and boots into normal mode (which now does its own eager dev-token/session-secret creation as today). The wizard's completion screen polls `/health` and redirects to the configured normal-mode URL when the new server is up — typically a few seconds.
+- **Local laptop without supervisor.** `fabro server start` today spawns a `__serve` child and returns; it does not stay around to restart the child (`start.rs:318` `execute_daemon`). When the install-mode child exits, nothing brings it back. The wizard's completion screen still polls `/health`, but after a ~30s timeout it shows the operator a clear instruction: **"Install complete. Run `fabro server start` to launch your configured server."** The polling does not hang forever because the operator may be away from the terminal at that moment.
+
+A possible follow-up is to add a built-in supervisor for the local case — `fabro server start` could detect when its `__serve` child exited cleanly with a "needs restart" exit code and re-spawn it. This would make the local UX seamless without changing the supervised-deployment path. **Not v1.** v1 keeps `fabro server start` unchanged for local use; the operator manually re-runs.
 
 **No mode-transition inside a running process.** Avoiding hot-swap means we don't reason about half-mounted routers, in-flight install requests during shutdown, or partial state after a failed finalize. Process exit is the boundary.
+
+### Auto-start callers
+
+Several CLI commands auto-start a local server through `connect_server` → `connect_api_client_bundle` → `start::ensure_server_running_for_storage` (`lib/crates/fabro-cli/src/server_client.rs:88, :117-121`). Examples: `fabro run attach` (`commands/run/attach.rs:50`), `fabro server runs` (`server_runs.rs:20`).
+
+These callers must **not** auto-trigger install mode. If they did, the spawned install-mode server would print an install token to its log file (which the user is not watching), the auto-start helper would block waiting for an `/api/v1/*` route that doesn't exist, and the experience would be inscrutable.
+
+The fix is at `ensure_server_running_for_storage`: before spawning, check the same condition the dispatch fork uses (no explicit config + default settings.toml absent). If it matches, fail with a clear message:
+
+```
+Cannot reach Fabro server: no settings.toml configured.
+
+Run one of:
+  fabro server start    # browser-based wizard
+  fabro install         # terminal wizard
+```
+
+This change is small but load-bearing — without it, `fabro run attach` on a fresh machine silently boots an install daemon and then hangs.
 
 ### Frontend mode-aware boot
 
@@ -173,7 +206,7 @@ Linear flow with a sidebar showing progress. Users can back up to any prior comp
 | 4 | `/install/server` | Single screen with prefilled canonical URL (from forwarded headers) and confirm/edit field. Listen address is read-only display. **This screen runs before GitHub** because the canonical URL is baked into the GitHub App manifest's `redirect_url` and `callback_urls`; if it's wrong, the App is created on github.com with bad URLs and cannot be unmade by us. |
 | 5 | `/install/github` | Choose **App** or **Token**. Token path: paste PAT, validate via `GET /user`, capture username. App path: collect owner + display name → server builds the GitHub App manifest using the canonical URL the user just confirmed in step 4, with `redirect_url` set to `<canonical_url>/install/github/app/redirect?state=<random>` and `callback_urls` set to `<canonical_url>/auth/callback/github` (the latter is for runtime OAuth login, not the install handoff) → user is redirected to `https://github.com/settings/apps/new` (or org equivalent) with the manifest as a form POST → after the user creates the App, GitHub redirects their browser back to `/install/github/app/redirect?code=…&state=…`. The endpoint validates `state` against the install session, exchanges the `code` via `POST https://api.github.com/app-manifests/{code}/conversions` for the App credentials (id, slug, client_id, client_secret, webhook_secret, pem), stores them in the session, then redirects the browser to `/install/github/done`. |
 | 6 | `/install/review` | Read-only summary of every choice. "Install" button → `POST /install/finish`. |
-| 7 | `/install/finishing` | Server: writes settings.toml, server.env, vault, dev token, then schedules process exit ~500ms after responding. Client renders the dev token (returned in the `/install/finish` response body) for the operator's records, then polls `GET /health` until the response no longer reports `"mode": "install"`, and redirects to the confirmed canonical URL. Includes a "if this takes more than 30s, check your supervisor logs" fallback. |
+| 7 | `/install/finishing` | Server: writes settings.toml, server.env, vault, dev token, then schedules process exit ~500ms after responding. Client renders the dev token (returned in the `/install/finish` response body) for the operator's records, then polls `GET /health` until the response no longer reports `"mode": "install"`, then redirects to the confirmed canonical URL. After a 30s timeout (no supervisor restarted the process — typically a local laptop), the screen pivots to: **"Install complete. Run `fabro server start` to launch your configured server. Your dev token: ___"**. The polling does not retry forever; it surrenders gracefully so the operator isn't stuck. |
 
 ### Navigation rules
 
@@ -337,7 +370,10 @@ Per `files-internal/testing-strategy.md` (re-read before implementing).
 
 ### Manual smoke test (documented in implementation plan)
 
-Process-exit behavior is too OS-flaky for CI. One manual test: run `fabro server start` with empty home, complete the wizard, assert process exits with 0, assert a fresh `fabro server start` boots into normal mode.
+Process-exit behavior is too OS-flaky for CI. Two manual tests:
+
+1. **Local (no supervisor).** With an empty home: `fabro server start` → install mode prints token → complete the wizard → assert the spawned `__serve` child exits with code 0 → assert the wizard completion screen shows the manual-restart message after the polling timeout → run `fabro server start` again → assert it boots into normal mode and the configured app is reachable.
+2. **Supervised (Docker).** `docker compose up` against an empty named volume → install mode prints token in `docker logs` → complete the wizard → assert the container restarts via the compose `restart: unless-stopped` policy → assert the wizard completion screen redirects to the configured canonical URL within ~10s of finish.
 
 ### E2E live tests
 
@@ -353,7 +389,7 @@ For (5) — clean exit + supervisor restart — to work end-to-end:
 
 - **`compose.yml`:** add `restart: unless-stopped` to the fabro service (verify it's present; add if missing).
 - **Railway:** verify the service restart policy. Railway restarts crashed processes by default; confirm exit code 0 also triggers a restart (may require setting a restart policy explicitly).
-- **Documentation:** the install-mode boot stderr should mention "the server will restart automatically" so operators expect the disconnect.
+- **Documentation:** the install-mode boot stderr should mention what to expect after `/install/finish` — for supervised deployments, "the server will restart automatically"; for local use, "after install you'll be prompted to re-run `fabro server start`." Detect supervised vs. local heuristically (presence of container env hints like `RAILWAY_*`, `KUBERNETES_*`, `/.dockerenv`) and emit the appropriate variant.
 
 ## Open questions
 

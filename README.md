@@ -125,6 +125,8 @@ brew install fabro-sh/tap/fabro-nightly
 curl -fsSL https://fabro.sh/install.sh | bash
 ```
 
+Release binaries and the multi-arch Docker image ship with SLSA Build Provenance attestations. See [Verifying Releases](https://docs.fabro.sh/reference/verifying-releases) to check an artifact was built by our GitHub Actions workflow.
+
 Then initialize Fabro in your project:
 
 ```bash

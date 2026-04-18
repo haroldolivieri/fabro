@@ -11,7 +11,7 @@ deepened: 2026-04-18
 
 ## Overview
 
-Add configurable IP address allowlisting to the fabro server so users without network-level controls (VPN, firewall) can restrict access by client IP. The allowlist is configured via `[server.ip_allowlist]` in settings.toml, validated at startup (fail-closed), and enforced as request middleware after tracing but before auth. To preserve TOML compatibility for an upcoming webhook endpoint, the config shape also reserves an optional `[server.ip_allowlist.incoming_webhooks]` override plus a reserved `github_meta_hooks` entry keyword for GitHub-origin webhook traffic.
+Add configurable IP address allowlisting to the fabro server so users without network-level controls (VPN, firewall) can restrict access by client IP. The allowlist is configured via `[server.ip_allowlist]` in settings.toml, validated at startup (fail-closed), and enforced as request middleware after tracing but before auth. To preserve TOML compatibility for an upcoming GitHub webhook endpoint, the config shape also reserves an optional GitHub-specific webhook overlay at `[server.integrations.github.webhooks.ip_allowlist]` plus a reserved `github_meta_hooks` entry keyword for GitHub-origin webhook traffic.
 
 ## Problem Frame
 
@@ -31,10 +31,11 @@ Some fabro users deploy on infrastructure without firewalls or VPNs. They need f
 - R10. Log rejected requests at warn level with client IP and path
 - R11. Unix socket + allowlist requires trusted_proxy_count > 0 or server refuses to start
 - R12. Invalid entries (malformed CIDR) cause startup failure (fail-closed)
-- R13. The TOML schema must support a webhook-specific IP allowlist override without breaking existing `[server.ip_allowlist]` configs
+- R13. The TOML schema must support provider-specific webhook IP allowlist overrides in integration-owned namespaces without breaking existing `[server.ip_allowlist]` configs
 - R14. Webhook-specific entries may include the reserved keyword `github_meta_hooks`, which resolves to GitHub's current webhook delivery ranges from `GET /meta`
-- R15. `github_meta_hooks` is only valid in `[server.ip_allowlist.incoming_webhooks].entries`; using it in the default scope is a config error
-- R16. `[server.ip_allowlist.incoming_webhooks].trusted_proxy_count` inherits from `[server.ip_allowlist].trusted_proxy_count` unless explicitly overridden
+- R15. `github_meta_hooks` is only valid in `[server.integrations.github.webhooks.ip_allowlist].entries`; using it outside the GitHub webhook allowlist is a config error
+- R16. `[server.integrations.github.webhooks.ip_allowlist].trusted_proxy_count` inherits from `[server.ip_allowlist].trusted_proxy_count` unless explicitly overridden
+- R17. GitHub webhook IP allowlist config falls back to `[server.ip_allowlist]` when the GitHub-specific block or one of its fields is omitted, so webhook routes inherit the server allowlist by default
 
 ## Scope Boundaries
 
@@ -43,7 +44,7 @@ Some fabro users deploy on infrastructure without firewalls or VPNs. They need f
 - No blocklist (deny-list)
 - No hot-reload of IP rules
 - No implicit loopback exemption
-- This plan does not add the webhook endpoint itself; it only reserves the config and resolution shape needed so webhook-specific enforcement can be wired later without a TOML break
+- This plan does not add the webhook endpoint itself; it only reserves the config and resolution shape needed so GitHub webhook-specific enforcement can be wired later without a TOML break
 - `/health/diagnostics` is NOT exempt (requires auth, probes server internals)
 
 ## Context & Research
@@ -51,6 +52,7 @@ Some fabro users deploy on infrastructure without firewalls or VPNs. They need f
 ### Relevant Code and Patterns
 
 - **Config layer/resolved pattern**: `ServerLayer` (sparse, `deny_unknown_fields`) -> `resolve_server()` -> `ServerSettings` (fully populated) in `lib/crates/fabro-types/src/settings/server.rs` and `lib/crates/fabro-config/src/resolve/server.rs`
+- **Nested integration webhook config already exists**: GitHub webhook delivery strategy already lives under `[server.integrations.github.webhooks]`, so a provider-specific IP allowlist fits the existing integration-owned namespace
 - **Middleware pattern**: `middleware::from_fn_with_state` used for `cookie_and_demo_middleware` at `lib/crates/fabro-server/src/server.rs:971`
 - **Router structure**: `/health` registered on outer router (line 948), dispatch service_fn routes to demo/real sub-routers (line 914)
 - **Serve paths**: Three listener branches in `lib/crates/fabro-server/src/serve.rs:492` — Unix, TCP+TLS, TCP plain. None currently use `ConnectInfo`
@@ -73,22 +75,23 @@ Some fabro users deploy on infrastructure without firewalls or VPNs. They need f
 - **Generic 403 response body**: Use `"Access denied."` (matching existing `ApiError::forbidden()`) rather than a message that reveals the filtering mechanism
 - **TLS ConnectInfo must use Axum newtype**: The TLS accept loop must inject `axum::extract::ConnectInfo<SocketAddr>` (the wrapper type), not a bare `SocketAddr`, or the middleware extractor will silently fail
 - **`ipnet` as direct dependency**: Present in Cargo.lock as a transitive dependency (v2.11.0); added as a direct dependency to fabro-types, fabro-config, and fabro-server for CIDR parsing and matching
-- **`[server.ip_allowlist]` is the default scope, with an optional `[server.ip_allowlist.incoming_webhooks]` override**: Both scopes expose `entries` and `trusted_proxy_count`, but the root table remains the default policy for all normal server traffic. If `incoming_webhooks` is absent, future webhook requests fall back to the default scope. If `incoming_webhooks` is present but omits `trusted_proxy_count`, it inherits the default scope's value
+- **`[server.ip_allowlist]` remains the global default scope, and GitHub webhook overrides live under `[server.integrations.github.webhooks.ip_allowlist]`**: This matches the existing integration-owned webhook config shape and avoids inventing a parallel top-level webhook namespace
+- **The GitHub webhook allowlist is an overlay on the global allowlist, not a separate root policy**: If `[server.integrations.github.webhooks.ip_allowlist]` is absent, GitHub webhook requests use `[server.ip_allowlist]`. If the GitHub block is present but omits `entries` or `trusted_proxy_count`, the omitted field inherits from `[server.ip_allowlist]`
 - **`entries` resolves to a typed enum, not raw strings**: User-provided strings parse into `IpAllowEntry`, with `Literal(IpNet)` for direct IP/CIDR values and `GitHubMetaHooks` for the reserved keyword `github_meta_hooks`
-- **`github_meta_hooks` is webhook-only**: The reserved keyword is accepted only in `[server.ip_allowlist.incoming_webhooks].entries`, where it means "expand to GitHub's current `/meta` `hooks` ranges". Using it in the default scope is invalid config
+- **`github_meta_hooks` is GitHub-webhook-only**: The reserved keyword is accepted only in `[server.integrations.github.webhooks.ip_allowlist].entries`, where it means "expand to GitHub's current `/meta` `hooks` ranges". Using it elsewhere is invalid config
 - **GitHub meta expansion should use startup-time fetch plus cache-aware reuse**: Resolve `github_meta_hooks` at startup, using `GET /meta` and the `hooks` array. Reuse cached data on `304 Not Modified`; if GitHub is unavailable and there is no usable cache, fail startup
 - **Middleware after TraceLayer, before cookie middleware**: Rejected requests still get trace spans (including 403 status), but no cookie/demo processing for blocked IPs
 - **Health exemption inside middleware**: The middleware checks the request path for `/health` rather than selectively applying to route sets, keeping router structure simple
 - **IPv4-mapped IPv6 normalization**: Convert `::ffff:x.x.x.x` to IPv4 equivalent before matching, so `10.0.0.0/8` matches regardless of how the OS reports the address
-- **Land the schema before the webhook route if convenient**: The default-scope middleware can ship first. The `incoming_webhooks` override and `github_meta_hooks` resolution model should land now so the later webhook feature can wire into it without a TOML migration
+- **Land the schema before the webhook route if convenient**: The default-scope middleware can ship first. The GitHub-specific webhook overlay and `github_meta_hooks` resolution model should land now so the later webhook feature can wire into it without a TOML migration
 
 ## Open Questions
 
 ### Resolved During Planning
 
 - **Which Axum ecosystem tools for IP detection?** Custom implementation. `axum-client-ip` doesn't support trusted-proxy-count. `ConnectInfo<SocketAddr>` for TCP remote address, manual X-Forwarded-For parsing for proxy support
-- **Config shape?** `[server.ip_allowlist]` is the default scope. `[server.ip_allowlist.incoming_webhooks]` is an optional child override for the future webhook route. Both scopes carry `entries` and `trusted_proxy_count`, but `incoming_webhooks.trusted_proxy_count` inherits from the default scope when omitted, which fits the existing subdomain pattern and `deny_unknown_fields` constraint
-- **How should GitHub webhook origins be represented?** As the reserved keyword `github_meta_hooks` inside `[server.ip_allowlist.incoming_webhooks].entries`, resolved into concrete IP nets from GitHub `GET /meta`
+- **Config shape?** `[server.ip_allowlist]` is the global default scope. `[server.integrations.github.webhooks.ip_allowlist]` is an optional GitHub-specific overlay, which fits the existing integration-owned webhook namespace and `deny_unknown_fields` constraint
+- **How should GitHub webhook origins be represented?** As the reserved keyword `github_meta_hooks` inside `[server.integrations.github.webhooks.ip_allowlist].entries`, resolved into concrete IP nets from GitHub `GET /meta`
 - **Which health endpoints to exempt?** Only `/health`. Not `/health/diagnostics` (requires auth, exposes server internals)
 - **IPv4-mapped IPv6 handling?** Normalize to IPv4 before matching
 - **X-Forwarded-For position?** Rightmost-minus-N where N = `trusted_proxy_count`. If N=0, use TCP remote address (ConnectInfo)
@@ -109,7 +112,16 @@ Representative TOML:
   entries = ["10.0.0.0/8"]
   trusted_proxy_count = 1
 
-  [server.ip_allowlist.incoming_webhooks]
+  [server.integrations.github]
+  strategy = "app"
+  app_id = "123456"
+  client_id = "Iv1.abc123"
+  slug = "fabro-app"
+
+  [server.integrations.github.webhooks]
+  strategy = "tailscale_funnel"
+
+  [server.integrations.github.webhooks.ip_allowlist]
   entries = ["github_meta_hooks"]
   # trusted_proxy_count inherits as 1 unless overridden here
 
@@ -119,8 +131,9 @@ Request flow with IP allowlist:
          -> [TraceLayer]     -> trace span created
          -> [IP Allowlist]   -> select active scope
                                   - current routes: default `[server.ip_allowlist]`
-                                  - future webhook route: `[server.ip_allowlist.incoming_webhooks]`
-                                    or default fallback when absent
+                                  - future GitHub webhook route:
+                                    `[server.integrations.github.webhooks.ip_allowlist]`
+                                    overlaid on `[server.ip_allowlist]`
                                 if path == "/health": pass through
                                 else: extract client IP
                                   (ConnectInfo or X-Forwarded-For rightmost-minus-N)
@@ -133,13 +146,18 @@ Request flow with IP allowlist:
 
 Startup validation:
   settings.toml -> parse [server.ip_allowlist]
+    -> parse optional [server.integrations.github.webhooks.ip_allowlist]
     -> parse each entry string into IpAllowEntry
        - IP/CIDR -> Literal(IpNet)
        - `github_meta_hooks` -> GitHubMetaHooks
-    -> reject `github_meta_hooks` in the default scope
-    -> when resolving a webhook scope containing `GitHubMetaHooks`,
+    -> reject `github_meta_hooks` outside the GitHub webhook allowlist
+    -> when resolving a GitHub webhook scope containing `GitHubMetaHooks`,
        call `GET /meta`, read `hooks`, parse into IpNet list
-    -> if Unix socket && active scope has entries && trusted_proxy_count == 0: error
+    -> for GitHub webhook requests, build the effective scope by overlaying
+       `[server.integrations.github.webhooks.ip_allowlist]` on
+       `[server.ip_allowlist]`
+    -> if Unix socket && active scope has entries && trusted_proxy_count == 0:
+       error
     -> resolve to IpAllowlistConfig (Arc, read-once)
     -> pass to build_router_with_options
 ```
@@ -148,9 +166,9 @@ Startup validation:
 
 - [ ] **Unit 1: Config types and resolution**
 
-**Goal:** Define the settings.toml schema for `[server.ip_allowlist]` plus the future webhook override, and wire up typed entry parsing/validation.
+**Goal:** Define the settings.toml schema for `[server.ip_allowlist]` plus the GitHub webhook overlay, and wire up typed entry parsing/validation.
 
-**Requirements:** R4, R5, R8, R11, R12, R13, R14, R15, R16
+**Requirements:** R4, R5, R8, R11, R12, R13, R14, R15, R16, R17
 
 **Dependencies:** None
 
@@ -162,33 +180,40 @@ Startup validation:
 - Test: `lib/crates/fabro-config/src/resolve/server.rs` (inline tests)
 
 **Approach:**
-- Add `ServerIpAllowlistScopeLayer` with `entries: Option<Vec<String>>` and `trusted_proxy_count: Option<u32>`. Reuse that shape for the root scope and the nested `incoming_webhooks` child table
-- Add `ServerIpAllowlistLayer` with root-scope fields plus `incoming_webhooks: Option<ServerIpAllowlistScopeLayer>`. Apply `#[serde(deny_unknown_fields)]`
+- Add `ServerIpAllowlistLayer` for the root `[server.ip_allowlist]` table with `entries: Option<Vec<String>>` and `trusted_proxy_count: Option<u32>`. Apply `#[serde(deny_unknown_fields)]`
+- Add `ServerIpAllowlistOverrideLayer` with the same fields for provider-local webhook overlays
 - Add `ip_allowlist: Option<ServerIpAllowlistLayer>` to `ServerLayer`
+- Add `ip_allowlist: Option<ServerIpAllowlistOverrideLayer>` to `IntegrationWebhooksLayer` so GitHub webhook config can live at `[server.integrations.github.webhooks.ip_allowlist]`
 - Add `IpAllowEntry` enum with `Literal(IpNet)` and `GitHubMetaHooks`
-- Add `ServerIpAllowlistScopeSettings` with `entries: Vec<IpAllowEntry>` and `trusted_proxy_count: u32`
-- Add `ServerIpAllowlistSettings` with `default_scope: ServerIpAllowlistScopeSettings` and `incoming_webhooks: Option<ServerIpAllowlistScopeSettings>`
+- Add `ServerIpAllowlistSettings` with `entries: Vec<IpAllowEntry>` and `trusted_proxy_count: u32` for the global scope
+- Add `ServerIpAllowlistOverrideSettings` with `entries: Option<Vec<IpAllowEntry>>` and `trusted_proxy_count: Option<u32>` for GitHub webhook overlay settings
 - Default when absent: empty `entries` vec, `trusted_proxy_count: 0`
-- Add `resolve_ip_allowlist_scope()` to parse each entry string into `IpAllowEntry`, pushing `ResolveError` for invalid entries (fail-closed)
-- Add `resolve_ip_allowlist()` to build the default scope plus optional webhook override, reject `github_meta_hooks` when it appears outside `incoming_webhooks.entries`, and resolve `incoming_webhooks.trusted_proxy_count` by inheriting `default_scope.trusted_proxy_count` when the child field is unset
-- Add `ip_allowlist` field to `ServerSettings`, call resolver from `resolve_server()`
-- Perform cross-domain validation in `resolve_server()` after both `resolve_listen()` and `resolve_ip_allowlist()` return: check Unix socket + active scope with non-empty entries + resolved `trusted_proxy_count == 0` → push error. The webhook override follows the same rule once that scope is actually wired into a route
+- Add `resolve_ip_allowlist()` to parse the global scope into `ServerIpAllowlistSettings`
+- Add `resolve_ip_allowlist_override()` to parse provider-local overlays into `ServerIpAllowlistOverrideSettings`, preserving omitted fields as `None`
+- Extend `resolve_integrations()` to parse `server.integrations.github.webhooks.ip_allowlist` into the resolved GitHub webhook settings
+- Reject `github_meta_hooks` outside the GitHub webhook allowlist path
+- Add `ip_allowlist` field to `ServerSettings`, and extend the resolved integration webhook settings to carry the optional overlay
+- Perform cross-domain validation in `resolve_server()` after `resolve_listen()`, `resolve_ip_allowlist()`, and `resolve_integrations()` return: compute the effective GitHub webhook scope by overlaying the GitHub webhook config on the global allowlist, then check Unix socket + effective scope with non-empty entries + resolved `trusted_proxy_count == 0` → push error
 
 **Patterns to follow:**
 - `ServerAuthLayer` / `ServerAuthSettings` in same file for layer/resolved struct pattern
+- `IntegrationWebhooksLayer` / `IntegrationWebhooksSettings` in the same file for nested integration-owned config
 - `resolve_auth()` in `lib/crates/fabro-config/src/resolve/server.rs` for validation with `ResolveError`
 
 **Test scenarios:**
 - Happy path: valid IPv4, IPv6, and CIDR entries parse correctly into `IpAllowEntry::Literal`
 - Happy path: absent `[server.ip_allowlist]` section resolves to empty entries (R2)
 - Happy path: `trusted_proxy_count` defaults to 0 when not specified
-- Happy path: `[server.ip_allowlist.incoming_webhooks]` resolves independently from the default scope
-- Happy path: `incoming_webhooks.trusted_proxy_count` inherits the default scope value when omitted
-- Happy path: `incoming_webhooks.trusted_proxy_count` overrides the default scope value when explicitly set
-- Happy path: `github_meta_hooks` is accepted in `incoming_webhooks.entries`
+- Happy path: `[server.integrations.github.webhooks.ip_allowlist]` resolves as an optional overlay independent from the global scope
+- Happy path: GitHub webhook entries fall back to the global scope when the GitHub block is absent
+- Happy path: GitHub webhook entries fall back to the global scope when the GitHub block omits `entries`
+- Happy path: `server.integrations.github.webhooks.ip_allowlist.trusted_proxy_count` inherits the global value when omitted
+- Happy path: `server.integrations.github.webhooks.ip_allowlist.trusted_proxy_count` overrides the global value when explicitly set
+- Happy path: `github_meta_hooks` is accepted in `server.integrations.github.webhooks.ip_allowlist.entries`
 - Error path: malformed CIDR string (e.g., `10.0.0.0/33`) produces ResolveError
 - Error path: unparseable address (e.g., `not-an-ip`) produces ResolveError
 - Error path: `github_meta_hooks` in the default scope produces ResolveError
+- Error path: `github_meta_hooks` outside the GitHub webhook allowlist path produces ResolveError
 - Error path: Unix socket listener + non-empty allowlist + `trusted_proxy_count: 0` produces ResolveError
 - Edge case: empty `entries` list (present but empty) resolves to empty vec (equivalent to no filtering)
 
@@ -197,11 +222,11 @@ Startup validation:
 - `cargo nextest run -p fabro-types` passes
 - Invalid config entries cause resolution errors, not panics
 
-- [ ] **Unit 2: Entry resolution, IP matching, and client IP extraction**
+- [ ] **Unit 2: Effective scope resolution, entry expansion, IP matching, and client IP extraction**
 
-**Goal:** Create the core IP matching logic, dynamic entry expansion, and client IP extraction (from ConnectInfo or proxy headers).
+**Goal:** Create the core IP matching logic, effective scope overlay logic, dynamic entry expansion, and client IP extraction (from ConnectInfo or proxy headers).
 
-**Requirements:** R4, R5, R6, R7, R14
+**Requirements:** R4, R5, R6, R7, R14, R17
 
 **Dependencies:** Unit 1 (needs `ServerIpAllowlistSettings`)
 
@@ -214,7 +239,10 @@ Startup validation:
 
 **Approach:**
 - `IpAllowlist` struct wrapping `Vec<IpNet>` with a `contains(&IpAddr) -> bool` method
-- Add a resolution step that turns `Vec<IpAllowEntry>` into concrete `Vec<IpNet>` for a chosen scope:
+- Add a helper that computes an effective scope from the global allowlist plus an optional provider-specific overlay:
+  - `entries = override.entries.unwrap_or(global.entries.clone())`
+  - `trusted_proxy_count = override.trusted_proxy_count.unwrap_or(global.trusted_proxy_count)`
+- Add a resolution step that turns the effective scope's `Vec<IpAllowEntry>` into concrete `Vec<IpNet>` for a chosen route:
   - `Literal(IpNet)` passes through directly
   - `GitHubMetaHooks` fetches GitHub `GET /meta`, reads the `hooks` array, and parses each item as `IpNet`
 - Use cache-aware startup fetch for `GitHubMetaHooks`: send `If-None-Match` when cache exists, reuse cached ranges on `304`, and fail startup when the source cannot be resolved and no usable cache exists
@@ -223,7 +251,7 @@ Startup validation:
   - If `trusted_proxy_count > 0`: parse `X-Forwarded-For` header, split by comma, take the entry at zero-indexed position `len - 1 - trusted_proxy_count` (skipping N trusted proxy entries from the right to reach the client IP). If `X-Forwarded-For` is absent or has fewer entries than `trusted_proxy_count + 1`, return `None` (fail-closed)
   - If `trusted_proxy_count == 0`: extract `ConnectInfo<SocketAddr>` from request extensions, return `addr.ip()`
 - `IpAllowlist::is_empty()` method to efficiently skip checking when no allowlist is configured (R2)
-- `IpAllowlistConfig` struct containing `IpAllowlist` + `trusted_proxy_count: u32`, constructed from a chosen `ServerIpAllowlistScopeSettings`. This is the type used as middleware state (`Arc<IpAllowlistConfig>`) in Units 3, 4, and the later webhook wiring step
+- `IpAllowlistConfig` struct containing `IpAllowlist` + `trusted_proxy_count: u32`, constructed from the effective scope for a chosen route. This is the type used as middleware state (`Arc<IpAllowlistConfig>`) in Units 3, 4, and the later GitHub webhook wiring step
 
 **Patterns to follow:**
 - `lib/crates/fabro-server/src/jwt_auth.rs` for module structure and inline test organization
@@ -232,6 +260,10 @@ Startup validation:
 - Happy path: IPv4 address matches an individual IPv4 entry
 - Happy path: IPv4 address matches a CIDR range (e.g., `10.1.2.3` matches `10.0.0.0/8`)
 - Happy path: IPv6 address matches an IPv6 CIDR range
+- Happy path: effective GitHub webhook scope falls back to global entries when the GitHub overlay is absent
+- Happy path: effective GitHub webhook scope falls back to global entries when the GitHub overlay omits `entries`
+- Happy path: effective GitHub webhook scope inherits the global `trusted_proxy_count` when the GitHub overlay omits it
+- Happy path: effective GitHub webhook scope overrides `trusted_proxy_count` when the GitHub overlay sets it
 - Happy path: `GitHubMetaHooks` expands to the `hooks` ranges from a mocked `/meta` response
 - Happy path: cached GitHub metadata is reused on `304 Not Modified`
 - Happy path: `extract_client_ip` with `trusted_proxy_count: 0` returns ConnectInfo IP
@@ -314,7 +346,7 @@ Startup validation:
 - In `tls.rs` accept loop (line 78): inject `axum::extract::ConnectInfo<SocketAddr>` (the Axum newtype wrapper, NOT a bare `SocketAddr`) as a request extension before calling the router. If the wrong type is inserted, `extract_client_ip` will silently fail and all requests will be rejected
 - In `serve.rs` Unix socket path (line 498): no ConnectInfo change needed — the startup validation (Unit 1) ensures `trusted_proxy_count > 0` when using Unix socket with an allowlist, so the middleware will use proxy headers
 - IP allowlist config is NOT added to `AppState` or `shared_settings` — it is captured by the middleware closure at construction time, ensuring R9 (no hot-reload)
-- Do not wire `incoming_webhooks` here yet unless the webhook route already exists in the same change; the root middleware should continue to represent the default scope for current routes
+- Do not wire `server.integrations.github.webhooks.ip_allowlist` here yet unless the GitHub webhook route already exists in the same change; the root middleware should continue to represent the global default scope for current routes
 
 **Patterns to follow:**
 - `auth_mode` resolution at `serve.rs:315` for resolve-once-at-startup pattern
@@ -337,51 +369,50 @@ Startup validation:
 
 - [ ] **Unit 5: Webhook scope wiring**
 
-**Goal:** When the webhook endpoint is added, route those requests through the webhook-specific override without changing the TOML schema.
+**Goal:** When the GitHub webhook endpoint is added, route those requests through the GitHub-specific overlay without changing the TOML schema.
 
-**Requirements:** R1, R7, R9, R13, R14, R15, R16
+**Requirements:** R1, R7, R9, R13, R14, R15, R16, R17
 
 **Dependencies:** Unit 1 (typed config), Unit 2 (dynamic entry resolution), webhook endpoint implementation
 
 **Files:**
 - Modify: `lib/crates/fabro-server/src/server.rs`
-- Modify: webhook handler/router files added by the webhook feature
-- Test: webhook integration tests alongside the webhook endpoint
+- Modify: `lib/crates/fabro-server/src/github_webhooks.rs` and/or webhook handler/router files added by the webhook feature
+- Test: GitHub webhook integration tests alongside the webhook endpoint
 
 **Approach:**
 - Select the active allowlist scope by route:
-  - normal routes use `resolved_server_settings.ip_allowlist.default_scope`
-  - webhook routes use `resolved_server_settings.ip_allowlist.incoming_webhooks` when present, otherwise fall back to `default_scope`
-- Resolve `incoming_webhooks.trusted_proxy_count` during config resolution, not at request time, so the webhook middleware sees a fully populated inherited-or-overridden value
+  - normal routes use `resolved_server_settings.ip_allowlist`
+  - GitHub webhook routes compute an effective scope by overlaying `resolved_server_settings.integrations.github.webhooks.ip_allowlist` on `resolved_server_settings.ip_allowlist`
 - Reuse the same middleware and `IpAllowlistConfig` shape; only the chosen scope changes
-- If the webhook scope contains `GitHubMetaHooks`, resolve it at startup the same way as any other typed entry before constructing the webhook middleware state
-- Keep the webhook route's HMAC verification; IP allowlisting is additive defense, not a replacement
+- If the GitHub webhook scope contains `GitHubMetaHooks`, resolve it at startup the same way as any other typed entry before constructing the webhook middleware state
+- Keep the GitHub webhook route's HMAC verification; IP allowlisting is additive defense, not a replacement
 
 **Patterns to follow:**
 - Reuse the default-scope middleware wiring rather than introducing a second bespoke path
 - Keep route selection explicit near the router definition so reviewers can see which requests use which scope
 
 **Test scenarios:**
-- Happy path: webhook request allowed by `incoming_webhooks` but not by the default scope still succeeds
-- Happy path: webhook request falls back to the default scope when `incoming_webhooks` is absent
-- Happy path: webhook request uses the inherited default `trusted_proxy_count` when the child scope omits it
-- Happy path: webhook request uses the child `trusted_proxy_count` when explicitly configured
-- Happy path: `github_meta_hooks` allows a webhook request from a GitHub hook range
-- Error path: webhook request from a non-allowlisted IP returns 403 before webhook auth/HMAC handling
-- Integration: non-webhook routes continue using the default scope even when `incoming_webhooks` is configured
+- Happy path: GitHub webhook request uses the global allowlist when `server.integrations.github.webhooks.ip_allowlist` is absent
+- Happy path: GitHub webhook request uses global entries when the GitHub overlay omits `entries`
+- Happy path: GitHub webhook request uses the inherited global `trusted_proxy_count` when the GitHub overlay omits it
+- Happy path: GitHub webhook request uses the overlay `trusted_proxy_count` when explicitly configured
+- Happy path: `github_meta_hooks` allows a GitHub webhook request from a GitHub hook range
+- Error path: GitHub webhook request from a non-allowlisted IP returns 403 before webhook auth/HMAC handling
+- Integration: non-webhook routes continue using the global scope even when GitHub webhook IP allowlist config is present
 
 **Verification:**
-- Webhook integration tests pass once the endpoint exists
+- GitHub webhook integration tests pass once the endpoint exists
 - Existing non-webhook allowlist tests still pass unchanged
 
 ## System-Wide Impact
 
-- **Interaction graph:** The default middleware sits between TraceLayer and cookie/demo middleware. It reads `ConnectInfo` extensions (set by `into_make_service_with_connect_info` or manually in TLS path). The webhook-specific override reuses the same machinery once the webhook route exists
+- **Interaction graph:** The default middleware sits between TraceLayer and cookie/demo middleware. It reads `ConnectInfo` extensions (set by `into_make_service_with_connect_info` or manually in TLS path). The GitHub webhook-specific overlay reuses the same machinery once the GitHub webhook route exists
 - **Error propagation:** 403 responses from the middleware short-circuit the request pipeline. They appear in TraceLayer output as normal 403 responses. The middleware also emits its own `warn!` log
 - **State lifecycle risks:** None — the allowlist is immutable after startup (Arc, no hot-reload). No shared mutable state
-- **API surface parity:** The default scope applies uniformly to all current routes (except `/health`). A later webhook route can opt into the reserved override without changing the config surface
+- **API surface parity:** The global scope applies uniformly to all current routes (except `/health`). A later GitHub webhook route can opt into the reserved provider-local overlay without changing the global config surface
 - **Integration coverage:** Key scenario: full request through TCP listener → ConnectInfo injection → IP filter → handler. This must be tested via `oneshot()` with manually injected `ConnectInfo` extensions
-- **Unchanged invariants:** Auth middleware (extractors), demo mode dispatch, SSE streaming, and existing API routes remain unchanged. The webhook endpoint is still added separately; this plan only reserves and later wires the scope it will use
+- **Unchanged invariants:** Auth middleware (extractors), demo mode dispatch, SSE streaming, and existing API routes remain unchanged. The GitHub webhook endpoint is still added separately; this plan only reserves and later wires the scope it will use
 
 ## Risks & Dependencies
 
@@ -392,7 +423,7 @@ Startup validation:
 | IPv4-mapped IPv6 normalization bugs | Comprehensive test coverage in Unit 2 with explicit mapped-address test cases |
 | Existing tests may break if they rely on the serve signature | Tests use `oneshot()` against the router, not `axum::serve`, so they are unaffected |
 | `github_meta_hooks` makes startup depend on an external service | Use GitHub's ETag-capable `/meta` endpoint with cached reuse; fail closed only when the keyword is configured and no usable data can be resolved |
-| A future webhook-specific schema could force a TOML migration | Reserve `[server.ip_allowlist.incoming_webhooks]` now so the later webhook feature only consumes existing config rather than renaming it |
+| A future GitHub webhook-specific schema could force a TOML migration | Reserve `[server.integrations.github.webhooks.ip_allowlist]` now so the later GitHub webhook feature only consumes existing config rather than renaming it |
 
 ## Sources & References
 

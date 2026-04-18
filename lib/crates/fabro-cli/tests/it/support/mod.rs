@@ -1,6 +1,6 @@
 use assert_cmd::Command;
 use fabro_store::EventEnvelope;
-use fabro_test::TestContext;
+use fabro_test::{TestContext, preserve_coverage_env};
 use fabro_types::RunId;
 macro_rules! fabro_json_snapshot {
     ($context:expr, $value:expr, @$snapshot:literal) => {{
@@ -85,6 +85,7 @@ impl LightweightCli {
     pub(crate) fn command(&self) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_fabro"));
         cmd.env_clear();
+        preserve_coverage_env!(cmd);
         if let Some(path) = std::env::var_os("PATH") {
             cmd.env("PATH", path);
         }

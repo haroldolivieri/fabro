@@ -14,6 +14,20 @@ use serde_json::{Map, Value, json};
 use toml::Value as TomlValue;
 use toml::map::Map as TomlMap;
 
+/// Re-export `LLVM_PROFILE_FILE` into a `Command` whose env was just cleared,
+/// so subprocess coverage data lands in the profile path that
+/// `cargo-llvm-cov` configured for the parent test process. Accepts both
+/// `std::process::Command` and `assert_cmd::Command` (any type with an
+/// `env(key, value)` method).
+#[macro_export]
+macro_rules! preserve_coverage_env {
+    ($cmd:expr) => {{
+        if let Some(val) = ::std::env::var_os("LLVM_PROFILE_FILE") {
+            $cmd.env("LLVM_PROFILE_FILE", val);
+        }
+    }};
+}
+
 /// Walk up from `start` to find the repo-level `test/` fixtures directory.
 pub fn find_test_fixtures_dir(start: &Path) -> Option<PathBuf> {
     let mut dir = start;
@@ -113,6 +127,7 @@ pub fn require_env(name: &str) -> Option<String> {
 /// subsequent `.env(...)` call, which survives the clear.
 pub fn apply_test_isolation(cmd: &mut std::process::Command, home_dir: &Path) {
     cmd.env_clear();
+    preserve_coverage_env!(cmd);
     if let Some(path) = std::env::var_os("PATH") {
         cmd.env("PATH", path);
     }

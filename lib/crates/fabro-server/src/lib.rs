@@ -4,6 +4,7 @@
 )]
 
 pub mod bind;
+pub mod csp;
 #[allow(clippy::wildcard_imports, clippy::absolute_paths)]
 mod demo;
 pub mod diagnostics;

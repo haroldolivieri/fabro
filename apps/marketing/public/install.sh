@@ -57,6 +57,9 @@ case "$OS" in
       aarch64) TARGET="aarch64-unknown-linux-gnu" ;;
       *)       error "Unsupported Linux architecture: $ARCH. Supported: x86_64, aarch64" ;;
     esac
+    if ldd --version 2>&1 | grep -qi musl; then
+      TARGET="${TARGET%-gnu}-musl"
+    fi
     ;;
   *)
     error "Unsupported OS: $OS. Supported platforms: macOS (Apple Silicon), Linux (x86_64, aarch64)"

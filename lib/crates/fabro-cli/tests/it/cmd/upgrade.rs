@@ -168,7 +168,7 @@ esac
         "[VERSION]".to_string(),
     ));
     filters.push((
-        "(aarch64-apple-darwin|x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu)".to_string(),
+        "(aarch64-apple-darwin|x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu|x86_64-unknown-linux-musl|aarch64-unknown-linux-musl)".to_string(),
         "[TARGET]".to_string(),
     ));
 

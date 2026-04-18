@@ -142,11 +142,11 @@ fabro repo init        # per project
 
 Running Fabro as an HTTP server with the web UI lets a team share one instance. The repository ships a `Dockerfile` that serves the API (with the embedded web UI) on `$PORT` (default `32276`) and persists state to `/storage`.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Ffabro-sh%2Ffabro)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Ffabro-sh%2Ffabro) [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/fabro-sh/fabro)
 
-Click the button to provision a Fabro service on Railway from this repository, then attach a Railway Volume at `/storage` so your runs and checkpoints survive redeploys. The [Railway deploy guide](https://docs.fabro.sh/administration/deploy-railway) walks through env vars, accessing the dev token, and pointing the CLI at your deployment.
+Click a button to provision a Fabro service from this repository. On Railway, attach a Volume at `/storage` so your runs and checkpoints survive redeploys; on Render, the `render.yaml` blueprint provisions a 1 GB disk at `/storage` automatically. The [Railway](https://docs.fabro.sh/administration/deploy-railway) and [Render](https://docs.fabro.sh/administration/deploy-render) deploy guides walk through env vars, accessing the dev token, and pointing the CLI at your deployment.
 
-Prefer to run Fabro elsewhere? See [Running the Fabro Server](https://docs.fabro.sh/administration/deploy-server) for generic Docker guidance and the companion guides for [Render](https://docs.fabro.sh/administration/deploy-render), [Fly.io](https://docs.fabro.sh/administration/deploy-fly-io), and [DigitalOcean](https://docs.fabro.sh/administration/deploy-digital-ocean).
+Prefer to run Fabro elsewhere? See [Running the Fabro Server](https://docs.fabro.sh/administration/deploy-server) for generic Docker guidance and the companion guides for [Fly.io](https://docs.fabro.sh/administration/deploy-fly-io) and [DigitalOcean](https://docs.fabro.sh/administration/deploy-digital-ocean).
 
 ---
 

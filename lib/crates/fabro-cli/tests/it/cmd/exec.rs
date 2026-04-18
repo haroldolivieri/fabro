@@ -2,7 +2,7 @@
 
 use std::process::Output;
 
-use fabro_test::{fabro_snapshot, test_context};
+use fabro_test::{fabro_snapshot, preserve_coverage_env, test_context};
 use httpmock::MockServer;
 
 async fn run_success_output(mut cmd: assert_cmd::Command) -> Output {
@@ -85,6 +85,7 @@ fn exec_missing_api_key_exits_with_error() {
     let mut cmd = context.exec_cmd();
     cmd.arg("test prompt");
     cmd.env_clear();
+    preserve_coverage_env!(cmd);
     cmd.env("HOME", &context.home_dir);
     fabro_snapshot!(context.filters(), cmd, @"
     success: false
@@ -106,6 +107,7 @@ fn exec_uses_user_config_defaults() {
     let mut cmd = context.exec_cmd();
     cmd.arg("test prompt");
     cmd.env_clear();
+    preserve_coverage_env!(cmd);
     cmd.env("HOME", &context.home_dir);
     cmd.env("FABRO_STORAGE_DIR", &context.storage_dir);
     cmd.env("FABRO_NO_UPGRADE_CHECK", "true")
@@ -133,6 +135,7 @@ fn exec_server_target_uses_remote_transport_instead_of_local_api_key_resolution(
 
     let mut cmd = context.exec_cmd();
     cmd.env_clear();
+    preserve_coverage_env!(cmd);
     cmd.env("HOME", &context.home_dir);
     cmd.env("FABRO_NO_UPGRADE_CHECK", "true")
         .env("FABRO_HTTP_PROXY_POLICY", "disabled");
@@ -176,6 +179,7 @@ fn exec_configured_server_target_alone_does_not_reroute_exec() {
 
     let mut cmd = context.exec_cmd();
     cmd.env_clear();
+    preserve_coverage_env!(cmd);
     cmd.env("HOME", &context.home_dir);
     cmd.env("FABRO_NO_UPGRADE_CHECK", "true")
         .env("FABRO_HTTP_PROXY_POLICY", "disabled");
@@ -224,6 +228,7 @@ fn exec_cli_server_target_overrides_configured_server_target() {
 
     let mut cmd = context.exec_cmd();
     cmd.env_clear();
+    preserve_coverage_env!(cmd);
     cmd.env("HOME", &context.home_dir);
     cmd.env("FABRO_NO_UPGRADE_CHECK", "true")
         .env("FABRO_HTTP_PROXY_POLICY", "disabled");

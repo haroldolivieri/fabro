@@ -13,7 +13,7 @@ The runtime container now binds `0.0.0.0:${PORT:-32276}`, so Railway, Fly, Rende
 
 The release pipeline now builds `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` tarballs alongside the glibc Linux targets. The `install.sh` script detects musl-based distributions via `ldd --version` and downloads the right archive automatically, so installs on Alpine and other musl hosts work out of the box.
 
-The published Docker image switched to `alpine:3.22` on musl, dropping from ~287 MB to ~96 MB (66% smaller) with a reduced attack surface. The image and the `install.sh` tarball now ship the same binary.
+The published Docker image switched to [Docker Hardened Images](https://www.docker.com/products/hardened-images/) (Alpine 3.23 via our nightly mirror at `ghcr.io/fabro-sh/dhi-alpine-base`), dropping from ~287 MB to ~96 MB (66% smaller) with a CVE-minimized, hardened base. The image and the `install.sh` tarball now ship the same binary.
 
 ## Production Docker compose with Caddy
 

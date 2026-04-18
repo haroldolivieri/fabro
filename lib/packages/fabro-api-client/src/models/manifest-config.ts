@@ -16,8 +16,8 @@
 
 export interface ManifestConfig {
     'type': ManifestConfigTypeEnum;
-    'path'?: string;
-    'source'?: string;
+    'path'?: string | null;
+    'source'?: string | null;
 }
 
 export const ManifestConfigTypeEnum = {

@@ -49,6 +49,6 @@ export interface RunBillingTotals {
     /**
      * Total billed USD amount in micros.
      */
-    'total_usd_micros'?: number;
+    'total_usd_micros'?: number | null;
 }
 

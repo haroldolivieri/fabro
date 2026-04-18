@@ -18,9 +18,9 @@ export interface WorkflowDiagnostic {
     'rule': string;
     'severity': WorkflowDiagnosticSeverityEnum;
     'message': string;
-    'node_id'?: string;
-    'edge'?: Array<string>;
-    'fix'?: string;
+    'node_id'?: string | null;
+    'edge'?: Array<string> | null;
+    'fix'?: string | null;
 }
 
 export const WorkflowDiagnosticSeverityEnum = {

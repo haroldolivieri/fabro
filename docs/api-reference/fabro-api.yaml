@@ -1735,9 +1735,8 @@ components:
           description: Maximum context window size in tokens.
           example: 1000000
         max_output:
-          type: integer
+          type: ["integer", "null"]
           format: int64
-          nullable: true
           description: Maximum output tokens, if known.
           example: 128000
 
@@ -1764,21 +1763,18 @@ components:
       type: object
       properties:
         input_cost_per_mtok:
-          type: number
+          type: ["number", "null"]
           format: double
-          nullable: true
           description: Cost per million input tokens in USD.
           example: 15.0
         output_cost_per_mtok:
-          type: number
+          type: ["number", "null"]
           format: double
-          nullable: true
           description: Cost per million output tokens in USD.
           example: 75.0
         cache_input_cost_per_mtok:
-          type: number
+          type: ["number", "null"]
           format: double
-          nullable: true
           description: Cost per million cached input tokens in USD.
           example: 1.50
 
@@ -1815,8 +1811,7 @@ components:
         limits:
           $ref: "#/components/schemas/ModelLimits"
         training:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Training data cutoff date (YYYY-MM-DD).
           example: "2025-08-01"
         features:
@@ -1824,9 +1819,8 @@ components:
         costs:
           $ref: "#/components/schemas/ModelCosts"
         estimated_output_tps:
-          type: number
+          type: ["number", "null"]
           format: double
-          nullable: true
           description: Estimated output tokens per second.
         aliases:
           type: array
@@ -1857,8 +1851,7 @@ components:
             - skip
           description: Whether the model responded successfully, failed, or was skipped because its provider is not configured.
         error_message:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Error details when status is "error".
 
     ModelTestMode:
@@ -2108,8 +2101,7 @@ components:
           description: Manifest schema version.
           example: 1
         run_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Optional pre-generated run ID to use instead of allocating a new ULID.
           example: "01HV6D7S5YF4Z4B2M7K4N0Q6T9"
         cwd:
@@ -2175,8 +2167,7 @@ components:
           type: string
           description: Resolved goal content.
         path:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Original goal file path when the goal came from a file.
 
     ManifestArgs:
@@ -2230,11 +2221,9 @@ components:
             - project
             - user
         path:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         source:
-          type: string
-          nullable: true
+          type: ["string", "null"]
 
     ManifestWorkflowConfig:
       type: object
@@ -2274,8 +2263,7 @@ components:
         original:
           type: string
         from:
-          type: string
-          nullable: true
+          type: ["string", "null"]
 
     ManifestWorkflow:
       type: object
@@ -2341,8 +2329,7 @@ components:
         name:
           type: string
         graph_path:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         nodes:
           type: integer
         edges:
@@ -2372,18 +2359,15 @@ components:
         message:
           type: string
         node_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         edge:
-          type: array
-          nullable: true
+          type: ["array", "null"]
           minItems: 2
           maxItems: 2
           items:
             type: string
         fix:
-          type: string
-          nullable: true
+          type: ["string", "null"]
 
     PreflightCheckReport:
       type: object
@@ -2434,8 +2418,7 @@ components:
           items:
             $ref: "#/components/schemas/PreflightCheckDetail"
         remediation:
-          type: string
-          nullable: true
+          type: ["string", "null"]
 
     PreflightCheckDetail:
       type: object
@@ -2478,13 +2461,13 @@ components:
           description: Position in the queue (1-based). Only present when status is `queued`.
           example: 3
         status_reason:
-          allOf:
+          oneOf:
             - $ref: "#/components/schemas/StatusReason"
-          nullable: true
+            - type: "null"
         pending_control:
-          allOf:
+          oneOf:
             - $ref: "#/components/schemas/RunControlAction"
-          nullable: true
+            - type: "null"
         created_at:
           type: string
           format: date-time
@@ -2542,14 +2525,12 @@ components:
           description: Whether the user may provide freeform text in addition to selecting options.
           example: true
         timeout_seconds:
-          type: number
+          type: ["number", "null"]
           format: double
-          nullable: true
           description: Timeout for the question when configured by the workflow.
           example: 30
         context_display:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Optional contextual text shown alongside the question.
           example: Latest draft
 
@@ -2662,44 +2643,36 @@ components:
         run_id:
           type: string
         node_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         node_label:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         stage_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Stage execution identity, formatted as "{node_id}@{visit}".
         parallel_group_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: >
             Durable identity of one execution of a parallel node, formatted as
             "{node_id}@{visit}".
         parallel_branch_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: >
             Durable identity of one branch within a parallel execution,
             formatted as "{parallel_group_id}:{index}".
         session_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         parent_session_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         tool_call_id:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: >
             Stable identifier for a tool call, present on agent.tool.* events
             and other durable events that directly describe the same tool
             call.
         actor:
-          allOf:
+          oneOf:
             - $ref: "#/components/schemas/ActorRef"
-          nullable: true
+            - type: "null"
         event:
           type: string
           description: Event type discriminator.
@@ -2803,20 +2776,17 @@ components:
           description: Relative artifact path to store.
           example: src/lib.rs
         sha256:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Optional lowercase hex SHA-256 checksum for the file contents.
           example: 3f785df4c5b7d3f1f4c1f0ecb0f55f1d9f6f6a3d9f0a8a98f7a74f29d1f81a2c
         expected_bytes:
-          type: integer
+          type: ["integer", "null"]
           format: int64
-          nullable: true
           minimum: 0
           description: Optional exact byte length expected for the file part.
           example: 1234
         content_type:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Optional client-supplied content type for the file part.
           example: text/plain
 
@@ -2945,11 +2915,9 @@ components:
         status:
           $ref: "#/components/schemas/InternalStageStatus"
         notes:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         failure_reason:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         timestamp:
           type: string
           format: date-time
@@ -2959,32 +2927,23 @@ components:
       type: object
       properties:
         prompt:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         response:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         status:
           oneOf:
             - $ref: "#/components/schemas/NodeStatusRecord"
             - type: "null"
-        provider_used:
-          nullable: true
+        provider_used: {}
         diff:
-          type: string
-          nullable: true
-        script_invocation:
-          nullable: true
-        script_timing:
-          nullable: true
-        parallel_results:
-          nullable: true
+          type: ["string", "null"]
+        script_invocation: {}
+        script_timing: {}
+        parallel_results: {}
         stdout:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         stderr:
-          type: string
-          nullable: true
+          type: ["string", "null"]
 
     RunProjection:
       description: Raw internal run projection derived from the event log.
@@ -2993,16 +2952,13 @@ components:
         - nodes
       properties:
         run:
-          type: object
+          type: ["object", "null"]
           additionalProperties: true
-          nullable: true
         graph_source:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         start:
-          type: object
+          type: ["object", "null"]
           additionalProperties: true
-          nullable: true
         status:
           oneOf:
             - $ref: "#/components/schemas/RunStatusRecord"
@@ -3023,30 +2979,23 @@ components:
                 - type: integer
                 - $ref: "#/components/schemas/RunCheckpoint"
         conclusion:
-          type: object
+          type: ["object", "null"]
           additionalProperties: true
-          nullable: true
         retro:
-          type: object
+          type: ["object", "null"]
           additionalProperties: true
-          nullable: true
         retro_prompt:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         retro_response:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         sandbox:
-          type: object
+          type: ["object", "null"]
           additionalProperties: true
-          nullable: true
         final_patch:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         pull_request:
-          type: object
+          type: ["object", "null"]
           additionalProperties: true
-          nullable: true
         nodes:
           type: object
           description: Map from StageId (`node_id@visit`) to NodeState.
@@ -3063,44 +3012,35 @@ components:
         run_id:
           type: string
         workflow_name:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         workflow_slug:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         goal:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         labels:
           type: object
           additionalProperties:
             type: string
         host_repo_path:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         start_time:
-          type: string
+          type: ["string", "null"]
           format: date-time
-          nullable: true
         status:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         status_reason:
-          type: string
-          nullable: true
+          type: ["string", "null"]
         pending_control:
-          allOf:
+          oneOf:
             - $ref: "#/components/schemas/RunControlAction"
-          nullable: true
+            - type: "null"
         duration_ms:
-          type: integer
+          type: ["integer", "null"]
           format: int64
           minimum: 0
-          nullable: true
         total_usd_micros:
-          type: integer
+          type: ["integer", "null"]
           format: int64
-          nullable: true
 
     # ── Run Board Schemas ────────────────────────────────────────────────
 
@@ -3225,9 +3165,8 @@ components:
           description: Number of cache write tokens.
           example: 1500
         total_usd_micros:
-          type: integer
+          type: ["integer", "null"]
           format: int64
-          nullable: true
           description: Billed USD amount in micros.
           example: 720000
 
@@ -3379,9 +3318,8 @@ components:
           description: Total cache write tokens.
           example: 9200
         total_usd_micros:
-          type: integer
+          type: ["integer", "null"]
           format: int64
-          nullable: true
           description: Total billed USD amount in micros.
           example: 20340000
         runtime_secs:
@@ -3768,9 +3706,8 @@ components:
           description: Total cache write tokens.
           example: 4500
         total_usd_micros:
-          type: integer
+          type: ["integer", "null"]
           format: int64
-          nullable: true
           description: Total billed USD amount in micros.
           example: 2260000
 
@@ -4086,12 +4023,10 @@ components:
           type: string
           description: Server version string.
         git_sha:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Build git SHA when available.
         build_date:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Build date when available.
         os:
           type: string
@@ -4158,8 +4093,7 @@ components:
           format: int64
           description: Total bytes reclaimable by deleting inactive runs and logs.
         runs:
-          type: array
-          nullable: true
+          type: ["array", "null"]
           description: Per-run usage rows when verbose output is requested.
           items:
             $ref: "#/components/schemas/DiskUsageRunRow"
@@ -4176,18 +4110,16 @@ components:
           format: int64
           description: Number of items in the category.
         active:
-          type: integer
+          type: ["integer", "null"]
           format: int64
-          nullable: true
           description: Number of active items when applicable.
         size_bytes:
           type: integer
           format: int64
           description: Total bytes used by the category.
         reclaimable_bytes:
-          type: integer
+          type: ["integer", "null"]
           format: int64
-          nullable: true
           description: Bytes reclaimable by pruning the category.
 
     DiskUsageRunRow:
@@ -4249,8 +4181,7 @@ components:
           type: boolean
           description: Whether this response is a dry-run preview.
         runs:
-          type: array
-          nullable: true
+          type: ["array", "null"]
           description: Matched runs when dry-run is enabled.
           items:
             $ref: "#/components/schemas/PruneRunEntry"
@@ -4428,17 +4359,14 @@ components:
           type: boolean
           description: Whether the server has read-write access to this repository.
         default_branch:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: Default branch name, if accessible.
           example: main
         private:
-          type: boolean
-          nullable: true
+          type: ["boolean", "null"]
           description: Whether the repository is private, if accessible.
         permissions:
-          type: object
-          nullable: true
+          type: ["object", "null"]
           description: Detected permission levels.
           properties:
             pull:
@@ -4448,8 +4376,7 @@ components:
             admin:
               type: boolean
         install_url:
-          type: string
-          nullable: true
+          type: ["string", "null"]
           description: GitHub App installation URL when the repo is not yet accessible.
 
     DiagnosticsReport:
@@ -4502,8 +4429,7 @@ components:
           items:
             $ref: "#/components/schemas/DiagnosticsDetail"
         remediation:
-          type: string
-          nullable: true
+          type: ["string", "null"]
 
     DiagnosticsDetail:
       type: object

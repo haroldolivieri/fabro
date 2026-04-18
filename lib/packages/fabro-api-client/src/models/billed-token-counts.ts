@@ -45,6 +45,6 @@ export interface BilledTokenCounts {
     /**
      * Billed USD amount in micros.
      */
-    'total_usd_micros'?: number;
+    'total_usd_micros'?: number | null;
 }
 

@@ -11,11 +11,12 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use fabro_server::jwt_auth::AuthMode;
 use fabro_server::server::build_router;
+use serde_yaml::Value;
 use tower::ServiceExt;
 
 use super::helpers::test_app_state;
 
-fn load_spec() -> openapiv3::OpenAPI {
+fn load_spec() -> Value {
     let spec_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -36,24 +37,22 @@ fn resolve_path(path: &str) -> String {
         .replace("{slug}", "test-slug")
 }
 
-fn methods_for_path_item(item: &openapiv3::PathItem) -> Vec<Method> {
-    let mut methods = Vec::new();
-    if item.get.is_some() {
-        methods.push(Method::GET);
-    }
-    if item.post.is_some() {
-        methods.push(Method::POST);
-    }
-    if item.put.is_some() {
-        methods.push(Method::PUT);
-    }
-    if item.delete.is_some() {
-        methods.push(Method::DELETE);
-    }
-    if item.patch.is_some() {
-        methods.push(Method::PATCH);
-    }
-    methods
+fn methods_for_path_item(item: &Value) -> Vec<Method> {
+    const HTTP_METHODS: &[(&str, Method)] = &[
+        ("get", Method::GET),
+        ("post", Method::POST),
+        ("put", Method::PUT),
+        ("delete", Method::DELETE),
+        ("patch", Method::PATCH),
+    ];
+    let Some(map) = item.as_mapping() else {
+        return Vec::new();
+    };
+    HTTP_METHODS
+        .iter()
+        .filter(|(key, _)| map.contains_key(Value::String((*key).to_string())))
+        .map(|(_, method)| method.clone())
+        .collect()
 }
 
 #[tokio::test]
@@ -62,15 +61,16 @@ async fn all_spec_routes_are_routable() {
     let state = test_app_state();
     let app = build_router(state, AuthMode::Disabled);
 
-    let mut checked = 0;
-    for (path, item) in &spec.paths.paths {
-        let path_item = match item {
-            openapiv3::ReferenceOr::Item(item) => item,
-            openapiv3::ReferenceOr::Reference { .. } => continue,
-        };
+    let paths = spec
+        .get("paths")
+        .and_then(Value::as_mapping)
+        .expect("spec is missing `paths`");
 
+    let mut checked = 0;
+    for (path_key, item) in paths {
+        let path = path_key.as_str().expect("path key must be a string");
         let uri = resolve_path(path);
-        for method in methods_for_path_item(path_item) {
+        for method in methods_for_path_item(item) {
             let mut builder = Request::builder().method(&method).uri(&uri);
 
             let body = if method == Method::POST {

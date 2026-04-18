@@ -17,7 +17,7 @@
 export interface ManifestFileRef {
     'type': ManifestFileRefTypeEnum;
     'original': string;
-    'from'?: string;
+    'from'?: string | null;
 }
 
 export const ManifestFileRefTypeEnum = {

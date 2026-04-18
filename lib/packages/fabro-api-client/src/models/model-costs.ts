@@ -21,14 +21,14 @@ export interface ModelCosts {
     /**
      * Cost per million input tokens in USD.
      */
-    'input_cost_per_mtok'?: number;
+    'input_cost_per_mtok'?: number | null;
     /**
      * Cost per million output tokens in USD.
      */
-    'output_cost_per_mtok'?: number;
+    'output_cost_per_mtok'?: number | null;
     /**
      * Cost per million cached input tokens in USD.
      */
-    'cache_input_cost_per_mtok'?: number;
+    'cache_input_cost_per_mtok'?: number | null;
 }
 

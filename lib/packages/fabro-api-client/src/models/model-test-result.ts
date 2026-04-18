@@ -29,7 +29,7 @@ export interface ModelTestResult {
     /**
      * Error details when status is \"error\".
      */
-    'error_message'?: string;
+    'error_message'?: string | null;
 }
 
 export const ModelTestResultStatusEnum = {

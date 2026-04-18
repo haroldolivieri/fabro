@@ -26,27 +26,27 @@ export interface RunEvent {
     'id': string;
     'ts': string;
     'run_id': string;
-    'node_id'?: string;
-    'node_label'?: string;
+    'node_id'?: string | null;
+    'node_label'?: string | null;
     /**
      * Stage execution identity, formatted as \"{node_id}@{visit}\".
      */
-    'stage_id'?: string;
+    'stage_id'?: string | null;
     /**
      * Durable identity of one execution of a parallel node, formatted as \"{node_id}@{visit}\". 
      */
-    'parallel_group_id'?: string;
+    'parallel_group_id'?: string | null;
     /**
      * Durable identity of one branch within a parallel execution, formatted as \"{parallel_group_id}:{index}\". 
      */
-    'parallel_branch_id'?: string;
-    'session_id'?: string;
-    'parent_session_id'?: string;
+    'parallel_branch_id'?: string | null;
+    'session_id'?: string | null;
+    'parent_session_id'?: string | null;
     /**
      * Stable identifier for a tool call, present on agent.tool.* events and other durable events that directly describe the same tool call. 
      */
-    'tool_call_id'?: string;
-    'actor'?: ActorRef;
+    'tool_call_id'?: string | null;
+    'actor'?: ActorRef | null;
     /**
      * Event type discriminator.
      */

@@ -22,7 +22,7 @@ export interface PreflightCheckResult {
     'status': PreflightCheckResultStatusEnum;
     'summary': string;
     'details': Array<PreflightCheckDetail>;
-    'remediation'?: string;
+    'remediation'?: string | null;
 }
 
 export const PreflightCheckResultStatusEnum = {

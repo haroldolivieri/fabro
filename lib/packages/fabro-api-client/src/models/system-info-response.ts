@@ -31,11 +31,11 @@ export interface SystemInfoResponse {
     /**
      * Build git SHA when available.
      */
-    'git_sha'?: string;
+    'git_sha'?: string | null;
     /**
      * Build date when available.
      */
-    'build_date'?: string;
+    'build_date'?: string | null;
     /**
      * Target operating system.
      */

@@ -30,22 +30,22 @@ import type { RunStatusRecord } from './run-status-record';
  * Raw internal run projection derived from the event log.
  */
 export interface RunProjection {
-    'run'?: { [key: string]: any; };
-    'graph_source'?: string;
-    'start'?: { [key: string]: any; };
+    'run'?: { [key: string]: any; } | null;
+    'graph_source'?: string | null;
+    'start'?: { [key: string]: any; } | null;
     'status'?: RunStatusRecord | null;
     'checkpoint'?: RunCheckpoint | null;
     /**
      * Sequence-tagged checkpoint history entries as `[seq, checkpoint]`.
      */
     'checkpoints'?: Array<Array<RunProjectionCheckpointsInnerInner>>;
-    'conclusion'?: { [key: string]: any; };
-    'retro'?: { [key: string]: any; };
-    'retro_prompt'?: string;
-    'retro_response'?: string;
-    'sandbox'?: { [key: string]: any; };
-    'final_patch'?: string;
-    'pull_request'?: { [key: string]: any; };
+    'conclusion'?: { [key: string]: any; } | null;
+    'retro'?: { [key: string]: any; } | null;
+    'retro_prompt'?: string | null;
+    'retro_response'?: string | null;
+    'sandbox'?: { [key: string]: any; } | null;
+    'final_patch'?: string | null;
+    'pull_request'?: { [key: string]: any; } | null;
     /**
      * Map from StageId (`node_id@visit`) to NodeState.
      */

@@ -36,6 +36,6 @@ export interface DiskUsageResponse {
     /**
      * Per-run usage rows when verbose output is requested.
      */
-    'runs'?: Array<DiskUsageRunRow>;
+    'runs'?: Array<DiskUsageRunRow> | null;
 }
 

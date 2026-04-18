@@ -21,15 +21,15 @@ import type { NodeStatusRecord } from './node-status-record';
  * Internal node projection state.
  */
 export interface NodeState {
-    'prompt'?: string;
-    'response'?: string;
+    'prompt'?: string | null;
+    'response'?: string | null;
     'status'?: NodeStatusRecord | null;
     'provider_used'?: any;
-    'diff'?: string;
+    'diff'?: string | null;
     'script_invocation'?: any;
     'script_timing'?: any;
     'parallel_results'?: any;
-    'stdout'?: string;
-    'stderr'?: string;
+    'stdout'?: string | null;
+    'stderr'?: string | null;
 }
 

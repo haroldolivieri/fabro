@@ -67,10 +67,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Set up Rust
-        run: |
-          rustup toolchain install stable --profile minimal --no-self-update
-          rustup default stable
-          rustup target add ${{ matrix.target }}
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          targets: ${{ matrix.target }}
 
       - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
 

@@ -11,7 +11,9 @@
 # user. Honoring $PORT lets PaaS providers (Railway, Fly, Render, Heroku,
 # Cloud Run) route traffic without extra configuration.
 
-FROM alpine:3.22
+FROM ghcr.io/fabro-sh/dhi-alpine-base:3.23-dev-2026-04-18
+
+USER root
 
 ARG TARGETARCH
 

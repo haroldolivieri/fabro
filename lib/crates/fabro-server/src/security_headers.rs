@@ -9,11 +9,29 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, header};
 use axum::middleware::Next;
 use axum::response::Response;
 
+use crate::csp;
+
 pub async fn layer(req: Request, next: Next) -> Response {
     let is_https = request_is_https(&req);
     let mut response = next.run(req).await;
     apply_defaults(response.headers_mut(), is_https);
+    apply_csp(response.headers_mut());
     response
+}
+
+fn apply_csp(headers: &mut HeaderMap) {
+    // Ship in Report-Only mode while the policy settles — browsers emit
+    // violations to DevTools and any configured report endpoint without
+    // actually blocking the offending resource. Flip to
+    // `Content-Security-Policy` once real-world use confirms no false
+    // positives.
+    if let Ok(value) = HeaderValue::from_str(csp::policy()) {
+        headers
+            .entry(HeaderName::from_static(
+                "content-security-policy-report-only",
+            ))
+            .or_insert(value);
+    }
 }
 
 fn apply_defaults(headers: &mut HeaderMap, is_https: bool) {

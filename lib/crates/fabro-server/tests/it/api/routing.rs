@@ -242,6 +242,34 @@ async fn security_headers_are_applied_to_all_responses() {
         spa_response.headers().get("cache-control").unwrap(),
         "no-cache"
     );
+
+    // CSP is shipped in Report-Only mode and must cover the sources the
+    // embedded SPA actually loads: same-origin scripts, Google Fonts,
+    // WASM instantiation (viz-js), data: and blob: images, blob: workers.
+    let csp = spa_response
+        .headers()
+        .get("content-security-policy-report-only")
+        .expect("CSP Report-Only header should be emitted")
+        .to_str()
+        .expect("CSP should be ASCII");
+    assert!(csp.contains("default-src 'self'"), "got: {csp}");
+    assert!(csp.contains("'wasm-unsafe-eval'"), "got: {csp}");
+    assert!(
+        csp.contains("'sha256-"),
+        "inline-script hash missing: {csp}"
+    );
+    assert!(
+        csp.contains("style-src 'self' https://fonts.googleapis.com 'unsafe-inline'"),
+        "got: {csp}"
+    );
+    assert!(
+        csp.contains("font-src 'self' https://fonts.gstatic.com"),
+        "got: {csp}"
+    );
+    assert!(csp.contains("img-src 'self' data: blob:"), "got: {csp}");
+    assert!(csp.contains("worker-src 'self' blob:"), "got: {csp}");
+    assert!(csp.contains("frame-ancestors 'none'"), "got: {csp}");
+    assert!(csp.contains("object-src 'none'"), "got: {csp}");
 }
 
 #[tokio::test]

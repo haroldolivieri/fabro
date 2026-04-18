@@ -165,6 +165,9 @@ pub async fn run_graph(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    // Tests often reopen the run store immediately after `run()` returns.
+    // Flush the async store logger first so they don't observe partial state.
+    initialized.store_logger.flush().await;
     executed.outcome
 }
 
@@ -189,8 +192,8 @@ pub async fn run_graph_with_state(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
-    let outcome = executed.outcome?;
     initialized.store_logger.flush().await;
+    let outcome = executed.outcome?;
     let state = executed
         .run_store
         .state()
@@ -222,6 +225,7 @@ pub async fn run_graph_with_hooks(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    initialized.store_logger.flush().await;
     executed.outcome
 }
 
@@ -248,8 +252,8 @@ pub async fn run_graph_with_hooks_and_state(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
-    let outcome = executed.outcome?;
     initialized.store_logger.flush().await;
+    let outcome = executed.outcome?;
     let state = executed
         .run_store
         .state()
@@ -280,6 +284,7 @@ pub async fn run_graph_from_checkpoint(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    initialized.store_logger.flush().await;
     executed.outcome
 }
 
@@ -305,8 +310,8 @@ pub async fn run_graph_from_checkpoint_with_state(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
-    let outcome = executed.outcome?;
     initialized.store_logger.flush().await;
+    let outcome = executed.outcome?;
     let state = executed
         .run_store
         .state()

@@ -22,7 +22,7 @@ export interface DiagnosticsCheck {
     'status': DiagnosticsCheckStatusEnum;
     'summary': string;
     'details'?: Array<DiagnosticsDetail>;
-    'remediation'?: string;
+    'remediation'?: string | null;
 }
 
 export const DiagnosticsCheckStatusEnum = {

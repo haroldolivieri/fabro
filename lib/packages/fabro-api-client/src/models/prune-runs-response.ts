@@ -28,7 +28,7 @@ export interface PruneRunsResponse {
     /**
      * Matched runs when dry-run is enabled.
      */
-    'runs'?: Array<PruneRunEntry>;
+    'runs'?: Array<PruneRunEntry> | null;
     /**
      * Count of runs matching the prune filters.
      */

@@ -25,6 +25,6 @@ export interface ModelLimits {
     /**
      * Maximum output tokens, if known.
      */
-    'max_output'?: number;
+    'max_output'?: number | null;
 }
 

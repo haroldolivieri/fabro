@@ -29,14 +29,14 @@ export interface ArtifactBatchUploadEntry {
     /**
      * Optional lowercase hex SHA-256 checksum for the file contents.
      */
-    'sha256'?: string;
+    'sha256'?: string | null;
     /**
      * Optional exact byte length expected for the file part.
      */
-    'expected_bytes'?: number;
+    'expected_bytes'?: number | null;
     /**
      * Optional client-supplied content type for the file part.
      */
-    'content_type'?: string;
+    'content_type'?: string | null;
 }
 

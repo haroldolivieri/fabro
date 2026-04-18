@@ -22,8 +22,8 @@ import type { InternalStageStatus } from './internal-stage-status';
  */
 export interface NodeStatusRecord {
     'status': InternalStageStatus;
-    'notes'?: string;
-    'failure_reason'?: string;
+    'notes'?: string | null;
+    'failure_reason'?: string | null;
     'timestamp': string;
 }
 

@@ -36,15 +36,15 @@ export interface RepoCheckResponse {
     /**
      * Default branch name, if accessible.
      */
-    'default_branch'?: string;
+    'default_branch'?: string | null;
     /**
      * Whether the repository is private, if accessible.
      */
-    'private'?: boolean;
+    'private'?: boolean | null;
     'permissions'?: RepoCheckResponsePermissions;
     /**
      * GitHub App installation URL when the repo is not yet accessible.
      */
-    'install_url'?: string;
+    'install_url'?: string | null;
 }
 

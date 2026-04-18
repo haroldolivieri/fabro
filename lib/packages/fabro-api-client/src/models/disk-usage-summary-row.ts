@@ -29,7 +29,7 @@ export interface DiskUsageSummaryRow {
     /**
      * Number of active items when applicable.
      */
-    'active'?: number;
+    'active'?: number | null;
     /**
      * Total bytes used by the category.
      */
@@ -37,6 +37,6 @@ export interface DiskUsageSummaryRow {
     /**
      * Bytes reclaimable by pruning the category.
      */
-    'reclaimable_bytes'?: number;
+    'reclaimable_bytes'?: number | null;
 }
 

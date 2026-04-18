@@ -26,7 +26,7 @@ export interface ManifestGoal {
     /**
      * Original goal file path when the goal came from a file.
      */
-    'path'?: string;
+    'path'?: string | null;
 }
 
 export const ManifestGoalTypeEnum = {

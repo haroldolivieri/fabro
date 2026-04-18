@@ -40,8 +40,8 @@ export interface RunStatusResponse {
      * Position in the queue (1-based). Only present when status is `queued`.
      */
     'queue_position'?: number;
-    'status_reason'?: StatusReason;
-    'pending_control'?: RunControlAction;
+    'status_reason'?: StatusReason | null;
+    'pending_control'?: RunControlAction | null;
     /**
      * Timestamp when the run was created.
      */

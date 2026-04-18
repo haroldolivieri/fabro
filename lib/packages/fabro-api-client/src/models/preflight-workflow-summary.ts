@@ -19,7 +19,7 @@ import type { WorkflowDiagnostic } from './workflow-diagnostic';
 
 export interface PreflightWorkflowSummary {
     'name': string;
-    'graph_path'?: string;
+    'graph_path'?: string | null;
     'nodes': number;
     'edges': number;
     'goal': string;

@@ -48,11 +48,11 @@ export interface ApiQuestion {
     /**
      * Timeout for the question when configured by the workflow.
      */
-    'timeout_seconds'?: number;
+    'timeout_seconds'?: number | null;
     /**
      * Optional contextual text shown alongside the question.
      */
-    'context_display'?: string;
+    'context_display'?: string | null;
 }
 
 

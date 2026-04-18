@@ -22,17 +22,17 @@ import type { RunControlAction } from './run-control-action';
  */
 export interface StoreRunSummary {
     'run_id': string;
-    'workflow_name'?: string;
-    'workflow_slug'?: string;
-    'goal'?: string;
+    'workflow_name'?: string | null;
+    'workflow_slug'?: string | null;
+    'goal'?: string | null;
     'labels': { [key: string]: string; };
-    'host_repo_path'?: string;
-    'start_time'?: string;
-    'status'?: string;
-    'status_reason'?: string;
-    'pending_control'?: RunControlAction;
-    'duration_ms'?: number;
-    'total_usd_micros'?: number;
+    'host_repo_path'?: string | null;
+    'start_time'?: string | null;
+    'status'?: string | null;
+    'status_reason'?: string | null;
+    'pending_control'?: RunControlAction | null;
+    'duration_ms'?: number | null;
+    'total_usd_micros'?: number | null;
 }
 
 

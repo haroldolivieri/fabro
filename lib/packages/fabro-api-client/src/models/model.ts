@@ -47,13 +47,13 @@ export interface Model {
     /**
      * Training data cutoff date (YYYY-MM-DD).
      */
-    'training'?: string;
+    'training'?: string | null;
     'features': ModelFeatures;
     'costs': ModelCosts;
     /**
      * Estimated output tokens per second.
      */
-    'estimated_output_tps'?: number;
+    'estimated_output_tps'?: number | null;
     /**
      * Alternative names that resolve to this model.
      */

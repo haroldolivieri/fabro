@@ -1955,7 +1955,6 @@ dependencies = [
  "mime_guess",
  "multer",
  "object_store",
- "openapiv3",
  "rand 0.9.2",
  "regex",
  "rustls",

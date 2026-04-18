@@ -43,7 +43,7 @@ export interface RunManifest {
     /**
      * Optional pre-generated run ID to use instead of allocating a new ULID.
      */
-    'run_id'?: string;
+    'run_id'?: string | null;
     /**
      * CLI working directory at invocation time.
      */

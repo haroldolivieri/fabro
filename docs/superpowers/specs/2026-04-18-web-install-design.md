@@ -56,6 +56,8 @@ The following decisions were made during brainstorming and are load-bearing for 
 | 19 | v1 inherits the existing helper's partial-state semantics on `/install/finish` failure (settings.toml rolled back, server.env not). Atomic rollback deferred. | Real atomic rollback requires temp-dir + rename refactor; partial state is acceptable because env keys are deterministic and idempotent on retry. |
 | 20 | Only the explicit `fabro server start` (and `restart`) command enters install mode. Auto-start callers (`run attach`, `server runs`, etc.) fail with a "configure first" message. | Auto-start callers spawn-and-block; an install-mode server has no `/api/v1/*` to connect to, so they would hang waiting for a route that doesn't exist. |
 | 21 | Local laptops without a supervisor: the wizard completion screen shows a "run `fabro server start` to launch the configured server" message after a 30s polling timeout. Built-in supervisor for local is a follow-up. | Today's `fabro server start` does not stay around to restart its `__serve` child (`start.rs:318`). v1 keeps that path unchanged; one extra command is acceptable for local users who could have used `fabro install` instead. |
+| 22 | Install mode forces foreground; never daemonizes. `--foreground` is implicit. | Daemon mode hides the install token in `server.log` (`start.rs:347, :397`); foreground puts it on the operator's terminal where they can act on it. |
+| 23 | `--no-web` is ignored during install with a stderr warning; respected on next start. | Install requires the web UI. Rejecting the flag would force supervised-deployment operators to drop it or `docker exec` to run the CLI wizard — defeats the point. Warning makes the override visible. |
 
 ## Architecture
 
@@ -78,7 +80,8 @@ The fork:
    - Create an in-memory `InstallSession` registry holding a single `PendingInstall`.
    - Build an install-only router (`build_install_router`) mounting: `/install/*` API endpoints (install-token middleware, except the OAuth callback — see below), the static-asset routes serving the existing `fabro-web` bundle but with a **server-injected mode flag** (see *Frontend mode-aware boot* below), `GET /health` returning `{ "mode": "install" }`, and a catch-all that returns the install-mode `index.html`. Normal `/api/v1/*` routes are not mounted.
    - **Skip** the eager `load_or_create_local_dev_token` / `load_or_create_local_session_secret` calls that `start.rs:247-248, 389-390` perform — the install router authenticates via its own middleware and doesn't use the JWT/session machinery.
-   - Run the same daemonization or foreground machinery as a normal start (lock file, server record, log files), so `fabro server status` / `stop` work uniformly.
+   - **Force foreground.** Install mode never daemonizes, regardless of how `fabro server start` was invoked. The current daemon path (`start.rs:318` `execute_daemon`) redirects the child's stdout/stderr to `server.log` (`start.rs:347, :397`) and the parent only prints its own summary; the install token would be hidden in the log file. Foreground install puts the token directly on the operator's terminal. The daemon path is fine for normal mode; install mode bypasses it. The boot stderr explicitly says "`--foreground` is implicit during install" so operators who passed daemon-implying flags know what happened.
+   - **`--no-web` is ignored** with a stderr warning. Install mode requires the web UI; the flag will be respected on the next start (after the supervisor restart, or after the operator re-runs `fabro server start`). The boot stderr emits: `Warning: --no-web is ignored during install; will be respected on next start.`
 
 When `POST /install/finish` succeeds, the handler persists outputs to disk, returns 202, then schedules a clean process exit (~500ms after responding). What happens next depends on whether the process has a supervisor:
 
@@ -140,7 +143,7 @@ A new `fabro-install` crate holds:
 
 On entering install mode, the server generates a single 32-byte token, base64url-encoded. Stored only in memory; never persisted.
 
-At startup, the server logs to stderr:
+At startup, the server prints to stderr (which the operator sees directly because install mode forces foreground — see *Process model*):
 
 ```
   ⚒️  Fabro server is unconfigured — install mode active.
@@ -150,6 +153,8 @@ At startup, the server logs to stderr:
 
   Or visit the root path for the install token instructions.
 ```
+
+For local foreground use this lands on the operator's terminal directly. For supervised deployments (Docker, Railway, systemd), stderr is captured by `docker logs`, journalctl, or the platform's log viewer; operators read it there.
 
 The startup-log URL is best-effort: it uses env-var detection (Railway's `RAILWAY_PUBLIC_DOMAIN`, etc.) falling back to the bind address. The operator may already know their public hostname out-of-band; this is just a hint.
 
@@ -361,6 +366,8 @@ Per `files-internal/testing-strategy.md` (re-read before implementing).
 - **GitHub App happy-path roundtrip.** With install token in session: `POST /install/github/app/manifest` returns a manifest containing the canonical URL the operator confirmed in the Server step + a fresh `state`. Then `GET /install/github/app/redirect?code=stub-code&state=<that-state>` is called with `httpmock` standing in for `https://api.github.com/app-manifests/stub-code/conversions` (returning a fixture body with `id`, `slug`, `client_id`, `client_secret`, `webhook_secret`, `pem`). Assert: the install session now holds `pending_github_app: { app_id, slug, client_id, ... }` populated from the fixture, the response is a 302 to `/install/github/done?token=<install_token>`, the manifest's `redirect_url` and `callback_urls` were built from the canonical URL (not the install-mode bind address). This is the riskiest new path in the design — it covers code-exchange wiring, session population, redirect-with-token handling, and that the canonical-URL ordering decision actually flows through to the manifest.
 - **Finish failure partial-state semantics.** Force a vault write to fail; assert `settings.toml` is restored to its prior state, `server.env` keys written this attempt are *left in place* (matches the existing test at `install.rs:2910`), the vault file is restored to its pre-step-3 snapshot, the response carries the list of leftover env keys, and the process does not exit.
 - **Forwarded-host detection.** Request with `X-Forwarded-Host: foo.com` + `X-Forwarded-Proto: https` → `GET /install/session` returns prefilled canonical URL `https://foo.com`.
+- **Force-foreground in install mode.** Invoke `fabro server start` (no `--foreground`) on a tempdir with no settings → assert the parent process does NOT spawn a `__serve` daemon child, runs install in-process, prints the install token + URL to its own stderr (capture and grep). Assert that `--foreground` would have produced the same behavior.
+- **`--no-web` ignored during install.** Invoke `fabro server start --no-web` on a tempdir with no settings → assert the install router still mounts the SPA static routes, `GET /install` returns the install HTML, and a stderr warning was emitted: `Warning: --no-web is ignored during install; will be respected on next start.`. After `/install/finish` and a fresh `fabro server start --no-web`, assert the normal-mode router does NOT mount the SPA static routes.
 
 ### Frontend tests (`apps/fabro-web`, Bun test)
 

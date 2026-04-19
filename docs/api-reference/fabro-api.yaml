@@ -2007,7 +2007,7 @@ components:
           example: true
 
     InstallLlmTestInput:
-      description: Input for install-time LLM credential validation.
+      description: Input for install-time LLM credential validation. Supported providers in install v1 are `anthropic`, `openai`, and `gemini`.
       type: object
       required:
         - provider
@@ -2018,10 +2018,6 @@ components:
           example: anthropic
         api_key:
           type: string
-        openai_base_url:
-          type: string
-          format: uri
-          description: Optional override base URL used for OpenAI-style providers during install.
 
     InstallLlmProvidersInput:
       description: LLM providers selected during browser install.
@@ -2036,7 +2032,7 @@ components:
             $ref: "#/components/schemas/InstallLlmProviderInput"
 
     InstallLlmProviderInput:
-      description: One persisted LLM provider configuration collected during browser install.
+      description: One persisted LLM provider configuration collected during browser install. Supported providers in install v1 are `anthropic`, `openai`, and `gemini`.
       type: object
       required:
         - provider
@@ -2047,9 +2043,6 @@ components:
           example: anthropic
         api_key:
           type: string
-        openai_base_url:
-          type: string
-          format: uri
 
     InstallLlmSummary:
       description: Redacted summary of persisted LLM install choices.
@@ -2067,9 +2060,6 @@ components:
                 type: string
               configured:
                 type: boolean
-              openai_base_url:
-                type: string
-                format: uri
 
     InstallServerConfigInput:
       description: Canonical server URL confirmed during browser install.

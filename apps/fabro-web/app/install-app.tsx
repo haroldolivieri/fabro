@@ -19,6 +19,8 @@ import {
   testInstallLlm,
 } from "./install-api";
 import { AuthLayout } from "./components/auth-layout";
+import { INSTALL_PROVIDERS } from "./install-config";
+import { shouldRedirectAfterHealthPoll } from "./install-flow";
 import { consumeInstallTokenFromUrl } from "./mode";
 
 const INSTALL_STEPS = [
@@ -27,29 +29,6 @@ const INSTALL_STEPS = [
   { id: "server", label: "Server", href: "/install/server" },
   { id: "github", label: "GitHub", href: "/install/github" },
   { id: "review", label: "Review", href: "/install/review" },
-] as const;
-
-const PROVIDERS = [
-  {
-    id: "anthropic",
-    label: "Anthropic",
-    hint: "Claude API key.",
-  },
-  {
-    id: "openai",
-    label: "OpenAI",
-    hint: "Responses API key.",
-  },
-  {
-    id: "gemini",
-    label: "Gemini",
-    hint: "Google AI Studio API key.",
-  },
-  {
-    id: "openai_compatible",
-    label: "OpenAI Compatible",
-    hint: "API key plus a custom base URL.",
-  },
 ] as const;
 
 type StepId = (typeof INSTALL_STEPS)[number]["id"];
@@ -61,7 +40,6 @@ type ProviderSelection = Record<
   string,
   {
     apiKey: string;
-    openaiBaseUrl: string;
   }
 >;
 
@@ -175,16 +153,22 @@ export default function InstallApp() {
     const interval = window.setInterval(async () => {
       try {
         const response = await fetch("/health");
-        if (!response.ok) {
-          window.location.href = finishState.restart_url;
-          return;
-        }
-        const body = (await response.json()) as { mode?: string };
-        if (body.mode !== "install") {
+        const body = response.ok
+          ? ((await response.json()) as { mode?: string })
+          : undefined;
+        if (
+          shouldRedirectAfterHealthPoll({
+            kind: "response",
+            ok: response.ok,
+            mode: body?.mode,
+          })
+        ) {
           window.location.href = finishState.restart_url;
         }
       } catch {
-        window.location.href = finishState.restart_url;
+        if (shouldRedirectAfterHealthPoll({ kind: "error" })) {
+          window.location.href = finishState.restart_url;
+        }
       }
     }, 1_000);
 
@@ -265,12 +249,11 @@ export default function InstallApp() {
           error={saveError}
           submitting={submitting}
           onSubmit={async () => {
-            const providers = PROVIDERS.map(({ id }) => {
-              const current = llmSelection[id] ?? { apiKey: "", openaiBaseUrl: "" };
+            const providers = INSTALL_PROVIDERS.map(({ id }) => {
+              const current = llmSelection[id] ?? { apiKey: "" };
               return {
                 provider: id,
                 api_key: current.apiKey.trim(),
-                openai_base_url: current.openaiBaseUrl.trim() || null,
               };
             }).filter((provider) => provider.api_key.length > 0);
 
@@ -744,13 +727,8 @@ function ReviewScreen({
         <SummaryCard
           title="LLM"
           body={
-            (session?.llm?.providers ?? [])
-              .map((provider) =>
-                provider.openai_base_url
-                  ? `${provider.provider} (${provider.openai_base_url})`
-                  : provider.provider,
-              )
-              .join(", ") || "Not configured"
+            (session?.llm?.providers ?? []).map((provider) => provider.provider).join(", ") ||
+            "Not configured"
           }
         />
         <SummaryCard
@@ -839,9 +817,9 @@ function ProviderFields({
   onChange: (nextValue: ProviderSelection) => void;
 }) {
   return (
-    <div className="space-y-4">
-      {PROVIDERS.map((provider) => {
-        const current = value[provider.id] ?? { apiKey: "", openaiBaseUrl: "" };
+      <div className="space-y-4">
+      {INSTALL_PROVIDERS.map((provider) => {
+        const current = value[provider.id] ?? { apiKey: "" };
         return (
           <div
             key={provider.id}
@@ -862,25 +840,6 @@ function ProviderFields({
                 placeholder={`${provider.label} API key`}
               />
             </Field>
-            {provider.id === "openai_compatible" ? (
-              <div className="mt-4">
-                <Field label="Base URL" hint="Required for OpenAI-compatible providers.">
-                  <input
-                    value={current.openaiBaseUrl}
-                    onChange={(event) =>
-                      onChange({
-                        ...value,
-                        [provider.id]: {
-                          ...current,
-                          openaiBaseUrl: event.target.value,
-                        },
-                      })}
-                    className={INPUT_CLASS}
-                    placeholder="https://api.example.com/v1"
-                  />
-                </Field>
-              </div>
-            ) : null}
           </div>
         );
       })}
@@ -1054,11 +1013,10 @@ function Field({
 
 function defaultProviderSelection(): ProviderSelection {
   return Object.fromEntries(
-    PROVIDERS.map((provider) => [
+    INSTALL_PROVIDERS.map((provider) => [
       provider.id,
       {
         apiKey: "",
-        openaiBaseUrl: "",
       },
     ]),
   );
@@ -1068,16 +1026,13 @@ function hydrateProviderSelection(
   current: ProviderSelection,
   session: InstallSessionResponse,
 ): ProviderSelection {
-  const hasUserInput = Object.values(current).some(
-    (provider) => provider.apiKey || provider.openaiBaseUrl,
-  );
+  const hasUserInput = Object.values(current).some((provider) => provider.apiKey);
   if (hasUserInput) return current;
 
   const next = defaultProviderSelection();
   for (const provider of session.llm?.providers ?? []) {
     next[provider.provider] = {
       apiKey: "",
-      openaiBaseUrl: provider.openai_base_url ?? "",
     };
   }
   return next;

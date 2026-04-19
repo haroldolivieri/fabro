@@ -203,12 +203,13 @@ fn uninstall_yes_fails_when_only_a_legacy_running_server_record_exists() {
     wait_for_path(&current_record);
     let legacy_record = fabro_home.join("server.json");
     std::fs::rename(&current_record, &legacy_record).unwrap();
-    let pid = serde_json::from_str::<serde_json::Value>(
+    let pid_u64 = serde_json::from_str::<serde_json::Value>(
         &std::fs::read_to_string(&legacy_record).unwrap(),
     )
     .unwrap()["pid"]
         .as_u64()
-        .unwrap() as u32;
+        .unwrap();
+    let pid = u32::try_from(pid_u64).expect("pid fits in u32");
 
     let uninstall_output = {
         let mut uninstall = std::process::Command::new(env!("CARGO_BIN_EXE_fabro"));

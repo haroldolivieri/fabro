@@ -88,12 +88,13 @@ fn status_errors_when_only_a_legacy_running_server_record_exists() {
             .expect("server status should run")
     };
 
-    let pid = serde_json::from_str::<serde_json::Value>(
+    let pid_u64 = serde_json::from_str::<serde_json::Value>(
         &std::fs::read_to_string(&legacy_record).unwrap(),
     )
     .unwrap()["pid"]
         .as_u64()
-        .unwrap() as u32;
+        .unwrap();
+    let pid = u32::try_from(pid_u64).expect("pid fits in u32");
     stop_pid(pid);
     let _ = std::fs::remove_file(&legacy_record);
     let _ = std::fs::remove_file(&socket_path);

@@ -489,11 +489,12 @@ mod tests {
         Commands, InstallGitHubStrategyArg, ModelsCommand, ProviderCommand, ProviderNamespace,
         StoreCommand, StoreNamespace,
     };
+    use tokio::runtime::Runtime;
 
     use super::*;
 
-    fn runtime() -> tokio::runtime::Runtime {
-        tokio::runtime::Runtime::new().expect("runtime should build")
+    fn runtime() -> Runtime {
+        Runtime::new().expect("runtime should build")
     }
 
     fn write_test_settings(path: &std::path::Path) {

@@ -244,14 +244,12 @@ fn foreground_start_writes_tracing_to_storage_server_log() {
     );
     assert!(
         !storage_log.contains("stale pre-start log entry"),
-        "expected startup to truncate stale log contents, got:\n{}",
-        storage_log
+        "expected startup to truncate stale log contents, got:\n{storage_log}",
     );
     assert!(
         storage_log.find("API server started")
             < storage_log.find("Shutdown signal received, stopping server"),
-        "expected shutdown trace to append after startup trace, got:\n{}",
-        storage_log
+        "expected shutdown trace to append after startup trace, got:\n{storage_log}",
     );
 
     let home_server_logs = server_log_files(&home_dir.path().join(".fabro").join("logs"));
@@ -316,14 +314,12 @@ fn daemon_start_writes_tracing_to_storage_server_log() {
     );
     assert!(
         !storage_log.contains("stale pre-start log entry"),
-        "expected startup to truncate stale log contents, got:\n{}",
-        storage_log
+        "expected startup to truncate stale log contents, got:\n{storage_log}",
     );
     assert!(
         storage_log.find("API server started")
             < storage_log.find("Shutdown signal received, stopping server"),
-        "expected shutdown trace to append after startup trace, got:\n{}",
-        storage_log
+        "expected shutdown trace to append after startup trace, got:\n{storage_log}",
     );
 
     let home_server_logs = server_log_files(&context.home_dir.join(".fabro").join("logs"));
@@ -382,12 +378,13 @@ fn start_errors_when_only_a_legacy_running_server_record_exists() {
             .expect("server start retry should run")
     };
 
-    let pid = serde_json::from_str::<serde_json::Value>(
+    let pid_u64 = serde_json::from_str::<serde_json::Value>(
         &std::fs::read_to_string(&legacy_record).unwrap(),
     )
     .unwrap()["pid"]
         .as_u64()
-        .unwrap() as u32;
+        .unwrap();
+    let pid = u32::try_from(pid_u64).expect("pid fits in u32");
     stop_pid(pid);
     let _ = std::fs::remove_file(&legacy_record);
     let _ = std::fs::remove_file(&socket_path);
@@ -489,13 +486,11 @@ fn concurrent_foreground_start_does_not_retruncate_storage_server_log() {
     let storage_log = std::fs::read_to_string(&storage_log_path).unwrap_or_default();
     assert!(
         storage_log.contains(marker.trim_end()),
-        "expected second start to avoid retruncating the log, got:\n{}",
-        storage_log
+        "expected second start to avoid retruncating the log, got:\n{storage_log}",
     );
     assert!(
         !storage_log.contains("stale pre-start log entry"),
-        "expected the first start to truncate stale log contents, got:\n{}",
-        storage_log
+        "expected the first start to truncate stale log contents, got:\n{storage_log}",
     );
 
     let stop_output = {

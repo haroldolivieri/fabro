@@ -159,6 +159,17 @@ pub fn isolated_storage_dir() -> tempfile::TempDir {
     root
 }
 
+/// Sleep tick for the test polling helpers below. These are synchronous
+/// helpers called from blocking integration tests — there's no runtime to
+/// hand off to, so `std::thread::sleep` is the right primitive.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "sync polling helper for blocking integration tests"
+)]
+fn poll_sleep() {
+    std::thread::sleep(std::time::Duration::from_millis(50));
+}
+
 /// Poll up to 5s for a path to appear; panic on timeout.
 pub fn wait_for_path(path: &Path) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -166,7 +177,7 @@ pub fn wait_for_path(path: &Path) {
         if path.exists() {
             return;
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        poll_sleep();
     }
     panic!("timed out waiting for {}", path.display());
 }
@@ -182,7 +193,7 @@ pub fn wait_for_log_line(path: &Path, needle: &str) {
         {
             return;
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        poll_sleep();
     }
     panic!("timed out waiting for {needle:?} in {}", path.display());
 }
@@ -195,7 +206,7 @@ pub fn stop_pid(pid: u32) {
         if !fabro_proc::process_alive(pid) {
             return;
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        poll_sleep();
     }
     fabro_proc::sigkill(pid);
 }
@@ -212,9 +223,14 @@ pub fn server_log_files(logs_dir: &Path) -> Vec<PathBuf> {
         .flatten()
         .map(|entry| entry.path())
         .filter(|path| {
-            path.file_name()
+            let has_log_ext = path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
+            let has_server_prefix = path
+                .file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("server.") && name.ends_with(".log"))
+                .is_some_and(|name| name.starts_with("server."));
+            has_log_ext && has_server_prefix
         })
         .collect()
 }

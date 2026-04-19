@@ -22,7 +22,7 @@ We need per-user, per-device CLI credentials that are server-side revocable, sho
 
 - **R1.** CLI users can log in with `fabro auth login` against a server that accepts only GitHub OAuth (no dev-token). (origin §Problem, §CLI UX)
 - **R2.** Access credential is a short-lived (10 min) HS256 JWT; refresh credential is an opaque 32-byte secret rotated on every use with 30 d sliding expiry. (origin §Token model)
-- **R3.** Refresh-token rotation is atomic: two concurrent refreshes cannot both succeed. Reuse detection deletes the entire chain. In v1 this requires **single-node deployment** for servers that enable CLI OAuth login (see §Deployment constraint in Scope Boundaries for why); multi-node CLI auth is deferred until distributed coordination (SlateDB CAS, consistent-hashing LB, or a coordination service) is added. (origin §Revocation semantics)
+- **R3.** Refresh-token rotation is atomic: two concurrent refreshes cannot both succeed. Reuse detection deletes the entire chain. (origin §Revocation semantics)
 - **R4.** Identity is OIDC-style `(idp_issuer, idp_subject)` — not GitHub username — forward-compatible with Google/GHES. `login` is display-only. (origin §Identity model)
 - **R5.** Browser flow runs on `server.web.url`, not on the `--server` target. CLI discovers the canonical origin via `GET /api/v1/auth/cli/config` preflight. (origin §Architecture overview, §Canonical origin)
 - **R6.** `fabro auth login` succeeds on servers reachable only over HTTPS or Unix socket (browser hits web_url; token endpoints use the CLI transport). (origin §Canonical origin)
@@ -31,26 +31,14 @@ We need per-user, per-device CLI credentials that are server-side revocable, sho
 - **R9.** Server-side errors in the browser flow reach the CLI via OAuth-style redirect to loopback (`?error=&state=&error_description=`) when `redirect_uri`+`state` have validated; plain HTML page otherwise. (origin §Browser-to-CLI error handoff)
 - **R10.** GitHub allowlist rejection at `/auth/callback/github` happens **before** a session is minted; `/auth/cli/resume` must forward the callback's `?error=` to the CLI loopback without checking session first. (origin §/auth/cli/resume algorithm)
 - **R11.** `SESSION_SECRET` is reused as an HKDF master; cookie and JWT keys are domain-separated subkeys. No new env vars. (origin §Settings and secrets)
-- **R12.** Startup validation refuses the server when `github` is in `auth.methods` AND any of: (a) `web.enabled = false`, (b) `SESSION_SECRET` missing or shorter than 32 bytes, (c) `server.auth.github.single_node_ack != true` (operator acknowledgment of the v1 single-node deployment constraint — see §Deployment constraint in Scope Boundaries). "CLI login unavailable" states reachable via preflight: `github` not in methods. (origin §Web mode and config validation, extended for single-node enforcement)
+- **R12.** `server.auth.methods=[github]` combined with `web.enabled=false` fails at server startup with a clear config error. Other "CLI login unavailable" states (github not in methods) are running-server states reported via preflight. (origin §Web mode and config validation)
 - **R13.** IP allowlist, when enabled, covers every new endpoint (no carve-outs). (origin §IP allowlist)
 - **R14.** `fabro auth status` runs fully offline against local state (no server call); `--json` emits structured output; credentials and their expiry windows are shown per server. (origin §CLI UX)
 - **R15.** Integration tests exercise the real `web_auth.rs` OAuth glue end-to-end against a black-box `twin-github` extended with OAuth endpoints, not via `#[cfg(test)]` session injection. (origin §Prerequisite: twin-github OAuth extension)
 
 ## Scope Boundaries
 
-**Deployment constraint: single-node only for CLI OAuth login in v1 (enforced at startup).** The `/auth/cli/*` routes require single-node deployment of `fabro-server`. Multi-node deployments that enable `github` in `server.auth.methods` will have a genuine security gap (see below) and are **not supported** in v1. **The server refuses to boot when `github` is in methods unless the operator sets `server.auth.github.single_node_ack = true`** (Unit 5 startup validation). This forces an affirmative acknowledgment of the constraint; it does not auto-detect multi-node topology but makes the tradeoff legible and unambiguous. Operators who need multi-node must either (a) use `dev-token` auth only on multi-node deployments, (b) front their multi-node cluster with consistent-header-hashing routing (nginx/envoy) that pins the same refresh token to the same backend, or (c) wait for a future work item that adds distributed coordination.
-
-**Why single-node is required (refresh-token rotation):** Unit 10's per-hash mutex is in-process. Across nodes, SlateDB does not expose distributed compare-and-swap. Two concurrent refreshes of the same token landing on different nodes can both read `used=false`, both commit their WriteBatches, both mint valid descendants — and the refresh token itself is the only credential (no PKCE-equivalent second factor). This defeats theft-detection in the attacker-races-legitimate-client case: attacker's descendant lives indefinitely because neither party ever replays the old token. This is the precise failure mode rotation-with-reuse-detection is meant to prevent. Fabro's documented production deployment (AWS ALB + ECS) cannot natively do consistent-header-hashing at the ALB layer; operators wanting multi-node CLI auth must add a proxy layer (nginx/envoy) or wait for future work.
-
-**Why single-node is required (auth codes):** Unit 9's per-code mutex is in-process. Across nodes, two consumes of the same code can both read `used=false` before either deletes. PKCE defends against the attacker-without-verifier case at `/auth/cli/token` step 5, so an attacker with only the code cannot mint tokens — this is cross-node-safe via the verifier binding. But v1 requires single-node anyway (due to refresh rotation above), so auth codes inherit the same constraint and there's no need for a separate qualifier.
-
-**Future work to enable multi-node CLI auth:** any ONE of:
-- SlateDB conditional writes (distributed CAS).
-- A coordination service (Redis SETNX, etcd, or equivalent) for per-token locks.
-- LB-level consistent-hashing on the Authorization header (requires nginx/envoy in front of ALB).
-- A leader-election pattern that routes all `/auth/cli/refresh` requests to one elected node.
-
-None of these fit the v1 scope.
+`fabro-server` is a single-node process. There is no multi-node deployment model to design against — the per-hash and per-code in-process mutexes in Units 9 and 10 provide the full atomicity guarantees R3 demands. No distributed-coordination design is needed.
 
 Explicit non-goals for this plan (deferred to fast-follow work):
 
@@ -113,7 +101,7 @@ Design-time external work was consolidated in the spec (OAuth 2.0 RFC 6749 §4.1
 - **Endpoint-appropriate error envelopes.** `/auth/cli/token`, `/refresh`, `/logout` return flat RFC 6749 `{error, error_description}`. `/auth/cli/start`, `/resume` return either a 302-redirect-with-error-param (when `redirect_uri`+`state` validated) or a plain HTML error page (otherwise). Protected endpoints continue to use the existing `ApiError` envelope, extended with an optional `code: Option<String>` field (backwards compatible via `skip_serializing_if = "Option::is_none"`). OpenAPI spec version bumped (minor) to document the new field.
 - **SlateDB value encoding matches repo convention: `serde_json::to_vec`.** Fields are small fixed-size, the encoding cost is negligible, and JSON is easier to inspect in logs.
 - **Refresh-token storage lives in `fabro-store` as a typed module** (`lib/crates/fabro-store/src/slate/auth_tokens.rs`), parallel to `run_store.rs` and `catalog.rs`. Exposes a typed `SlateAuthTokenStore` with domain methods (`insert_refresh_token`, `find_refresh_token`, `delete_chain`, `gc_expired`). Keeps `SlateKey` encapsulation intact; fabro-server consumes the typed API.
-- **Authorization codes live in SlateDB**, keyspace `auth/code/<code>` (opaque 32-byte random code, base64url-encoded). 60 s TTL enforced at read time; reaper task every 30 s purges expired entries. Survives server restart. `consume` is single-winner within a node via a per-code in-process mutex. v1 is scoped to single-node deployments (see §Deployment constraint in Scope Boundaries), so the mutex is sufficient. PKCE provides the secondary defense at `/auth/cli/token` (Unit 15 step 5) for belt-and-suspenders against stolen codes without verifiers.
+- **Authorization codes live in SlateDB**, keyspace `auth/code/<code>` (opaque 32-byte random code, base64url-encoded). 60 s TTL enforced at read time; reaper task every 30 s purges expired entries. `consume` is single-use via a per-code in-process mutex (fabro-server is single-node, so an in-process mutex is the correct primitive). PKCE provides a secondary defense at `/auth/cli/token` (Unit 15 step 5) as belt-and-suspenders against stolen codes without verifiers.
 - **Reactive-only auto-refresh (no pre-flight).** CLI refreshes on 401 with `code == "access_token_expired"` and retries once. No clock-based pre-flight check. Avoids concurrent-refresh storms across parallel CLI invocations, removes clock-sync assumptions, and shrinks the refresh code path by half. Latency cost is at most one extra round-trip per ~10 min window of activity.
 - **HTTPS-or-loopback-or-unix-socket-only for refresh traffic, checked by URL parsing, not string matching.** CLI parses the server target as `url::Url`. Accepts: `scheme == "https"`; OR `scheme == "http"` with `url.host()` parsing to an `IpAddr` that `is_loopback()` returns true (covers `127.0.0.0/8`, `::1`, and `::ffff:127.0.0.1`); OR the Unix-socket target type. Rejects literal `localhost` (DNS-overridable), any host containing dots after a loopback prefix (e.g., `127.0.0.1.evil.com`), any encoded form (decimal `2130706433`, hex `0x7f000001`, octal). Surfaces an actionable error pointing at the scheme or host. Prevents silent refresh-token leaks over plaintext.
 - **`map_api_error_structured` wraps `progenitor_client::Error` into `ApiFailure { status, code, detail }`.** Existing `map_api_error` is refactored to call `map_api_error_structured` and discard `code`, reducing drift risk. Auto-refresh wrapper uses the structured helper.
@@ -346,54 +334,38 @@ Organized into five phases. Early phases stand alone (no behavior changes). Late
 
 ---
 
-- [ ] **Unit 5: Startup validation — GitHub-auth prerequisites (web enabled, SESSION_SECRET entropy, single-node acknowledgment)**
+- [ ] **Unit 5: Startup validation — `github + !web.enabled` fails at boot**
 
-**Goal:** Refuse to boot when `github` is in `server.auth.methods` unless three preconditions are all satisfied:
-1. `server.web.enabled = true` (web routes are required for `/auth/cli/*`).
-2. `SESSION_SECRET` is present and ≥32 bytes (entropy floor for HKDF master).
-3. **`server.auth.github.single_node_ack = true`** — operator has acknowledged the v1 single-node deployment constraint (see §Deployment constraint in Scope Boundaries). Fails closed by default.
+**Goal:** Reject the incoherent config combination `server.auth.methods=[..., github, ...]` with `server.web.enabled=false` at startup. Also enforce the `SESSION_SECRET` ≥32-byte floor required for HKDF key derivation when github auth is enabled.
 
-The third check is the enforcement mechanism for the "documentation-only constraint" gap: instead of letting an unsupported multi-node deployment silently boot with broken theft detection, the server refuses to start unless the operator explicitly affirms understanding.
-
-**Requirements:** R12 (extended)
+**Requirements:** R12
 
 **Dependencies:** Unit 4
 
 **Files:**
-- Modify: `lib/crates/fabro-types/src/settings/server.rs` — extend `ServerAuthGithubSettings` with `pub single_node_ack: bool` (default `false`). Extend `ServerAuthGithubLayer` with `pub single_node_ack: Option<bool>`.
-- Modify: `lib/crates/fabro-config/src/resolve/server.rs` — resolve the new field (default `false` if absent).
-- Modify: `lib/crates/fabro-server/src/jwt_auth.rs` — extend `resolve_auth_mode_with_lookup` (`:46`) with the cross-field checks below.
+- Modify: `lib/crates/fabro-server/src/jwt_auth.rs` — extend `resolve_auth_mode_with_lookup` (`:46`) with the cross-field check; produce a `ResolveError::Invalid { path: "server.auth.methods", reason: "GitHub auth is enabled but server.web.enabled is false" }`.
 - Modify: `lib/crates/fabro-server/src/jwt_auth.rs` — store the HKDF-derived JWT key on `AuthMode::Enabled` (field `jwt_key: Option<JwtSigningKey>`); derive it in the same resolver using Unit 4's helper when `SESSION_SECRET` is present and github is enabled.
-- Modify: `lib/crates/fabro-config/src/defaults.toml` — no default for `single_node_ack` (so it defaults to `false`, fail-closed).
 - Test: `lib/crates/fabro-server/src/jwt_auth.rs` (existing `#[cfg(test)] mod tests`).
-- Test: `lib/crates/fabro-config/tests/resolve_server.rs` — round-trip the new field.
 
 **Approach:**
-- Add four checks alongside the existing `SESSION_SECRET` and `GITHUB_APP_CLIENT_SECRET` validations at `:60-65`:
+- Add three checks alongside the existing `SESSION_SECRET` and `GITHUB_APP_CLIENT_SECRET` validations at `:60-65`:
   1. `github in methods` with `web.enabled=false` → `ResolveError::Invalid { path: "server.auth.methods", reason: "GitHub auth requires server.web.enabled = true" }`.
   2. `github in methods` but `SESSION_SECRET` missing → (existing behavior, unchanged).
   3. `github in methods` with `SESSION_SECRET` present but shorter than 32 bytes → `ResolveError::Invalid { path: "SESSION_SECRET", reason: "SESSION_SECRET must be at least 32 bytes (64 hex characters) when github auth is enabled — it now signs JWTs as well as session cookies. Current length: {got} bytes." }`. Uses the `KeyDeriveError::TooShort` from Unit 4's helper.
-  4. **`github in methods` with `single_node_ack != true` → `ResolveError::Invalid { path: "server.auth.github.single_node_ack", reason: "CLI OAuth login in v1 requires single-node deployment for refresh-token theft detection to work. Set server.auth.github.single_node_ack = true to acknowledge this constraint. See docs/administration/server-configuration.mdx for details, including multi-node workarounds (dev-token only, or a consistent-header-hashing proxy layer in front of the cluster)." }`**
 - `jwt_key` is `None` when github is not enabled — keeps non-github deployments clean.
-
-**Why an acknowledgment flag and not auto-detection?** Auto-detection via a SlateDB boot-heartbeat would add runtime complexity (heartbeat TTL, rolling-deploy false-positives, startup-time vs runtime semantics) for a security property the operator is in a better position to verify. An explicit config flag makes the constraint legible to operators reading their `settings.toml` and forces an active affirmative choice. Future multi-node support can introduce a different value (e.g., `multi_node_coordination = "redis_lock"`) when distributed coordination is actually implemented.
 
 **Patterns to follow:**
 - Existing `ResolveError::Invalid` pushes in `fabro-config/src/resolve/server.rs:103`.
-- Existing `ServerAuthGithubSettings` layer/resolved pair as the template for adding the bool field.
 
 **Test scenarios:**
-- Happy path: `methods=[dev-token, github]` + `web.enabled=true` + 32-byte `SESSION_SECRET` + `single_node_ack=true` → resolves successfully with `jwt_key = Some(_)`.
+- Happy path: `methods=[dev-token, github]` + `web.enabled=true` + 32-byte `SESSION_SECRET` → resolves successfully with `jwt_key = Some(_)`.
 - Error path: `methods=[github]` + `web.enabled=false` → returns `ResolveError::Invalid` with the web-enabled reason text.
 - Error path: `methods=[github]` + `web.enabled=true` + 31-byte `SESSION_SECRET` → returns `ResolveError::Invalid` with a path-of-`SESSION_SECRET` and a reason mentioning minimum length.
-- **Error path — missing single_node_ack:** `methods=[github]` + `web.enabled=true` + 32-byte `SESSION_SECRET` + `single_node_ack=false` (or absent) → returns `ResolveError::Invalid` with `path = server.auth.github.single_node_ack`. The error message includes the three listed workarounds (dev-token-only, proxy layer, wait for future work).
-- **Happy path — opt-in:** same as above but with `single_node_ack=true` → resolves.
-- Edge case: `methods=[dev-token]` + `single_node_ack=<anything>` → `single_node_ack` is ignored (the constraint only applies when github is enabled). Resolves successfully with `jwt_key = None`.
+- Edge case: `methods=[dev-token]` + `web.enabled=false` + weak `SESSION_SECRET` → resolves successfully (no github, no JWT key, entropy rule doesn't apply) with `jwt_key = None`.
 - Edge case: `methods=[github]` + `web.enabled=true` but no `SESSION_SECRET` → existing error wins (no regression).
 
 **Verification:**
 - New tests pass; existing `jwt_auth` tests still pass.
-- `settings.toml` round-trips the new field via `fabro-config`.
 
 ---
 
@@ -555,7 +527,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 **Approach:**
 - `Header` explicitly pinned to `HS256`; `Validation` constructed with `algorithms = vec![HS256]`.
 - Parse header before signature verify; reject any other `alg` (including `alg: none`).
-- **Clock-skew tolerance window is 5 seconds** (`Validation::leeway = 5`). Revised down from 30 seconds — the deployment model is single-node or small-fleet with NTP, not federated multi-region. A 5-second window accommodates normal clock drift without extending stolen-token replay windows unnecessarily.
+- **Clock-skew tolerance window is 5 seconds** (`Validation::leeway = 5`). Revised down from 30 seconds — fabro-server is single-node with NTP, not federated multi-region. A 5-second window accommodates normal clock drift without extending stolen-token replay windows unnecessarily.
 - `aud = "fabro-cli"` hardcoded constant. `iss` passed in by caller (the server's public URL).
 - **Reject any token with a `kid` header field** for now (no multi-key support in v1); forward-closes algorithm-confusion and key-selection abuse until we explicitly design multi-key rotation.
 
@@ -582,7 +554,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 
 - [ ] **Unit 9: `AuthCode` SlateDB store + reaper**
 
-**Goal:** Store authorization codes in SlateDB with 60 s TTL so they survive server restart. `consume` is single-winner via per-code in-process mutex. v1 is scoped to single-node deployments (see §Deployment constraint in Scope Boundaries), so the in-process mutex is sufficient. Reaper task prunes expired entries.
+**Goal:** Store authorization codes in SlateDB with 60 s TTL so they survive server restart. `consume` is single-use via a per-code in-process mutex (fabro-server is single-node — the in-process mutex is the right primitive). Reaper task prunes expired entries.
 
 **Requirements:** R1, R10
 
@@ -592,7 +564,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 - Create: `lib/crates/fabro-store/src/slate/auth_codes.rs` — typed SlateDB module parallel to `auth_tokens.rs` (Unit 10):
   - `AuthCode { identity: IdpIdentity, login: String, name: String, email: String, code_challenge: String, redirect_uri: String, expires_at: DateTime<Utc> }` (uses the `IdpIdentity` type from `fabro-types` — no bare `idp_issuer`/`idp_subject` strings).
   - `SlateAuthCodeStore` struct wrapping `Arc<slatedb::Db>` + `DashMap<String, Arc<tokio::sync::Mutex<()>>>` (per-code in-process mutex map, mirroring Unit 10's pattern for refresh tokens).
-  - Public methods: `insert(&self, code: &str, entry: AuthCode) -> Result<()>`, `consume(&self, code: &str) -> Result<Option<AuthCode>>` (single-winner within a node via the per-code mutex — see Approach), `gc_expired(&self, cutoff: DateTime<Utc>) -> Result<u64>`.
+  - Public methods: `insert(&self, code: &str, entry: AuthCode) -> Result<()>`, `consume(&self, code: &str) -> Result<Option<AuthCode>>` (single-use via per-code mutex — see Approach), `gc_expired(&self, cutoff: DateTime<Utc>) -> Result<u64>`.
 - Modify: `lib/crates/fabro-store/src/slate/mod.rs` — declare the new module; expose `auth_codes()` accessor from `Database` returning `Arc<SlateAuthCodeStore>`.
 - Modify: `lib/crates/fabro-store/src/keys.rs` — add `SlateKey::auth_code(code)` constructor and `SlateKey::auth_code_prefix()` for GC scans.
 - Modify: `lib/crates/fabro-server/src/auth/mod.rs` — re-export `AuthCode` via a thin façade.
@@ -601,7 +573,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 
 **Approach:**
 - Code value is `base64url(32 bytes from OsRng)` — opaque server-internal identifier; the CLI treats it as a string.
-- **`consume` is single-winner** (v1 is single-node only, so per-node uniqueness = global uniqueness). Implementation, mirroring Unit 10's per-hash mutex pattern:
+- **`consume` is single-use.** Implementation, mirroring Unit 10's per-hash mutex pattern:
   ```
   let mutex = mutex_map.entry(code.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).value().clone();
   let _guard = mutex.lock().await;
@@ -615,7 +587,6 @@ The third check is the enforcement mechanism for the "documentation-only constra
   return Ok(entry);
   ```
   Second caller within the same node blocks on the mutex, reads `None` after the first caller's delete, returns `None`. **Mutex cleanup:** same `Arc::strong_count == 2` check as Unit 10, never remove under the mutex.
-- **Not applicable in v1:** v1 is single-node only, so the per-node mutex provides global single-use. Future multi-node support would need distributed coordination — see §Deployment constraint in Scope Boundaries for the list of acceptable future approaches.
 - Reaper scans `SlateKey::auth_code_prefix()` every 30 s and deletes rows with `expires_at <= now`.
 - Values encoded as `serde_json::to_vec` to match existing repo convention.
 
@@ -626,7 +597,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 **Test scenarios:**
 - Happy path: insert → consume returns the entry; second consume returns `None`.
 - Edge case: insert → wait 61 s (via mocked time) → consume returns `None`.
-- **Integration — concurrent consume (single-winner within a node):** `tokio::task::JoinSet` with N=16 tasks all calling `consume(code)` on the same code → exactly one task receives `Some(entry)`; all others receive `None`. Asserts the per-code mutex + delete-under-mutex pattern holds. Regression guard for the internal-consistency bug where non-atomic consume could duplicate mint JWTs.
+- **Integration — concurrent consume:** `tokio::task::JoinSet` with N=16 tasks all calling `consume(code)` on the same code → exactly one task receives `Some(entry)`; all others receive `None`. Asserts the per-code mutex + delete-under-mutex pattern holds.
 - Happy path: reaper run removes expired entries but preserves unexpired ones (table-driven).
 - Integration (with Unit 13): reaper is cancelled cleanly on shutdown — no leaked task.
 
@@ -637,7 +608,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 
 - [ ] **Unit 10: `RefreshToken` + `SlateAuthTokenStore` with atomic `consume_and_rotate`**
 
-**Goal:** SlateDB-backed refresh-token persistence with `consume_and_rotate` as the only rotation primitive. Single-winner via an in-process per-hash mutex. **v1 is scoped to single-node deployments** (see §Deployment constraint in Scope Boundaries); the mutex alone is sufficient for single-node correctness. Multi-node support is deferred. No idempotency grace — network failures during response delivery force re-login (see Key Technical Decisions).
+**Goal:** SlateDB-backed refresh-token persistence with `consume_and_rotate` as the only rotation primitive. Atomic via an in-process per-hash mutex (fabro-server is single-node — the in-process mutex is the correct primitive). No idempotency grace — network failures during response delivery force re-login (see Key Technical Decisions).
 
 **Requirements:** R2, R3
 
@@ -957,7 +928,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 **Test scenarios:**
 - Happy path (/token): valid code + verifier → 200 with access+refresh; refresh row exists in store.
 - Error path (/token): wrong `code_verifier` → 400 `pkce_verification_failed`; code is burned (retry with correct verifier still fails).
-- **Security property — PKCE is the secondary defense for stolen codes:** a caller presenting a valid code with a WRONG `code_verifier` → 400 `pkce_verification_failed`. This is belt-and-suspenders: v1 is single-node so `consume` is already single-winner at the store layer; PKCE provides an independent check against stolen codes that reach `/token` somehow.
+- **Security property — PKCE is the secondary defense for stolen codes:** a caller presenting a valid code with a WRONG `code_verifier` → 400 `pkce_verification_failed`. Belt-and-suspenders alongside the single-use consume primitive.
 - Error path (/token): replay same code twice → second attempt → 400 `invalid_code`.
 - Error path (/token): code expired (manipulate clock) → 400 `invalid_code`.
 - Error path (/token): allowlist removed between `/resume` and `/token` → 403 `unauthorized`.
@@ -1333,8 +1304,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 
 | Risk | Mitigation |
 |------|------------|
-| Concurrent refresh race within a node masked by test flakiness | Unit 10's integration test uses N=32 tasks on one `SlateAuthTokenStore`, asserts the outcome histogram (exactly one `Rotated`, 31 `Reused`), and exercises a two-Arc-clone scenario to guard against accidental per-clone DashMaps. |
-| **Multi-node deployment of CLI OAuth login silently defeats refresh-token theft detection** | **Enforced at startup by Unit 5:** server refuses to boot when `github` is in methods unless `server.auth.github.single_node_ack = true`. The flag defaults to `false` (fail-closed). This is an operator-affirmation enforcement, not auto-detection — an operator who sets the flag and then deploys multi-node anyway bears the responsibility. Future work: add real auto-detection (boot-heartbeat in SlateDB) or distributed coordination (SlateDB CAS / coordination service / LB consistent-hashing / leader election). |
+| Concurrent refresh race masked by test flakiness | Unit 10's integration test uses N=32 tasks on one `SlateAuthTokenStore`, asserts the outcome histogram (exactly one `Rotated`, 31 `Reused`), and exercises a two-Arc-clone scenario to guard against accidental per-clone DashMaps. |
 | `SessionCookie` v1 → v2 migration + cookie-key derivation change forces global re-login | Acceptable; documented in plan; lands before CLI login GA. In-flight GitHub authorize flows at cutover also lose the `fabro_oauth_state` cookie and must restart — acceptable. |
 | Browser-to-CLI error handoff depends on `return_to` preservation on the existing GitHub callback error path | Unit 12 explicitly covers error-path `return_to` preservation; integration test in Unit 22 exercises the allowlist-rejection path end-to-end. |
 | Browser cannot reach `web_url` (dockerized dev stack, VPN/Tailscale mismatch, SSH-plus-browser-on-different-hosts) | v1 has no override. Preflight exposes the `web_url` so the CLI prints the exact URL it will open, making the failure mode at least visible. `--browser-url` deferred to a fast-follow (see Scope Boundaries). |
@@ -1360,7 +1330,7 @@ The third check is the enforcement mechanism for the "documentation-only constra
 ## Documentation Plan
 
 - **`docs/authentication/`** (new if absent) — user-facing guide for `fabro auth login`: preflight explanation, per-server credentials, dev-token vs JWT coexistence, logout semantics.
-- **`docs/administration/server-configuration.mdx`** — document the startup-validation preconditions for GitHub auth (web enabled, `SESSION_SECRET` ≥32 bytes, `single_node_ack = true`), the preflight endpoint, the `return_to` whitelist behavior, and the **v1 single-node-deployment constraint for CLI OAuth login** (see Scope Boundaries §Deployment constraint). The docs must spell out what `single_node_ack = true` actually promises (operator guarantees the cluster is single-node for refresh-token theft detection to work) and what breaks if they enable it on a multi-node cluster (attacker-races-legitimate-client scenario described in Scope Boundaries). Workarounds listed in Scope Boundaries: dev-token-only on multi-node, consistent-header-hashing at a proxy layer, or wait for future work.
+- **`docs/administration/server-configuration.mdx`** — document the startup-validation preconditions for GitHub auth (web enabled, `SESSION_SECRET` ≥32 bytes), the preflight endpoint, and the `return_to` whitelist behavior.
 - **`docs-internal/logging-strategy.md`** — review for any changes needed (new `WARN` log on reuse detection, new `INFO` on login/rotate/logout). Likely no doc change; follow the existing conventions.
 - **`fabro-api.yaml`** — Unit 1 and Unit 3 update this directly.
 - **`CHANGELOG.md` / release notes** — "CLI now supports OAuth login on GitHub-auth-only servers" + "v1 session cookies invalidated — users will need to log in again on web."

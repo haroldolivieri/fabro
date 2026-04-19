@@ -5,7 +5,6 @@ export interface InstallSessionResponse {
         providers: Array<{
           provider: string;
           configured: boolean;
-          openai_base_url?: string | null;
         }>;
       }
     | null;
@@ -32,7 +31,6 @@ export interface InstallFinishResponse {
 export interface InstallLlmProviderInput {
   provider: string;
   api_key: string;
-  openai_base_url?: string | null;
 }
 
 export interface InstallGithubAppManifestInput {

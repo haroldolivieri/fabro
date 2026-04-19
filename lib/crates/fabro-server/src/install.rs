@@ -128,10 +128,8 @@ struct LlmProvidersInput {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct LlmProviderInput {
-    provider:        Provider,
-    api_key:         String,
-    #[serde(default)]
-    openai_base_url: Option<String>,
+    provider: Provider,
+    api_key:  String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -175,10 +173,8 @@ struct GithubAppInstall {
 
 #[derive(Clone, Debug, Deserialize)]
 struct InstallLlmTestInput {
-    provider:        Provider,
-    api_key:         String,
-    #[serde(default)]
-    openai_base_url: Option<String>,
+    provider: Provider,
+    api_key:  String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -374,21 +370,13 @@ async fn post_install_llm_test(
         return response;
     }
 
+    if let Some(error) = unsupported_install_provider_error(input.provider) {
+        return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, error);
+    }
+
     if input.api_key.trim().is_empty() {
         return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, "api_key is required");
     }
-    if input.provider == Provider::OpenAiCompatible
-        && input
-            .openai_base_url
-            .as_deref()
-            .is_none_or(|value| value.trim().is_empty())
-    {
-        return install_error_response(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "openai_base_url is required for openai_compatible",
-        );
-    }
-
     match validate_llm_provider(&state, &input).await {
         Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
         Err(err) => {
@@ -417,21 +405,13 @@ async fn put_install_llm(
     }
 
     for provider in &input.providers {
+        if let Some(error) = unsupported_install_provider_error(provider.provider) {
+            return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, error);
+        }
         if provider.api_key.trim().is_empty() {
             return install_error_response(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 format!("api_key is required for {}", provider.provider.as_str()),
-            );
-        }
-        if provider.provider == Provider::OpenAiCompatible
-            && provider
-                .openai_base_url
-                .as_deref()
-                .is_none_or(|value| value.trim().is_empty())
-        {
-            return install_error_response(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "openai_base_url is required for openai_compatible",
             );
         }
     }
@@ -443,6 +423,13 @@ async fn put_install_llm(
         .llm = Some(input);
     info!("install step completed: llm");
     StatusCode::NO_CONTENT.into_response()
+}
+
+fn unsupported_install_provider_error(provider: Provider) -> Option<&'static str> {
+    match provider {
+        Provider::OpenAiCompatible => Some("openai_compatible is not supported by install in v1"),
+        _ => None,
+    }
 }
 
 async fn put_install_server(
@@ -710,22 +697,6 @@ async fn post_install_finish(
             secret_type: VaultSecretType::Credential,
             description: None,
         });
-        if let Some(base_url) = provider
-            .openai_base_url
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            vault_secrets.push(VaultSecretWrite {
-                name:        if provider.provider == Provider::OpenAiCompatible {
-                    "OPENAI_COMPATIBLE_BASE_URL".to_string()
-                } else {
-                    "OPENAI_BASE_URL".to_string()
-                },
-                value:       base_url.to_string(),
-                secret_type: VaultSecretType::Environment,
-                description: None,
-            });
-        }
     }
 
     let mut server_env_secrets = Vec::new();
@@ -929,7 +900,6 @@ fn redacted_llm(pending_install: &PendingInstall) -> serde_json::Value {
                 "providers": llm.providers.iter().map(|provider| serde_json::json!({
                     "provider": provider.provider.as_str(),
                     "configured": true,
-                    "openai_base_url": provider.openai_base_url,
                 })).collect::<Vec<_>>()
             })
         },
@@ -1039,7 +1009,7 @@ async fn validate_llm_provider(
         provider: input.provider,
         auth_header,
         extra_headers: HashMap::new(),
-        base_url: provider_base_url(state, input.provider, input.openai_base_url.as_deref()),
+        base_url: provider_base_url(state, input.provider),
         codex_mode: false,
         org_id: None,
         project_id: None,
@@ -1067,14 +1037,12 @@ async fn validate_llm_provider(
         .map_err(|err| err.to_string())
 }
 
-fn provider_base_url(
-    state: &InstallAppState,
-    provider: Provider,
-    override_url: Option<&str>,
-) -> Option<String> {
-    override_url
-        .map(ToString::to_string)
-        .or_else(|| state.upstreams.provider_base_urls.get(&provider).cloned())
+fn provider_base_url(state: &InstallAppState, provider: Provider) -> Option<String> {
+    state
+        .upstreams
+        .provider_base_urls
+        .get(&provider)
+        .cloned()
         .or_else(|| match provider {
             Provider::Anthropic => std::env::var("ANTHROPIC_BASE_URL").ok(),
             Provider::OpenAi => std::env::var("OPENAI_BASE_URL").ok(),

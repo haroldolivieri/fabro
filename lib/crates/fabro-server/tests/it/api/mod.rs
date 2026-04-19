@@ -1,4 +1,5 @@
 mod install;
+mod install_openai_compatible;
 mod routing;
 mod runs;
 mod settings;

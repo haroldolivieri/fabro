@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use fabro_config::Storage;
+use fabro_config::user::default_storage_dir;
 use fabro_server::bind::Bind;
 use fabro_util::Home;
 use serde::{Deserialize, Serialize};
@@ -50,7 +51,7 @@ fn server_record_path(storage_dir: &Path) -> PathBuf {
 }
 
 fn legacy_record_path(storage_dir: &Path) -> Option<PathBuf> {
-    if storage_dir == fabro_config::user::default_storage_dir() {
+    if storage_dir == default_storage_dir() {
         Some(Home::from_env().root().join("server.json"))
     } else {
         None

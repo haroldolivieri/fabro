@@ -1760,7 +1760,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-install"
-version = "0.208.0-nightly.0"
+version = "0.208.0-nightly.1"
 dependencies = [
  "anyhow",
  "base64",

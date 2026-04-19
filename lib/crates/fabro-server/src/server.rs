@@ -115,6 +115,7 @@ use crate::ip_allowlist::{IpAllowlistConfig, ip_allowlist_middleware};
 use crate::jwt_auth::{
     AuthMode, AuthenticatedService, AuthenticatedSubject, authenticate_service_parts,
 };
+use crate::run_files::{FilesInFlight, list_run_files, new_files_in_flight};
 use crate::server_secrets::{
     LlmClientResult, ProviderCredentials, ServerSecrets, auth_issue_message,
 };
@@ -545,7 +546,7 @@ pub struct AppState {
     /// Per-run coalescing registry for `GET /runs/{id}/files`. Concurrent
     /// callers for the same run share one materialization; different runs
     /// proceed in parallel. See `crate::run_files` for semantics.
-    pub(crate) files_in_flight: crate::run_files::FilesInFlight,
+    pub(crate) files_in_flight: FilesInFlight,
 
     pub(crate) vault:                Arc<AsyncRwLock<Vault>>,
     pub(crate) server_secrets:       ServerSecrets,
@@ -651,6 +652,18 @@ impl AppState {
                 .ok()
                 .and_then(|vault| vault.get(name).map(str::to_string))
         })
+    }
+
+    /// Public accessor used by `run_files` — mirrors `vault_or_env` without
+    /// changing its visibility semantics.
+    pub(crate) fn vault_or_env_pub(&self, name: &str) -> Option<String> {
+        self.vault_or_env(name)
+    }
+
+    /// Borrow the persistent store so sibling modules can open run readers
+    /// without cross-module state coupling on the `AppState` field layout.
+    pub(crate) fn store_ref(&self) -> &Arc<Database> {
+        &self.store
     }
 
     pub(crate) fn server_secret(&self, name: &str) -> Option<String> {
@@ -1115,7 +1128,7 @@ fn real_routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/graph", get(get_graph))
         .route("/runs/{id}/stages", get(list_run_stages))
         .route("/runs/{id}/artifacts", get(list_run_artifacts))
-        .route("/runs/{id}/files", get(not_implemented))
+        .route("/runs/{id}/files", get(list_run_files))
         .route("/runs/{id}/stages/{stageId}/turns", get(not_implemented))
         .route(
             "/runs/{id}/stages/{stageId}/artifacts",
@@ -2570,7 +2583,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         max_concurrent_runs,
         scheduler_notify: Notify::new(),
         global_event_tx,
-        files_in_flight: crate::run_files::new_files_in_flight(),
+        files_in_flight: new_files_in_flight(),
         vault,
         server_secrets,
         provider_credentials,
@@ -2958,6 +2971,13 @@ fn compute_queue_positions(runs: &HashMap<RunId, ManagedRun>) -> HashMap<RunId, 
 fn parse_run_id_path(id: &str) -> Result<RunId, Response> {
     id.parse::<RunId>()
         .map_err(|_| ApiError::bad_request("Invalid run ID.").into_response())
+}
+
+/// Public re-export so sibling modules (e.g. `run_files`) can share the same
+/// 400-on-invalid-ULID parse behavior without duplicating the helper.
+#[allow(clippy::result_large_err)]
+pub(crate) fn parse_run_id_path_pub(id: &str) -> Result<RunId, Response> {
+    parse_run_id_path(id)
 }
 
 #[allow(clippy::result_large_err)]

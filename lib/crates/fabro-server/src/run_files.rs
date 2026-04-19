@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err, unreachable_pub)]
+
 //! GET /api/v1/runs/{id}/files — per-request coalescing and handler.
 //!
 //! This module exposes the per-run request-coalescing primitive consumed by
@@ -12,18 +14,60 @@
 //! as a 500 `ApiError`, and the registry entry is removed on task completion
 //! so a follow-up request triggers a fresh materialization.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::time::Instant;
 
+use axum::Json;
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use fabro_api::types::PaginatedRunFileList;
+use axum::response::{IntoResponse, Response};
+use fabro_agent::Sandbox;
+use fabro_api::types::{
+    DiffFile, FileDiff, FileDiffChangeKind, FileDiffTruncationReason, PaginatedRunFileList,
+    RunFilesMeta, RunFilesMetaToSha,
+};
+use fabro_sandbox::reconnect::reconnect;
 use fabro_types::RunId;
+use fabro_workflow::sandbox_git::{
+    BlobMeta, DiffError, RawDiffEntry, SubmoduleChange, SymlinkChange, list_binary_paths,
+    list_changed_files_raw, stream_blob_metadata, stream_blobs,
+};
 use futures_util::FutureExt;
+use serde::Deserialize;
 use tokio::sync::{Mutex, watch};
+use tracing::info;
 
 use crate::error::ApiError;
+use crate::jwt_auth::AuthenticatedService;
+use crate::server::{AppState, parse_run_id_path_pub};
+
+/// Per-file cap: 256 KiB OR 20k lines (whichever comes first).
+pub(crate) const PER_FILE_BYTES_CAP: u64 = 256 * 1024;
+pub(crate) const PER_FILE_LINES_CAP: usize = 20_000;
+/// Aggregate response cap: 5 MiB of textual content across all files.
+pub(crate) const AGGREGATE_BYTES_CAP: u64 = 5 * 1024 * 1024;
+/// Per-response file-count cap.
+pub(crate) const FILE_COUNT_CAP: usize = 200;
+/// Sandbox git timeout. Matches Unit 3 helpers (10 s).
+const SANDBOX_GIT_TIMEOUT_MS: u64 = 10_000;
+
+/// Query parameters accepted by `GET /runs/{id}/files`.
+#[derive(Debug, Deserialize, Default)]
+pub struct ListRunFilesParams {
+    #[serde(rename = "page[limit]")]
+    #[allow(dead_code)]
+    page_limit:   Option<u32>,
+    #[serde(rename = "page[offset]")]
+    #[allow(dead_code)]
+    page_offset:  Option<u32>,
+    #[serde(default)]
+    pub from_sha: Option<String>,
+    #[serde(default)]
+    pub to_sha:   Option<String>,
+}
 
 /// Shared outcome of a single materialization. Wrapped in [`Arc`] so every
 /// coalesced caller walks away with a cheap clone rather than an owned copy.
@@ -64,10 +108,10 @@ where
             existing.clone()
         } else {
             let (tx, rx) = watch::channel::<Option<Shared>>(None);
-            guard.insert(run_id.clone(), rx.clone());
+            guard.insert(*run_id, rx.clone());
 
             let inflight = Arc::clone(inflight);
-            let run_id_cloned = run_id.clone();
+            let run_id_cloned = *run_id;
             tokio::spawn(async move {
                 let result = AssertUnwindSafe(async move { materialize().await })
                     .catch_unwind()
@@ -103,6 +147,617 @@ where
             )));
         }
     }
+}
+
+// ── HTTP handler ──────────────────────────────────────────────────────────
+
+/// `GET /api/v1/runs/{id}/files` — real handler.
+///
+/// Flow:
+/// 1. Parse & authenticate
+/// 2. Reject non-default `from_sha`/`to_sha` per R15 (v1 only serves the full
+///    run diff)
+/// 3. Load run projection (404 on missing/unauthorized — IDOR-safe)
+/// 4. Try to reconnect the sandbox; on success, run the sandbox git helpers and
+///    build a structured response
+/// 5. Fall through to empty envelope when no sandbox path is available. Unit 6
+///    replaces this branch with the `final_patch` degraded fallback.
+///
+/// All logging emits a single `tracing::info!` with an allowlisted field
+/// set: `run_id, file_count, bytes_total, duration_ms, truncated,
+/// binary_count, sensitive_count, symlink_count, submodule_count`. No
+/// paths, contents, or raw git stderr are logged.
+pub async fn list_run_files(
+    _auth: AuthenticatedService,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<ListRunFilesParams>,
+) -> Response {
+    // 1. Parse run_id.
+    let id = match parse_run_id_path_pub(&id) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    // 2. SHA format + non-default rejection.
+    if let Err(resp) = validate_sha_params(&params) {
+        return resp;
+    }
+
+    // 3. Coalesce the materialization.
+    let state_cloned = Arc::clone(&state);
+    let id_cloned = id;
+    let result: Shared =
+        coalesced_list_run_files(&state.files_in_flight, &id, move || async move {
+            materialize_sandbox_path(&state_cloned, &id_cloned).await
+        })
+        .await;
+
+    match (*result).clone() {
+        Ok(body) => (StatusCode::OK, Json(body)).into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+fn validate_sha_params(params: &ListRunFilesParams) -> std::result::Result<(), Response> {
+    validate_one_sha(params.from_sha.as_deref(), "from_sha")?;
+    validate_one_sha(params.to_sha.as_deref(), "to_sha")?;
+    // v1 rejects non-default values per R15 — default = absent.
+    if params.from_sha.is_some() || params.to_sha.is_some() {
+        return Err(ApiError::bad_request(
+            "The `from_sha` and `to_sha` parameters are reserved for a future API version.",
+        )
+        .into_response());
+    }
+    Ok(())
+}
+
+fn validate_one_sha(value: Option<&str>, param_name: &str) -> std::result::Result<(), Response> {
+    let Some(v) = value else {
+        return Ok(());
+    };
+    if !(7..=40).contains(&v.len()) || !v.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(ApiError::bad_request(format!(
+            "Invalid `{param_name}` query parameter: expected a 7-40 char hex SHA."
+        ))
+        .into_response());
+    }
+    Ok(())
+}
+
+/// Materialize the response from the sandbox path. Returns `Ok(envelope)` on
+/// success, `Err(ApiError)` on unrecoverable failure (which is surfaced to
+/// every coalesced caller). Unit 6 will extend this with the `final_patch`
+/// fallback branch when the sandbox is unreachable.
+async fn materialize_sandbox_path(state: &Arc<AppState>, run_id: &RunId) -> ListRunFilesResult {
+    let start = Instant::now();
+
+    // Load run projection once — gives us base_sha, sandbox record, and
+    // final_patch for the fallback (consumed by Unit 6).
+    let projection = load_projection(state, run_id).await?;
+
+    let Some(base_sha) = projection.start.as_ref().and_then(|s| s.base_sha.clone()) else {
+        // Run hasn't started yet (no base_sha). Return empty envelope —
+        // Unit 11 UI maps this to R4(a).
+        return Ok(empty_envelope());
+    };
+
+    // Try to reconnect. Unit 6 will populate the degraded-fallback branch in
+    // place of the empty envelope when reconnect fails.
+    let Some(sandbox) = try_reconnect_run_sandbox(state, &projection).await? else {
+        return Ok(empty_envelope());
+    };
+
+    // Resolve HEAD to a concrete `to_sha`.
+    let to_sha = resolve_head_sha(sandbox.as_ref()).await?;
+
+    // Enumerate changes and classify binary/text.
+    let mut raw_entries = match list_changed_files_raw(sandbox.as_ref(), &base_sha, &to_sha).await {
+        Ok(v) => v,
+        Err(DiffError::Permanent { .. }) => {
+            // Treat as "nothing live to diff"; Unit 6 will route to
+            // final_patch here. Return empty for now.
+            return Ok(empty_envelope());
+        }
+        Err(DiffError::Transient { message }) => {
+            return Err(ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("Sandbox git subprocess failed: {message}"),
+            ));
+        }
+    };
+
+    let binary_paths = match list_binary_paths(sandbox.as_ref(), &base_sha, &to_sha).await {
+        Ok(v) => v,
+        Err(DiffError::Permanent { .. }) => HashSet::new(),
+        Err(DiffError::Transient { message }) => {
+            return Err(ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("Sandbox git numstat failed: {message}"),
+            ));
+        }
+    };
+
+    let total_changed_before_cap = raw_entries.len();
+    // Cap the file count per R27.
+    if raw_entries.len() > FILE_COUNT_CAP {
+        raw_entries.truncate(FILE_COUNT_CAP);
+    }
+
+    // Apply denylist + classify binary/truncation before fetching blobs.
+    let (entries_to_fetch, mut prebuilt) =
+        classify_entries(&raw_entries, &binary_paths, is_sensitive);
+
+    // Batched blob fetch for (old_blob, new_blob) pairs we still need.
+    let blob_metas = fetch_blob_sizes(sandbox.as_ref(), &entries_to_fetch).await?;
+    let blob_contents = fetch_blob_contents(sandbox.as_ref(), &entries_to_fetch).await?;
+
+    // Stitch metas and contents back into FileDiff entries, enforcing per-file
+    // and aggregate caps.
+    let mut aggregate_bytes: u64 = 0;
+    let mut files_omitted_by_budget: u64 = 0;
+    let mut response_data: Vec<FileDiff> = Vec::with_capacity(raw_entries.len());
+    response_data.append(&mut prebuilt);
+
+    for (idx, entry) in entries_to_fetch.iter().enumerate() {
+        let file_diff = stitch_file_diff(
+            entry,
+            blob_metas.get(idx).cloned(),
+            blob_contents.get(idx).cloned().flatten(),
+            &mut aggregate_bytes,
+            &mut files_omitted_by_budget,
+        );
+        response_data.push(file_diff);
+    }
+
+    let truncated = total_changed_before_cap > FILE_COUNT_CAP
+        || response_data.iter().any(|f| f.truncated.unwrap_or(false))
+        || files_omitted_by_budget > 0;
+
+    let (binary_count, sensitive_count, symlink_count, submodule_count) =
+        count_flags(&response_data);
+
+    let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    info!(
+        run_id = %run_id,
+        file_count = response_data.len(),
+        bytes_total = aggregate_bytes,
+        duration_ms,
+        truncated,
+        binary_count,
+        sensitive_count,
+        symlink_count,
+        submodule_count,
+        "Run files response produced"
+    );
+
+    Ok(PaginatedRunFileList {
+        data: response_data,
+        meta: RunFilesMeta {
+            truncated,
+            files_omitted_by_budget: (files_omitted_by_budget > 0)
+                .then(|| i64::try_from(files_omitted_by_budget).unwrap_or(i64::MAX)),
+            total_changed: i64::try_from(total_changed_before_cap).unwrap_or(i64::MAX),
+            to_sha: Some(to_sha_wrapper(&to_sha)),
+            to_sha_committed_at: None,
+            degraded: Some(false),
+            degraded_reason: None,
+            patch: None,
+        },
+    })
+}
+
+fn empty_envelope() -> PaginatedRunFileList {
+    PaginatedRunFileList {
+        data: Vec::new(),
+        meta: RunFilesMeta {
+            truncated:               false,
+            files_omitted_by_budget: None,
+            total_changed:           0,
+            to_sha:                  None,
+            to_sha_committed_at:     None,
+            degraded:                Some(false),
+            degraded_reason:         None,
+            patch:                   None,
+        },
+    }
+}
+
+fn to_sha_wrapper(sha: &str) -> RunFilesMetaToSha {
+    // `RunFilesMetaToSha` is a newtype wrapper around String with a pattern
+    // constraint. Values we produce (via `git rev-parse HEAD`) always match.
+    // `try_from` is expected to succeed; fall back to an empty wrapper on
+    // the impossible failure rather than panicking.
+    RunFilesMetaToSha::try_from(sha.to_string())
+        .unwrap_or_else(|_| RunFilesMetaToSha::try_from(String::from("0000000")).unwrap())
+}
+
+/// Load the run projection from the store, returning a 404 for the IDOR-safe
+/// "run missing or inaccessible" case.
+async fn load_projection(
+    state: &Arc<AppState>,
+    run_id: &RunId,
+) -> std::result::Result<fabro_store::RunProjection, ApiError> {
+    let reader = state
+        .store_ref()
+        .open_run_reader(run_id)
+        .await
+        .map_err(|_| ApiError::not_found("Run not found."))?;
+    reader
+        .state()
+        .await
+        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
+}
+
+/// Reconnect semantics tailored to the Files endpoint:
+/// - `Ok(Some(sandbox))`: reconnected, caller proceeds on the sandbox path.
+/// - `Ok(None)`: no sandbox record, reconnect failed, or the provider isn't
+///   supported by this build — caller falls through to the fallback branch
+///   (Unit 6) instead of returning 409.
+/// - `Err(ApiError)`: unrecoverable error loading run state.
+async fn try_reconnect_run_sandbox(
+    state: &Arc<AppState>,
+    projection: &fabro_store::RunProjection,
+) -> std::result::Result<Option<Box<dyn Sandbox>>, ApiError> {
+    let Some(record) = projection.sandbox.clone() else {
+        return Ok(None);
+    };
+    let daytona_api_key = state.vault_or_env_pub("DAYTONA_API_KEY");
+    match reconnect(&record, daytona_api_key).await {
+        Ok(sandbox) => Ok(Some(sandbox)),
+        Err(_) => Ok(None),
+    }
+}
+
+async fn resolve_head_sha(sandbox: &dyn Sandbox) -> std::result::Result<String, ApiError> {
+    let res = sandbox
+        .exec_command(
+            "git rev-parse HEAD",
+            SANDBOX_GIT_TIMEOUT_MS,
+            None,
+            None,
+            None,
+        )
+        .await
+        .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err))?;
+    if res.exit_code != 0 {
+        return Err(ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Failed to resolve sandbox HEAD.",
+        ));
+    }
+    let sha = res.stdout.trim().to_string();
+    if sha.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Sandbox HEAD resolved to an empty value.",
+        ));
+    }
+    Ok(sha)
+}
+
+/// Partition raw entries into (entries that need blob fetches) and
+/// (already-complete FileDiff entries: sensitive/binary/symlink/submodule/
+/// deleted). Returned `Vec` orderings are preserved so meta counts work.
+fn classify_entries(
+    raw: &[RawDiffEntry],
+    binary_paths: &HashSet<String>,
+    is_sensitive_fn: fn(&str) -> bool,
+) -> (Vec<RawDiffEntry>, Vec<FileDiff>) {
+    let mut fetch = Vec::with_capacity(raw.len());
+    let mut prebuilt = Vec::new();
+
+    for entry in raw {
+        let (primary_path, old_path) = match entry {
+            RawDiffEntry::Added { path, .. }
+            | RawDiffEntry::Modified { path, .. }
+            | RawDiffEntry::Deleted { path, .. }
+            | RawDiffEntry::Symlink { path, .. }
+            | RawDiffEntry::Submodule { path, .. } => (path.as_str(), path.as_str()),
+            RawDiffEntry::Renamed {
+                old_path, new_path, ..
+            } => (new_path.as_str(), old_path.as_str()),
+        };
+
+        let sensitive = is_sensitive_fn(primary_path) || is_sensitive_fn(old_path);
+
+        if sensitive {
+            prebuilt.push(build_placeholder_file_diff(
+                entry,
+                &PlaceholderKind::Sensitive,
+            ));
+            continue;
+        }
+
+        match entry {
+            RawDiffEntry::Symlink { .. } => {
+                prebuilt.push(build_placeholder_file_diff(
+                    entry,
+                    &PlaceholderKind::Symlink,
+                ));
+            }
+            RawDiffEntry::Submodule { .. } => {
+                prebuilt.push(build_placeholder_file_diff(
+                    entry,
+                    &PlaceholderKind::Submodule,
+                ));
+            }
+            _ if binary_paths.contains(primary_path) => {
+                prebuilt.push(build_placeholder_file_diff(entry, &PlaceholderKind::Binary));
+            }
+            _ => {
+                fetch.push(entry.clone());
+            }
+        }
+    }
+
+    (fetch, prebuilt)
+}
+
+enum PlaceholderKind {
+    Sensitive,
+    Binary,
+    Symlink,
+    Submodule,
+}
+
+fn build_placeholder_file_diff(entry: &RawDiffEntry, kind: &PlaceholderKind) -> FileDiff {
+    let (old_name, new_name, change_kind) = names_and_kind(entry);
+    FileDiff {
+        binary:            match kind {
+            PlaceholderKind::Binary => Some(true),
+            _ => None,
+        },
+        change_kind:       Some(change_kind),
+        new_file:          DiffFile {
+            name:     new_name,
+            contents: String::new(),
+        },
+        old_file:          DiffFile {
+            name:     old_name,
+            contents: String::new(),
+        },
+        sensitive:         matches!(kind, PlaceholderKind::Sensitive).then_some(true),
+        truncated:         None,
+        truncation_reason: None,
+    }
+}
+
+fn names_and_kind(entry: &RawDiffEntry) -> (String, String, FileDiffChangeKind) {
+    match entry {
+        RawDiffEntry::Added { path, .. } => {
+            (String::new(), path.clone(), FileDiffChangeKind::Added)
+        }
+        RawDiffEntry::Modified { path, .. } => {
+            (path.clone(), path.clone(), FileDiffChangeKind::Modified)
+        }
+        RawDiffEntry::Deleted { path, .. } => {
+            (path.clone(), String::new(), FileDiffChangeKind::Deleted)
+        }
+        RawDiffEntry::Renamed {
+            old_path, new_path, ..
+        } => (
+            old_path.clone(),
+            new_path.clone(),
+            FileDiffChangeKind::Renamed,
+        ),
+        RawDiffEntry::Symlink {
+            path, change_kind, ..
+        } => {
+            let (old, new) = match change_kind {
+                SymlinkChange::Added => (String::new(), path.clone()),
+                SymlinkChange::Deleted => (path.clone(), String::new()),
+                SymlinkChange::Modified => (path.clone(), path.clone()),
+            };
+            (old, new, FileDiffChangeKind::Symlink)
+        }
+        RawDiffEntry::Submodule {
+            path, change_kind, ..
+        } => {
+            let (old, new) = match change_kind {
+                SubmoduleChange::Added => (String::new(), path.clone()),
+                SubmoduleChange::Deleted => (path.clone(), String::new()),
+                SubmoduleChange::Modified => (path.clone(), path.clone()),
+            };
+            (old, new, FileDiffChangeKind::Submodule)
+        }
+    }
+}
+
+fn stitch_file_diff(
+    entry: &RawDiffEntry,
+    _meta: Option<BlobMeta>,
+    contents: Option<String>,
+    aggregate_bytes: &mut u64,
+    files_omitted_by_budget: &mut u64,
+) -> FileDiff {
+    let (old_name, new_name, change_kind) = names_and_kind(entry);
+
+    // `contents` already has per-file size cap applied by `stream_blobs`; a
+    // `None` here means that file exceeded the per-file cap.
+    match contents {
+        None => FileDiff {
+            binary:            None,
+            change_kind:       Some(change_kind),
+            new_file:          DiffFile {
+                name:     new_name,
+                contents: String::new(),
+            },
+            old_file:          DiffFile {
+                name:     old_name,
+                contents: String::new(),
+            },
+            sensitive:         None,
+            truncated:         Some(true),
+            truncation_reason: Some(FileDiffTruncationReason::FileTooLarge),
+        },
+        Some(content) => {
+            // Line-count cap.
+            let lines = content.lines().count();
+            if lines > PER_FILE_LINES_CAP {
+                return FileDiff {
+                    binary:            None,
+                    change_kind:       Some(change_kind),
+                    new_file:          DiffFile {
+                        name:     new_name,
+                        contents: String::new(),
+                    },
+                    old_file:          DiffFile {
+                        name:     old_name,
+                        contents: String::new(),
+                    },
+                    sensitive:         None,
+                    truncated:         Some(true),
+                    truncation_reason: Some(FileDiffTruncationReason::FileTooLarge),
+                };
+            }
+
+            let byte_len = content.len() as u64;
+            let new_total = aggregate_bytes.saturating_add(byte_len);
+            if new_total > AGGREGATE_BYTES_CAP {
+                *files_omitted_by_budget += 1;
+                return FileDiff {
+                    binary:            None,
+                    change_kind:       Some(change_kind),
+                    new_file:          DiffFile {
+                        name:     new_name,
+                        contents: String::new(),
+                    },
+                    old_file:          DiffFile {
+                        name:     old_name,
+                        contents: String::new(),
+                    },
+                    sensitive:         None,
+                    truncated:         Some(true),
+                    truncation_reason: Some(FileDiffTruncationReason::BudgetExhausted),
+                };
+            }
+
+            *aggregate_bytes = new_total;
+
+            // For added files, old side is empty; for deleted, new side is
+            // empty; for modified/renamed, both sides hold the same `new`
+            // contents (v1 keeps the wire simple; a richer two-blob fetch
+            // can come later).
+            let (old_contents, new_contents) = match entry {
+                RawDiffEntry::Added { .. } => (String::new(), content),
+                RawDiffEntry::Deleted { .. } => (content, String::new()),
+                _ => (content.clone(), content),
+            };
+
+            FileDiff {
+                binary:            None,
+                change_kind:       Some(change_kind),
+                new_file:          DiffFile {
+                    name:     new_name,
+                    contents: new_contents,
+                },
+                old_file:          DiffFile {
+                    name:     old_name,
+                    contents: old_contents,
+                },
+                sensitive:         None,
+                truncated:         None,
+                truncation_reason: None,
+            }
+        }
+    }
+}
+
+async fn fetch_blob_sizes(
+    sandbox: &dyn Sandbox,
+    entries: &[RawDiffEntry],
+) -> std::result::Result<Vec<BlobMeta>, ApiError> {
+    let shas = collect_primary_blobs(entries);
+    if shas.is_empty() {
+        return Ok(Vec::new());
+    }
+    match stream_blob_metadata(sandbox, &shas).await {
+        Ok(v) => Ok(v),
+        Err(DiffError::Permanent { .. }) => Ok(Vec::new()),
+        Err(DiffError::Transient { message }) => Err(ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!("Sandbox git cat-file --batch-check failed: {message}"),
+        )),
+    }
+}
+
+async fn fetch_blob_contents(
+    sandbox: &dyn Sandbox,
+    entries: &[RawDiffEntry],
+) -> std::result::Result<Vec<Option<String>>, ApiError> {
+    let shas = collect_primary_blobs(entries);
+    if shas.is_empty() {
+        return Ok(Vec::new());
+    }
+    match stream_blobs(sandbox, &shas, PER_FILE_BYTES_CAP).await {
+        Ok(v) => Ok(v),
+        Err(DiffError::Permanent { .. }) => Ok(entries.iter().map(|_| None).collect()),
+        Err(DiffError::Transient { message }) => Err(ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!("Sandbox git cat-file --batch failed: {message}"),
+        )),
+    }
+}
+
+fn collect_primary_blobs(entries: &[RawDiffEntry]) -> Vec<String> {
+    entries
+        .iter()
+        .filter_map(|e| match e {
+            RawDiffEntry::Added { new_blob, .. }
+            | RawDiffEntry::Modified { new_blob, .. }
+            | RawDiffEntry::Renamed { new_blob, .. } => Some(new_blob.clone()),
+            RawDiffEntry::Deleted { old_blob, .. } => Some(old_blob.clone()),
+            RawDiffEntry::Symlink { .. } | RawDiffEntry::Submodule { .. } => None,
+        })
+        .collect()
+}
+
+fn count_flags(data: &[FileDiff]) -> (u64, u64, u64, u64) {
+    let mut binary = 0;
+    let mut sensitive = 0;
+    let mut symlink = 0;
+    let mut submodule = 0;
+    for d in data {
+        if d.binary.unwrap_or(false) {
+            binary += 1;
+        }
+        if d.sensitive.unwrap_or(false) {
+            sensitive += 1;
+        }
+        match d.change_kind {
+            Some(FileDiffChangeKind::Symlink) => symlink += 1,
+            Some(FileDiffChangeKind::Submodule) => submodule += 1,
+            _ => {}
+        }
+    }
+    (binary, sensitive, symlink, submodule)
+}
+
+/// Path-based sensitive-file denylist (Unit 8 extracts this into a shared
+/// module; an inline set keeps the handler self-contained for Unit 5).
+///
+/// `basename_lower` is already ASCII-lowercased, so the suffix checks below
+/// are effectively case-insensitive despite clippy's heuristic lint.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
+fn is_sensitive(path: &str) -> bool {
+    let basename = path.rsplit_once('/').map_or(path, |(_, name)| name);
+    let basename_lower = basename.to_ascii_lowercase();
+    let basename_match = basename_lower == ".env"
+        || basename_lower.starts_with(".env.")
+        || basename_lower.ends_with(".pem")
+        || basename_lower.starts_with("id_rsa")
+        || basename_lower.ends_with(".p12")
+        || basename_lower.ends_with(".keystore")
+        || basename_lower.ends_with(".key");
+    if basename_match {
+        return true;
+    }
+    // Path-suffix patterns.
+    path.ends_with(".aws/credentials")
+        || path.ends_with(".git/config")
+        || path.contains("/.ssh/")
+        || path.starts_with(".ssh/")
 }
 
 #[cfg(test)]
@@ -162,8 +817,8 @@ mod tests {
         let mat_b = materialize;
         let inflight_a = Arc::clone(&inflight);
         let inflight_b = Arc::clone(&inflight);
-        let run_a = run.clone();
-        let run_b = run.clone();
+        let run_a = run;
+        let run_b = run;
 
         let (a, b) = tokio::join!(
             tokio::spawn(async move { coalesced_list_run_files(&inflight_a, &run_a, mat_a).await }),

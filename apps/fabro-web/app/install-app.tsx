@@ -7,7 +7,6 @@ import {
   type InstallGithubAppOwner,
   type InstallLlmProviderInput,
   type InstallSessionResponse,
-  buildInstallGithubAppOwner,
   createInstallGithubAppManifest,
   finishInstall,
   getInstallSession,
@@ -41,6 +40,20 @@ type FinishState = InstallFinishResponse | null;
 type GithubStrategy = "token" | "app";
 type GithubOwnerKind = "personal" | "org";
 
+type SessionState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; data: InstallSessionResponse };
+
+type TokenForm = { token: string; username: string };
+
+type AppForm = {
+  owner: InstallGithubAppOwner;
+  appName: string;
+  allowedUsername: string;
+};
+
 type ProviderSelection = Record<
   string,
   {
@@ -54,22 +67,20 @@ export default function InstallApp() {
   const [installToken, setInstallToken] = useState<string | null>(() =>
     readStoredInstallToken(),
   );
-  const [session, setSession] = useState<InstallSessionResponse | null>(null);
-  const [loadingSession, setLoadingSession] = useState(false);
-  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionState, setSessionState] = useState<SessionState>({ status: "idle" });
+  const session = sessionState.status === "ready" ? sessionState.data : null;
   const [manualToken, setManualToken] = useState("");
   const [llmSelection, setLlmSelection] = useState<ProviderSelection>(() =>
     defaultProviderSelection(),
   );
   const [canonicalUrl, setCanonicalUrl] = useState("");
   const [githubStrategy, setGithubStrategy] = useState<GithubStrategy>("token");
-  const [githubToken, setGithubToken] = useState("");
-  const [githubUsername, setGithubUsername] = useState("");
-  const [githubOwnerKind, setGithubOwnerKind] =
-    useState<GithubOwnerKind>("personal");
-  const [githubOrganization, setGithubOrganization] = useState("");
-  const [githubAppName, setGithubAppName] = useState("Fabro");
-  const [githubAllowedUsername, setGithubAllowedUsername] = useState("");
+  const [tokenForm, setTokenForm] = useState<TokenForm>({ token: "", username: "" });
+  const [appForm, setAppForm] = useState<AppForm>({
+    owner:           { kind: "personal" },
+    appName:         "Fabro",
+    allowedUsername: "",
+  });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [finishState, setFinishState] = useState<FinishState>(null);
@@ -98,17 +109,16 @@ export default function InstallApp() {
 
   useEffect(() => {
     if (!installToken) {
-      setSession(null);
+      setSessionState({ status: "idle" });
       return;
     }
 
     let cancelled = false;
-    setLoadingSession(true);
-    setSessionError(null);
+    setSessionState({ status: "loading" });
     getInstallSession(installToken)
       .then((nextSession) => {
         if (cancelled) return;
-        setSession(nextSession);
+        setSessionState({ status: "ready", data: nextSession });
         setCanonicalUrl((current) =>
           current || nextSession.server?.canonical_url || nextSession.prefill.canonical_url,
         );
@@ -117,28 +127,25 @@ export default function InstallApp() {
         );
         if (nextSession.github?.strategy === "app") {
           setGithubStrategy("app");
-          const owner = nextSession.github.owner ?? { kind: "personal" };
-          if (owner.kind === "org") {
-            setGithubOwnerKind("org");
-            setGithubOrganization(owner.slug);
-          } else {
-            setGithubOwnerKind("personal");
-            setGithubOrganization("");
-          }
-          setGithubAppName(nextSession.github.app_name || "Fabro");
-          setGithubAllowedUsername(nextSession.github.allowed_username || "");
+          setAppForm({
+            owner:           nextSession.github.owner ?? { kind: "personal" },
+            appName:         nextSession.github.app_name || "Fabro",
+            allowedUsername: nextSession.github.allowed_username || "",
+          });
         } else if (nextSession.github?.strategy === "token") {
           setGithubStrategy("token");
-          setGithubUsername(nextSession.github.username || "");
+          setTokenForm((current) => ({
+            ...current,
+            username: nextSession.github?.username || current.username,
+          }));
         }
       })
       .catch((error) => {
         if (cancelled) return;
-        setSession(null);
-        setSessionError(error instanceof Error ? error.message : "Install session failed");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingSession(false);
+        setSessionState({
+          status:  "error",
+          message: error instanceof Error ? error.message : "Install session failed",
+        });
       });
 
     return () => {
@@ -210,6 +217,9 @@ export default function InstallApp() {
 
   const completedSteps = new Set(session?.completed_steps ?? []);
 
+  const sessionError =
+    sessionState.status === "error" ? sessionState.message : null;
+
   if (!installToken) {
     return (
       <TokenEntryScreen
@@ -219,18 +229,21 @@ export default function InstallApp() {
         onSubmit={() => {
           const nextToken = manualToken.trim();
           if (!nextToken) {
-            setSessionError("Paste the install token from the server logs.");
+            setSessionState({
+              status:  "error",
+              message: "Paste the install token from the server logs.",
+            });
             return;
           }
           persistInstallToken(nextToken);
           setInstallToken(nextToken);
-          setSessionError(null);
+          setSessionState({ status: "idle" });
         }}
       />
     );
   }
 
-  if (loadingSession && !session) {
+  if (sessionState.status === "loading") {
     return (
       <InstallLayout currentStep={currentStep} completedSteps={completedSteps}>
         <LoadingPanel title="Connecting to install session">
@@ -240,7 +253,7 @@ export default function InstallApp() {
     );
   }
 
-  if (sessionError && !session) {
+  if (sessionState.status === "error") {
     return (
       <TokenEntryScreen
         manualToken={manualToken}
@@ -292,7 +305,7 @@ export default function InstallApp() {
               );
               await putInstallLlm(installToken, providers);
               const nextSession = await getInstallSession(installToken);
-              setSession(nextSession);
+              setSessionState({ status: "ready", data: nextSession });
               navigate("/install/server");
             } catch (error) {
               setSaveError(
@@ -322,7 +335,7 @@ export default function InstallApp() {
             try {
               await putInstallServer(installToken, canonicalUrl.trim());
               const nextSession = await getInstallSession(installToken);
-              setSession(nextSession);
+              setSessionState({ status: "ready", data: nextSession });
               navigate("/install/github");
             } catch (error) {
               setSaveError(
@@ -360,39 +373,41 @@ export default function InstallApp() {
             setSaveError(null);
             try {
               if (githubStrategy === "token") {
-                if (!githubToken.trim()) {
+                const trimmedToken = tokenForm.token.trim();
+                if (!trimmedToken) {
                   setSaveError("Provide the GitHub token before continuing.");
                   return;
                 }
-                const username = await testInstallGithubToken(
-                  installToken,
-                  githubToken.trim(),
-                );
-                setGithubUsername(username);
-                await putInstallGithubToken(installToken, githubToken.trim(), username);
+                const username = await testInstallGithubToken(installToken, trimmedToken);
+                setTokenForm({ token: trimmedToken, username });
+                await putInstallGithubToken(installToken, trimmedToken, username);
                 const nextSession = await getInstallSession(installToken);
-                setSession(nextSession);
+                setSessionState({ status: "ready", data: nextSession });
                 navigate("/install/review");
                 return;
               }
 
-              if (githubOwnerKind === "org" && !githubOrganization.trim()) {
+              const { owner, appName, allowedUsername } = appForm;
+              if (owner.kind === "org" && !(owner.slug ?? "").trim()) {
                 setSaveError("Enter the organization slug for the GitHub App.");
                 return;
               }
-              if (!githubAppName.trim()) {
+              if (!appName.trim()) {
                 setSaveError("Enter the GitHub App name before continuing.");
                 return;
               }
-              if (!githubAllowedUsername.trim()) {
+              if (!allowedUsername.trim()) {
                 setSaveError("Enter the GitHub username that should be allowed to log in.");
                 return;
               }
 
               const manifest = await createInstallGithubAppManifest(installToken, {
-                owner: buildInstallGithubAppOwner(githubOwnerKind, githubOrganization),
-                app_name: githubAppName.trim(),
-                allowed_username: githubAllowedUsername.trim(),
+                owner:
+                  owner.kind === "org"
+                    ? { kind: "org", slug: (owner.slug ?? "").trim() }
+                    : { kind: "personal" },
+                app_name:         appName.trim(),
+                allowed_username: allowedUsername.trim(),
               });
               submitGithubManifest(manifest.github_form_action, manifest.manifest);
             } catch (error) {
@@ -404,16 +419,15 @@ export default function InstallApp() {
             }
           }}
         >
-          <GithubStrategyPicker
-            strategy={githubStrategy}
-            onChange={setGithubStrategy}
-          />
+          <GithubStrategyPicker strategy={githubStrategy} onChange={setGithubStrategy} />
           {githubStrategy === "token" ? (
             <>
               <Field label="GitHub token">
                 <textarea
-                  value={githubToken}
-                  onChange={(event) => setGithubToken(event.target.value)}
+                  value={tokenForm.token}
+                  onChange={(event) =>
+                    setTokenForm((current) => ({ ...current, token: event.target.value }))
+                  }
                   className={`${INPUT_CLASS} min-h-28 resize-y`}
                   placeholder="ghp_..."
                 />
@@ -423,7 +437,7 @@ export default function InstallApp() {
                 hint="Filled automatically after token validation."
               >
                 <input
-                  value={githubUsername}
+                  value={tokenForm.username}
                   readOnly
                   className={`${INPUT_CLASS} text-fg-3`}
                   placeholder="octocat"
@@ -433,14 +447,27 @@ export default function InstallApp() {
           ) : (
             <div className="space-y-5">
               <OwnerPicker
-                ownerKind={githubOwnerKind}
-                setOwnerKind={setGithubOwnerKind}
+                ownerKind={appForm.owner.kind}
+                setOwnerKind={(kind) =>
+                  setAppForm((current) => ({
+                    ...current,
+                    owner:
+                      kind === "org"
+                        ? { kind: "org", slug: current.owner.kind === "org" ? current.owner.slug ?? "" : "" }
+                        : { kind: "personal" },
+                  }))
+                }
               />
-              {githubOwnerKind === "org" ? (
+              {appForm.owner.kind === "org" ? (
                 <Field label="Organization slug">
                   <input
-                    value={githubOrganization}
-                    onChange={(event) => setGithubOrganization(event.target.value)}
+                    value={appForm.owner.slug ?? ""}
+                    onChange={(event) =>
+                      setAppForm((current) => ({
+                        ...current,
+                        owner: { kind: "org", slug: event.target.value },
+                      }))
+                    }
                     className={INPUT_CLASS}
                     placeholder="acme"
                   />
@@ -448,8 +475,10 @@ export default function InstallApp() {
               ) : null}
               <Field label="GitHub App name">
                 <input
-                  value={githubAppName}
-                  onChange={(event) => setGithubAppName(event.target.value)}
+                  value={appForm.appName}
+                  onChange={(event) =>
+                    setAppForm((current) => ({ ...current, appName: event.target.value }))
+                  }
                   className={INPUT_CLASS}
                   placeholder="Fabro"
                 />
@@ -459,9 +488,12 @@ export default function InstallApp() {
                 hint="This username is allowed through the runtime GitHub login flow."
               >
                 <input
-                  value={githubAllowedUsername}
+                  value={appForm.allowedUsername}
                   onChange={(event) =>
-                    setGithubAllowedUsername(event.target.value)
+                    setAppForm((current) => ({
+                      ...current,
+                      allowedUsername: event.target.value,
+                    }))
                   }
                   className={INPUT_CLASS}
                   placeholder="octocat"

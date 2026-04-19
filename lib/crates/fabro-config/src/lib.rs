@@ -11,7 +11,6 @@ pub mod effective_settings;
 pub mod envfile;
 pub mod error;
 pub mod home;
-pub mod legacy_env;
 pub mod load;
 pub mod merge;
 pub mod parse;

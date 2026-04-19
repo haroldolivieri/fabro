@@ -594,6 +594,26 @@ impl ServerStoreClient {
         Ok(())
     }
 
+    pub(crate) async fn archive_run(&self, run_id: &RunId) -> Result<()> {
+        self.client
+            .archive_run()
+            .id(run_id.to_string())
+            .send()
+            .await
+            .map_err(map_api_error)?;
+        Ok(())
+    }
+
+    pub(crate) async fn unarchive_run(&self, run_id: &RunId) -> Result<()> {
+        self.client
+            .unarchive_run()
+            .id(run_id.to_string())
+            .send()
+            .await
+            .map_err(map_api_error)?;
+        Ok(())
+    }
+
     pub(crate) async fn list_store_runs(&self) -> Result<Vec<RunSummary>> {
         let mut all_runs = Vec::new();
         let mut offset = 0_u64;

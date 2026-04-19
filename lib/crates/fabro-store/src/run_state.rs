@@ -24,6 +24,8 @@ pub struct RunProjection {
     pub graph_source:       Option<String>,
     pub start:              Option<StartRecord>,
     pub status:             Option<RunStatusRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_status:       Option<RunStatus>,
     pub pending_control:    Option<RunControlAction>,
     pub checkpoint:         Option<Checkpoint>,
     pub checkpoints:        Vec<(u32, Checkpoint)>,
@@ -211,6 +213,14 @@ impl RunProjection {
             }
             EventBody::RunRewound(_) => {
                 self.reset_for_rewind();
+            }
+            EventBody::RunArchived(_props) => {
+                self.prior_status = self.status.as_ref().map(|record| record.status);
+                self.status = Some(run_status_record(RunStatus::Archived, None, ts));
+            }
+            EventBody::RunUnarchived(props) => {
+                self.status = Some(run_status_record(props.restored_status, None, ts));
+                self.prior_status = None;
             }
             EventBody::CheckpointCompleted(props) => {
                 let checkpoint = checkpoint_from_props(props, ts);
@@ -1096,5 +1106,144 @@ mod tests {
             value["run"]["definition_blob"],
             events[1].payload.as_value()["properties"]["definition_blob"]
         );
+    }
+
+    #[test]
+    fn run_archived_captures_prior_status_and_sets_archived() {
+        use fabro_types::RunStatus;
+        use fabro_types::run_event::{RunArchivedProps, RunCompletedProps};
+
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::RunCompleted(RunCompletedProps {
+                    duration_ms:          10,
+                    artifact_count:       0,
+                    status:               "success".to_string(),
+                    reason:               None,
+                    total_usd_micros:     None,
+                    final_git_commit_sha: None,
+                    final_patch:          None,
+                    billing:              None,
+                }),
+                None,
+            ))
+            .unwrap();
+        assert_eq!(
+            state.status.as_ref().map(|record| record.status),
+            Some(RunStatus::Succeeded)
+        );
+        assert_eq!(state.prior_status, None);
+
+        state
+            .apply_event(&test_event(
+                2,
+                EventBody::RunArchived(RunArchivedProps { actor: None }),
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            state.status.as_ref().map(|record| record.status),
+            Some(RunStatus::Archived)
+        );
+        assert_eq!(state.prior_status, Some(RunStatus::Succeeded));
+    }
+
+    #[test]
+    fn run_unarchived_restores_status_and_clears_prior_status() {
+        use fabro_types::RunStatus;
+        use fabro_types::run_event::{RunArchivedProps, RunCompletedProps, RunUnarchivedProps};
+
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::RunCompleted(RunCompletedProps {
+                    duration_ms:          10,
+                    artifact_count:       0,
+                    status:               "success".to_string(),
+                    reason:               None,
+                    total_usd_micros:     None,
+                    final_git_commit_sha: None,
+                    final_patch:          None,
+                    billing:              None,
+                }),
+                None,
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_event(
+                2,
+                EventBody::RunArchived(RunArchivedProps { actor: None }),
+                None,
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_event(
+                3,
+                EventBody::RunUnarchived(RunUnarchivedProps {
+                    actor:           None,
+                    restored_status: RunStatus::Succeeded,
+                }),
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            state.status.as_ref().map(|record| record.status),
+            Some(RunStatus::Succeeded)
+        );
+        assert_eq!(state.prior_status, None);
+    }
+
+    #[test]
+    fn run_unarchived_uses_event_payload_even_when_prior_status_differs() {
+        // The event payload is authoritative: the unarchive apply arm sets status
+        // from `restored_status`, ignoring whatever `prior_status` was captured.
+        use fabro_types::RunStatus;
+        use fabro_types::run_event::{RunArchivedProps, RunCompletedProps, RunUnarchivedProps};
+
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::RunCompleted(RunCompletedProps {
+                    duration_ms:          10,
+                    artifact_count:       0,
+                    status:               "success".to_string(),
+                    reason:               None,
+                    total_usd_micros:     None,
+                    final_git_commit_sha: None,
+                    final_patch:          None,
+                    billing:              None,
+                }),
+                None,
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_event(
+                2,
+                EventBody::RunArchived(RunArchivedProps { actor: None }),
+                None,
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_event(
+                3,
+                EventBody::RunUnarchived(RunUnarchivedProps {
+                    actor:           None,
+                    restored_status: RunStatus::Failed,
+                }),
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            state.status.as_ref().map(|record| record.status),
+            Some(RunStatus::Failed)
+        );
+        assert_eq!(state.prior_status, None);
     }
 }

@@ -64,15 +64,6 @@ export async function readInstallError(
   return `${fallback} (${response.status})`;
 }
 
-export function buildInstallGithubAppOwner(
-  ownerKind: "personal" | "org",
-  organizationSlug: string,
-): InstallGithubAppOwner {
-  return ownerKind === "org"
-    ? { kind: "org", slug: organizationSlug.trim() }
-    : { kind: "personal" };
-}
-
 export async function getInstallSession(token: string): Promise<InstallSessionResponse> {
   const response = await installFetch("/install/session", token);
   if (!response.ok) {

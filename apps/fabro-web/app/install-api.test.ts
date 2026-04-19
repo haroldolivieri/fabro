@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildInstallGithubAppOwner, readInstallError } from "./install-api";
+import { readInstallError } from "./install-api";
 
 describe("readInstallError", () => {
   test("prefers the structured install error payload", async () => {
@@ -31,15 +31,3 @@ describe("readInstallError", () => {
   });
 });
 
-describe("buildInstallGithubAppOwner", () => {
-  test("uses the personal tag for personal app installs", () => {
-    expect(buildInstallGithubAppOwner("personal", "")).toEqual({ kind: "personal" });
-  });
-
-  test("trims organization slugs and tags them with `org`", () => {
-    expect(buildInstallGithubAppOwner("org", "  acme  ")).toEqual({
-      kind: "org",
-      slug: "acme",
-    });
-  });
-});

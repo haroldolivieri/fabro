@@ -14,19 +14,8 @@
 
 
 
-/**
- * Board column status for a run in the list view.
- */
-
-export const BoardColumn = {
-    INITIALIZING: 'initializing',
-    RUNNING: 'running',
-    WAITING: 'waiting',
-    SUCCEEDED: 'succeeded',
-    FAILED: 'failed'
-} as const;
-
-export type BoardColumn = typeof BoardColumn[keyof typeof BoardColumn];
-
-
+export interface BoardColumnDefinition {
+    'id': string;
+    'name': string;
+}
 

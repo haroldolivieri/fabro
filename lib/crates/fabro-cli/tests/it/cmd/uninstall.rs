@@ -1,7 +1,6 @@
 use std::fs;
-use std::time::{Duration, Instant};
 
-use fabro_test::{fabro_snapshot, test_context};
+use fabro_test::{fabro_snapshot, stop_pid, test_context, wait_for_path};
 use serde_json::Value;
 
 #[test]
@@ -36,29 +35,6 @@ fn command_with_no_fabro_home(context: &fabro_test::TestContext) -> assert_cmd::
         context.temp_dir.join("nonexistent-fabro-home"),
     );
     cmd
-}
-
-fn wait_for_path(path: &std::path::Path) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        if path.exists() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    panic!("timed out waiting for {}", path.display());
-}
-
-fn stop_pid(pid: u32) {
-    fabro_proc::sigterm(pid);
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        if !fabro_proc::process_alive(pid) {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    fabro_proc::sigkill(pid);
 }
 
 #[test]

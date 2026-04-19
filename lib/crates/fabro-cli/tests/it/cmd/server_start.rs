@@ -2,66 +2,10 @@ use std::process::Stdio;
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
 
-use fabro_test::{apply_test_isolation, fabro_snapshot, test_context};
-
-fn isolated_storage_dir() -> tempfile::TempDir {
-    let root = tempfile::tempdir_in("/tmp").unwrap();
-    std::fs::create_dir_all(root.path().join("storage")).unwrap();
-    root
-}
-
-fn server_log_files(logs_dir: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let Ok(entries) = std::fs::read_dir(logs_dir) else {
-        return Vec::new();
-    };
-
-    entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("server.") && name.ends_with(".log"))
-        })
-        .collect()
-}
-
-fn wait_for_path(path: &std::path::Path) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        if path.exists() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    panic!("timed out waiting for {}", path.display());
-}
-
-fn wait_for_log_line(path: &std::path::Path, needle: &str) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        if std::fs::read_to_string(path)
-            .ok()
-            .is_some_and(|contents| contents.contains(needle))
-        {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    panic!("timed out waiting for {needle:?} in {}", path.display());
-}
-
-fn stop_pid(pid: u32) {
-    fabro_proc::sigterm(pid);
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        if !fabro_proc::process_alive(pid) {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    fabro_proc::sigkill(pid);
-}
+use fabro_test::{
+    apply_test_isolation, fabro_snapshot, isolated_storage_dir, server_log_files, stop_pid,
+    test_context, wait_for_log_line, wait_for_path,
+};
 
 #[test]
 fn help() {

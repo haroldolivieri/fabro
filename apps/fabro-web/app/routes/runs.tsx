@@ -21,7 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ciConfig, statusColors, deriveCiStatus, mapRunListItem } from "../data/runs";
 import type { CiStatus, CheckRun, CheckStatus, RunItem, RunWithStatus, ColumnStatus } from "../data/runs";
 import { apiJson } from "../api";
-import type { PaginatedRunList } from "@qltysh/fabro-api-client";
+import type { PaginatedBoardRunList } from "@qltysh/fabro-api-client";
 
 export function meta({}: any) {
   return [{ title: "Runs — Fabro" }];
@@ -35,10 +35,7 @@ interface ColumnStyle {
 }
 
 const columnStyles: Record<string, ColumnStyle> = {
-  working:   { accent: "bg-teal-500", iconColor: "text-teal-500", iconType: "branch", actions: ["Watch", "Steer"] },
   initializing: { accent: "bg-amber", iconColor: "text-amber", iconType: "branch", actions: [] },
-  review:    { accent: "bg-mint",     iconColor: "text-mint",     iconType: "pr",     actions: [] },
-  merge:     { accent: "bg-teal-300", iconColor: "text-teal-300", iconType: "pr",     actions: ["Merge"] },
   running:   { accent: "bg-teal-500", iconColor: "text-teal-500", iconType: "branch", actions: ["Watch", "Steer"] },
   waiting:   { accent: "bg-amber",    iconColor: "text-amber",    iconType: "branch", actions: ["Answer Question"] },
   succeeded: { accent: "bg-teal-300", iconColor: "text-teal-300", iconType: "pr",     actions: [] },
@@ -49,8 +46,8 @@ const defaultColumnStyle: ColumnStyle = { accent: "bg-fg-muted", iconColor: "tex
 
 interface BoardRunsResponse {
   columns: { id: string; name: string }[];
-  data: PaginatedRunList["data"];
-  meta: PaginatedRunList["meta"];
+  data: PaginatedBoardRunList["data"];
+  meta: PaginatedBoardRunList["meta"];
 }
 
 export async function loader({ request }: any) {
@@ -62,8 +59,8 @@ export async function loader({ request }: any) {
     grouped.set(col.id, []);
   }
   for (const apiRun of apiRuns) {
-    if (grouped.has(apiRun.status)) {
-      grouped.get(apiRun.status)?.push(mapRunListItem(apiRun));
+    if (grouped.has(apiRun.column)) {
+      grouped.get(apiRun.column)?.push(mapRunListItem(apiRun));
     }
   }
 

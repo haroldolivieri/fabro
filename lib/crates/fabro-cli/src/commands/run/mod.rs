@@ -7,7 +7,7 @@ use fabro_util::terminal::Styles;
 use crate::args::{AttachArgs, RunCommands, RunWorkerArgs, StartArgs};
 use crate::command_context::CommandContext;
 use crate::shared::print_json_pretty;
-use crate::user_config::settings_layer_with_storage_dir;
+use crate::user_config::load_settings_with_storage_dir;
 
 pub(crate) mod attach;
 pub(crate) mod command;
@@ -38,7 +38,7 @@ pub(crate) async fn dispatch(
         RunCommands::Run(args) => Box::pin(command::execute(args, cli, cli_layer, printer)).await,
         RunCommands::Create(args) => {
             let styles: &'static Styles = Box::leak(Box::new(Styles::detect_stderr()));
-            let cli_defaults = settings_layer_with_storage_dir(None)?;
+            let cli_defaults = load_settings_with_storage_dir(None)?;
             let ctx = CommandContext::for_target(&args.target, printer, cli.clone(), cli_layer)?;
             let created_run = Box::pin(create::create_run(
                 &ctx,

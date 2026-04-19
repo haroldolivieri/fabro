@@ -42,6 +42,11 @@ pub(crate) async fn run(
     let client = ctx.server().await?;
     let run_id = client.resolve_run(&args.run_id).await?.run_id;
     let state = client.get_run_state(&run_id).await?;
+    let current_status = state
+        .status
+        .as_ref()
+        .map(|record| record.status)
+        .context("run has no recorded status — cannot rewind")?;
     let record = state.run.context("Failed to load run record from store")?;
     ensure_matching_repo_origin(record.repo_origin_url.as_deref(), "rewind")?;
     let store = Store::new(repo);
@@ -65,6 +70,7 @@ pub(crate) async fn run(
         run_id,
         target: target.clone(),
         push: !args.no_push,
+        current_status,
     })?;
     let entry = timeline.resolve(&target)?;
     reset_rewound_run_state(client.as_ref(), &store, &run_id, entry).await?;

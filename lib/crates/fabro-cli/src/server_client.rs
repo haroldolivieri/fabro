@@ -85,6 +85,7 @@ impl RunAttachEventStream {
 
 pub(crate) use fabro_store::RunProjection;
 
+#[cfg(test)]
 pub(crate) async fn connect_server(storage_dir: &Path) -> Result<ServerStoreClient> {
     connect_api_client_bundle(storage_dir).await
 }
@@ -631,6 +632,17 @@ impl ServerStoreClient {
             .client
             .retrieve_run()
             .id(run_id.to_string())
+            .send()
+            .await
+            .map_err(map_api_error)?;
+        convert_type(response.into_inner())
+    }
+
+    pub(crate) async fn resolve_run(&self, selector: &str) -> Result<RunSummary> {
+        let response = self
+            .client
+            .resolve_run()
+            .selector(selector.to_string())
             .send()
             .await
             .map_err(map_api_error)?;

@@ -1,45 +1,12 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use fabro_store::RunSummary;
 use fabro_types::{RunId, RunStatus, StatusReason};
-use fabro_workflow::run_lookup::{RunInfo, resolve_run_from_summaries, scratch_base};
 
-use crate::server_client::{self, ServerStoreClient};
-
-pub(crate) struct ServerRunLookup {
-    client:       ServerStoreClient,
-    scratch_base: PathBuf,
-    summaries:    Vec<RunSummary>,
-}
-
-impl ServerRunLookup {
-    pub(crate) async fn connect(storage_dir: &Path) -> Result<Self> {
-        Self::connect_from_scratch_base(&scratch_base(storage_dir)).await
-    }
-
-    pub(crate) async fn connect_from_scratch_base(scratch_base: &Path) -> Result<Self> {
-        let storage_dir = scratch_base.parent().unwrap_or(scratch_base);
-        let client = server_client::connect_server(storage_dir).await?;
-        let summaries = client.list_store_runs().await?;
-        Ok(Self {
-            client,
-            scratch_base: scratch_base.to_path_buf(),
-            summaries,
-        })
-    }
-
-    pub(crate) fn client(&self) -> &ServerStoreClient {
-        &self.client
-    }
-
-    pub(crate) fn resolve(&self, selector: &str) -> Result<RunInfo> {
-        resolve_run_from_summaries(&self.summaries, &self.scratch_base, selector)
-    }
-}
+use crate::server_client::ServerStoreClient;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ServerRunSummaryInfo {
@@ -47,6 +14,10 @@ pub(crate) struct ServerRunSummaryInfo {
 }
 
 impl ServerRunSummaryInfo {
+    pub(crate) fn from_summary(summary: RunSummary) -> Self {
+        Self { summary }
+    }
+
     pub(crate) fn run_id(&self) -> RunId {
         self.summary.run_id
     }
@@ -113,7 +84,7 @@ impl ServerSummaryLookup {
         let summaries = client.list_store_runs().await?;
         let mut runs = summaries
             .into_iter()
-            .map(|summary| ServerRunSummaryInfo { summary })
+            .map(ServerRunSummaryInfo::from_summary)
             .collect::<Vec<_>>();
         runs.sort_by(|a, b| {
             b.start_time_dt()
@@ -129,10 +100,6 @@ impl ServerSummaryLookup {
 
     pub(crate) fn runs(&self) -> &[ServerRunSummaryInfo] {
         &self.runs
-    }
-
-    pub(crate) fn resolve(&self, selector: &str) -> Result<ServerRunSummaryInfo> {
-        resolve_server_run_from_infos(&self.runs, selector)
     }
 }
 

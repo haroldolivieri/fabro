@@ -437,6 +437,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/resolve:
+    get:
+      operationId: resolveRun
+      tags: [Runs]
+      summary: Resolve Run Selector
+      description: Resolves a run selector to one durable run summary using server-owned selector semantics.
+      parameters:
+        - $ref: "#/components/parameters/RunSelector"
+      responses:
+        "200":
+          description: Durable run summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreRunSummary"
+        "400":
+          description: Selector is invalid or ambiguous
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No run matched the selector
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/preflight:
     post:
       operationId: runPreflight
@@ -1821,6 +1849,15 @@ components:
       schema:
         type: string
       example: 01JNQVR7M0EJ5GKAT2SC4ERS1Z
+
+    RunSelector:
+      name: selector
+      in: query
+      required: true
+      description: Run selector, such as a run ID prefix, workflow slug, or workflow name.
+      schema:
+        type: string
+      example: nightly-build
 
     SettingsView:
       name: view

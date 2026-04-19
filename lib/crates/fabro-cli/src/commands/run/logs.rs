@@ -25,7 +25,6 @@ use tracing::{debug, info};
 use crate::args::LogsArgs;
 use crate::command_context::CommandContext;
 use crate::server_client;
-use crate::server_runs::ServerSummaryLookup;
 use crate::shared::format_usd_micros;
 
 const FOLLOW_TERMINAL_GRACE: Duration = Duration::from_millis(500);
@@ -38,11 +37,8 @@ pub(crate) async fn run(
     printer: Printer,
 ) -> Result<()> {
     let ctx = CommandContext::for_target(&args.server, printer, cli.clone(), cli_layer)?;
-    let lookup = ServerSummaryLookup::from_client(ctx.server().await?).await?;
-    let run = lookup.resolve(&args.run)?;
-    let client = lookup.client();
-
-    let run_id = run.run_id();
+    let client = ctx.server().await?;
+    let run_id = client.resolve_run(&args.run).await?.run_id;
     info!(run_id = %run_id, "Showing logs");
 
     let since_cutoff = match &args.since {
@@ -78,7 +74,7 @@ pub(crate) async fn run(
 
     if args.follow {
         follow_store_logs(
-            client,
+            client.as_ref(),
             &run_id,
             if last_seq == 0 { 1 } else { last_seq + 1 },
             pretty,

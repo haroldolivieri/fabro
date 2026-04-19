@@ -22,7 +22,6 @@ use tracing::info;
 
 use crate::args::WaitArgs;
 use crate::command_context::CommandContext;
-use crate::server_runs::ServerSummaryLookup;
 use crate::shared::{format_duration_ms, format_usd_micros};
 
 pub(crate) async fn run(
@@ -33,11 +32,8 @@ pub(crate) async fn run(
     printer: Printer,
 ) -> Result<()> {
     let ctx = CommandContext::for_target(&args.server, printer, cli.clone(), cli_layer)?;
-    let lookup = ServerSummaryLookup::from_client(ctx.server().await?).await?;
-    let run_info = lookup.resolve(&args.run)?;
-    let client = lookup.client();
-
-    let run_id = run_info.run_id();
+    let client = ctx.server().await?;
+    let run_id = client.resolve_run(&args.run).await?.run_id;
     info!(run_id = %run_id, "Waiting for run to complete");
 
     let deadline = args

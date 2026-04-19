@@ -246,7 +246,9 @@ async fn main_inner() -> (String, Result<()>) {
             Commands::Artifact(ns) => {
                 commands::artifact::dispatch(ns, &cli_settings, &cli_layer, printer).await?;
             }
-            Commands::Store(ns) => commands::store::dispatch(ns, &cli_settings, printer).await?,
+            Commands::Store(ns) => {
+                commands::store::dispatch(ns, &cli_settings, &cli_layer, printer).await?;
+            }
             Commands::RunsCmd(cmd) => {
                 commands::runs::dispatch(cmd, &cli_settings, &cli_layer, printer).await?;
             }

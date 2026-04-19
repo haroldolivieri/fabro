@@ -15,8 +15,10 @@ function renderToJson(element: React.ReactElement): any {
 }
 
 describe("deriveEmptyKind", () => {
-  test("submitted / starting / queued map to R4(a) 'starting'", () => {
-    for (const status of ["submitted", "Submitted", "starting", "queued"]) {
+  // Pre-work states → R4(a) "starting"
+  test.each(["submitted", "Submitted", "starting", "queued"])(
+    "%s maps to R4(a) 'starting'",
+    (status) => {
       expect(
         deriveEmptyKind({
           runStatus: status,
@@ -24,48 +26,64 @@ describe("deriveEmptyKind", () => {
           degraded: false,
         }),
       ).toBe("starting");
-    }
-  });
+    },
+  );
 
-  test("failed run without degraded fallback is R4(c1)", () => {
-    expect(
-      deriveEmptyKind({
-        runStatus: "failed",
-        totalChanged: 0,
-        degraded: false,
-      }),
-    ).toBe("failed_before_checkpoint");
-  });
+  // Actively-in-progress states → R4(b) "no_changes yet"
+  test.each(["running", "blocked", "paused"])(
+    "%s with no files yet is R4(b) 'no_changes'",
+    (status) => {
+      expect(
+        deriveEmptyKind({
+          runStatus: status,
+          totalChanged: 0,
+          degraded: false,
+        }),
+      ).toBe("no_changes");
+    },
+  );
 
-  test("succeeded run with changes but no data is R4(c2) 'diff_lost'", () => {
-    expect(
-      deriveEmptyKind({
-        runStatus: "succeeded",
-        totalChanged: 3,
-        degraded: false,
-      }),
-    ).toBe("diff_lost");
-  });
+  // Terminal-failure states → R4(c1) when no degraded patch available
+  test.each(["failed", "dead"])(
+    "%s without degraded fallback is R4(c1) 'failed_before_checkpoint'",
+    (status) => {
+      expect(
+        deriveEmptyKind({
+          runStatus: status,
+          totalChanged: 0,
+          degraded: false,
+        }),
+      ).toBe("failed_before_checkpoint");
+    },
+  );
 
-  test("succeeded run with no changes is R4(b)", () => {
-    expect(
-      deriveEmptyKind({
-        runStatus: "succeeded",
-        totalChanged: 0,
-        degraded: false,
-      }),
-    ).toBe("no_changes");
-  });
+  // Terminal-success + teardown states → R4(b) or R4(c2) depending on
+  // whether files were ever changed
+  test.each(["succeeded", "removing"])(
+    "%s with changes but no data is R4(c2) 'diff_lost'",
+    (status) => {
+      expect(
+        deriveEmptyKind({
+          runStatus: status,
+          totalChanged: 3,
+          degraded: false,
+        }),
+      ).toBe("diff_lost");
+    },
+  );
 
-  test("running run with no changes is R4(b)", () => {
-    expect(
-      deriveEmptyKind({
-        runStatus: "running",
-        totalChanged: 0,
-        degraded: false,
-      }),
-    ).toBe("no_changes");
-  });
+  test.each(["succeeded", "removing"])(
+    "%s with no changes is R4(b)",
+    (status) => {
+      expect(
+        deriveEmptyKind({
+          runStatus: status,
+          totalChanged: 0,
+          degraded: false,
+        }),
+      ).toBe("no_changes");
+    },
+  );
 
   test("missing runStatus collapses to 'unknown'", () => {
     expect(
@@ -75,6 +93,43 @@ describe("deriveEmptyKind", () => {
         degraded: false,
       }),
     ).toBe("unknown");
+  });
+
+  test("unknown future status collapses to 'unknown'", () => {
+    expect(
+      deriveEmptyKind({
+        runStatus: "some_future_state",
+        totalChanged: 0,
+        degraded: false,
+      }),
+    ).toBe("unknown");
+  });
+
+  test("every documented RunStatus gets a non-unknown empty kind when applicable", () => {
+    // Regression guard: if a new RunStatus appears in
+    // `apps/fabro-web/app/data/runs.ts` without a matching branch here,
+    // the decision table silently returns "unknown" ("not available right
+    // now") — misleading copy for a cancelled or paused run.
+    const knownRunStatuses = [
+      "submitted",
+      "queued",
+      "starting",
+      "running",
+      "blocked",
+      "paused",
+      "removing",
+      "succeeded",
+      "failed",
+      "dead",
+    ];
+    for (const status of knownRunStatuses) {
+      const result = deriveEmptyKind({
+        runStatus: status,
+        totalChanged: 0,
+        degraded: false,
+      });
+      expect(result).not.toBe("unknown");
+    }
   });
 });
 

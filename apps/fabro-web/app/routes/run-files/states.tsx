@@ -43,8 +43,14 @@ export function emptyStateCopy(kind: EmptyKind): string {
 }
 
 /// Derive the empty-state variant from the full loader context. `runStatus`
-/// comes from the parent run loader; its absence collapses to the "unknown"
-/// catchall so the empty state never displays misleading copy.
+/// comes from the parent run loader (`run.lifecycleStatus`); its absence
+/// collapses to the "unknown" catchall so the empty state never displays
+/// misleading copy.
+///
+/// The full RunStatus enum (per fabro-types/src/status.rs) is:
+///   submitted, queued, starting, running, blocked, paused, removing,
+///   succeeded, failed, dead
+/// partial_success is a stage status, not a run status.
 export function deriveEmptyKind(args: {
   runStatus: string | undefined;
   totalChanged: number;
@@ -54,32 +60,41 @@ export function deriveEmptyKind(args: {
   if (!runStatus) {
     return "unknown";
   }
-  const normalized = runStatus.toLowerCase();
-  if (
-    normalized === "submitted" ||
-    normalized === "starting" ||
-    normalized === "queued"
-  ) {
+  const s = runStatus.toLowerCase();
+
+  // Pre-work states: run has no base_sha / hasn't started producing a diff.
+  if (s === "submitted" || s === "queued" || s === "starting") {
     return "starting";
   }
-  if (normalized === "failed" && !degraded) {
-    return "failed_before_checkpoint";
+
+  // Actively-in-progress states: the run is running but just hasn't
+  // changed any files yet. Avoid alarmist "diff lost" copy here — the
+  // user may refresh and see files appear.
+  if (s === "running" || s === "blocked" || s === "paused") {
+    return "no_changes";
   }
-  if (
-    (normalized === "succeeded" || normalized === "partialsuccess") &&
-    !degraded
-  ) {
-    // If the run ran successfully and we still have no diff data, the
-    // projection's final_patch was never captured (or was lost). R4(c2).
-    if (totalChanged > 0) {
-      return "diff_lost";
+
+  // Terminal-failure states: Failed and Dead both mean the run stopped
+  // without a clean conclusion. If the degraded-fallback branch also
+  // couldn't surface a patch, we never captured a diff at all.
+  if (s === "failed" || s === "dead") {
+    return degraded ? "unknown" : "failed_before_checkpoint";
+  }
+
+  // Terminal-success + teardown states: the run ran to completion or is
+  // shutting down. Distinguish "succeeded with no changes" (R4b) from
+  // "succeeded but diff lost" (R4c2) via total_changed.
+  if (s === "succeeded" || s === "removing") {
+    if (degraded) {
+      // We have a patch; the component renders PatchDiff instead of an
+      // empty state. Shouldn't reach here in practice.
+      return "unknown";
     }
-    return "no_changes";
+    return totalChanged > 0 ? "diff_lost" : "no_changes";
   }
-  if (totalChanged === 0) {
-    return "no_changes";
-  }
-  return "diff_lost";
+
+  // Unknown future status — fail conservative.
+  return "unknown";
 }
 
 export function LoadingSkeleton() {

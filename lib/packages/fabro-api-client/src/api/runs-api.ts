@@ -339,6 +339,49 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
+         * Resolves a run selector to one durable run summary using server-owned selector semantics.
+         * @summary Resolve Run Selector
+         * @param {string} selector Run selector, such as a run ID prefix, workflow slug, or workflow name.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resolveRun: async (selector: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'selector' is not null or undefined
+            assertParamExists('resolveRun', 'selector', selector)
+            const localVarPath = `/api/v1/runs/resolve`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (selector !== undefined) {
+                localVarQueryParameter['selector'] = selector;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Returns the durable run summary for a run.
          * @summary Retrieve Run
          * @param {string} id Unique run identifier (ULID).
@@ -645,6 +688,19 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Resolves a run selector to one durable run summary using server-owned selector semantics.
+         * @summary Resolve Run Selector
+         * @param {string} selector Run selector, such as a run ID prefix, workflow slug, or workflow name.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async resolveRun(selector: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<StoreRunSummary>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.resolveRun(selector, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.resolveRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Returns the durable run summary for a run.
          * @summary Retrieve Run
          * @param {string} id Unique run identifier (ULID).
@@ -792,6 +848,16 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.renderWorkflowGraph(renderWorkflowGraphRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Resolves a run selector to one durable run summary using server-owned selector semantics.
+         * @summary Resolve Run Selector
+         * @param {string} selector Run selector, such as a run ID prefix, workflow slug, or workflow name.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resolveRun(selector: string, options?: RawAxiosRequestConfig): AxiosPromise<StoreRunSummary> {
+            return localVarFp.resolveRun(selector, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Returns the durable run summary for a run.
          * @summary Retrieve Run
          * @param {string} id Unique run identifier (ULID).
@@ -926,6 +992,17 @@ export class RunsApi extends BaseAPI {
      */
     public renderWorkflowGraph(renderWorkflowGraphRequest: RenderWorkflowGraphRequest, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).renderWorkflowGraph(renderWorkflowGraphRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Resolves a run selector to one durable run summary using server-owned selector semantics.
+     * @summary Resolve Run Selector
+     * @param {string} selector Run selector, such as a run ID prefix, workflow slug, or workflow name.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public resolveRun(selector: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).resolveRun(selector, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

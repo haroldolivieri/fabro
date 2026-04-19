@@ -115,6 +115,7 @@ use crate::ip_allowlist::{IpAllowlistConfig, ip_allowlist_middleware};
 use crate::jwt_auth::{
     AuthMode, AuthenticatedService, AuthenticatedSubject, authenticate_service_parts,
 };
+use crate::run_selector::{ResolveRunError, resolve_run_by_selector};
 use crate::server_secrets::{
     LlmClientResult, ProviderCredentials, ServerSecrets, auth_issue_message,
 };
@@ -1007,6 +1008,7 @@ pub fn build_router_with_options(
 fn demo_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/runs", get(demo::list_runs).post(demo::create_run_stub))
+        .route("/runs/resolve", get(demo::resolve_run))
         .route("/boards/runs", get(demo::list_board_runs))
         .route("/preflight", post(run_preflight))
         .route("/graph/render", post(render_graph_from_manifest))
@@ -1087,6 +1089,7 @@ fn demo_routes() -> Router<Arc<AppState>> {
 fn real_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/runs", get(list_runs).post(create_run))
+        .route("/runs/resolve", get(resolve_run))
         .route("/preflight", post(run_preflight))
         .route("/graph/render", post(render_graph_from_manifest))
         .route("/attach", get(attach_events))
@@ -2803,6 +2806,50 @@ async fn list_runs(
         }
         Err(err) => {
             ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ResolveRunQuery {
+    selector: String,
+}
+
+async fn resolve_run(
+    _auth: AuthenticatedService,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ResolveRunQuery>,
+) -> Response {
+    let runs = match state
+        .store
+        .list_runs(&fabro_store::ListRunsQuery::default())
+        .await
+    {
+        Ok(runs) => runs,
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+
+    match resolve_run_by_selector(
+        &runs,
+        &query.selector,
+        |run| run.run_id.to_string(),
+        |run| run.workflow_slug.clone(),
+        |run| run.workflow_name.clone(),
+        |run| run.run_id.created_at(),
+    ) {
+        Ok(run) => (
+            StatusCode::OK,
+            Json(summary_to_api_run_summary(run.clone())),
+        )
+            .into_response(),
+        Err(err @ (ResolveRunError::InvalidSelector | ResolveRunError::AmbiguousPrefix { .. })) => {
+            ApiError::bad_request(err.to_string()).into_response()
+        }
+        Err(err @ ResolveRunError::NotFound { .. }) => {
+            ApiError::not_found(err.to_string()).into_response()
         }
     }
 }
@@ -7286,16 +7333,16 @@ type = "http"
         assert_eq!(answer.value, AnswerValue::Cancelled);
     }
 
-    fn minimal_manifest_json(dot_source: &str) -> serde_json::Value {
+    fn manifest_json(target_path: &str, dot_source: &str) -> serde_json::Value {
         serde_json::json!({
             "version": 1,
             "cwd": "/tmp",
             "target": {
-                "identifier": "workflow.fabro",
-                "path": "workflow.fabro",
+                "identifier": target_path,
+                "path": target_path,
             },
             "workflows": {
-                "workflow.fabro": {
+                target_path: {
                     "source": dot_source,
                     "files": {},
                 },
@@ -7303,8 +7350,16 @@ type = "http"
         })
     }
 
+    fn minimal_manifest_json(dot_source: &str) -> serde_json::Value {
+        manifest_json("workflow.fabro", dot_source)
+    }
+
     fn manifest_body(dot_source: &str) -> Body {
         Body::from(serde_json::to_string(&minimal_manifest_json(dot_source)).unwrap())
+    }
+
+    fn manifest_body_for(target_path: &str, dot_source: &str) -> Body {
+        Body::from(serde_json::to_string(&manifest_json(target_path, dot_source)).unwrap())
     }
 
     async fn create_run(app: &Router, dot_source: &str) -> String {
@@ -7317,6 +7372,29 @@ type = "http"
         let response = app.clone().oneshot(req).await.unwrap();
         let body = body_json(response.into_body()).await;
         body["id"].as_str().unwrap().to_string()
+    }
+
+    async fn create_run_for_target(app: &Router, target_path: &str, dot_source: &str) -> String {
+        let req = Request::builder()
+            .method("POST")
+            .uri(api("/runs"))
+            .header("content-type", "application/json")
+            .body(manifest_body_for(target_path, dot_source))
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        let body = body_json(response.into_body()).await;
+        body["id"].as_str().unwrap().to_string()
+    }
+
+    fn named_workflow_dot(name: &str, goal: &str) -> String {
+        format!(
+            r#"digraph {name} {{
+        graph [goal="{goal}"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        start -> exit
+    }}"#
+        )
     }
 
     fn multipart_body(
@@ -7689,6 +7767,144 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn resolve_run_returns_unique_run_id_prefix_match() {
+        let app = test_app_with();
+        let run_id = create_run(&app, MINIMAL_DOT).await;
+        let selector = &run_id[..8];
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api(&format!("/runs/resolve?selector={selector}")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response.into_body()).await;
+        assert_eq!(body["run_id"], run_id);
+    }
+
+    #[tokio::test]
+    async fn resolve_run_returns_bad_request_for_ambiguous_prefix() {
+        let app = test_app_with();
+        let run_id_a = create_run(&app, MINIMAL_DOT).await;
+        let run_id_b = create_run(&app, MINIMAL_DOT).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api("/runs/resolve?selector=0"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = body_json(response.into_body()).await;
+        let detail = body["errors"][0]["detail"]
+            .as_str()
+            .expect("error detail should be present");
+        assert!(
+            detail.contains(&run_id_a),
+            "detail should mention first run: {detail}"
+        );
+        assert!(
+            detail.contains(&run_id_b),
+            "detail should mention second run: {detail}"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_run_prefers_most_recent_exact_workflow_slug_match() {
+        let app = test_app_with();
+        let older_id = create_run_for_target(
+            &app,
+            "ship-feature.fabro",
+            &named_workflow_dot("ShipFeatureAlpha", "older"),
+        )
+        .await;
+        let newer_id = create_run_for_target(
+            &app,
+            "ship-feature.fabro",
+            &named_workflow_dot("ShipFeatureBeta", "newer"),
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api("/runs/resolve?selector=ship-feature"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response.into_body()).await;
+        assert_eq!(body["run_id"], newer_id);
+        assert_ne!(body["run_id"], older_id);
+    }
+
+    #[tokio::test]
+    async fn resolve_run_prefers_most_recent_collapsed_workflow_name_match() {
+        let app = test_app_with();
+        let older_id = create_run_for_target(
+            &app,
+            "nightly-alpha.fabro",
+            &named_workflow_dot("Nightly_Build", "older"),
+        )
+        .await;
+        let newer_id = create_run_for_target(
+            &app,
+            "nightly-beta.fabro",
+            &named_workflow_dot("Nightly_Build", "newer"),
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api("/runs/resolve?selector=nightlybuild"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response.into_body()).await;
+        assert_eq!(body["run_id"], newer_id);
+        assert_ne!(body["run_id"], older_id);
+    }
+
+    #[tokio::test]
+    async fn resolve_run_returns_not_found_for_unknown_selector() {
+        let app = test_app_with();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api("/runs/resolve?selector=missing-run"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 

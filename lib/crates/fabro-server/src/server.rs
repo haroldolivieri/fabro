@@ -2593,7 +2593,9 @@ fn board_column(status: WorkflowRunStatus) -> Option<&'static str> {
         WorkflowRunStatus::Blocked => Some("blocked"),
         WorkflowRunStatus::Succeeded => Some("succeeded"),
         WorkflowRunStatus::Failed | WorkflowRunStatus::Dead => Some("failed"),
-        WorkflowRunStatus::Removing => None,
+        // TODO(unit-5): revisit once `archived` is a board-column first-class
+        // citizen; for now archived runs have no column.
+        WorkflowRunStatus::Removing | WorkflowRunStatus::Archived => None,
     }
 }
 
@@ -3346,7 +3348,10 @@ fn api_status_from_workflow(status: WorkflowRunStatus) -> RunStatus {
         WorkflowRunStatus::Blocked => RunStatus::Blocked,
         WorkflowRunStatus::Paused => RunStatus::Paused,
         WorkflowRunStatus::Removing => RunStatus::Removing,
-        WorkflowRunStatus::Succeeded => RunStatus::Succeeded,
+        // TODO(unit-5): add `Archived` variant to the public `InternalRunStatus`
+        // enum in the OpenAPI spec and map to it here. Temporary: mirror
+        // `Succeeded` so the wire shape stays valid.
+        WorkflowRunStatus::Succeeded | WorkflowRunStatus::Archived => RunStatus::Succeeded,
         WorkflowRunStatus::Failed => RunStatus::Failed,
         WorkflowRunStatus::Dead => RunStatus::Dead,
     }

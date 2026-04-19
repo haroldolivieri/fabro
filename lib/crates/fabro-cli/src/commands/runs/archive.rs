@@ -57,13 +57,6 @@ enum Action {
 }
 
 impl Action {
-    fn verb_ing(self) -> &'static str {
-        match self {
-            Self::Archive => "archive",
-            Self::Unarchive => "unarchive",
-        }
-    }
-
     fn past(self) -> &'static str {
         match self {
             Self::Archive => "archived",
@@ -139,7 +132,7 @@ async fn run_bulk(
     }
 
     if had_errors {
-        bail!("some runs could not be {}", action.verb_ing());
+        bail!("some runs could not be {}", action.past());
     }
     Ok(())
 }

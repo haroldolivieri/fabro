@@ -84,4 +84,6 @@ http-body-util = "0.1"
 httpmock = "0.8"
 serde_yaml = "0.9"
 tracing-subscriber.workspace = true
-fabro-sandbox = { path = "../fabro-sandbox" }
+async-trait.workspace = true
+tokio-util.workspace = true
+fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }

@@ -533,15 +533,19 @@ impl SlackService {
 
 /// Shared application state for the server.
 pub struct AppState {
-    runs:                   Mutex<HashMap<RunId, ManagedRun>>,
-    aggregate_billing:      Mutex<BillingAccumulator>,
-    store:                  Arc<Database>,
-    artifact_store:         ArtifactStore,
+    runs: Mutex<HashMap<RunId, ManagedRun>>,
+    aggregate_billing: Mutex<BillingAccumulator>,
+    store: Arc<Database>,
+    artifact_store: ArtifactStore,
     artifact_upload_tokens: ArtifactUploadTokenKeys,
-    started_at:             Instant,
-    max_concurrent_runs:    usize,
-    scheduler_notify:       Notify,
-    global_event_tx:        broadcast::Sender<EventEnvelope>,
+    started_at: Instant,
+    max_concurrent_runs: usize,
+    scheduler_notify: Notify,
+    global_event_tx: broadcast::Sender<EventEnvelope>,
+    /// Per-run coalescing registry for `GET /runs/{id}/files`. Concurrent
+    /// callers for the same run share one materialization; different runs
+    /// proceed in parallel. See `crate::run_files` for semantics.
+    pub(crate) files_in_flight: crate::run_files::FilesInFlight,
 
     pub(crate) vault:                Arc<AsyncRwLock<Vault>>,
     pub(crate) server_secrets:       ServerSecrets,
@@ -2566,6 +2570,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         max_concurrent_runs,
         scheduler_notify: Notify::new(),
         global_event_tx,
+        files_in_flight: crate::run_files::new_files_in_flight(),
         vault,
         server_secrets,
         provider_credentials,

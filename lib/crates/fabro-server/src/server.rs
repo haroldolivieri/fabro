@@ -4016,6 +4016,9 @@ async fn start_run(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
     let resume = body.is_some_and(|Json(req)| req.resume);
 
     {
@@ -4838,6 +4841,9 @@ async fn submit_answer(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
     let pending = match load_pending_interview(state.as_ref(), id, &qid).await {
         Ok(pending) => pending,
         Err(response) => return response,
@@ -4882,6 +4888,9 @@ async fn append_run_event(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
     let event = match RunEvent::from_value(value.clone()) {
         Ok(event) => event,
         Err(err) => {
@@ -4890,6 +4899,12 @@ async fn append_run_event(
     };
     if event.run_id != id {
         return ApiError::bad_request("Event run_id does not match path run ID.").into_response();
+    }
+    if let Some(denied) = denied_lifecycle_event_name(&event.body) {
+        return ApiError::bad_request(format!(
+            "{denied} is a lifecycle event; clients must call the corresponding operation endpoint instead of injecting it via append_run_event"
+        ))
+        .into_response();
     }
     let payload = match EventPayload::new(value, &id) {
         Ok(payload) => payload,
@@ -5928,6 +5943,42 @@ fn actor_from_subject(subject: &AuthenticatedSubject) -> Option<ActorRef> {
     subject.login.clone().map(ActorRef::user)
 }
 
+/// Returns the wire event name if the given body is a user-initiated
+/// lifecycle-transition event that clients must not inject via
+/// `append_run_event`. These events are reserved for the operations layer,
+/// which runs authorization and precondition checks. Worker-emitted lifecycle
+/// events (`run.completed`, `run.failed`, etc.) still flow through this
+/// endpoint.
+fn denied_lifecycle_event_name(body: &EventBody) -> Option<&'static str> {
+    match body {
+        EventBody::RunArchived(_) => Some("run.archived"),
+        EventBody::RunUnarchived(_) => Some("run.unarchived"),
+        _ => None,
+    }
+}
+
+/// Returns a 409 response with an actionable "unarchive first" message if the
+/// run is currently archived. Returns `None` otherwise (including when the run
+/// doesn't exist — the caller's own not-found handling will surface that).
+async fn reject_if_archived(state: &AppState, run_id: &RunId) -> Option<Response> {
+    let run_store = state.store.open_run_reader(run_id).await.ok()?;
+    let projection = run_store.state().await.ok()?;
+    let status = projection.status.as_ref()?.status;
+    if status == WorkflowRunStatus::Archived {
+        Some(
+            ApiError::new(
+                StatusCode::CONFLICT,
+                format!(
+                    "run {run_id} is archived; run `fabro unarchive {run_id}` to restore it and try again"
+                ),
+            )
+            .into_response(),
+        )
+    } else {
+        None
+    }
+}
+
 fn schedule_worker_kill(state: Arc<AppState>, run_id: RunId, worker_pid: u32) {
     tokio::spawn(async move {
         sleep(WORKER_CANCEL_GRACE).await;
@@ -5951,6 +6002,9 @@ async fn cancel_run(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
     let pending_control = match load_pending_control(state.as_ref(), id).await {
         Ok(pending_control) => pending_control,
         Err(err) => {
@@ -6098,6 +6152,9 @@ async fn pause_run(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
     let pending_control = match load_pending_control(state.as_ref(), id).await {
         Ok(pending_control) => pending_control,
         Err(err) => {
@@ -6190,6 +6247,9 @@ async fn unpause_run(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
     let pending_control = match load_pending_control(state.as_ref(), id).await {
         Ok(pending_control) => pending_control,
         Err(err) => {

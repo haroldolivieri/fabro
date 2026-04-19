@@ -44,6 +44,13 @@ pub(crate) async fn run(
     let run = lookup.resolve(&args.run_id)?;
     let run_id = run.run_id();
     let state = lookup.client().get_run_state(&run_id).await?;
+    if let Some(status) = state.status.as_ref() {
+        if status.status.to_string() == "archived" {
+            anyhow::bail!(
+                "run {run_id} is archived; run `fabro unarchive {run_id}` to restore it and try again",
+            );
+        }
+    }
     let record = state.run.context("Failed to load run record from store")?;
     ensure_matching_repo_origin(record.repo_origin_url.as_deref(), "rewind")?;
     let store = Store::new(repo);

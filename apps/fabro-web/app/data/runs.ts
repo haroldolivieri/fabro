@@ -1,5 +1,5 @@
 import { formatElapsedSecs, formatDurationSecs } from "../lib/format";
-import type { RunListItem } from "@qltysh/fabro-api-client";
+import type { RunListItem, StoreRunSummary } from "@qltysh/fabro-api-client";
 
 export type CiStatus = "passing" | "failing" | "pending";
 
@@ -29,13 +29,10 @@ export interface RunItem {
   sandboxId?: string;
 }
 
-export type ColumnStatus = "working" | "initializing" | "review" | "merge" | "running" | "waiting" | "succeeded" | "failed";
+export type ColumnStatus = "initializing" | "running" | "waiting" | "succeeded" | "failed";
 
 export const columnNames: Record<ColumnStatus, string> = {
-  working: "Working",
   initializing: "Initializing",
-  review: "Verify",
-  merge: "Merge",
   running: "Running",
   waiting: "Waiting",
   succeeded: "Succeeded",
@@ -47,17 +44,12 @@ export interface RunWithStatus extends RunItem {
   statusLabel: string;
 }
 
-function truncateGoal(goal: string): string {
-  const firstLine = goal.split("\n")[0].replace(/^#+\s*/, "").trim();
-  return firstLine.length > 100 ? firstLine.slice(0, 100) + "…" : firstLine;
-}
-
 export function mapRunListItem(item: RunListItem): RunItem {
   return {
-    id: item.id,
+    id: item.run_id,
     repo: item.repository.name,
-    title: truncateGoal(item.title),
-    workflow: item.workflow.slug,
+    title: item.title,
+    workflow: item.workflow_slug ?? item.workflow_name ?? "unknown",
     number: item.pull_request?.number,
     additions: item.pull_request?.additions,
     deletions: item.pull_request?.deletions,
@@ -66,8 +58,7 @@ export function mapRunListItem(item: RunListItem): RunItem {
       status: c.status,
       duration: c.duration_secs != null ? formatDurationSecs(c.duration_secs) : undefined,
     })),
-    elapsed: item.timings?.elapsed_secs != null ? formatElapsedSecs(item.timings.elapsed_secs) : undefined,
-    elapsedWarning: item.timings?.elapsed_warning,
+    elapsed: item.elapsed_secs != null ? formatElapsedSecs(item.elapsed_secs) : undefined,
     resources: item.sandbox?.resources ? `${item.sandbox.resources.cpu} CPU / ${item.sandbox.resources.memory} GB` : undefined,
     comments: item.pull_request?.comments,
     question: item.question?.text,
@@ -75,34 +66,40 @@ export function mapRunListItem(item: RunListItem): RunItem {
   };
 }
 
-export interface RunSummaryResponse {
-  run_id: string;
-  goal: string | null;
-  workflow_slug: string | null;
-  workflow_name: string | null;
-  host_repo_path: string | null;
-  status: string | null;
-  status_reason: string | null;
-  pending_control: string | null;
-  duration_ms: number | null;
-  total_usd_micros: number | null;
-  labels: Record<string, string>;
-  start_time: string | null;
-}
+export type RunSummaryResponse = StoreRunSummary;
 
 export function mapRunSummaryToRunItem(summary: RunSummaryResponse): RunItem {
-  const repoPath = summary.host_repo_path ?? "";
-  const repoName = repoPath.split("/").pop() || "unknown";
   return {
     id: summary.run_id,
-    repo: repoName,
-    title: summary.goal ? truncateGoal(summary.goal) : "Untitled run",
-    workflow: summary.workflow_slug ?? "unknown",
+    repo: summary.repository.name,
+    title: summary.title,
+    workflow: summary.workflow_slug ?? summary.workflow_name ?? "unknown",
     elapsed:
-      summary.duration_ms != null
+      summary.elapsed_secs != null
+        ? formatElapsedSecs(summary.elapsed_secs)
+        : summary.duration_ms != null
         ? formatElapsedSecs(summary.duration_ms / 1000)
         : undefined,
   };
+}
+
+export function columnForStatus(status: string | null | undefined): ColumnStatus {
+  switch (status) {
+    case "submitted":
+    case "starting":
+      return "initializing";
+    case "running":
+      return "running";
+    case "paused":
+      return "waiting";
+    case "succeeded":
+      return "succeeded";
+    case "failed":
+    case "dead":
+    case "removing":
+    default:
+      return "failed";
+  }
 }
 
 export function deriveCiStatus(checks: CheckRun[]): CiStatus {
@@ -112,10 +109,7 @@ export function deriveCiStatus(checks: CheckRun[]): CiStatus {
 }
 
 export const statusColors: Record<ColumnStatus, { dot: string; text: string }> = {
-  working: { dot: "bg-teal-500", text: "text-teal-500" },
   initializing: { dot: "bg-amber", text: "text-amber" },
-  review: { dot: "bg-mint", text: "text-mint" },
-  merge: { dot: "bg-teal-300", text: "text-teal-300" },
   running: { dot: "bg-teal-500", text: "text-teal-500" },
   waiting: { dot: "bg-amber", text: "text-amber" },
   succeeded: { dot: "bg-teal-300", text: "text-teal-300" },

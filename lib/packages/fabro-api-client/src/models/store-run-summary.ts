@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { RepositoryReference } from './repository-reference';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunControlAction } from './run-control-action';
 
 /**
@@ -24,14 +27,18 @@ export interface StoreRunSummary {
     'run_id': string;
     'workflow_name'?: string | null;
     'workflow_slug'?: string | null;
-    'goal'?: string | null;
+    'goal': string;
+    'title': string;
     'labels': { [key: string]: string; };
     'host_repo_path'?: string | null;
+    'repository': RepositoryReference;
     'start_time'?: string | null;
+    'created_at': string;
     'status'?: string | null;
     'status_reason'?: string | null;
     'pending_control'?: RunControlAction | null;
     'duration_ms'?: number | null;
+    'elapsed_secs'?: number | null;
     'total_usd_micros'?: number | null;
 }
 

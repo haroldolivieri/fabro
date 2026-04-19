@@ -1,16 +1,21 @@
+use std::net::IpAddr;
+
 use fabro_types::settings::InterpString;
 use fabro_types::settings::server::{
-    DiscordIntegrationSettings, GithubIntegrationSettings, IntegrationWebhooksSettings,
-    ObjectStoreLocalLayer, ObjectStoreProvider, ObjectStoreS3Layer, ObjectStoreSettings,
-    ServerApiLayer, ServerApiSettings, ServerArtifactsLayer, ServerArtifactsSettings,
-    ServerAuthGithubSettings, ServerAuthLayer, ServerAuthMethod, ServerAuthSettings,
-    ServerIntegrationsLayer, ServerIntegrationsSettings, ServerLayer, ServerListenLayer,
-    ServerListenSettings, ServerListenTlsLayer, ServerLoggingSettings, ServerSchedulerSettings,
-    ServerSettings, ServerSlateDbLayer, ServerSlateDbSettings, ServerStorageLayer,
-    ServerStorageSettings, ServerWebLayer, ServerWebSettings, SlackIntegrationSettings,
-    TeamsIntegrationSettings, TlsConfig,
+    DiscordIntegrationSettings, GithubIntegrationSettings, IntegrationWebhooksLayer,
+    IntegrationWebhooksSettings, IpAllowEntry, ObjectStoreLocalLayer, ObjectStoreProvider,
+    ObjectStoreS3Layer, ObjectStoreSettings, ServerApiLayer, ServerApiSettings,
+    ServerArtifactsLayer, ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthLayer,
+    ServerAuthMethod, ServerAuthSettings, ServerIntegrationsLayer, ServerIntegrationsSettings,
+    ServerIpAllowlistLayer, ServerIpAllowlistOverrideLayer, ServerIpAllowlistOverrideSettings,
+    ServerIpAllowlistSettings, ServerLayer, ServerListenLayer, ServerListenSettings,
+    ServerListenTlsLayer, ServerLoggingSettings, ServerSchedulerSettings, ServerSettings,
+    ServerSlateDbLayer, ServerSlateDbSettings, ServerStorageLayer, ServerStorageSettings,
+    ServerWebLayer, ServerWebSettings, SlackIntegrationSettings, TeamsIntegrationSettings,
+    TlsConfig,
 };
 use fabro_util::Home;
+use ipnet::IpNet;
 
 use super::{ResolveError, default_interp, parse_socket_addr, require_interp};
 
@@ -19,6 +24,9 @@ pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> Se
     let (listen, _valid_tls) = resolve_listen(layer.listen.as_ref(), errors);
     let web = resolve_web(layer.api.as_ref(), layer.web.as_ref());
     let auth = resolve_auth(layer.auth.as_ref(), errors);
+    let ip_allowlist = resolve_ip_allowlist(layer.ip_allowlist.as_ref(), errors);
+    validate_ip_allowlist_for_listen(&listen, &ip_allowlist, errors);
+    let integrations = resolve_integrations(layer.integrations.as_ref(), errors);
 
     ServerSettings {
         listen,
@@ -27,6 +35,7 @@ pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> Se
         },
         web,
         auth,
+        ip_allowlist,
         storage: storage.clone(),
         artifacts: resolve_artifacts(layer.artifacts.as_ref(), &storage.root, errors),
         slatedb: resolve_slatedb(layer.slatedb.as_ref(), &storage.root, errors),
@@ -43,7 +52,7 @@ pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> Se
                 .as_ref()
                 .and_then(|logging| logging.level.clone()),
         },
-        integrations: resolve_integrations(layer.integrations.as_ref()),
+        integrations,
     }
 }
 
@@ -146,6 +155,120 @@ fn resolve_auth(
         github: ServerAuthGithubSettings {
             allowed_usernames: github.allowed_usernames,
         },
+    }
+}
+
+fn resolve_ip_allowlist(
+    layer: Option<&ServerIpAllowlistLayer>,
+    errors: &mut Vec<ResolveError>,
+) -> ServerIpAllowlistSettings {
+    let entries = layer
+        .and_then(|allowlist| allowlist.entries.as_ref())
+        .map(|entries| {
+            resolve_ip_allow_entries(entries, "server.ip_allowlist.entries", false, errors)
+        })
+        .unwrap_or_default();
+
+    ServerIpAllowlistSettings {
+        entries,
+        trusted_proxy_count: layer
+            .and_then(|allowlist| allowlist.trusted_proxy_count)
+            .unwrap_or(0),
+    }
+}
+
+fn resolve_ip_allowlist_override(
+    layer: Option<&ServerIpAllowlistOverrideLayer>,
+    path: &str,
+    allow_github_meta_hooks: bool,
+    errors: &mut Vec<ResolveError>,
+) -> Option<ServerIpAllowlistOverrideSettings> {
+    layer.map(|allowlist| ServerIpAllowlistOverrideSettings {
+        entries:             allowlist.entries.as_ref().map(|entries| {
+            resolve_ip_allow_entries(
+                entries,
+                &format!("{path}.entries"),
+                allow_github_meta_hooks,
+                errors,
+            )
+        }),
+        trusted_proxy_count: allowlist.trusted_proxy_count,
+    })
+}
+
+fn resolve_ip_allow_entries(
+    entries: &[String],
+    path: &str,
+    allow_github_meta_hooks: bool,
+    errors: &mut Vec<ResolveError>,
+) -> Vec<IpAllowEntry> {
+    entries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| {
+            resolve_ip_allow_entry(
+                entry,
+                &format!("{path}[{index}]"),
+                allow_github_meta_hooks,
+                errors,
+            )
+        })
+        .collect()
+}
+
+fn resolve_ip_allow_entry(
+    entry: &str,
+    path: &str,
+    allow_github_meta_hooks: bool,
+    errors: &mut Vec<ResolveError>,
+) -> Option<IpAllowEntry> {
+    if entry == IpAllowEntry::GITHUB_META_HOOKS_KEYWORD {
+        if allow_github_meta_hooks {
+            return Some(IpAllowEntry::GitHubMetaHooks);
+        }
+
+        errors.push(ResolveError::Invalid {
+            path:   path.to_string(),
+            reason: format!(
+                "`{}` is only valid in server.integrations.github.webhooks.ip_allowlist.entries",
+                IpAllowEntry::GITHUB_META_HOOKS_KEYWORD
+            ),
+        });
+        return None;
+    }
+
+    match parse_ip_net(entry) {
+        Ok(net) => Some(IpAllowEntry::Literal(net)),
+        Err(reason) => {
+            errors.push(ResolveError::ParseFailure {
+                path: path.to_string(),
+                reason,
+            });
+            None
+        }
+    }
+}
+
+fn parse_ip_net(value: &str) -> Result<IpNet, String> {
+    value
+        .parse::<IpNet>()
+        .or_else(|_| value.parse::<IpAddr>().map(IpNet::from))
+        .map_err(|error| error.to_string())
+}
+
+fn validate_ip_allowlist_for_listen(
+    listen: &ServerListenSettings,
+    ip_allowlist: &ServerIpAllowlistSettings,
+    errors: &mut Vec<ResolveError>,
+) {
+    if matches!(listen, ServerListenSettings::Unix { .. })
+        && !ip_allowlist.entries.is_empty()
+        && ip_allowlist.trusted_proxy_count == 0
+    {
+        errors.push(ResolveError::Invalid {
+            path: "server.ip_allowlist.trusted_proxy_count".to_string(),
+            reason: "must be greater than 0 when using a Unix socket listener with a non-empty IP allowlist".to_string(),
+        });
     }
 }
 
@@ -255,7 +378,10 @@ fn object_store_default_root(storage_root: &InterpString, domain: &str) -> Inter
     InterpString::parse(&format!("{root}/objects/{domain}"))
 }
 
-fn resolve_integrations(layer: Option<&ServerIntegrationsLayer>) -> ServerIntegrationsSettings {
+fn resolve_integrations(
+    layer: Option<&ServerIntegrationsLayer>,
+    errors: &mut Vec<ResolveError>,
+) -> ServerIntegrationsSettings {
     ServerIntegrationsSettings {
         github:  layer
             .and_then(|integrations| integrations.github.as_ref())
@@ -266,12 +392,9 @@ fn resolve_integrations(layer: Option<&ServerIntegrationsLayer>) -> ServerIntegr
                 client_id:   github.client_id.clone(),
                 slug:        github.slug.clone(),
                 permissions: github.permissions.clone(),
-                webhooks:    github
-                    .webhooks
-                    .as_ref()
-                    .map(|webhooks| IntegrationWebhooksSettings {
-                        strategy: webhooks.strategy,
-                    }),
+                webhooks:    github.webhooks.as_ref().map(|webhooks| {
+                    resolve_github_webhooks(webhooks, "server.integrations.github.webhooks", errors)
+                }),
             })
             .unwrap_or_default(),
         slack:   layer
@@ -293,5 +416,21 @@ fn resolve_integrations(layer: Option<&ServerIntegrationsLayer>) -> ServerIntegr
                 enabled: teams.enabled.unwrap_or(true),
             })
             .unwrap_or_default(),
+    }
+}
+
+fn resolve_github_webhooks(
+    layer: &IntegrationWebhooksLayer,
+    path: &str,
+    errors: &mut Vec<ResolveError>,
+) -> IntegrationWebhooksSettings {
+    IntegrationWebhooksSettings {
+        strategy:     layer.strategy,
+        ip_allowlist: resolve_ip_allowlist_override(
+            layer.ip_allowlist.as_ref(),
+            &format!("{path}.ip_allowlist"),
+            true,
+            errors,
+        ),
     }
 }

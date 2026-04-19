@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -25,6 +26,7 @@ use tracing::{error, info, warn};
 
 use crate::bind::{self, Bind, BindRequest};
 use crate::github_webhooks::WebhookManager;
+use crate::ip_allowlist::{GitHubMetaResolver, resolve_ip_allowlist_config};
 use crate::jwt_auth::resolve_auth_mode_with_lookup;
 use crate::server::{
     AppStateConfig, RouterOptions, build_app_state, build_router_with_options,
@@ -329,6 +331,7 @@ where
         (auth_mode, max_concurrent_runs)
     };
     let web_enabled = router_web_enabled(&resolved_server_settings);
+    let github_meta_resolver = GitHubMetaResolver::from_home()?;
 
     let (object_store, slatedb_prefix, flush_interval, disk_cache) =
         build_slatedb_store(&resolved_server_settings)?;
@@ -366,8 +369,21 @@ where
         );
     }
     spawn_scheduler(Arc::clone(&state));
-    let router =
-        build_router_with_options(Arc::clone(&state), auth_mode, RouterOptions { web_enabled });
+    let default_ip_allowlist = Arc::new(
+        resolve_ip_allowlist_config(
+            &resolved_server_settings.ip_allowlist,
+            None,
+            &github_meta_resolver,
+        )
+        .await
+        .context("resolving server IP allowlist")?,
+    );
+    let router = build_router_with_options(
+        Arc::clone(&state),
+        auth_mode,
+        Arc::clone(&default_ip_allowlist),
+        RouterOptions { web_enabled },
+    );
 
     // Optionally start webhook listener
     let webhook_manager = match resolved_server_settings.integrations.github.strategy {
@@ -396,16 +412,40 @@ where
                     if let (Some(secret), Some(fabro_github::GitHubCredentials::App(github_app))) =
                         (secret, github_app)
                     {
-                        match WebhookManager::start(
-                            secret.into_bytes(),
-                            &app_id,
-                            &github_app.private_key_pem,
+                        match resolve_ip_allowlist_config(
+                            &resolved_server_settings.ip_allowlist,
+                            resolved_server_settings
+                                .integrations
+                                .github
+                                .webhooks
+                                .as_ref()
+                                .and_then(|webhooks| webhooks.ip_allowlist.as_ref()),
+                            &github_meta_resolver,
                         )
                         .await
                         {
-                            Ok(manager) => Some(manager),
+                            Ok(webhook_ip_allowlist) => {
+                                let webhook_ip_allowlist = Arc::new(webhook_ip_allowlist);
+                                match WebhookManager::start(
+                                    secret.into_bytes(),
+                                    &app_id,
+                                    &github_app.private_key_pem,
+                                    webhook_ip_allowlist,
+                                )
+                                .await
+                                {
+                                    Ok(manager) => Some(manager),
+                                    Err(err) => {
+                                        error!(error = %err, "Failed to start webhook listener");
+                                        None
+                                    }
+                                }
+                            }
                             Err(err) => {
-                                error!(error = %err, "Failed to start webhook listener");
+                                error!(
+                                    error = %err,
+                                    "Failed to resolve GitHub webhook IP allowlist"
+                                );
                                 None
                             }
                         }
@@ -546,9 +586,12 @@ where
                 .await?;
             } else {
                 announce_server_ready(&bind_addr, styles);
-                axum::serve(listener, router)
-                    .with_graceful_shutdown(wait_for_shutdown(shutdown_rx.clone()))
-                    .await?;
+                axum::serve(
+                    listener,
+                    router.into_make_service_with_connect_info::<SocketAddr>(),
+                )
+                .with_graceful_shutdown(wait_for_shutdown(shutdown_rx.clone()))
+                .await?;
             }
         }
     }

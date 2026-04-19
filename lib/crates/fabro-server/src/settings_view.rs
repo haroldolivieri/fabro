@@ -57,7 +57,7 @@ pub(crate) fn redact_for_api(settings: &SettingsLayer) -> SettingsLayer {
     let mut out = settings.clone();
 
     if let Some(server) = out.server.as_mut() {
-        // Bind address + TLS key/cert paths: host operational details.
+        // Bind addresses and socket paths: host operational details.
         server.listen = None;
     }
 

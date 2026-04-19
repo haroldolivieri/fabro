@@ -70,7 +70,7 @@ async fn configure_token_install(app: &axum::Router, token: &str) {
 
 #[tokio::test]
 async fn install_router_isolated_from_normal_api_surface() {
-    let app = build_install_router(InstallAppState::for_test("test-install-token"));
+    let app = build_install_router(InstallAppState::for_test("test-install-token")).await;
 
     let health_response = app
         .clone()
@@ -128,7 +128,7 @@ async fn install_router_isolated_from_normal_api_surface() {
 
 #[tokio::test]
 async fn install_session_requires_valid_install_token() {
-    let app = build_install_router(InstallAppState::for_test("test-install-token"));
+    let app = build_install_router(InstallAppState::for_test("test-install-token")).await;
 
     let unauthorized = app
         .clone()
@@ -166,7 +166,7 @@ async fn install_session_requires_valid_install_token() {
 
 #[tokio::test]
 async fn install_endpoints_reject_missing_and_wrong_tokens() {
-    let app = build_install_router(InstallAppState::for_test("test-install-token"));
+    let app = build_install_router(InstallAppState::for_test("test-install-token")).await;
     let cases = [
         ("GET", "/install/session", None),
         (
@@ -249,7 +249,7 @@ async fn install_endpoints_reject_missing_and_wrong_tokens() {
 
 #[tokio::test]
 async fn install_endpoints_accept_query_token_when_authorization_header_is_wrong() {
-    let app = build_install_router(InstallAppState::for_test("test-install-token"));
+    let app = build_install_router(InstallAppState::for_test("test-install-token")).await;
 
     let response = app
         .oneshot(
@@ -274,7 +274,8 @@ async fn token_install_finish_persists_settings_env_and_vault() {
         "test-install-token",
         temp_dir.path(),
         &config_path,
-    ));
+    ))
+    .await;
 
     let llm_response = app
         .clone()
@@ -394,7 +395,8 @@ async fn token_install_finish_invokes_shutdown_callback_after_accepting() {
             .with_finish_callback(Arc::new(move || {
                 callback_flag.store(true, Ordering::Release);
             })),
-    );
+    )
+    .await;
 
     configure_token_install(&app, "test-install-token").await;
 
@@ -451,7 +453,8 @@ async fn install_validation_endpoints_validate_credentials_and_github_token() {
         InstallAppState::for_test("test-install-token")
             .with_provider_base_url(Provider::Anthropic, format!("{}/v1", llm_mock.url("")))
             .with_github_api_base_url(github_mock.url("")),
-    );
+    )
+    .await;
 
     let llm_response = app
         .clone()
@@ -513,7 +516,8 @@ async fn github_app_manifest_round_trip_updates_install_session() {
     let app = build_install_router(
         InstallAppState::for_test("test-install-token")
             .with_github_api_base_url(github_mock.url("")),
-    );
+    )
+    .await;
 
     let server_response = app
         .clone()
@@ -618,7 +622,7 @@ async fn github_app_manifest_round_trip_updates_install_session() {
 
 #[tokio::test]
 async fn github_app_manifest_rejects_retry_while_pending_and_preserves_prior_token_strategy() {
-    let app = build_install_router(InstallAppState::for_test("test-install-token"));
+    let app = build_install_router(InstallAppState::for_test("test-install-token")).await;
 
     let server_response = app
         .clone()
@@ -741,7 +745,8 @@ async fn github_app_redirect_rejects_invalid_or_missing_state_without_mutating_s
     let app = build_install_router(
         InstallAppState::for_test("test-install-token")
             .with_github_api_base_url(github_mock.url("")),
-    );
+    )
+    .await;
 
     let server_response = app
         .clone()
@@ -881,7 +886,8 @@ async fn github_app_redirect_exchange_failure_returns_to_wizard_and_keeps_pendin
     let app = build_install_router(
         InstallAppState::for_test("test-install-token")
             .with_github_api_base_url(github_mock.url("")),
-    );
+    )
+    .await;
 
     let server_response = app
         .clone()
@@ -970,7 +976,7 @@ async fn github_app_redirect_exchange_failure_returns_to_wizard_and_keeps_pendin
 
 #[tokio::test]
 async fn install_server_rejects_trailing_slash_canonical_urls() {
-    let app = build_install_router(InstallAppState::for_test("test-install-token"));
+    let app = build_install_router(InstallAppState::for_test("test-install-token")).await;
 
     let response = app
         .oneshot(
@@ -1015,7 +1021,8 @@ async fn install_finish_failure_restores_settings_and_vault_but_leaves_env_keys(
             .with_finish_callback(Arc::new(move || {
                 callback_flag.store(true, Ordering::Release);
             })),
-    );
+    )
+    .await;
 
     configure_token_install(&app, "test-install-token").await;
 
@@ -1104,7 +1111,8 @@ async fn install_finish_failure_leaves_home_dev_token_mirror_written() {
     let app = build_install_router(
         InstallAppState::for_test_with_paths("test-install-token", temp_dir.path(), &config_path)
             .with_home(home.clone()),
-    );
+    )
+    .await;
 
     configure_token_install(&app, "test-install-token").await;
 

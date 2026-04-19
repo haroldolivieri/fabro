@@ -257,14 +257,15 @@ fn normalize_paths(discovered: Vec<DiscoveredFile>, root: &str) -> Vec<Discovere
         .collect()
 }
 
-fn compute_artifact_info(
+async fn compute_artifact_info(
     relative_path: &str,
     local_path: &Path,
 ) -> std::result::Result<CapturedArtifactInfo, String> {
     let mime = mime_guess::from_path(relative_path)
         .first_or_octet_stream()
         .to_string();
-    let data = std::fs::read(local_path)
+    let data = tokio::fs::read(local_path)
+        .await
         .map_err(|e| format!("failed to read {}: {e}", local_path.display()))?;
     let bytes = u64::try_from(data.len()).unwrap_or(u64::MAX);
     let content_md5 = format!("{:x}", md5::compute(&data));
@@ -314,7 +315,7 @@ pub async fn collect_artifacts(
             .download_file_to_local(&file.relative_path, &dest)
             .await
         {
-            Ok(()) => match compute_artifact_info(&file.relative_path, &dest) {
+            Ok(()) => match compute_artifact_info(&file.relative_path, &dest).await {
                 Ok(info) => {
                     files_copied += 1;
                     total_bytes += info.bytes;

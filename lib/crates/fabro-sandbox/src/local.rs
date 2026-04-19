@@ -197,9 +197,13 @@ impl Sandbox for LocalSandbox {
 
         let full_path = self.resolve_path(path);
         let max_depth = depth.unwrap_or(1);
-        let mut entries = Vec::new();
-        list_recursive(&full_path, "", 0, max_depth, &mut entries)?;
-        Ok(entries)
+        tokio::task::spawn_blocking(move || {
+            let mut entries = Vec::new();
+            list_recursive(&full_path, "", 0, max_depth, &mut entries)?;
+            Ok(entries)
+        })
+        .await
+        .map_err(|e| format!("list_directory task failed: {e}"))?
     }
 
     async fn exec_command(

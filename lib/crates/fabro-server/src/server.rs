@@ -980,7 +980,7 @@ pub fn build_router_with_options(
                     && matches!(req.method(), &Method::GET | &Method::HEAD)
                 {
                     let headers = req.headers().clone();
-                    Ok::<_, std::convert::Infallible>(static_files::serve(&path, &headers))
+                    Ok::<_, std::convert::Infallible>(static_files::serve(&path, &headers).await)
                 } else {
                     Ok::<_, std::convert::Infallible>(StatusCode::NOT_FOUND.into_response())
                 }
@@ -4460,7 +4460,21 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         run_store.subscribe(),
     ));
 
-    let mut child = match worker_command(state.as_ref(), run_id, execution_mode, &run_dir)
+    let state_for_build = Arc::clone(&state);
+    let run_dir_for_build = run_dir.clone();
+    let build_cmd_result = tokio::task::spawn_blocking(move || {
+        worker_command(
+            state_for_build.as_ref(),
+            run_id,
+            execution_mode,
+            &run_dir_for_build,
+        )
+    })
+    .await;
+
+    let mut child = match build_cmd_result
+        .map_err(|err| anyhow::anyhow!("worker_command task failed: {err}"))
+        .and_then(|inner| inner)
         .and_then(|mut cmd| cmd.spawn().context("spawning run worker process"))
     {
         Ok(child) => child,

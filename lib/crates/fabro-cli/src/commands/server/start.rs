@@ -513,12 +513,17 @@ async fn acquire_lock(storage_dir: &Path) -> Result<std::fs::File> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating server lock directory {}", parent.display()))?;
     }
-    let lock_file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(false)
-        .open(&lock_path)
-        .with_context(|| format!("opening server lock file {}", lock_path.display()))?;
+    let lock_path_for_open = lock_path.clone();
+    let lock_file = tokio::task::spawn_blocking(move || {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&lock_path_for_open)
+    })
+    .await
+    .context("lock-file open task failed")?
+    .with_context(|| format!("opening server lock file {}", lock_path.display()))?;
 
     let poll_interval = Duration::from_millis(50);
     let timeout = Duration::from_secs(5);

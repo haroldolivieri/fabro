@@ -605,20 +605,30 @@ async fn resolve_head_sha_and_time(
             "Failed to resolve sandbox HEAD.",
         ));
     }
-    let line = res.stdout.trim();
-    let mut parts = line.splitn(2, ' ');
-    let sha = parts.next().unwrap_or("").to_string();
-    if sha.is_empty() {
-        return Err(ApiError::new(
+    parse_head_show_output(&res.stdout).ok_or_else(|| {
+        ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "Sandbox HEAD resolved to an empty value.",
-        ));
+        )
+    })
+}
+
+/// Parse the output of `git show -s --format=%H %cI HEAD` into
+/// (sha, optional commit time). Returns `None` if the SHA is missing/empty
+/// so the caller can surface the condition as a 503. A missing or
+/// unparseable date yields `Some((sha, None))` — best effort.
+fn parse_head_show_output(stdout: &str) -> Option<(String, Option<chrono::DateTime<chrono::Utc>>)> {
+    let line = stdout.trim();
+    let mut parts = line.splitn(2, ' ');
+    let sha = parts.next()?.trim().to_string();
+    if sha.is_empty() {
+        return None;
     }
     let committed_at = parts
         .next()
         .and_then(|iso| chrono::DateTime::parse_from_rfc3339(iso.trim()).ok())
         .map(|d| d.with_timezone(&chrono::Utc));
-    Ok((sha, committed_at))
+    Some((sha, committed_at))
 }
 
 /// A classified changed-file entry. Preserves original enumeration order so
@@ -1402,6 +1412,59 @@ rename to docs/NOTES.md
         );
     }
 
+    // ── parse_head_show_output ───────────────────────────────────────────
+
+    #[test]
+    fn parse_head_show_output_splits_sha_and_iso_date() {
+        let out = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0 2026-04-19T12:34:56+00:00\n";
+        let (sha, at) = parse_head_show_output(out).expect("sha+date should parse");
+        assert_eq!(sha, "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0");
+        let at = at.expect("date should parse");
+        assert_eq!(at.to_rfc3339(), "2026-04-19T12:34:56+00:00");
+    }
+
+    #[test]
+    fn parse_head_show_output_handles_non_utc_offset() {
+        let out = "abc1234 2026-04-19T08:00:00-04:00";
+        let (_, at) = parse_head_show_output(out).expect("should parse");
+        let at = at.expect("date should parse");
+        // Normalized to UTC.
+        assert_eq!(at.to_rfc3339(), "2026-04-19T12:00:00+00:00");
+    }
+
+    #[test]
+    fn parse_head_show_output_tolerates_missing_date() {
+        // `git show -s --format=%H` without the `%cI` portion — or output
+        // truncated at a pathological moment. SHA survives; date is None.
+        let (sha, at) = parse_head_show_output("deadbeef\n").expect("sha-only should parse");
+        assert_eq!(sha, "deadbeef");
+        assert!(at.is_none(), "no date in input, so none should be parsed");
+    }
+
+    #[test]
+    fn parse_head_show_output_tolerates_malformed_date() {
+        let out = "deadbeef notadate";
+        let (sha, at) = parse_head_show_output(out).expect("sha should survive bad date");
+        assert_eq!(sha, "deadbeef");
+        assert!(at.is_none());
+    }
+
+    #[test]
+    fn parse_head_show_output_rejects_empty_sha() {
+        assert!(parse_head_show_output("").is_none());
+        assert!(parse_head_show_output("  \n").is_none());
+        assert!(parse_head_show_output("\n\n").is_none());
+    }
+
+    #[test]
+    fn parse_head_show_output_trims_surrounding_whitespace() {
+        let out = "  deadbeef  2026-04-19T12:00:00+00:00  \n";
+        let (sha, at) = parse_head_show_output(out).expect("should parse");
+        // First token post-trim is "deadbeef".
+        assert_eq!(sha, "deadbeef");
+        assert!(at.is_some());
+    }
+
     #[test]
     fn stitch_file_diff_returns_distinct_old_and_new_contents_for_modified() {
         // Modified files must expose distinct old/new contents; pulling
@@ -1497,5 +1560,212 @@ rename to docs/NOTES.md
         assert!(is_sensitive("home/user/.ssh/config"));
         assert!(!is_sensitive("src/main.rs"));
         assert!(!is_sensitive("README.md"));
+    }
+
+    // ── fetch_blob_table two-phase error isolation ─────────────────────
+
+    use async_trait::async_trait;
+    use fabro_sandbox::ExecResult;
+
+    /// Scripted sandbox for the two-phase tests — serves different
+    /// `exec_command` responses for `cat-file --batch-check` vs
+    /// `cat-file --batch`. Every other `Sandbox` method panics because
+    /// `fetch_blob_table` only uses `exec_command`.
+    struct ScriptedBlobSandbox {
+        batch_check_result: ExecResult,
+        batch_result:       ExecResult,
+    }
+
+    #[async_trait]
+    impl fabro_agent::Sandbox for ScriptedBlobSandbox {
+        async fn exec_command(
+            &self,
+            command: &str,
+            _timeout_ms: u64,
+            _working_dir: Option<&str>,
+            _env_vars: Option<&std::collections::HashMap<String, String>>,
+            _cancel_token: Option<tokio_util::sync::CancellationToken>,
+        ) -> std::result::Result<ExecResult, String> {
+            if command.contains("cat-file --batch-check") {
+                Ok(self.batch_check_result.clone())
+            } else if command.contains("cat-file --batch") {
+                Ok(self.batch_result.clone())
+            } else {
+                Err(format!(
+                    "unexpected command in ScriptedBlobSandbox: {command}"
+                ))
+            }
+        }
+
+        // Unused by fetch_blob_table — panic loudly if anything tries to
+        // use this sandbox beyond cat-file.
+        async fn read_file(
+            &self,
+            _path: &str,
+            _offset: Option<usize>,
+            _limit: Option<usize>,
+        ) -> std::result::Result<String, String> {
+            unimplemented!()
+        }
+        async fn write_file(&self, _: &str, _: &str) -> std::result::Result<(), String> {
+            unimplemented!()
+        }
+        async fn delete_file(&self, _: &str) -> std::result::Result<(), String> {
+            unimplemented!()
+        }
+        async fn file_exists(&self, _: &str) -> std::result::Result<bool, String> {
+            unimplemented!()
+        }
+        async fn list_directory(
+            &self,
+            _path: &str,
+            _depth: Option<usize>,
+        ) -> std::result::Result<Vec<fabro_sandbox::DirEntry>, String> {
+            unimplemented!()
+        }
+        async fn grep(
+            &self,
+            _pattern: &str,
+            _path: &str,
+            _options: &fabro_sandbox::GrepOptions,
+        ) -> std::result::Result<Vec<String>, String> {
+            unimplemented!()
+        }
+        async fn glob(
+            &self,
+            _pattern: &str,
+            _path: Option<&str>,
+        ) -> std::result::Result<Vec<String>, String> {
+            unimplemented!()
+        }
+        async fn download_file_to_local(
+            &self,
+            _remote: &str,
+            _local: &std::path::Path,
+        ) -> std::result::Result<(), String> {
+            unimplemented!()
+        }
+        async fn upload_file_from_local(
+            &self,
+            _local: &std::path::Path,
+            _remote: &str,
+        ) -> std::result::Result<(), String> {
+            unimplemented!()
+        }
+        async fn initialize(&self) -> std::result::Result<(), String> {
+            Ok(())
+        }
+        async fn cleanup(&self) -> std::result::Result<(), String> {
+            Ok(())
+        }
+        fn working_directory(&self) -> &'static str {
+            "/tmp"
+        }
+        fn platform(&self) -> &'static str {
+            "linux"
+        }
+        fn os_version(&self) -> String {
+            "test".to_string()
+        }
+    }
+
+    fn ok_exec(stdout: &str) -> ExecResult {
+        ExecResult {
+            stdout:      stdout.to_string(),
+            stderr:      String::new(),
+            exit_code:   0,
+            timed_out:   false,
+            duration_ms: 0,
+        }
+    }
+
+    fn fail_exec(stderr: &str) -> ExecResult {
+        ExecResult {
+            stdout:      String::new(),
+            stderr:      stderr.to_string(),
+            exit_code:   1,
+            timed_out:   false,
+            duration_ms: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_blob_table_phase2_failure_preserves_phase1_oversized_classification() {
+        // Construct a scripted sandbox with 11 SHAs (above the phase-1
+        // threshold so phase 1 runs). Phase 1 reports the first SHA as
+        // oversized (`PER_FILE_BYTES_CAP + 1` bytes). Phase 2 then fails
+        // with a permanent parse error. The oversized entry must stay
+        // `None` in the table, and the phase-2 SHAs also end up as `None`
+        // but for a different reason. Critically, nothing blows up the
+        // whole map.
+        let mut shas: Vec<String> = (0..11)
+            .map(|i| format!("{i:040x}")) // 40-hex-char SHAs
+            .collect();
+        shas.sort();
+
+        // Phase 1 response: first SHA is oversized, rest are fine.
+        let mut batch_check_stdout = String::new();
+        for (i, sha) in shas.iter().enumerate() {
+            let size = if i == 0 { PER_FILE_BYTES_CAP + 1 } else { 100 };
+            std::fmt::Write::write_fmt(
+                &mut batch_check_stdout,
+                format_args!("{sha} blob {size}\n"),
+            )
+            .unwrap();
+        }
+
+        // Phase 2 response: malformed — claims a content size larger than
+        // the actual stdout, triggering the parser's "stream truncated"
+        // Permanent error.
+        let batch_stdout = format!("{} blob 999999\n<no content>\n", shas[1]);
+
+        let sandbox = ScriptedBlobSandbox {
+            batch_check_result: ok_exec(&batch_check_stdout),
+            batch_result:       ok_exec(&batch_stdout),
+        };
+
+        let table = fetch_blob_table(&sandbox, &shas)
+            .await
+            .expect("transient-only errors should never bubble up for permanent parse fail");
+
+        // Phase-1 oversized entry is explicitly `None` (size cap).
+        assert_eq!(table.get(&shas[0]), Some(&None));
+
+        // Phase-2 SHAs are also `None` (parse failure), but the oversized
+        // entry from phase 1 wasn't overwritten, wasn't lost, and wasn't
+        // replaced by the parse outcome — the classification was
+        // isolated. Every requested SHA is present in the table.
+        for sha in &shas[1..] {
+            assert_eq!(
+                table.get(sha),
+                Some(&None),
+                "phase-2 SHA {sha} should be None after parse error"
+            );
+        }
+        assert_eq!(table.len(), shas.len());
+    }
+
+    #[tokio::test]
+    async fn fetch_blob_table_small_sha_list_skips_phase1() {
+        // With ≤ METADATA_PHASE_SHA_THRESHOLD SHAs, phase 1 is skipped. If
+        // phase-1 were to run, ScriptedBlobSandbox's batch_check_result
+        // would need to be valid; we make it an error that would fail the
+        // whole request to prove phase 1 wasn't invoked.
+        let sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let shas = vec![sha.clone()];
+
+        let batch_stdout = format!("{sha} blob 5\nhello\n");
+
+        let sandbox = ScriptedBlobSandbox {
+            // If phase 1 ran this would surface as a transient 503 and
+            // break the test.
+            batch_check_result: fail_exec("phase 1 should not have been called"),
+            batch_result:       ok_exec(&batch_stdout),
+        };
+
+        let table = fetch_blob_table(&sandbox, &shas)
+            .await
+            .expect("small SHA lists skip phase 1 entirely; phase-2 success is the full story");
+        assert_eq!(table.get(&sha), Some(&Some("hello".to_string())));
     }
 }

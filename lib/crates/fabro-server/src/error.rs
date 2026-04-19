@@ -67,7 +67,7 @@ struct ErrorBody {
 ///
 /// Serializes to `{"errors": [{"status": "4xx", "title": "...", "detail":
 /// "..."}]}`.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ApiError {
     status: StatusCode,
     detail: String,

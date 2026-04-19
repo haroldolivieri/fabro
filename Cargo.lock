@@ -1931,6 +1931,7 @@ name = "fabro-server"
 version = "0.208.0-nightly.1"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "axum-extra",
  "base64",
@@ -1984,6 +1985,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
+ "tokio-util",
  "toml 0.8.23",
  "toml_edit",
  "tower",

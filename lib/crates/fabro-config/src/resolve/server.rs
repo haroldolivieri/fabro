@@ -1,5 +1,3 @@
-use std::net::IpAddr;
-
 use fabro_types::settings::InterpString;
 use fabro_types::settings::server::{
     DiscordIntegrationSettings, GithubIntegrationSettings, IntegrationWebhooksLayer,
@@ -15,7 +13,6 @@ use fabro_types::settings::server::{
     TlsConfig,
 };
 use fabro_util::Home;
-use ipnet::IpNet;
 
 use super::{ResolveError, default_interp, parse_socket_addr, require_interp};
 
@@ -257,8 +254,8 @@ fn resolve_ip_allow_entry(
         return None;
     }
 
-    match parse_ip_net(entry) {
-        Ok(net) => Some(IpAllowEntry::Literal(net)),
+    match IpAllowEntry::parse_literal(entry) {
+        Ok(parsed) => Some(parsed),
         Err(reason) => {
             errors.push(ResolveError::ParseFailure {
                 path: path.to_string(),
@@ -267,13 +264,6 @@ fn resolve_ip_allow_entry(
             None
         }
     }
-}
-
-fn parse_ip_net(value: &str) -> Result<IpNet, String> {
-    value
-        .parse::<IpNet>()
-        .or_else(|_| value.parse::<IpAddr>().map(IpNet::from))
-        .map_err(|error| error.to_string())
 }
 
 fn validate_ip_allowlist_for_listen(

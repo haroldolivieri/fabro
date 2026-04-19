@@ -1,33 +1,4 @@
-use fabro_test::{fabro_snapshot, test_context};
-
-fn isolated_storage_dir() -> tempfile::TempDir {
-    let root = tempfile::tempdir_in("/tmp").unwrap();
-    std::fs::create_dir_all(root.path().join("storage")).unwrap();
-    root
-}
-
-fn wait_for_path(path: &std::path::Path) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while std::time::Instant::now() < deadline {
-        if path.exists() {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    panic!("timed out waiting for {}", path.display());
-}
-
-fn stop_pid(pid: u32) {
-    fabro_proc::sigterm(pid);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while std::time::Instant::now() < deadline {
-        if !fabro_proc::process_alive(pid) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    fabro_proc::sigkill(pid);
-}
+use fabro_test::{fabro_snapshot, isolated_storage_dir, stop_pid, test_context, wait_for_path};
 
 #[test]
 fn help() {

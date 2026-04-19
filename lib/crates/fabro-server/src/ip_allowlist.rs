@@ -279,18 +279,16 @@ async fn expand_ip_allow_entries(
         .iter()
         .any(|entry| matches!(entry, IpAllowEntry::GitHubMetaHooks))
     {
-        Some(github_meta_resolver.resolve_hooks().await?)
+        github_meta_resolver.resolve_hooks().await?
     } else {
-        None
+        Vec::new()
     };
 
     let mut expanded = Vec::new();
     for entry in entries {
         match entry {
             IpAllowEntry::Literal(net) => expanded.push(*net),
-            IpAllowEntry::GitHubMetaHooks => {
-                expanded.extend(github_hooks.clone().unwrap_or_default());
-            }
+            IpAllowEntry::GitHubMetaHooks => expanded.extend(github_hooks.iter().copied()),
         }
     }
 
@@ -510,6 +508,36 @@ mod tests {
             .expect("cached GitHub meta hooks should be reused");
 
         assert!(config.allowlist.contains(&"192.30.252.42".parse().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn middleware_reads_client_ip_from_x_forwarded_for_when_trusted_proxy_count_is_set() {
+        let config = Arc::new(IpAllowlistConfig {
+            allowlist:           IpAllowlist::new(vec!["10.0.0.0/8".parse().unwrap()]),
+            trusted_proxy_count: 1,
+        });
+        let app = Router::new()
+            .route("/api/v1/runs", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn_with_state(
+                Arc::clone(&config),
+                ip_allowlist_middleware,
+            ));
+
+        let allowed_request = Request::builder()
+            .uri("/api/v1/runs")
+            .header("x-forwarded-for", "10.0.0.1, 198.51.100.1")
+            .body(Body::empty())
+            .unwrap();
+        let allowed_response = app.clone().oneshot(allowed_request).await.unwrap();
+        assert_eq!(allowed_response.status(), StatusCode::OK);
+
+        let blocked_request = Request::builder()
+            .uri("/api/v1/runs")
+            .header("x-forwarded-for", "203.0.113.1, 198.51.100.1")
+            .body(Body::empty())
+            .unwrap();
+        let blocked_response = app.oneshot(blocked_request).await.unwrap();
+        assert_eq!(blocked_response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

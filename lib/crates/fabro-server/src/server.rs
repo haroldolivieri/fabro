@@ -8266,6 +8266,41 @@ slug = "fabro"
     }
 
     #[tokio::test]
+    async fn append_run_event_rejects_reserved_archive_event() {
+        let state = create_app_state();
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = create_run(&app, MINIMAL_DOT).await;
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(api(&format!("/runs/{run_id}/events")))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "id": "evt-run-archived",
+                    "ts": "2026-04-19T12:00:00Z",
+                    "run_id": run_id,
+                    "event": "run.archived",
+                    "properties": {
+                        "actor": null
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = body_json(response.into_body()).await;
+        assert!(
+            body["errors"][0]["detail"]
+                .as_str()
+                .is_some_and(|message| message.contains("run.archived is a lifecycle event")),
+            "expected lifecycle rejection, got: {body}"
+        );
+    }
+
+    #[tokio::test]
     async fn get_checkpoint_returns_null_initially() {
         let state = create_app_state();
         let app = build_router(Arc::clone(&state), AuthMode::Disabled);
@@ -8898,6 +8933,145 @@ slug = "fabro"
         assert!(items[0]["status_reason"].is_null());
         assert!(items[0]["pending_control"].is_null());
         assert!(items[0]["total_usd_micros"].is_null());
+    }
+
+    #[tokio::test]
+    async fn archive_and_unarchive_updates_listing_visibility() {
+        let state = create_app_state();
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = fixtures::RUN_1;
+
+        create_durable_run_with_events(&state, run_id, &[
+            workflow_event::Event::RunSubmitted {
+                reason:          None,
+                definition_blob: None,
+            },
+            workflow_event::Event::RunStarting { reason: None },
+            workflow_event::Event::RunRunning { reason: None },
+            workflow_event::Event::WorkflowRunCompleted {
+                duration_ms:          1000,
+                artifact_count:       0,
+                status:               "success".to_string(),
+                reason:               None,
+                total_usd_micros:     None,
+                final_git_commit_sha: None,
+                final_patch:          None,
+                billing:              None,
+            },
+        ])
+        .await;
+
+        let archive_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/archive")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(archive_response.status(), StatusCode::OK);
+        let archive_body = body_json(archive_response.into_body()).await;
+        assert_eq!(archive_body["status"].as_str(), Some("archived"));
+
+        let hidden_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api("/runs"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(hidden_response.status(), StatusCode::OK);
+        let hidden_body = body_json(hidden_response.into_body()).await;
+        assert!(
+            !hidden_body["data"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["run_id"].as_str() == Some(&run_id.to_string())),
+            "archived run should be hidden from default listing"
+        );
+
+        let visible_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api("/runs?include_archived=true"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(visible_response.status(), StatusCode::OK);
+        let visible_body = body_json(visible_response.into_body()).await;
+        let archived_item = visible_body["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["run_id"].as_str() == Some(&run_id.to_string()))
+            .expect("archived run should appear when include_archived=true");
+        assert_eq!(archived_item["status"].as_str(), Some("archived"));
+
+        let unarchive_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/unarchive")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unarchive_response.status(), StatusCode::OK);
+        let unarchive_body = body_json(unarchive_response.into_body()).await;
+        assert_eq!(unarchive_body["status"].as_str(), Some("succeeded"));
+
+        let restored_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api("/runs"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(restored_response.status(), StatusCode::OK);
+        let restored_body = body_json(restored_response.into_body()).await;
+        let restored_item = restored_body["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["run_id"].as_str() == Some(&run_id.to_string()))
+            .expect("unarchived run should reappear in default listing");
+        assert_eq!(restored_item["status"].as_str(), Some("succeeded"));
+    }
+
+    #[tokio::test]
+    async fn archive_unknown_run_returns_not_found() {
+        let app = test_app_with();
+        let run_id = fixtures::RUN_64;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/archive")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

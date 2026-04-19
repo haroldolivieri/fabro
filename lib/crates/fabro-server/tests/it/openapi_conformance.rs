@@ -83,7 +83,7 @@ fn request_for(method: &Method, uri: &str) -> Request<Body> {
 async fn all_spec_routes_are_routable() {
     let spec = load_spec();
     let normal_app = build_router(test_app_state(), AuthMode::Disabled);
-    let install_app = build_install_router(InstallAppState::for_test("test-install-token"));
+    let install_app = build_install_router(InstallAppState::for_test("test-install-token")).await;
 
     let paths = spec
         .get("paths")
@@ -122,7 +122,7 @@ async fn all_spec_routes_are_routable() {
 async fn install_and_normal_routes_stay_isolated() {
     let spec = load_spec();
     let normal_app = build_router(test_app_state(), AuthMode::Disabled);
-    let install_app = build_install_router(InstallAppState::for_test("test-install-token"));
+    let install_app = build_install_router(InstallAppState::for_test("test-install-token")).await;
 
     let paths = spec
         .get("paths")

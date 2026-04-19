@@ -174,7 +174,7 @@ pub async fn sync_artifacts_to_env(
             }
         }
 
-        let content = std::fs::read_to_string(&local_path).map_err(|e| {
+        let content = tokio::fs::read_to_string(&local_path).await.map_err(|e| {
             Error::engine(format!("failed to read local artifact {local_path}: {e}"))
         })?;
 
@@ -325,7 +325,8 @@ async fn resolve_explicit_file_ref(value: &str, env: &dyn Sandbox) -> Result<Str
         return Ok(value.to_string());
     }
 
-    let content = std::fs::read_to_string(local_path)
+    let content = tokio::fs::read_to_string(local_path)
+        .await
         .map_err(|e| Error::engine(format!("failed to read local artifact {local_path}: {e}")))?;
     let filename = Path::new(local_path)
         .file_name()

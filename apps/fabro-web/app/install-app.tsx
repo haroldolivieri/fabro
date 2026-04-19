@@ -38,6 +38,7 @@ import {
   shouldConsumeInstallGithubErrorForPath,
 } from "./mode";
 import {
+  CopyButton,
   ErrorMessage,
   INPUT_CLASS,
   PRIMARY_BUTTON_CLASS,
@@ -909,7 +910,7 @@ function ReviewScreen({
           label="Server URL"
           value={serverUrl}
           mono
-          action={<InlineCopyButton value={serverUrl} label="Copy server URL" />}
+          action={<CopyButton value={serverUrl} label="Copy server URL" />}
         />
         {renderGithubSummaryRows(session?.github)}
       </dl>
@@ -1311,38 +1312,6 @@ function CopyableToken({ token }: { token: string }) {
         <span>{copied ? "Copied" : "Copy"}</span>
       </button>
     </div>
-  );
-}
-
-function InlineCopyButton({
-  value,
-  label,
-}: {
-  value: string;
-  label: string;
-}) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1500);
-        } catch {
-          // Clipboard may be blocked; leave state unchanged.
-        }
-      }}
-      className="inline-flex size-6 shrink-0 items-center justify-center rounded text-fg-muted outline-teal-500 hover:bg-overlay hover:text-fg-2 focus-visible:outline-2 focus-visible:outline-offset-1"
-      aria-label={copied ? "Copied" : label}
-    >
-      {copied ? (
-        <ClipboardDocumentCheckIcon className="size-4 text-mint" />
-      ) : (
-        <ClipboardIcon className="size-4" />
-      )}
-    </button>
   );
 }
 

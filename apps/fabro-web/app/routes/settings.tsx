@@ -21,7 +21,7 @@ export default function Settings({ loaderData }: any) {
   const { settings } = loaderData;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <>
       <p className="mb-6 max-w-[60ch] text-sm/6 text-fg-3 text-pretty">
         Snapshot of the server configuration. Edit via{" "}
         <code className="font-mono text-fg-2">settings.toml</code>; changes
@@ -30,6 +30,6 @@ export default function Settings({ loaderData }: any) {
       <CollapsibleFile
         file={{ name: "server.json", contents: JSON.stringify(settings, null, 2), lang: "json" }}
       />
-    </div>
+    </>
   );
 }

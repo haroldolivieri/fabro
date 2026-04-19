@@ -137,6 +137,25 @@ pub struct PaginationParams {
 }
 
 #[derive(serde::Deserialize)]
+struct ListRunsParams {
+    #[serde(rename = "page[limit]", default = "default_page_limit")]
+    limit:            u32,
+    #[serde(rename = "page[offset]", default)]
+    offset:           u32,
+    #[serde(default)]
+    include_archived: bool,
+}
+
+impl ListRunsParams {
+    fn pagination(&self) -> PaginationParams {
+        PaginationParams {
+            limit:  self.limit,
+            offset: self.offset,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
 struct ModelListParams {
     #[serde(rename = "page[limit]", default = "default_page_limit")]
     limit:    u32,
@@ -1107,6 +1126,8 @@ fn real_routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/start", post(start_run))
         .route("/runs/{id}/pause", post(pause_run))
         .route("/runs/{id}/unpause", post(unpause_run))
+        .route("/runs/{id}/archive", post(archive_run))
+        .route("/runs/{id}/unarchive", post(unarchive_run))
         .route("/runs/{id}/graph", get(get_graph))
         .route("/runs/{id}/stages", get(list_run_stages))
         .route("/runs/{id}/artifacts", get(list_run_artifacts))
@@ -2593,8 +2614,6 @@ fn board_column(status: WorkflowRunStatus) -> Option<&'static str> {
         WorkflowRunStatus::Blocked => Some("blocked"),
         WorkflowRunStatus::Succeeded => Some("succeeded"),
         WorkflowRunStatus::Failed | WorkflowRunStatus::Dead => Some("failed"),
-        // TODO(unit-5): revisit once `archived` is a board-column first-class
-        // citizen; for now archived runs have no column.
         WorkflowRunStatus::Removing | WorkflowRunStatus::Archived => None,
     }
 }
@@ -2773,7 +2792,7 @@ async fn list_board_runs(
 async fn list_runs(
     _auth: AuthenticatedService,
     State(state): State<Arc<AppState>>,
-    Query(pagination): Query<PaginationParams>,
+    Query(params): Query<ListRunsParams>,
 ) -> Response {
     match state
         .store
@@ -2781,11 +2800,13 @@ async fn list_runs(
         .await
     {
         Ok(runs) => {
+            let include_archived = params.include_archived;
             let items = runs
                 .into_iter()
+                .filter(|summary| include_archived || summary.status != WorkflowRunStatus::Archived)
                 .map(summary_to_api_run_summary)
                 .collect::<Vec<_>>();
-            let (data, has_more) = paginate_items(items, &pagination);
+            let (data, has_more) = paginate_items(items, &params.pagination());
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -3348,12 +3369,10 @@ fn api_status_from_workflow(status: WorkflowRunStatus) -> RunStatus {
         WorkflowRunStatus::Blocked => RunStatus::Blocked,
         WorkflowRunStatus::Paused => RunStatus::Paused,
         WorkflowRunStatus::Removing => RunStatus::Removing,
-        // TODO(unit-5): add `Archived` variant to the public `InternalRunStatus`
-        // enum in the OpenAPI spec and map to it here. Temporary: mirror
-        // `Succeeded` so the wire shape stays valid.
-        WorkflowRunStatus::Succeeded | WorkflowRunStatus::Archived => RunStatus::Succeeded,
+        WorkflowRunStatus::Succeeded => RunStatus::Succeeded,
         WorkflowRunStatus::Failed => RunStatus::Failed,
         WorkflowRunStatus::Dead => RunStatus::Dead,
+        WorkflowRunStatus::Archived => RunStatus::Archived,
     }
 }
 
@@ -6339,6 +6358,88 @@ async fn unpause_run(
             status_reason,
             pending_control,
             created_at,
+        }),
+    )
+        .into_response()
+}
+
+async fn archive_run(
+    subject: AuthenticatedSubject,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let id = match parse_run_id_path(&id) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    let actor = actor_from_subject(&subject);
+    match operations::archive(&state.store, &id, actor).await {
+        Ok(_) => archive_status_response(state.as_ref(), id).await,
+        Err(WorkflowError::Precondition(message)) => {
+            ApiError::new(StatusCode::CONFLICT, message).into_response()
+        }
+        Err(err) => {
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+        }
+    }
+}
+
+async fn unarchive_run(
+    subject: AuthenticatedSubject,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let id = match parse_run_id_path(&id) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    let actor = actor_from_subject(&subject);
+    match operations::unarchive(&state.store, &id, actor).await {
+        Ok(_) => archive_status_response(state.as_ref(), id).await,
+        Err(WorkflowError::Precondition(message)) => {
+            ApiError::new(StatusCode::CONFLICT, message).into_response()
+        }
+        Err(err) => {
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+        }
+    }
+}
+
+/// Build a `RunStatusResponse` reflecting the durable projection after an
+/// archive/unarchive transition. The run is terminal in both directions, so no
+/// live queue position or worker-only fields apply.
+async fn archive_status_response(state: &AppState, id: RunId) -> Response {
+    let Ok(run_store) = state.store.open_run_reader(&id).await else {
+        return ApiError::not_found("Run not found.").into_response();
+    };
+    let projection = match run_store.state().await {
+        Ok(projection) => projection,
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+    let Some(record) = projection.status.as_ref() else {
+        return ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "run has no status record after archive/unarchive",
+        )
+        .into_response();
+    };
+    let status = api_status_from_workflow(record.status);
+    let status_reason = record.status_reason.map(api_status_reason);
+    let blocked_reason = record.blocked_reason.map(api_blocked_reason);
+    (
+        StatusCode::OK,
+        Json(RunStatusResponse {
+            id: id.to_string(),
+            blocked_reason,
+            status,
+            error: None,
+            queue_position: None,
+            status_reason,
+            pending_control: None,
+            created_at: id.created_at(),
         }),
     )
         .into_response()

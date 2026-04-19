@@ -8,6 +8,7 @@ import { StageSidebar, statusConfig } from "../components/stage-sidebar";
 import type { Stage } from "../components/stage-sidebar";
 import { EmptyState } from "../components/state";
 import { apiJson, apiJsonOrNull } from "../api";
+import { CopyButton } from "../components/ui";
 import { isVisibleStage } from "../data/runs";
 import { formatDurationSecs } from "../lib/format";
 import type { PaginatedRunStageList, StageTurn as ApiStageTurn, PaginatedStageTurnList, PaginatedEventList } from "@qltysh/fabro-api-client";
@@ -177,10 +178,13 @@ function Markdown({ content }: { content: string }) {
 
 function SystemBlock({ content }: { content: string }) {
   return (
-    <section className="border-l-2 border-amber/50 pl-4">
+    <section className="group relative border-l-2 border-amber/50 pl-4">
       <header className="mb-1.5 flex items-center gap-2">
         <CommandLineIcon className="size-4 shrink-0 text-amber" />
         <span className="text-xs font-medium text-fg-3">System prompt</span>
+        <div className="ml-auto opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <CopyButton value={content} label="Copy system prompt" />
+        </div>
       </header>
       <Markdown content={content} />
     </section>
@@ -189,10 +193,13 @@ function SystemBlock({ content }: { content: string }) {
 
 function AssistantBlock({ content }: { content: string }) {
   return (
-    <section className="border-l-2 border-teal-500/50 pl-4">
+    <section className="group relative border-l-2 border-teal-500/50 pl-4">
       <header className="mb-1.5 flex items-center gap-2">
         <ChatBubbleLeftIcon className="size-4 shrink-0 text-teal-500" />
         <span className="text-xs font-medium text-fg-3">Assistant</span>
+        <div className="ml-auto opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <CopyButton value={content} label="Copy assistant message" />
+        </div>
       </header>
       <Markdown content={content} />
     </section>
@@ -219,10 +226,57 @@ function StatusPill({
   );
 }
 
+const COLLAPSE_AFTER_LINES = 20;
+
 function StreamLabel({ label }: { label: string }) {
   return (
-    <div className="mb-1 font-mono text-[11px] uppercase tracking-wider text-fg-muted">
+    <div className="font-mono text-[11px] uppercase tracking-wider text-fg-muted">
       {label}
+    </div>
+  );
+}
+
+function OutputStream({
+  label,
+  content,
+  tone = "normal",
+}: {
+  label: string;
+  content: string;
+  tone?: "normal" | "error";
+}) {
+  const lines = content.split("\n");
+  const isLong = lines.length > COLLAPSE_AFTER_LINES;
+  const [expanded, setExpanded] = useState(false);
+  const visible = isLong && !expanded
+    ? lines.slice(-COLLAPSE_AFTER_LINES).join("\n")
+    : content;
+  const hiddenLines = isLong && !expanded ? lines.length - COLLAPSE_AFTER_LINES : 0;
+  const preClass =
+    tone === "error"
+      ? "whitespace-pre-wrap font-mono text-sm leading-relaxed text-coral sm:text-xs"
+      : "whitespace-pre-wrap font-mono text-sm leading-relaxed text-fg-3 sm:text-xs";
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2">
+        <StreamLabel label={label} />
+        <CopyButton
+          value={content}
+          label={`Copy ${label}`}
+          className="-my-1"
+        />
+      </div>
+      {isLong && !expanded ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mb-2 text-[11px] font-medium text-teal-500 hover:text-teal-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500 rounded"
+        >
+          Show {hiddenLines} earlier lines
+        </button>
+      ) : null}
+      <pre className={preClass}>{visible}</pre>
     </div>
   );
 }
@@ -233,7 +287,7 @@ function CommandBlock({ turn }: { turn: Extract<TurnType, { kind: "command" }> }
   const bgColor = turn.running ? "bg-teal-500/5" : failed ? "bg-coral/5" : "bg-mint/5";
 
   return (
-    <div className={`rounded-md border ${borderColor} ${bgColor} overflow-hidden`}>
+    <div className={`group rounded-md border ${borderColor} ${bgColor} overflow-hidden`}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
         <PlayIcon className={`size-4 shrink-0 ${turn.running ? "text-teal-500 animate-pulse" : failed ? "text-coral" : "text-mint"}`} />
@@ -259,6 +313,11 @@ function CommandBlock({ turn }: { turn: Extract<TurnType, { kind: "command" }> }
               )}
             </>
           )}
+          {turn.script ? (
+            <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              <CopyButton value={turn.script} label="Copy script" />
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -272,16 +331,14 @@ function CommandBlock({ turn }: { turn: Extract<TurnType, { kind: "command" }> }
       {/* stdout */}
       {turn.stdout && (
         <div className="border-t border-line px-3 py-2.5">
-          <StreamLabel label="stdout" />
-          <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-fg-3 sm:text-xs">{turn.stdout}</pre>
+          <OutputStream label="stdout" content={turn.stdout} />
         </div>
       )}
 
       {/* stderr */}
       {turn.stderr && (
         <div className="border-t border-line px-3 py-2.5">
-          <StreamLabel label="stderr" />
-          <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-coral sm:text-xs">{turn.stderr}</pre>
+          <OutputStream label="stderr" content={turn.stderr} tone="error" />
         </div>
       )}
     </div>
@@ -335,7 +392,7 @@ export default function RunStages({ loaderData }: any) {
       <StageSidebar stages={stages} runId={id!} selectedStageId={selectedStage.id} />
 
       <div className="min-w-0 flex-1 space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="sticky top-0 z-10 -mx-2 flex items-center gap-2 bg-page/85 px-2 py-2 backdrop-blur">
           <SelectedIcon className={`size-5 ${selectedConfig.color} ${isRunning ? "animate-spin" : ""}`} />
           <h3 className="text-base font-semibold text-fg">{selectedStage.name}</h3>
           <span className="font-mono text-xs tabular-nums text-fg-muted">{headerDuration}</span>

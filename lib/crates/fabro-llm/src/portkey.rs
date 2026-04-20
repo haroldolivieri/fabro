@@ -48,7 +48,7 @@ impl PortkeyConfig {
     #[must_use]
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Option<Self> {
         let base_url = lookup("PORTKEY_URL")?;
-        let api_key  = lookup("PORTKEY_API_KEY")?;
+        let api_key = lookup("PORTKEY_API_KEY")?;
 
         let provider_str = lookup("PORTKEY_PROVIDER")?;
         let provider = match Provider::from_str(&provider_str) {
@@ -60,22 +60,36 @@ impl PortkeyConfig {
         };
 
         let provider_slug = lookup("PORTKEY_PROVIDER_SLUG");
-        let config        = lookup("PORTKEY_CONFIG");
-        let metadata      = lookup("PORTKEY_METADATA");
+        let config = lookup("PORTKEY_CONFIG");
+        let metadata = lookup("PORTKEY_METADATA");
 
         let aws = match (
             lookup("PORTKEY_AWS_ACCESS_KEY_ID"),
             lookup("PORTKEY_AWS_SECRET_ACCESS_KEY"),
         ) {
             (Some(access_key_id), Some(secret_access_key)) => {
-                let region        = lookup("PORTKEY_AWS_REGION").unwrap_or_else(|| "us-east-1".to_string());
+                let region =
+                    lookup("PORTKEY_AWS_REGION").unwrap_or_else(|| "us-east-1".to_string());
                 let session_token = lookup("PORTKEY_AWS_SESSION_TOKEN");
-                Some(AwsCredentials { access_key_id, secret_access_key, region, session_token })
+                Some(AwsCredentials {
+                    access_key_id,
+                    secret_access_key,
+                    region,
+                    session_token,
+                })
             }
             _ => None,
         };
 
-        Some(Self { base_url, api_key, provider, provider_slug, config, metadata, aws })
+        Some(Self {
+            base_url,
+            api_key,
+            provider,
+            provider_slug,
+            config,
+            metadata,
+            aws,
+        })
     }
 
     /// Load `PortkeyConfig` from environment variables.
@@ -790,10 +804,10 @@ mod tests {
     #[test]
     fn from_lookup_parses_all_required_fields() {
         let lookup = |k: &str| match k {
-            "PORTKEY_URL"      => Some("https://api.portkey.ai/v1".to_string()),
-            "PORTKEY_API_KEY"  => Some("pk-test".to_string()),
+            "PORTKEY_URL" => Some("https://api.portkey.ai/v1".to_string()),
+            "PORTKEY_API_KEY" => Some("pk-test".to_string()),
             "PORTKEY_PROVIDER" => Some("anthropic".to_string()),
-            _                  => None,
+            _ => None,
         };
         let config = PortkeyConfig::from_lookup(lookup).unwrap();
         assert_eq!(config.base_url, "https://api.portkey.ai/v1");
@@ -806,16 +820,16 @@ mod tests {
     #[test]
     fn from_lookup_parses_optional_fields() {
         let lookup = |k: &str| match k {
-            "PORTKEY_URL"                    => Some("https://api.portkey.ai/v1".to_string()),
-            "PORTKEY_API_KEY"                => Some("pk-key".to_string()),
-            "PORTKEY_PROVIDER"               => Some("anthropic".to_string()),
-            "PORTKEY_PROVIDER_SLUG"          => Some("@bedrock-sandbox".to_string()),
-            "PORTKEY_CONFIG"                 => Some("cfg-abc".to_string()),
-            "PORTKEY_METADATA"               => Some(r#"{"team":"eng"}"#.to_string()),
-            "PORTKEY_AWS_ACCESS_KEY_ID"      => Some("AKIA...".to_string()),
-            "PORTKEY_AWS_SECRET_ACCESS_KEY"  => Some("secret".to_string()),
-            "PORTKEY_AWS_REGION"             => Some("eu-west-1".to_string()),
-            _                                => None,
+            "PORTKEY_URL" => Some("https://api.portkey.ai/v1".to_string()),
+            "PORTKEY_API_KEY" => Some("pk-key".to_string()),
+            "PORTKEY_PROVIDER" => Some("anthropic".to_string()),
+            "PORTKEY_PROVIDER_SLUG" => Some("@bedrock-sandbox".to_string()),
+            "PORTKEY_CONFIG" => Some("cfg-abc".to_string()),
+            "PORTKEY_METADATA" => Some(r#"{"team":"eng"}"#.to_string()),
+            "PORTKEY_AWS_ACCESS_KEY_ID" => Some("AKIA...".to_string()),
+            "PORTKEY_AWS_SECRET_ACCESS_KEY" => Some("secret".to_string()),
+            "PORTKEY_AWS_REGION" => Some("eu-west-1".to_string()),
+            _ => None,
         };
         let config = PortkeyConfig::from_lookup(lookup).unwrap();
         assert_eq!(config.provider_slug.as_deref(), Some("@bedrock-sandbox"));

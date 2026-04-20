@@ -536,13 +536,22 @@ async fn put_install_llm(
 
     if let Some(portkey) = &input.portkey {
         if portkey.url.trim().is_empty() {
-            return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, "portkey url is required");
+            return install_error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "portkey url is required",
+            );
         }
         if portkey.api_key.trim().is_empty() {
-            return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, "portkey api_key is required");
+            return install_error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "portkey api_key is required",
+            );
         }
         if portkey.provider.trim().is_empty() {
-            return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, "portkey provider is required");
+            return install_error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "portkey provider is required",
+            );
         }
     }
 
@@ -838,12 +847,12 @@ async fn post_install_finish(
 
     if let Some(portkey) = llm.portkey {
         for (name, value) in [
-            ("PORTKEY_URL",      portkey.url),
-            ("PORTKEY_API_KEY",  portkey.api_key),
+            ("PORTKEY_URL", portkey.url),
+            ("PORTKEY_API_KEY", portkey.api_key),
             ("PORTKEY_PROVIDER", portkey.provider),
         ] {
             vault_secrets.push(VaultSecretWrite {
-                name:        name.to_string(),
+                name: name.to_string(),
                 value,
                 secret_type: VaultSecretType::Environment,
                 description: None,

@@ -241,8 +241,8 @@ async fn portkey_anthropic_complete() {
 
     // PORTKEY_TEST_MODEL lets callers override the model — useful for Bedrock
     // where inference profile IDs differ from standard Anthropic names.
-    let model = std::env::var("PORTKEY_TEST_MODEL")
-        .unwrap_or_else(|_| "claude-haiku-4-5".to_string());
+    let model =
+        std::env::var("PORTKEY_TEST_MODEL").unwrap_or_else(|_| "claude-haiku-4-5".to_string());
     // auto_cache is disabled automatically by the adapter when routing to
     // Bedrock — no provider_options workaround needed here.
     let request = make_request(&model);

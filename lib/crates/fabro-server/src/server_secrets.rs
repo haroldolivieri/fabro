@@ -7,7 +7,7 @@ use fabro_config::envfile;
 use fabro_llm::client::Client as LlmClient;
 use fabro_llm::portkey::PortkeyConfig;
 use fabro_model::Provider;
-use fabro_vault::Vault;
+use fabro_vault::{SecretType as VaultSecretType, Vault};
 use tokio::sync::RwLock as AsyncRwLock;
 
 type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -106,9 +106,14 @@ impl ProviderCredentials {
         {
             let vault = self.vault.read().await;
             let env_lookup = Arc::clone(&self.env_lookup);
-            if let Some(portkey) =
-                PortkeyConfig::from_lookup(|k| env_lookup(k).or_else(|| vault.get(k).map(str::to_string)))
-            {
+            if let Some(portkey) = PortkeyConfig::from_lookup(|k| {
+                env_lookup(k).or_else(|| {
+                    vault
+                        .get_entry(k)
+                        .filter(|e| e.secret_type == VaultSecretType::Environment)
+                        .map(|e| e.value.clone())
+                })
+            }) {
                 portkey.apply(&mut api_credentials);
             }
         }
@@ -191,13 +196,28 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
         vault
-            .set("PORTKEY_URL", "https://api.portkey.ai/v1", SecretType::Environment, None)
+            .set(
+                "PORTKEY_URL",
+                "https://api.portkey.ai/v1",
+                SecretType::Environment,
+                None,
+            )
             .unwrap();
         vault
-            .set("PORTKEY_API_KEY", "pk-vault-key", SecretType::Environment, None)
+            .set(
+                "PORTKEY_API_KEY",
+                "pk-vault-key",
+                SecretType::Environment,
+                None,
+            )
             .unwrap();
         vault
-            .set("PORTKEY_PROVIDER", "anthropic", SecretType::Environment, None)
+            .set(
+                "PORTKEY_PROVIDER",
+                "anthropic",
+                SecretType::Environment,
+                None,
+            )
             .unwrap();
 
         let credentials =
@@ -206,7 +226,16 @@ mod tests {
         // build_llm_client should not error even with no real provider API keys —
         // PortkeyConfig creates a dummy credential when portkey vars are set.
         let result = credentials.build_llm_client().await;
-        assert!(result.is_ok(), "build_llm_client failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "build_llm_client failed: {:?}",
+            result.err()
+        );
+        let client_result = result.unwrap();
+        assert!(
+            client_result.client.provider_names().contains(&"anthropic"),
+            "expected anthropic provider to be registered via Portkey"
+        );
     }
 
     #[tokio::test]

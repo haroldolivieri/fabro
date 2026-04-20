@@ -37,22 +37,19 @@ pub struct PortkeyConfig {
 }
 
 impl PortkeyConfig {
-    /// Build a `PortkeyConfig` from environment variables.
+    /// Load `PortkeyConfig` using a custom key-lookup function.
     ///
-    /// Returns `None` if any required variable is missing or invalid:
-    /// - `PORTKEY_URL`
-    /// - `PORTKEY_API_KEY`
-    /// - `PORTKEY_PROVIDER` (must be a valid [`Provider`] string)
+    /// `lookup` is called with env var names and returns `Some(value)` when
+    /// found. Use this to read from vault, injected test maps, or any other
+    /// source. [`PortkeyConfig::from_env`] delegates here with `std::env::var`.
     ///
-    /// AWS credentials are included only when both
-    /// `PORTKEY_AWS_ACCESS_KEY_ID` and `PORTKEY_AWS_SECRET_ACCESS_KEY` are set.
-    /// `PORTKEY_AWS_REGION` defaults to `"us-east-1"` when omitted.
+    /// Returns `None` if any required variable is missing or invalid.
     #[must_use]
-    pub fn from_env() -> Option<Self> {
-        let base_url = std::env::var("PORTKEY_URL").ok()?;
-        let api_key = std::env::var("PORTKEY_API_KEY").ok()?;
+    pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Option<Self> {
+        let base_url = lookup("PORTKEY_URL")?;
+        let api_key  = lookup("PORTKEY_API_KEY")?;
 
-        let provider_str = std::env::var("PORTKEY_PROVIDER").ok()?;
+        let provider_str = lookup("PORTKEY_PROVIDER")?;
         let provider = match Provider::from_str(&provider_str) {
             Ok(p) => p,
             Err(e) => {
@@ -61,37 +58,31 @@ impl PortkeyConfig {
             }
         };
 
-        let provider_slug = std::env::var("PORTKEY_PROVIDER_SLUG").ok();
-        let config = std::env::var("PORTKEY_CONFIG").ok();
-        let metadata = std::env::var("PORTKEY_METADATA").ok();
+        let provider_slug = lookup("PORTKEY_PROVIDER_SLUG");
+        let config        = lookup("PORTKEY_CONFIG");
+        let metadata      = lookup("PORTKEY_METADATA");
 
         let aws = match (
-            std::env::var("PORTKEY_AWS_ACCESS_KEY_ID").ok(),
-            std::env::var("PORTKEY_AWS_SECRET_ACCESS_KEY").ok(),
+            lookup("PORTKEY_AWS_ACCESS_KEY_ID"),
+            lookup("PORTKEY_AWS_SECRET_ACCESS_KEY"),
         ) {
             (Some(access_key_id), Some(secret_access_key)) => {
-                let region =
-                    std::env::var("PORTKEY_AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
-                let session_token = std::env::var("PORTKEY_AWS_SESSION_TOKEN").ok();
-                Some(AwsCredentials {
-                    access_key_id,
-                    secret_access_key,
-                    region,
-                    session_token,
-                })
+                let region        = lookup("PORTKEY_AWS_REGION").unwrap_or_else(|| "us-east-1".to_string());
+                let session_token = lookup("PORTKEY_AWS_SESSION_TOKEN");
+                Some(AwsCredentials { access_key_id, secret_access_key, region, session_token })
             }
             _ => None,
         };
 
-        Some(Self {
-            base_url,
-            api_key,
-            provider,
-            provider_slug,
-            config,
-            metadata,
-            aws,
-        })
+        Some(Self { base_url, api_key, provider, provider_slug, config, metadata, aws })
+    }
+
+    /// Load `PortkeyConfig` from environment variables.
+    ///
+    /// Delegates to [`PortkeyConfig::from_lookup`] with `std::env::var`.
+    #[must_use]
+    pub fn from_env() -> Option<Self> {
+        Self::from_lookup(|k| std::env::var(k).ok())
     }
 
     /// Build the Portkey-specific HTTP headers that must be injected into
@@ -779,5 +770,66 @@ mod tests {
                 .extra_headers
                 .contains_key("x-portkey-api-key")
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // from_lookup tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn from_lookup_returns_none_when_url_missing() {
+        let lookup = |k: &str| match k {
+            "PORTKEY_API_KEY" => Some("pk-test".to_string()),
+            "PORTKEY_PROVIDER" => Some("anthropic".to_string()),
+            _ => None,
+        };
+        assert!(PortkeyConfig::from_lookup(lookup).is_none());
+    }
+
+    #[test]
+    fn from_lookup_parses_all_required_fields() {
+        let lookup = |k: &str| match k {
+            "PORTKEY_URL"      => Some("https://api.portkey.ai/v1".to_string()),
+            "PORTKEY_API_KEY"  => Some("pk-test".to_string()),
+            "PORTKEY_PROVIDER" => Some("anthropic".to_string()),
+            _                  => None,
+        };
+        let config = PortkeyConfig::from_lookup(lookup).unwrap();
+        assert_eq!(config.base_url, "https://api.portkey.ai/v1");
+        assert_eq!(config.api_key, "pk-test");
+        assert_eq!(config.provider, Provider::Anthropic);
+        assert!(config.provider_slug.is_none());
+        assert!(config.aws.is_none());
+    }
+
+    #[test]
+    fn from_lookup_parses_optional_fields() {
+        let lookup = |k: &str| match k {
+            "PORTKEY_URL"                    => Some("https://api.portkey.ai/v1".to_string()),
+            "PORTKEY_API_KEY"                => Some("pk-key".to_string()),
+            "PORTKEY_PROVIDER"               => Some("anthropic".to_string()),
+            "PORTKEY_PROVIDER_SLUG"          => Some("@bedrock-sandbox".to_string()),
+            "PORTKEY_CONFIG"                 => Some("cfg-abc".to_string()),
+            "PORTKEY_METADATA"               => Some(r#"{"team":"eng"}"#.to_string()),
+            "PORTKEY_AWS_ACCESS_KEY_ID"      => Some("AKIA...".to_string()),
+            "PORTKEY_AWS_SECRET_ACCESS_KEY"  => Some("secret".to_string()),
+            "PORTKEY_AWS_REGION"             => Some("eu-west-1".to_string()),
+            _                                => None,
+        };
+        let config = PortkeyConfig::from_lookup(lookup).unwrap();
+        assert_eq!(config.provider_slug.as_deref(), Some("@bedrock-sandbox"));
+        assert_eq!(config.config.as_deref(), Some("cfg-abc"));
+        assert_eq!(config.aws.as_ref().unwrap().region, "eu-west-1");
+    }
+
+    #[test]
+    fn from_env_delegates_to_from_lookup() {
+        clear_portkey_env();
+        std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
+        std::env::set_var("PORTKEY_API_KEY", "pk-env");
+        std::env::set_var("PORTKEY_PROVIDER", "openai");
+        let config = PortkeyConfig::from_env().unwrap();
+        assert_eq!(config.api_key, "pk-env");
+        assert_eq!(config.provider, Provider::OpenAi);
     }
 }

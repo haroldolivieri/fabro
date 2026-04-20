@@ -243,16 +243,9 @@ async fn portkey_anthropic_complete() {
     // where inference profile IDs differ from standard Anthropic names.
     let model = std::env::var("PORTKEY_TEST_MODEL")
         .unwrap_or_else(|_| "claude-haiku-4-5".to_string());
-    let mut request = make_request(&model);
-    // Bedrock does not support the prompt-caching beta header that fabro sends
-    // by default. Disable auto_cache when routing through Portkey to Bedrock.
-    if std::env::var("PORTKEY_PROVIDER_SLUG")
-        .map(|s| s.contains("bedrock"))
-        .unwrap_or(false)
-    {
-        request.provider_options =
-            Some(serde_json::json!({"anthropic": {"auto_cache": false}}));
-    }
+    // auto_cache is disabled automatically by the adapter when routing to
+    // Bedrock — no provider_options workaround needed here.
+    let request = make_request(&model);
     let response = adapter.complete(&request).await.unwrap();
 
     assert!(

@@ -1107,7 +1107,20 @@ async fn build_api_request(
         request.tools.as_ref().map(|t| translate_tools(t))
     };
 
-    let auto_cache = is_auto_cache_enabled(request.provider_options.as_ref());
+    // Bedrock does not support Anthropic's prompt-caching beta header.
+    // Detect Bedrock routing via Portkey headers set on the adapter and
+    // disable auto-cache automatically — no per-node provider_options needed.
+    let is_bedrock_routing = adapter
+        .http
+        .default_headers
+        .get("x-portkey-provider")
+        .is_some_and(|s| s.contains("bedrock"))
+        || adapter
+            .http
+            .default_headers
+            .contains_key("x-portkey-aws-access-key-id");
+    let auto_cache =
+        is_auto_cache_enabled(request.provider_options.as_ref()) && !is_bedrock_routing;
 
     let mut system_value = system.and_then(|s| {
         if s.trim().is_empty() {

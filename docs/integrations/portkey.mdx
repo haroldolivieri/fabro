@@ -130,6 +130,19 @@ For Azure OpenAI, set `PORTKEY_PROVIDER=openai` and `PORTKEY_PROVIDER_SLUG=@azur
 | `PORTKEY_AWS_SESSION_TOKEN` | No | AWS STS session token |
 | `PORTKEY_METADATA` | No | JSON metadata for Portkey observability |
 
+## AWS Bedrock: disable prompt caching
+
+Fabro enables prompt caching by default for Anthropic models, which sends the `prompt-caching-2024-07-31` beta header. AWS Bedrock does not support this header and will reject requests with an "invalid beta flag" error.
+
+When using Bedrock (Paths B and C), disable auto-cache in your workflow nodes:
+
+```dot
+agent [
+  prompt = "Your task here"
+  provider_options = "{\"anthropic\": {\"auto_cache\": false}}"
+]
+```
+
 ## Known limitations
 
 - **All-or-nothing routing.** When Portkey is configured, all requests for the specified provider go through Portkey. You cannot route some models through Portkey and others directly. For selective routing, use `PORTKEY_CONFIG` with conditional routing rules.

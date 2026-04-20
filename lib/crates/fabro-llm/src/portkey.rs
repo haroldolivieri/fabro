@@ -43,8 +43,8 @@ impl PortkeyConfig {
     /// - `PORTKEY_PROVIDER` (must be a valid [`Provider`] string)
     ///
     /// AWS credentials are included only when both
-    /// `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are set.
-    /// `AWS_DEFAULT_REGION` defaults to `"us-east-1"` when omitted.
+    /// `PORTKEY_AWS_ACCESS_KEY_ID` and `PORTKEY_AWS_SECRET_ACCESS_KEY` are set.
+    /// `PORTKEY_AWS_REGION` defaults to `"us-east-1"` when omitted.
     #[must_use]
     pub fn from_env() -> Option<Self> {
         let base_url = std::env::var("PORTKEY_URL").ok()?;
@@ -64,13 +64,13 @@ impl PortkeyConfig {
         let metadata      = std::env::var("PORTKEY_METADATA").ok();
 
         let aws = match (
-            std::env::var("AWS_ACCESS_KEY_ID").ok(),
-            std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
+            std::env::var("PORTKEY_AWS_ACCESS_KEY_ID").ok(),
+            std::env::var("PORTKEY_AWS_SECRET_ACCESS_KEY").ok(),
         ) {
             (Some(access_key_id), Some(secret_access_key)) => {
-                let region = std::env::var("AWS_DEFAULT_REGION")
+                let region = std::env::var("PORTKEY_AWS_REGION")
                     .unwrap_or_else(|_| "us-east-1".to_string());
-                let session_token = std::env::var("AWS_SESSION_TOKEN").ok();
+                let session_token = std::env::var("PORTKEY_AWS_SESSION_TOKEN").ok();
                 Some(AwsCredentials {
                     access_key_id,
                     secret_access_key,
@@ -110,10 +110,10 @@ mod tests {
             "PORTKEY_PROVIDER_SLUG",
             "PORTKEY_CONFIG",
             "PORTKEY_METADATA",
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
-            "AWS_DEFAULT_REGION",
-            "AWS_SESSION_TOKEN",
+            "PORTKEY_AWS_ACCESS_KEY_ID",
+            "PORTKEY_AWS_SECRET_ACCESS_KEY",
+            "PORTKEY_AWS_REGION",
+            "PORTKEY_AWS_SESSION_TOKEN",
         ] {
             std::env::remove_var(var);
         }
@@ -186,10 +186,10 @@ mod tests {
         std::env::set_var("PORTKEY_PROVIDER_SLUG", "my-anthropic-slug");
         std::env::set_var("PORTKEY_CONFIG", "pc-config-abc");
         std::env::set_var("PORTKEY_METADATA", r#"{"user":"test"}"#);
-        std::env::set_var("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
-        std::env::set_var("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
-        std::env::set_var("AWS_DEFAULT_REGION", "eu-west-1");
-        std::env::set_var("AWS_SESSION_TOKEN", "session-tok");
+        std::env::set_var("PORTKEY_AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
+        std::env::set_var("PORTKEY_AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        std::env::set_var("PORTKEY_AWS_REGION", "eu-west-1");
+        std::env::set_var("PORTKEY_AWS_SESSION_TOKEN", "session-tok");
 
         let cfg = PortkeyConfig::from_env().expect("should return Some");
         assert_eq!(cfg.provider, Provider::Anthropic);
@@ -211,7 +211,7 @@ mod tests {
         std::env::set_var("PORTKEY_API_KEY", "pk-test-key");
         std::env::set_var("PORTKEY_PROVIDER", "anthropic");
         // Only set access key, omit secret key
-        std::env::set_var("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
+        std::env::set_var("PORTKEY_AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
 
         let cfg = PortkeyConfig::from_env().expect("should return Some");
         assert!(cfg.aws.is_none(), "aws should be None when secret is missing");

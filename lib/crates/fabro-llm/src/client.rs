@@ -6,6 +6,7 @@ use tracing::debug;
 
 use crate::error::Error;
 use crate::middleware::{Middleware, NextFn, NextStreamFn};
+use crate::portkey::PortkeyConfig;
 use crate::provider::{ProviderAdapter, StreamEventStream};
 use crate::providers;
 use crate::types::{Request, Response};
@@ -138,7 +139,7 @@ impl Client {
                 project_id:    None,
             });
         }
-        if let Some(portkey) = crate::portkey::PortkeyConfig::from_env() {
+        if let Some(portkey) = PortkeyConfig::from_env() {
             portkey.apply(&mut credentials);
         }
         Self::from_credentials(credentials).await

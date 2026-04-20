@@ -160,26 +160,21 @@ impl PortkeyConfig {
     pub fn apply(&self, credentials: &mut Vec<ApiCredential>) {
         let portkey_headers = self.build_headers();
 
-        let credential = match credentials.iter_mut().find(|c| c.provider == self.provider) {
-            Some(existing) => existing,
-            None => {
-                credentials.push(ApiCredential {
-                    provider:      self.provider,
-                    auth_header:   Self::dummy_auth_header(self.provider),
-                    extra_headers: HashMap::new(),
-                    base_url:      None,
-                    codex_mode:    false,
-                    org_id:        None,
-                    project_id:    None,
-                });
-                credentials.last_mut().expect("just pushed")
+        if let Some(credential) = credentials.iter_mut().find(|c| c.provider == self.provider) {
+            credential.base_url = Some(self.base_url.clone());
+            for (key, value) in portkey_headers {
+                credential.extra_headers.insert(key, value);
             }
-        };
-
-        credential.base_url = Some(self.base_url.clone());
-
-        for (key, value) in portkey_headers {
-            credential.extra_headers.insert(key, value);
+        } else {
+            credentials.push(ApiCredential {
+                provider:      self.provider,
+                auth_header:   Self::dummy_auth_header(self.provider),
+                extra_headers: portkey_headers,
+                base_url:      Some(self.base_url.clone()),
+                codex_mode:    false,
+                org_id:        None,
+                project_id:    None,
+            });
         }
     }
 }
@@ -642,10 +637,16 @@ mod tests {
         config.apply(&mut credentials);
         assert_eq!(credentials.len(), 1);
         assert_eq!(credentials[0].provider, Provider::Anthropic);
-        assert_eq!(credentials[0].base_url.as_deref(), Some("https://api.portkey.ai/v1"));
-        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"anthropic".to_string()));
+        assert_eq!(
+            credentials[0].base_url.as_deref(),
+            Some("https://api.portkey.ai/v1")
+        );
+        assert_eq!(
+            credentials[0].extra_headers.get("x-portkey-provider"),
+            Some(&"anthropic".to_string())
+        );
         assert_eq!(credentials[0].auth_header, ApiKeyHeader::Custom {
-            name: "x-api-key".to_string(),
+            name:  "x-api-key".to_string(),
             value: "pk-portkey-dummy".to_string(),
         });
     }
@@ -659,8 +660,15 @@ mod tests {
         let mut credentials: Vec<ApiCredential> = Vec::new();
         config.apply(&mut credentials);
         assert_eq!(credentials[0].provider, Provider::Anthropic);
-        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"@bedrock-sandbox".to_string()));
-        assert!(!credentials[0].extra_headers.contains_key("x-portkey-aws-access-key-id"));
+        assert_eq!(
+            credentials[0].extra_headers.get("x-portkey-provider"),
+            Some(&"@bedrock-sandbox".to_string())
+        );
+        assert!(
+            !credentials[0]
+                .extra_headers
+                .contains_key("x-portkey-aws-access-key-id")
+        );
     }
 
     #[test]
@@ -668,17 +676,25 @@ mod tests {
         let config = PortkeyConfig {
             provider_slug: Some("bedrock".to_string()),
             aws: Some(AwsCredentials {
-                access_key_id: "AKIA...".to_string(),
+                access_key_id:     "AKIA...".to_string(),
                 secret_access_key: "secret".to_string(),
-                region: "eu-west-1".to_string(),
-                session_token: None,
+                region:            "eu-west-1".to_string(),
+                session_token:     None,
             }),
             ..portkey_config_anthropic()
         };
         let mut credentials: Vec<ApiCredential> = Vec::new();
         config.apply(&mut credentials);
-        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"bedrock".to_string()));
-        assert_eq!(credentials[0].extra_headers.get("x-portkey-aws-access-key-id"), Some(&"AKIA...".to_string()));
+        assert_eq!(
+            credentials[0].extra_headers.get("x-portkey-provider"),
+            Some(&"bedrock".to_string())
+        );
+        assert_eq!(
+            credentials[0]
+                .extra_headers
+                .get("x-portkey-aws-access-key-id"),
+            Some(&"AKIA...".to_string())
+        );
     }
 
     #[test]
@@ -689,8 +705,15 @@ mod tests {
         };
         let mut credentials: Vec<ApiCredential> = Vec::new();
         config.apply(&mut credentials);
-        assert_eq!(credentials[0].extra_headers.get("x-portkey-config"), Some(&"cfg-xxx".to_string()));
-        assert!(credentials[0].extra_headers.contains_key("x-portkey-provider"));
+        assert_eq!(
+            credentials[0].extra_headers.get("x-portkey-config"),
+            Some(&"cfg-xxx".to_string())
+        );
+        assert!(
+            credentials[0]
+                .extra_headers
+                .contains_key("x-portkey-provider")
+        );
     }
 
     #[test]
@@ -702,8 +725,14 @@ mod tests {
         let mut credentials: Vec<ApiCredential> = Vec::new();
         config.apply(&mut credentials);
         assert_eq!(credentials[0].provider, Provider::OpenAi);
-        assert_eq!(credentials[0].auth_header, ApiKeyHeader::Bearer("pk-portkey-dummy".to_string()));
-        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"openai".to_string()));
+        assert_eq!(
+            credentials[0].auth_header,
+            ApiKeyHeader::Bearer("pk-portkey-dummy".to_string())
+        );
+        assert_eq!(
+            credentials[0].extra_headers.get("x-portkey-provider"),
+            Some(&"openai".to_string())
+        );
     }
 
     #[test]
@@ -715,30 +744,40 @@ mod tests {
         let mut credentials: Vec<ApiCredential> = Vec::new();
         config.apply(&mut credentials);
         assert_eq!(credentials[0].provider, Provider::Gemini);
-        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"gemini".to_string()));
+        assert_eq!(
+            credentials[0].extra_headers.get("x-portkey-provider"),
+            Some(&"gemini".to_string())
+        );
     }
 
     #[test]
     fn scenario_existing_api_key_preserved() {
         let config = portkey_config_anthropic();
         let mut credentials = vec![ApiCredential {
-            provider: Provider::Anthropic,
-            auth_header: ApiKeyHeader::Custom {
-                name: "x-api-key".to_string(),
+            provider:      Provider::Anthropic,
+            auth_header:   ApiKeyHeader::Custom {
+                name:  "x-api-key".to_string(),
                 value: "sk-ant-real-key".to_string(),
             },
             extra_headers: HashMap::new(),
-            base_url: Some("https://api.anthropic.com/v1".to_string()),
-            codex_mode: false,
-            org_id: None,
-            project_id: None,
+            base_url:      Some("https://api.anthropic.com/v1".to_string()),
+            codex_mode:    false,
+            org_id:        None,
+            project_id:    None,
         }];
         config.apply(&mut credentials);
         assert_eq!(credentials[0].auth_header, ApiKeyHeader::Custom {
-            name: "x-api-key".to_string(),
+            name:  "x-api-key".to_string(),
             value: "sk-ant-real-key".to_string(),
         });
-        assert_eq!(credentials[0].base_url.as_deref(), Some("https://api.portkey.ai/v1"));
-        assert!(credentials[0].extra_headers.contains_key("x-portkey-api-key"));
+        assert_eq!(
+            credentials[0].base_url.as_deref(),
+            Some("https://api.portkey.ai/v1")
+        );
+        assert!(
+            credentials[0]
+                .extra_headers
+                .contains_key("x-portkey-api-key")
+        );
     }
 }

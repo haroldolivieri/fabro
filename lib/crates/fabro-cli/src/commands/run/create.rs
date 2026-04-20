@@ -80,7 +80,7 @@ pub(crate) async fn create_run(
                 .root()
                 .to_path_buf(),
         ),
-        ServerTarget::HttpUrl { .. } => None,
+        ServerTarget::HttpUrl(_) => None,
     };
 
     Ok(CreatedRun {

@@ -369,7 +369,7 @@ pub(crate) async fn execute(
         permissions,
         output_format,
     );
-    let server_target = user_config::exec_server_target(&args.server, &raw_settings)?;
+    let server_target = user_config::exec_server_target(&args.server)?;
     // v2 MCPs live under `cli.exec.agent.mcps` (owner-specific) or
     // `run.agent.mcps`. For `fabro exec` we use the cli.exec path, falling
     // back to run.agent.mcps if unset.

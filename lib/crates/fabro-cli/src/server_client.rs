@@ -186,11 +186,7 @@ pub(crate) async fn connect_server_target(target: &user_config::ServerTarget) ->
 
 pub(crate) async fn connect_server_target_direct(target: &str) -> Result<Client> {
     if target.starts_with("http://") || target.starts_with("https://") {
-        connect_server_target(&user_config::ServerTarget::HttpUrl {
-            api_url: target.to_string(),
-            tls:     None,
-        })
-        .await
+        connect_server_target(&user_config::ServerTarget::HttpUrl(target.to_string())).await
     } else {
         let path = Path::new(target);
         if !path.is_absolute() {
@@ -301,12 +297,11 @@ pub(crate) async fn connect_api_client(storage_dir: &Path) -> Result<fabro_api::
 
 async fn connect_target_api_client_bundle(target: &user_config::ServerTarget) -> Result<Client> {
     match target {
-        user_config::ServerTarget::HttpUrl { api_url, tls } => {
+        user_config::ServerTarget::HttpUrl(api_url) => {
             let bearer = resolve_target_bearer(target, None, local_dev_token_fallback(target))?;
             let refreshable_oauth = refreshable_oauth(target, bearer.as_ref())?;
             let bundle = connect_remote_api_client_bundle(
                 api_url,
-                tls.as_ref(),
                 bearer.as_ref().map(ResolvedBearer::bearer_token),
             )?;
             Ok(Client::from_bundle(
@@ -336,11 +331,10 @@ async fn connect_target_api_client_bundle(target: &user_config::ServerTarget) ->
 
 fn connect_remote_api_client_bundle(
     api_url: &str,
-    tls: Option<&user_config::ClientTlsSettings>,
     bearer_token: Option<&str>,
 ) -> Result<ClientBundle> {
     let normalized = user_config::normalized_http_base_url(api_url);
-    let mut builder = user_config::build_server_client_builder(tls)?;
+    let mut builder = user_config::cli_http_client_builder();
     builder = match bearer_token {
         Some(token) => apply_bearer_token_auth(builder, token)?,
         None => builder,
@@ -760,8 +754,8 @@ impl Client {
         bearer_token: Option<&str>,
     ) -> Result<()> {
         let bundle = match target {
-            user_config::ServerTarget::HttpUrl { api_url, tls } => {
-                connect_remote_api_client_bundle(api_url, tls.as_ref(), bearer_token)?
+            user_config::ServerTarget::HttpUrl(api_url) => {
+                connect_remote_api_client_bundle(api_url, bearer_token)?
             }
             user_config::ServerTarget::UnixSocket(path) => {
                 connect_unix_socket_api_client_bundle(path, None, bearer_token).await?
@@ -1880,10 +1874,8 @@ mod tests {
 
     #[test]
     fn explicit_http_targets_do_not_allow_local_dev_token_fallback() {
-        let target = user_config::ServerTarget::HttpUrl {
-            api_url: "https://fabro.example.com/api/v1".to_string(),
-            tls:     None,
-        };
+        let target =
+            user_config::ServerTarget::HttpUrl("https://fabro.example.com/api/v1".to_string());
         assert!(!local_dev_token_fallback(&target));
     }
 
@@ -1916,10 +1908,7 @@ mod tests {
     async fn refresh_access_token_rejects_plain_http_non_loopback_targets() {
         let temp = tempfile::tempdir().unwrap();
         let auth_store = AuthStore::new(temp.path().join("auth.json"));
-        let target = user_config::ServerTarget::HttpUrl {
-            api_url: "http://fabro.example.com".to_string(),
-            tls:     None,
-        };
+        let target = user_config::ServerTarget::HttpUrl("http://fabro.example.com".to_string());
         let key = ServerTargetKey::new(&target).unwrap();
         auth_store.put(&key, oauth_entry("octocat")).unwrap();
 

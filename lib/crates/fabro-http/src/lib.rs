@@ -9,7 +9,6 @@ use std::path::Path;
 use std::time::Duration;
 
 pub use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-pub use reqwest::tls::{Certificate, Identity};
 pub use reqwest::{
     Body, Method, RequestBuilder, Response, StatusCode, Url, header, multipart, tls,
 };
@@ -144,26 +143,8 @@ macro_rules! define_builder {
             }
 
             #[must_use]
-            pub fn use_rustls_tls(mut self) -> Self {
-                self.inner = self.inner.use_rustls_tls();
-                self
-            }
-
-            #[must_use]
             pub fn danger_accept_invalid_certs(mut self, accept_invalid_certs: bool) -> Self {
                 self.inner = self.inner.danger_accept_invalid_certs(accept_invalid_certs);
-                self
-            }
-
-            #[must_use]
-            pub fn add_root_certificate(mut self, cert: Certificate) -> Self {
-                self.inner = self.inner.add_root_certificate(cert);
-                self
-            }
-
-            #[must_use]
-            pub fn identity(mut self, identity: Identity) -> Self {
-                self.inner = self.inner.identity(identity);
                 self
             }
 

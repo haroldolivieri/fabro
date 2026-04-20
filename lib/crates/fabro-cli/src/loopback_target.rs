@@ -27,7 +27,7 @@ pub(crate) fn is_loopback_or_unix_socket(
 ) -> Result<LoopbackClassification, TargetSchemeError> {
     match target {
         ServerTarget::UnixSocket(_) => Ok(LoopbackClassification::UnixSocket),
-        ServerTarget::HttpUrl { api_url, .. } => classify_http_target(api_url),
+        ServerTarget::HttpUrl(api_url) => classify_http_target(api_url),
     }
 }
 
@@ -128,31 +128,19 @@ mod tests {
     fn classifies_https_loopback_and_unix_targets() {
         let cases = [
             (
-                ServerTarget::HttpUrl {
-                    api_url: "https://fabro.example.com".to_string(),
-                    tls:     None,
-                },
+                ServerTarget::HttpUrl("https://fabro.example.com".to_string()),
                 LoopbackClassification::Https,
             ),
             (
-                ServerTarget::HttpUrl {
-                    api_url: "http://127.0.0.1:3000".to_string(),
-                    tls:     None,
-                },
+                ServerTarget::HttpUrl("http://127.0.0.1:3000".to_string()),
                 LoopbackClassification::LoopbackHttp,
             ),
             (
-                ServerTarget::HttpUrl {
-                    api_url: "http://[::1]:3000".to_string(),
-                    tls:     None,
-                },
+                ServerTarget::HttpUrl("http://[::1]:3000".to_string()),
                 LoopbackClassification::LoopbackHttp,
             ),
             (
-                ServerTarget::HttpUrl {
-                    api_url: "http://[::ffff:127.0.0.1]:3000".to_string(),
-                    tls:     None,
-                },
+                ServerTarget::HttpUrl("http://[::ffff:127.0.0.1]:3000".to_string()),
                 LoopbackClassification::LoopbackHttp,
             ),
             (
@@ -179,10 +167,7 @@ mod tests {
         ];
 
         for api_url in cases {
-            let target = ServerTarget::HttpUrl {
-                api_url: api_url.to_string(),
-                tls:     None,
-            };
+            let target = ServerTarget::HttpUrl(api_url.to_string());
             assert_eq!(
                 is_loopback_or_unix_socket(&target).unwrap(),
                 LoopbackClassification::Rejected
@@ -192,10 +177,7 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_schemes() {
-        let target = ServerTarget::HttpUrl {
-            api_url: "ftp://fabro.example.com".to_string(),
-            tls:     None,
-        };
+        let target = ServerTarget::HttpUrl("ftp://fabro.example.com".to_string());
         let error = is_loopback_or_unix_socket(&target).unwrap_err();
         assert!(error.to_string().contains("unsupported server URL scheme"));
     }

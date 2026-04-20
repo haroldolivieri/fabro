@@ -27,11 +27,6 @@ _version = 1
 type = "http"
 url = "https://config.example.com"
 
-[cli.target.tls]
-cert = "cert.pem"
-key = "key.pem"
-ca = "ca.pem"
-
 [cli.exec]
 prevent_idle_sleep = true
 
@@ -61,14 +56,10 @@ level = "debug"
 
     let cli = resolve_cli_from_file(&settings).expect("cli settings should resolve");
 
-    let CliTargetSettings::Http { url, tls } = cli.target.expect("target") else {
+    let CliTargetSettings::Http { url } = cli.target.expect("target") else {
         panic!("expected http target");
     };
     assert_eq!(url.as_source(), "https://config.example.com");
-    let tls = tls.expect("tls");
-    assert_eq!(tls.cert.as_source(), "cert.pem");
-    assert_eq!(tls.key.as_source(), "key.pem");
-    assert_eq!(tls.ca.as_source(), "ca.pem");
 
     assert!(cli.exec.prevent_idle_sleep);
     assert_eq!(

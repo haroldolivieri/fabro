@@ -26,20 +26,8 @@ pub struct CliSettings {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum CliTargetSettings {
-    Http {
-        url: InterpString,
-        tls: Option<CliTargetTlsSettings>,
-    },
-    Unix {
-        path: InterpString,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct CliTargetTlsSettings {
-    pub cert: InterpString,
-    pub key:  InterpString,
-    pub ca:   InterpString,
+    Http { url: InterpString },
+    Unix { path: InterpString },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -107,24 +95,11 @@ pub enum CliTargetLayer {
     Http {
         #[serde(default)]
         url: Option<InterpString>,
-        #[serde(default)]
-        tls: Option<CliTargetTlsLayer>,
     },
     Unix {
         #[serde(default)]
         path: Option<InterpString>,
     },
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CliTargetTlsLayer {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cert: Option<InterpString>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub key:  Option<InterpString>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ca:   Option<InterpString>,
 }
 
 /// `[cli.auth]` — explicit auth strategy selection.
@@ -141,7 +116,6 @@ pub struct CliAuthLayer {
 pub enum CliAuthStrategy {
     None,
     Jwt,
-    Mtls,
 }
 
 /// `[cli.exec]` — `fabro exec` defaults.

@@ -23,7 +23,7 @@ mod tests {
     use serde_json::json;
 
     use super::Settings;
-    use crate::settings::cli::{CliTargetSettings, CliTargetTlsSettings};
+    use crate::settings::cli::CliTargetSettings;
     use crate::settings::interp::InterpString;
     use crate::settings::run::{
         DockerfileSource, McpServerSettings, McpTransport, RunAgentSettings, RunGoal, RunSettings,
@@ -42,21 +42,11 @@ mod tests {
         assert_eq!(
             serde_json::to_value(CliTargetSettings::Http {
                 url: InterpString::parse("https://api.example.com"),
-                tls: Some(CliTargetTlsSettings {
-                    cert: InterpString::parse("/tmp/client.crt"),
-                    key:  InterpString::parse("/tmp/client.key"),
-                    ca:   InterpString::parse("/tmp/ca.pem"),
-                }),
             })
             .unwrap(),
             json!({
                 "type": "http",
                 "url": "https://api.example.com",
-                "tls": {
-                    "cert": "/tmp/client.crt",
-                    "key": "/tmp/client.key",
-                    "ca": "/tmp/ca.pem"
-                }
             })
         );
 

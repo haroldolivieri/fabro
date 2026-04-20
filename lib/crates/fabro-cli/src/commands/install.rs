@@ -2113,13 +2113,12 @@ mod tests {
             .and_then(|c| c.target.as_ref())
             .expect("cli.target should be set");
         match target {
-            CliTargetLayer::Http { url, tls } => {
+            CliTargetLayer::Http { url } => {
                 assert_eq!(
                     url.as_ref()
                         .map(fabro_types::settings::InterpString::as_source),
                     Some("http://127.0.0.1:32276".to_string())
                 );
-                assert!(tls.is_none());
             }
             CliTargetLayer::Unix { .. } => panic!("expected http target"),
         }

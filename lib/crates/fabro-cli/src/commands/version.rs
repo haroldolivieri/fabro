@@ -133,7 +133,7 @@ fn is_non_release_profile(profile: &str) -> bool {
 
 fn format_server_target(target: &ServerTarget) -> String {
     match target {
-        ServerTarget::HttpUrl { api_url, .. } => api_url.clone(),
+        ServerTarget::HttpUrl(api_url) => api_url.clone(),
         ServerTarget::UnixSocket(path) => path.display().to_string(),
     }
 }

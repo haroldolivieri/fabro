@@ -12,7 +12,6 @@ import {
   useRevalidator,
 } from "react-router";
 import { MultiFileDiff, PatchDiff, Virtualizer } from "@pierre/diffs/react";
-import { useTheme } from "../lib/theme";
 import type {
   FileDiff as ApiFileDiff,
   PaginatedRunFileList,
@@ -285,7 +284,6 @@ function resolveRunStatus(matches: ReturnType<typeof useMatches>): string | unde
 }
 
 export default function RunFiles({ loaderData }: any) {
-  const theme = useTheme();
   const params = useParams();
   const navigation = useNavigation();
   const revalidator = useRevalidator();
@@ -351,9 +349,6 @@ export default function RunFiles({ loaderData }: any) {
     },
     [diffStyleForced],
   );
-
-  const pierreTheme =
-    theme.theme === "dark" ? "pierre-dark" : "pierre-light";
 
   const refreshButtonRef = useRef<HTMLButtonElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -452,14 +447,14 @@ export default function RunFiles({ loaderData }: any) {
               newFile={file.new_file}
               options={{
                 diffStyle,
-                theme: pierreTheme,
+                theme: "pierre-dark",
                 expandUnchanged: isDeepLinkTarget ? true : undefined,
               }}
             />
           </div>
         );
       }),
-    [diffStyle, pierreTheme, hashFile],
+    [diffStyle, hashFile],
   );
 
   if (isInitialLoading) {
@@ -528,7 +523,7 @@ export default function RunFiles({ loaderData }: any) {
           patch={meta.patch}
           options={{
             diffStyle,
-            theme: pierreTheme,
+            theme: "pierre-dark",
           }}
         />
         {emptyToast && <Toast>{emptyToast}</Toast>}

@@ -10,7 +10,7 @@
 use std::io::{IsTerminal, Read as _};
 
 use anyhow::{Context as _, Result, bail};
-use fabro_api::{Client, types};
+use fabro_api::{ApiClient, types};
 use fabro_types::settings::CliSettings;
 use fabro_types::settings::cli::OutputFormat;
 use fabro_util::printer::Printer;
@@ -58,7 +58,7 @@ async fn resolve_value(args: &SecretSetArgs) -> Result<String> {
 }
 
 pub(super) async fn set_command(
-    client: &Client,
+    client: &ApiClient,
     args: &SecretSetArgs,
     cli: &CliSettings,
     printer: Printer,

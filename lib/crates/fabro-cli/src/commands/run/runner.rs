@@ -239,7 +239,7 @@ async fn apply_worker_control_line(
 
 fn build_artifact_uploader(
     run_id: RunId,
-    client: server_client::ServerStoreClient,
+    client: server_client::Client,
     artifact_upload_token: Option<String>,
 ) -> Arc<dyn StageArtifactUploader> {
     match artifact_upload_token {
@@ -254,7 +254,7 @@ fn build_artifact_uploader(
 
 struct HttpArtifactUploader {
     run_id:       RunId,
-    client:       server_client::ServerStoreClient,
+    client:       server_client::Client,
     bearer_token: String,
 }
 
@@ -318,16 +318,13 @@ impl StageArtifactUploader for MissingArtifactUploadTokenUploader {
 #[derive(Clone)]
 struct HttpRunStore {
     run_id: RunId,
-    client: server_client::ServerStoreClient,
+    client: server_client::Client,
     state:  Arc<Mutex<RunProjection>>,
     events: Arc<Mutex<Option<Vec<EventEnvelope>>>>,
 }
 
 impl HttpRunStore {
-    async fn connect(
-        run_id: RunId,
-        client: server_client::ServerStoreClient,
-    ) -> Result<RunStoreHandle> {
+    async fn connect(run_id: RunId, client: server_client::Client) -> Result<RunStoreHandle> {
         let state = client
             .get_run_state(&run_id)
             .await

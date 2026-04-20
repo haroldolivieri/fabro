@@ -131,7 +131,7 @@ pub(crate) fn api_check_report_to_local(report: &types::PreflightCheckReport) ->
 }
 
 pub(crate) async fn print_run_summary_with_client(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &fabro_types::RunId,
     local_run_dir: Option<&Path>,
     styles: &Styles,
@@ -292,7 +292,7 @@ pub(crate) fn print_final_output(output: Option<&str>, styles: &Styles, printer:
 }
 
 async fn resolve_final_output_with_client(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     checkpoint: Option<&fabro_types::Checkpoint>,
 ) -> Result<Option<String>> {
@@ -317,7 +317,7 @@ async fn resolve_final_output_with_client(
 }
 
 async fn resolve_response_string(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     response: &str,
 ) -> Result<Option<String>> {
@@ -342,7 +342,7 @@ fn blob_id_from_response(response: &str) -> Option<RunBlobId> {
 }
 
 async fn list_artifact_display_entries_with_client(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
 ) -> Result<Vec<(String, u32, String)>> {
     let mut entries = Vec::new();
@@ -356,7 +356,7 @@ async fn list_artifact_display_entries_with_client(
 }
 
 async fn print_assets_with_client(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     styles: &Styles,
     printer: Printer,

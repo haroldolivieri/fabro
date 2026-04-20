@@ -11,7 +11,7 @@ use fabro_types::settings::cli::{CliLayer, OutputFormat};
 use fabro_util::printer::Printer;
 
 use crate::args::ArtifactCpArgs;
-use crate::server_client::ServerStoreClient;
+use crate::server_client::Client;
 use crate::shared::{print_json_pretty, split_run_path};
 
 pub(super) async fn cp_command(
@@ -140,7 +140,7 @@ pub(super) async fn cp_command(
 }
 
 async fn write_artifact_file(
-    client: &ServerStoreClient,
+    client: &Client,
     run_id: &fabro_types::RunId,
     entry: &super::ArtifactEntry,
     dest_file: &Path,

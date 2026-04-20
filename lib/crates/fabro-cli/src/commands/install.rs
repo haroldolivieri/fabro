@@ -1094,7 +1094,7 @@ async fn setup_github_app(
 }
 
 async fn persist_vault_secrets_via_server(
-    client: &fabro_api::Client,
+    client: &fabro_api::ApiClient,
     secrets: &[CreateSecretRequest],
 ) -> Result<()> {
     for secret in secrets {
@@ -1117,7 +1117,7 @@ async fn persist_vault_secrets_with(
     storage_dir: &Path,
     secrets: &[CreateSecretRequest],
     server_was_running: bool,
-    connect_api_client: impl for<'a> Fn(&'a Path) -> BoxFuture<'a, Result<fabro_api::Client>>,
+    connect_api_client: impl for<'a> Fn(&'a Path) -> BoxFuture<'a, Result<fabro_api::ApiClient>>,
     stop_server: impl for<'a> Fn(&'a Path, Duration) -> BoxFuture<'a, bool>,
 ) -> Result<()> {
     if secrets.is_empty() {
@@ -1303,7 +1303,7 @@ async fn persist_install_outputs_with_settings(
     vault_secrets: &[CreateSecretRequest],
     settings_write: Option<PendingSettingsWrite<'_>>,
     server_was_running: bool,
-    connect_api_client: impl for<'a> Fn(&'a Path) -> BoxFuture<'a, Result<fabro_api::Client>>,
+    connect_api_client: impl for<'a> Fn(&'a Path) -> BoxFuture<'a, Result<fabro_api::ApiClient>>,
     stop_server: impl for<'a> Fn(&'a Path, Duration) -> BoxFuture<'a, bool>,
 ) -> Result<()> {
     persist_server_env_secrets(storage_dir, server_env_secrets)?;
@@ -2486,7 +2486,7 @@ client_id = "client-id"
             &vault_secrets,
             false,
             |_| {
-                let client = fabro_api::Client::new_with_client(
+                let client = fabro_api::ApiClient::new_with_client(
                     &server.base_url(),
                     fabro_test::test_http_client(),
                 );
@@ -2548,7 +2548,7 @@ client_id = "client-id"
             &vault_secrets,
             true,
             |_| {
-                let client = fabro_api::Client::new_with_client(
+                let client = fabro_api::ApiClient::new_with_client(
                     &server.base_url(),
                     fabro_test::test_http_client(),
                 );

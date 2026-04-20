@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use fabro_store::RunSummary;
 use fabro_types::{RunId, RunStatus, StatusReason};
 
-use crate::server_client::ServerStoreClient;
+use crate::server_client::Client;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ServerRunSummaryInfo {
@@ -75,12 +75,12 @@ impl ServerRunSummaryInfo {
 }
 
 pub(crate) struct ServerSummaryLookup {
-    client: Arc<ServerStoreClient>,
+    client: Arc<Client>,
     runs:   Vec<ServerRunSummaryInfo>,
 }
 
 impl ServerSummaryLookup {
-    pub(crate) async fn from_client(client: Arc<ServerStoreClient>) -> Result<Self> {
+    pub(crate) async fn from_client(client: Arc<Client>) -> Result<Self> {
         let summaries = client.list_store_runs().await?;
         let mut runs = summaries
             .into_iter()
@@ -94,7 +94,7 @@ impl ServerSummaryLookup {
         Ok(Self { client, runs })
     }
 
-    pub(crate) fn client(&self) -> &ServerStoreClient {
+    pub(crate) fn client(&self) -> &Client {
         self.client.as_ref()
     }
 

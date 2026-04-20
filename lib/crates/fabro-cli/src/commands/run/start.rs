@@ -4,7 +4,7 @@ use fabro_types::RunId;
 use crate::server_client;
 
 pub(crate) async fn start_run_with_client(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     resume: bool,
 ) -> Result<()> {

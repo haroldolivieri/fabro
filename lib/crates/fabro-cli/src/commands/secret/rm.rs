@@ -1,5 +1,5 @@
 use anyhow::Result;
-use fabro_api::{Client, types};
+use fabro_api::{ApiClient, types};
 use fabro_types::settings::CliSettings;
 use fabro_types::settings::cli::OutputFormat;
 use fabro_util::printer::Printer;
@@ -9,7 +9,7 @@ use crate::server_client;
 use crate::shared::print_json_pretty;
 
 pub(super) async fn rm_command(
-    client: &Client,
+    client: &ApiClient,
     args: &SecretRmArgs,
     cli: &CliSettings,
     printer: Printer,

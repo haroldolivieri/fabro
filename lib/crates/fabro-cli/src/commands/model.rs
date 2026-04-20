@@ -207,7 +207,7 @@ where
 }
 
 async fn fetch_models_from_server(
-    client: &fabro_api::Client,
+    client: &fabro_api::ApiClient,
     provider: Option<&str>,
     query: Option<&str>,
 ) -> Result<Vec<Model>> {
@@ -237,7 +237,7 @@ async fn fetch_models_from_server(
 }
 
 async fn test_model_via_server(
-    client: &fabro_api::Client,
+    client: &fabro_api::ApiClient,
     model_id: &str,
     mode: Option<api_types::ModelTestMode>,
 ) -> Result<api_types::ModelTestResult> {
@@ -255,7 +255,7 @@ async fn test_model_via_server(
     reason = "Progress goes to stderr while tables or JSON results go to stdout."
 )]
 async fn test_models_via_server(
-    client: &fabro_api::Client,
+    client: &fabro_api::ApiClient,
     provider: Option<&str>,
     model: Option<&str>,
     deep: bool,
@@ -432,7 +432,7 @@ async fn test_models_via_server(
 )]
 async fn run_models(
     command: ModelsCommand,
-    client: &fabro_api::Client,
+    client: &fabro_api::ApiClient,
     json_output: bool,
 ) -> Result<()> {
     let styles = Styles::detect_stdout();
@@ -483,8 +483,8 @@ mod tests {
 
     use super::*;
 
-    fn test_api_client(api_url: &str) -> fabro_api::Client {
-        fabro_api::Client::new_with_client(api_url, fabro_test::test_http_client())
+    fn test_api_client(api_url: &str) -> fabro_api::ApiClient {
+        fabro_api::ApiClient::new_with_client(api_url, fabro_test::test_http_client())
     }
 
     fn test_model_json(id: &str, provider: Provider) -> serde_json::Value {

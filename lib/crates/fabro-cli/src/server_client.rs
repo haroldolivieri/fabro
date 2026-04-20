@@ -30,8 +30,12 @@ use crate::user_config::cli_http_client_builder;
 use crate::{sse, user_config};
 
 #[derive(Clone)]
-pub(crate) struct ServerStoreClient {
-    client:      fabro_api::Client,
+#[expect(
+    clippy::struct_field_names,
+    reason = "fields name the underlying clients (api client, http client); renaming to avoid the struct's own name would obscure them"
+)]
+pub(crate) struct Client {
+    client:      fabro_api::ApiClient,
     http_client: fabro_http::HttpClient,
     base_url:    String,
 }
@@ -86,11 +90,11 @@ impl RunAttachEventStream {
 pub(crate) use fabro_store::RunProjection;
 
 #[cfg(test)]
-pub(crate) async fn connect_server(storage_dir: &Path) -> Result<ServerStoreClient> {
+pub(crate) async fn connect_server(storage_dir: &Path) -> Result<Client> {
     connect_api_client_bundle(storage_dir).await
 }
 
-pub(crate) async fn connect_server_target_direct(target: &str) -> Result<ServerStoreClient> {
+pub(crate) async fn connect_server_target_direct(target: &str) -> Result<Client> {
     if target.starts_with("http://") || target.starts_with("https://") {
         connect_remote_api_client_bundle(target, None, RemoteDevTokenAuth::Ambient)
     } else {
@@ -106,7 +110,7 @@ pub(crate) async fn connect_server_with_settings(
     args: &ServerTargetArgs,
     settings: &SettingsLayer,
     base_config_path: &Path,
-) -> Result<ServerStoreClient> {
+) -> Result<Client> {
     let target = user_config::resolve_server_target(args, settings)?;
     let runtime = LocalServerRuntime {
         active_config_path: base_config_path.to_path_buf(),
@@ -115,7 +119,7 @@ pub(crate) async fn connect_server_with_settings(
     connect_target_api_client_bundle(&target, &runtime).await
 }
 
-async fn connect_api_client_bundle(storage_dir: &Path) -> Result<ServerStoreClient> {
+async fn connect_api_client_bundle(storage_dir: &Path) -> Result<Client> {
     let config_path = user_config::active_settings_path(None);
     let bind = start::ensure_server_running_for_storage(storage_dir, &config_path)
         .await
@@ -127,8 +131,8 @@ async fn connect_api_client_bundle(storage_dir: &Path) -> Result<ServerStoreClie
             let builder = cli_http_client_builder().no_proxy();
             let http_client = apply_bearer_token_auth(builder, &token)?.build()?;
             let base_url = format!("http://{addr}");
-            let client = fabro_api::Client::new_with_client(&base_url, http_client.clone());
-            Ok(ServerStoreClient {
+            let client = fabro_api::ApiClient::new_with_client(&base_url, http_client.clone());
+            Ok(Client {
                 client,
                 http_client,
                 base_url,
@@ -137,7 +141,7 @@ async fn connect_api_client_bundle(storage_dir: &Path) -> Result<ServerStoreClie
     }
 }
 
-pub(crate) async fn connect_api_client(storage_dir: &Path) -> Result<fabro_api::Client> {
+pub(crate) async fn connect_api_client(storage_dir: &Path) -> Result<fabro_api::ApiClient> {
     connect_api_client_bundle(storage_dir)
         .await
         .map(|client| client.client)
@@ -146,7 +150,7 @@ pub(crate) async fn connect_api_client(storage_dir: &Path) -> Result<fabro_api::
 async fn connect_target_api_client_bundle(
     target: &user_config::ServerTarget,
     runtime: &LocalServerRuntime,
-) -> Result<ServerStoreClient> {
+) -> Result<Client> {
     match target {
         user_config::ServerTarget::HttpUrl { api_url, tls } => connect_remote_api_client_bundle(
             api_url,
@@ -184,7 +188,7 @@ fn connect_remote_api_client_bundle(
     api_url: &str,
     tls: Option<&user_config::ClientTlsSettings>,
     dev_token_auth: RemoteDevTokenAuth<'_>,
-) -> Result<ServerStoreClient> {
+) -> Result<Client> {
     let normalized = normalize_remote_server_target(api_url);
     let mut builder = user_config::build_server_client_builder(tls)?;
     builder = match dev_token_auth {
@@ -202,8 +206,8 @@ fn connect_remote_api_client_bundle(
         RemoteDevTokenAuth::Ambient => apply_dev_token_auth(builder, None)?,
     };
     let http_client = builder.build()?;
-    let client = fabro_api::Client::new_with_client(&normalized, http_client.clone());
-    Ok(ServerStoreClient {
+    let client = fabro_api::ApiClient::new_with_client(&normalized, http_client.clone());
+    Ok(Client {
         client,
         http_client,
         base_url: normalized,
@@ -357,10 +361,10 @@ fn apply_dev_token_auth(
     apply_bearer_token_auth(builder, &token)
 }
 
-fn unix_socket_api_client_bundle(http_client: fabro_http::HttpClient) -> ServerStoreClient {
+fn unix_socket_api_client_bundle(http_client: fabro_http::HttpClient) -> Client {
     let base_url = "http://fabro".to_string();
-    let client = fabro_api::Client::new_with_client(&base_url, http_client.clone());
-    ServerStoreClient {
+    let client = fabro_api::ApiClient::new_with_client(&base_url, http_client.clone());
+    Client {
         client,
         http_client,
         base_url,
@@ -370,7 +374,7 @@ fn unix_socket_api_client_bundle(http_client: fabro_http::HttpClient) -> ServerS
 async fn build_authed_unix_socket_client(
     path: &Path,
     storage_dir: Option<&Path>,
-) -> Result<ServerStoreClient> {
+) -> Result<Client> {
     let http_client = if let Some(storage_dir) = storage_dir {
         let token = wait_for_local_dev_token(storage_dir).await?;
         apply_bearer_token_auth(
@@ -398,7 +402,7 @@ fn build_unix_socket_probe_client(path: &Path) -> Result<fabro_http::HttpClient>
 async fn try_connect_unix_socket_api_client_bundle(
     path: &Path,
     storage_dir: Option<&Path>,
-) -> Result<ServerStoreClient> {
+) -> Result<Client> {
     check_server_ready(&build_unix_socket_probe_client(path)?).await?;
     build_authed_unix_socket_client(path, storage_dir).await
 }
@@ -406,7 +410,7 @@ async fn try_connect_unix_socket_api_client_bundle(
 async fn connect_unix_socket_api_client_bundle(
     path: &Path,
     storage_dir: Option<&Path>,
-) -> Result<ServerStoreClient> {
+) -> Result<Client> {
     wait_for_server_ready(&build_unix_socket_probe_client(path)?).await?;
     build_authed_unix_socket_client(path, storage_dir).await
 }
@@ -453,12 +457,12 @@ struct ArtifactBatchUploadEntry {
     content_type:   Option<String>,
 }
 
-impl ServerStoreClient {
+impl Client {
     /// Build a client for tests that bypasses proxy discovery.
     #[cfg(test)]
     pub(crate) fn new_no_proxy(base_url: &str) -> Result<Self> {
         let http_client = cli_http_client_builder().no_proxy().build()?;
-        let client = fabro_api::Client::new_with_client(base_url, http_client.clone());
+        let client = fabro_api::ApiClient::new_with_client(base_url, http_client.clone());
         Ok(Self {
             client,
             http_client,
@@ -470,7 +474,7 @@ impl ServerStoreClient {
         self.clone()
     }
 
-    pub(crate) fn api(&self) -> &fabro_api::Client {
+    pub(crate) fn api(&self) -> &fabro_api::ApiClient {
         &self.client
     }
 

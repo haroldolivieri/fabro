@@ -9,7 +9,7 @@ use tracing::{debug, info};
 
 use crate::args::{CpArgs, ServerTargetArgs};
 use crate::command_context::CommandContext;
-use crate::server_client::ServerStoreClient;
+use crate::server_client::Client;
 use crate::shared::{print_json_pretty, split_run_path};
 
 #[derive(Debug)]
@@ -131,7 +131,7 @@ async fn resolve_client_and_run_id(
     cli: &CliSettings,
     cli_layer: &CliLayer,
     printer: Printer,
-) -> Result<(ServerStoreClient, fabro_types::RunId)> {
+) -> Result<(Client, fabro_types::RunId)> {
     let ctx = CommandContext::for_target(server, printer, cli.clone(), cli_layer)?;
     let client = ctx.server().await?;
     let run_id = client.resolve_run(run_prefix).await?.run_id;
@@ -139,7 +139,7 @@ async fn resolve_client_and_run_id(
 }
 
 async fn write_sandbox_file(
-    client: &ServerStoreClient,
+    client: &Client,
     run_id: &fabro_types::RunId,
     remote_path: &str,
     local_path: &Path,
@@ -157,7 +157,7 @@ async fn write_sandbox_file(
 }
 
 async fn upload_sandbox_file(
-    client: &ServerStoreClient,
+    client: &Client,
     run_id: &fabro_types::RunId,
     local_path: &Path,
     remote_path: &str,
@@ -169,7 +169,7 @@ async fn upload_sandbox_file(
 }
 
 async fn download_recursive(
-    client: &ServerStoreClient,
+    client: &Client,
     run_id: &fabro_types::RunId,
     remote_path: &str,
     local_path: &Path,
@@ -194,7 +194,7 @@ async fn download_recursive(
 }
 
 async fn upload_recursive(
-    client: &ServerStoreClient,
+    client: &Client,
     run_id: &fabro_types::RunId,
     local_path: &Path,
     remote_path: &str,

@@ -220,3 +220,37 @@ async fn gemini_multi_turn_cache() {
     let adapter = GeminiAdapter::new(api_key);
     run_multi_turn_cache_test(&adapter, "gemini-2.5-flash", 0.5).await;
 }
+
+#[fabro_macros::e2e_test(live("PORTKEY_API_KEY"))]
+async fn portkey_anthropic_complete() {
+    let portkey_url =
+        std::env::var("PORTKEY_URL").expect("PORTKEY_URL must be set for Portkey e2e");
+    let portkey_api_key =
+        std::env::var("PORTKEY_API_KEY").expect("PORTKEY_API_KEY must be set for Portkey e2e");
+    let provider_slug = std::env::var("PORTKEY_PROVIDER_SLUG").ok();
+
+    let mut headers = std::collections::HashMap::new();
+    headers.insert("x-portkey-api-key".to_string(), portkey_api_key);
+
+    let slug = provider_slug.as_deref().unwrap_or("anthropic");
+    headers.insert("x-portkey-provider".to_string(), slug.to_string());
+
+    let adapter = AnthropicAdapter::new("pk-portkey-dummy")
+        .with_base_url(portkey_url)
+        .with_default_headers(headers);
+
+    // PORTKEY_TEST_MODEL lets callers override the model — useful for Bedrock
+    // where inference profile IDs differ from standard Anthropic names.
+    let model = std::env::var("PORTKEY_TEST_MODEL")
+        .unwrap_or_else(|_| "claude-haiku-4-5".to_string());
+    let request = make_request(&model);
+    let response = adapter.complete(&request).await.unwrap();
+
+    assert!(
+        !response.text().is_empty(),
+        "response text should not be empty"
+    );
+    assert_eq!(response.finish_reason, FinishReason::Stop);
+    assert!(response.usage.input_tokens > 0);
+    assert!(response.usage.output_tokens > 0);
+}

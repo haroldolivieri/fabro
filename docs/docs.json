@@ -94,7 +94,8 @@
               "integrations/github",
               "integrations/daytona",
               "integrations/slack",
-              "integrations/brave-search"
+              "integrations/brave-search",
+              "integrations/portkey"
             ]
           },
           {

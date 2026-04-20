@@ -1,0 +1,160 @@
+---
+title: "Portkey AI Gateway"
+description: "Route Fabro's LLM traffic through Portkey for observability, cost tracking, and provider routing"
+---
+
+Fabro can route all LLM requests through [Portkey](https://portkey.ai), an AI gateway that provides observability, cost tracking, fallback routing, and access to providers like AWS Bedrock and Azure OpenAI. When enabled, Portkey sits between Fabro and your LLM provider — Fabro sends requests to Portkey's gateway, and Portkey forwards them to the configured upstream provider.
+
+No code changes are needed. Set three environment variables and Fabro routes through Portkey automatically.
+
+## Prerequisites
+
+- A [Portkey](https://portkey.ai) account with an API key
+- At least one provider configured in your Portkey dashboard (direct API key, Model Catalog provider, or a routing config)
+
+## Setup paths
+
+Choose the path that matches your Portkey configuration. Each path lists the environment variables to set and how to configure model IDs in your workflow stylesheets.
+
+### Path A: Direct provider through Portkey
+
+Route requests to a provider's own API through Portkey for observability and cost tracking. Simplest setup.
+
+```bash title=".env"
+PORTKEY_URL=https://api.portkey.ai/v1
+PORTKEY_API_KEY=pk-xxx
+PORTKEY_PROVIDER=anthropic
+```
+
+Use standard model IDs in your stylesheet:
+
+```css
+* { model: claude-sonnet-4-6; }
+```
+
+<Note>
+If your provider API key is already set (e.g. `ANTHROPIC_API_KEY`), Fabro sends it as the auth header and Portkey forwards it. If the key is **not** set, Fabro creates a dummy key — Portkey handles authentication via your dashboard configuration.
+</Note>
+
+### Path B: AWS Bedrock through Portkey Model Catalog
+
+Route requests to AWS Bedrock using a pre-configured provider slug in Portkey's Model Catalog. AWS credentials are stored in Portkey's dashboard, so no local AWS keys are needed.
+
+```bash title=".env"
+PORTKEY_URL=https://api.portkey.ai/v1
+PORTKEY_API_KEY=pk-xxx
+PORTKEY_PROVIDER=anthropic
+PORTKEY_PROVIDER_SLUG=@bedrock-sandbox
+```
+
+`PORTKEY_PROVIDER=anthropic` tells Fabro to use the Anthropic Messages API format (which Bedrock Claude models accept). `PORTKEY_PROVIDER_SLUG=@bedrock-sandbox` tells Portkey to route to your Bedrock Model Catalog provider.
+
+**Model IDs must use Bedrock inference profile format** — region-prefixed identifiers instead of standard Anthropic names:
+
+```css
+* { model: eu.anthropic.claude-sonnet-4-6; }
+.code { model: eu.anthropic.claude-opus-4-6-v1; }
+```
+
+Common Bedrock inference profile IDs for Claude models:
+
+| Model | EU | US | Global |
+|-------|----|----|--------|
+| Claude Sonnet 4.6 | `eu.anthropic.claude-sonnet-4-6` | `us.anthropic.claude-sonnet-4-6` | `global.anthropic.claude-sonnet-4-6` |
+| Claude Opus 4.6 | `eu.anthropic.claude-opus-4-6-v1` | `us.anthropic.claude-opus-4-6-v1` | `global.anthropic.claude-opus-4-6-v1` |
+| Claude Haiku 4.5 | `eu.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` |
+| Claude Opus 4.5 | `eu.anthropic.claude-opus-4-5-20251101-v1:0` | `us.anthropic.claude-opus-4-5-20251101-v1:0` | `global.anthropic.claude-opus-4-5-20251101-v1:0` |
+
+Full list: [AWS Bedrock cross-region inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html)
+
+### Path C: AWS Bedrock with direct AWS credentials
+
+Route to Bedrock by passing AWS credentials through Portkey headers, without configuring a Model Catalog provider.
+
+```bash title=".env"
+PORTKEY_URL=https://api.portkey.ai/v1
+PORTKEY_API_KEY=pk-xxx
+PORTKEY_PROVIDER=anthropic
+PORTKEY_PROVIDER_SLUG=bedrock
+PORTKEY_AWS_ACCESS_KEY_ID=AKIA...
+PORTKEY_AWS_SECRET_ACCESS_KEY=xxx
+PORTKEY_AWS_REGION=eu-west-1
+# PORTKEY_AWS_SESSION_TOKEN=    # Optional: for STS/assumed-role access
+```
+
+Uses the same Bedrock inference profile model IDs as Path B.
+
+### Path D: Config-based routing (fallbacks, load balancing)
+
+Use a Portkey config for advanced routing strategies.
+
+```bash title=".env"
+PORTKEY_URL=https://api.portkey.ai/v1
+PORTKEY_API_KEY=pk-xxx
+PORTKEY_PROVIDER=anthropic
+PORTKEY_CONFIG=cfg-xxx
+```
+
+The config defines fallback chains, load balancing weights, or conditional routing rules. Create configs in the [Portkey dashboard](https://app.portkey.ai). `PORTKEY_PROVIDER` still determines the request format — set it to match the primary provider in your config.
+
+### Path E: OpenAI or Gemini through Portkey
+
+Works identically to Path A with a different provider value.
+
+```bash title=".env (OpenAI)"
+PORTKEY_URL=https://api.portkey.ai/v1
+PORTKEY_API_KEY=pk-xxx
+PORTKEY_PROVIDER=openai
+```
+
+```bash title=".env (Gemini)"
+PORTKEY_URL=https://api.portkey.ai/v1
+PORTKEY_API_KEY=pk-xxx
+PORTKEY_PROVIDER=gemini
+```
+
+For Azure OpenAI, set `PORTKEY_PROVIDER=openai` and `PORTKEY_PROVIDER_SLUG=@azure-prod` (your Azure Model Catalog provider slug).
+
+## Environment variable reference
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PORTKEY_URL` | Yes | Gateway base URL |
+| `PORTKEY_API_KEY` | Yes | Portkey API key |
+| `PORTKEY_PROVIDER` | Yes | Provider enum (`anthropic`, `openai`, `gemini`, `kimi`, `zai`, `minimax`, `inception`) — determines request format |
+| `PORTKEY_PROVIDER_SLUG` | No | `x-portkey-provider` header value. Defaults to `PORTKEY_PROVIDER`. Set when the Portkey routing target differs from the adapter (e.g. `@bedrock-sandbox`, `@azure-prod`). |
+| `PORTKEY_CONFIG` | No | Config ID or inline JSON for fallbacks/load balancing |
+| `PORTKEY_AWS_ACCESS_KEY_ID` | No | AWS access key for direct Bedrock (Path C) |
+| `PORTKEY_AWS_SECRET_ACCESS_KEY` | No | AWS secret key |
+| `PORTKEY_AWS_REGION` | No | AWS region (defaults to `us-east-1`) |
+| `PORTKEY_AWS_SESSION_TOKEN` | No | AWS STS session token |
+| `PORTKEY_METADATA` | No | JSON metadata for Portkey observability |
+
+## Known limitations
+
+- **All-or-nothing routing.** When Portkey is configured, all requests for the specified provider go through Portkey. You cannot route some models through Portkey and others directly. For selective routing, use `PORTKEY_CONFIG` with conditional routing rules.
+- **Single provider per configuration.** `PORTKEY_PROVIDER` specifies one adapter type. Multi-provider setups (e.g. Anthropic + OpenAI through Portkey) require a `PORTKEY_CONFIG` that handles routing internally.
+- **No model ID translation.** Fabro passes the model ID from your stylesheet verbatim. When targeting Bedrock, you must use Bedrock inference profile IDs, not standard Anthropic model names.
+
+## Troubleshooting
+
+**"PORTKEY_PROVIDER is not a recognized provider name"** — The value must be one of: `anthropic`, `openai`, `gemini`, `kimi`, `zai`, `minimax`, `inception`. Check for typos.
+
+**Requests fail with 401 from Portkey** — Verify `PORTKEY_API_KEY` is correct. Check the Portkey dashboard logs for details.
+
+**Requests fail with "model not found" from Bedrock** — You're likely using a standard Anthropic model ID instead of a Bedrock inference profile ID. Use the region-prefixed format: `eu.anthropic.claude-sonnet-4-6`.
+
+**Requests fail with 403 from Bedrock** — Your AWS credentials (via Model Catalog or direct `PORTKEY_AWS_*` headers) lack the `bedrock:InvokeModel` and `bedrock:GetInferenceProfile` IAM permissions.
+
+**Portkey env vars are set but requests go directly to the provider** — All three required variables (`PORTKEY_URL`, `PORTKEY_API_KEY`, `PORTKEY_PROVIDER`) must be set. If any is missing, Portkey integration is silently disabled.
+
+## Further reading
+
+<Columns cols={2}>
+  <Card title="Portkey Docs" icon="book" href="https://portkey.ai/docs">
+    Portkey documentation — configs, provider setup, observability.
+  </Card>
+  <Card title="Bedrock Models" icon="cloud" href="https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html">
+    AWS Bedrock cross-region inference profile model IDs.
+  </Card>
+</Columns>

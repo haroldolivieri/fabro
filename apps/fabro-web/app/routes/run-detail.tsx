@@ -95,10 +95,9 @@ type LifecycleActionResult =
 
 export type RunDetailActionResult = PreviewActionResult | LifecycleActionResult;
 
-interface ArchiveToastState {
+export interface LifecycleToastState {
   activeArchiveToastId: string | null;
-  lastArchiveResultKey: string | null;
-  lastUnarchiveResultKey: string | null;
+  lastProcessed: RunDetailActionResult | null;
 }
 
 type ToastApi = Pick<ReturnType<typeof useToast>, "push" | "dismiss">;
@@ -186,10 +185,9 @@ export default function RunDetail({ loaderData, params }: { loaderData: RunDetai
   const { push, dismiss } = useToast();
   const demoMode = useDemoMode();
   const tabs = allTabs.filter((t) => !t.demoOnly || demoMode);
-  const archiveToastStateRef = useRef<ArchiveToastState>({
+  const lifecycleToastStateRef = useRef<LifecycleToastState>({
     activeArchiveToastId: null,
-    lastArchiveResultKey: null,
-    lastUnarchiveResultKey: null,
+    lastProcessed: null,
   });
 
   useRunEventSource(run?.id ?? undefined, {
@@ -218,18 +216,20 @@ export default function RunDetail({ loaderData, params }: { loaderData: RunDetai
   }, [cancelFetcher.data, push]);
 
   useEffect(() => {
-    archiveToastStateRef.current = handleArchiveToastResult(
+    lifecycleToastStateRef.current = handleLifecycleToastResult(
+      "archive",
       archiveFetcher.data,
-      archiveToastStateRef.current,
+      lifecycleToastStateRef.current,
       { push, dismiss },
       () => submitIntent(unarchiveFetcher, "unarchive"),
     );
   }, [archiveFetcher.data, dismiss, push, unarchiveFetcher]);
 
   useEffect(() => {
-    archiveToastStateRef.current = handleUnarchiveToastResult(
+    lifecycleToastStateRef.current = handleLifecycleToastResult(
+      "unarchive",
       unarchiveFetcher.data,
-      archiveToastStateRef.current,
+      lifecycleToastStateRef.current,
       { push, dismiss },
     );
   }, [dismiss, push, unarchiveFetcher.data]);
@@ -462,46 +462,20 @@ function isLifecycleActionFailure(
   return value.ok === false;
 }
 
-function lifecycleResultKey(result: RunDetailActionResult | undefined): string | null {
-  if (!result || result.intent === "preview") return null;
-
-  if (isLifecycleActionFailure(result)) {
-    return [
-      result.intent,
-      "error",
-      String(result.error?.status ?? ""),
-      result.error?.errors[0]?.detail ?? "",
-    ].join(":");
-  }
-
-  return [
-    result.intent,
-    "ok",
-    result.run.id,
-    result.run.status,
-    result.run.status_reason ?? "",
-    result.run.created_at ?? "",
-  ].join(":");
-}
-
-export function handleArchiveToastResult(
+export function handleLifecycleToastResult(
+  intent: "archive" | "unarchive",
   result: RunDetailActionResult | undefined,
-  state: ArchiveToastState,
+  state: LifecycleToastState,
   toastApi: ToastApi,
-  onUnarchive: () => void,
-): ArchiveToastState {
-  if (!result || result.intent !== "archive") return state;
+  onUnarchive?: () => void,
+): LifecycleToastState {
+  if (!result || result.intent !== intent) return state;
+  if (state.lastProcessed === result) return state;
 
-  const resultKey = lifecycleResultKey(result);
-  if (state.lastArchiveResultKey === resultKey) return state;
-
-  const nextState = {
-    ...state,
-    lastArchiveResultKey: resultKey,
-  };
+  const nextState: LifecycleToastState = { ...state, lastProcessed: result };
 
   if (isLifecycleActionFailure(result)) {
-    toastApi.push({ message: mapError(result.error, "archive"), tone: "error" });
+    toastApi.push({ message: mapError(result.error, intent), tone: "error" });
     return nextState;
   }
 
@@ -509,47 +483,18 @@ export function handleArchiveToastResult(
     toastApi.dismiss(state.activeArchiveToastId);
   }
 
-  return {
-    ...nextState,
-    activeArchiveToastId: toastApi.push({
-      message: "Run archived.",
-      action: {
-        label: "Unarchive",
-        onClick: onUnarchive,
-      },
-    }),
-  };
-}
-
-export function handleUnarchiveToastResult(
-  result: RunDetailActionResult | undefined,
-  state: ArchiveToastState,
-  toastApi: ToastApi,
-): ArchiveToastState {
-  if (!result || result.intent !== "unarchive") return state;
-
-  const resultKey = lifecycleResultKey(result);
-  if (state.lastUnarchiveResultKey === resultKey) return state;
-
-  const nextState = {
-    ...state,
-    lastUnarchiveResultKey: resultKey,
-  };
-
-  if (isLifecycleActionFailure(result)) {
-    toastApi.push({ message: mapError(result.error, "unarchive"), tone: "error" });
-    return nextState;
+  if (intent === "archive") {
+    return {
+      ...nextState,
+      activeArchiveToastId: toastApi.push({
+        message: "Run archived.",
+        action: onUnarchive ? { label: "Unarchive", onClick: onUnarchive } : undefined,
+      }),
+    };
   }
 
-  if (state.activeArchiveToastId) {
-    toastApi.dismiss(state.activeArchiveToastId);
-  }
   toastApi.push({ message: "Run restored." });
-
-  return {
-    ...nextState,
-    activeArchiveToastId: null,
-  };
+  return { ...nextState, activeArchiveToastId: null };
 }
 
 function submitIntent(

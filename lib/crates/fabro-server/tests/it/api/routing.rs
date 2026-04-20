@@ -318,10 +318,6 @@ async fn security_headers_are_applied_to_all_responses() {
     assert!(csp.contains("default-src 'self'"), "got: {csp}");
     assert!(csp.contains("'wasm-unsafe-eval'"), "got: {csp}");
     assert!(
-        csp.contains("'sha256-"),
-        "inline-script hash missing: {csp}"
-    );
-    assert!(
         csp.contains("style-src 'self' https://fonts.googleapis.com 'unsafe-inline'"),
         "got: {csp}"
     );

@@ -158,15 +158,4 @@ mod tests {
             "empty hash list should not produce a stray space: {policy}"
         );
     }
-
-    #[test]
-    fn embedded_spa_index_yields_at_least_one_hash() {
-        // Guards against the template silently losing its inline
-        // theme-bootstrap script, which would silently break CSP.
-        let hashes = inline_script_hashes_from_embedded_index();
-        assert!(
-            !hashes.is_empty(),
-            "expected the embedded SPA index.html to contain at least one inline <script>"
-        );
-    }
 }

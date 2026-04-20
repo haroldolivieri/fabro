@@ -10,6 +10,7 @@ use fabro_api::types;
 use fabro_config::Storage;
 use fabro_http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use fabro_http::multipart::{Form, Part};
+use fabro_model::Model;
 use fabro_server::bind::Bind;
 use fabro_store::{EventEnvelope, RunSummary, StageId};
 use fabro_types::settings::SettingsLayer;
@@ -40,9 +41,11 @@ pub(crate) struct ServerStoreClient {
     refresh_lock:      Arc<Mutex<()>>,
 }
 
+pub(crate) type Client = ServerStoreClient;
+
 #[derive(Clone)]
 struct ClientBundle {
-    client:       fabro_api::Client,
+    client:       fabro_api::ApiClient,
     http_client:  fabro_http::HttpClient,
     bearer_token: Option<String>,
 }
@@ -153,7 +156,7 @@ fn client_bundle(
     http_client: fabro_http::HttpClient,
     bearer_token: Option<String>,
 ) -> ClientBundle {
-    let client = fabro_api::Client::new_with_client(base_url, http_client.clone());
+    let client = fabro_api::ApiClient::new_with_client(base_url, http_client.clone());
     ClientBundle {
         client,
         http_client,
@@ -175,7 +178,6 @@ fn refreshable_oauth(
     Ok(None)
 }
 
-#[cfg(test)]
 pub(crate) async fn connect_server(storage_dir: &Path) -> Result<ServerStoreClient> {
     connect_api_client_bundle(storage_dir).await
 }
@@ -256,7 +258,11 @@ async fn connect_api_client_bundle(storage_dir: &Path) -> Result<ServerStoreClie
     connect_local_api_client_bundle(storage_dir, &user_config::active_settings_path(None)).await
 }
 
-pub(crate) async fn connect_api_client(storage_dir: &Path) -> Result<fabro_api::Client> {
+#[allow(
+    dead_code,
+    reason = "Retained for pending storage-backed internal callers and referenced in existing design docs."
+)]
+pub(crate) async fn connect_api_client(storage_dir: &Path) -> Result<fabro_api::ApiClient> {
     connect_api_client_bundle(storage_dir)
         .await
         .map(|client| client.client_bundle().client)
@@ -576,7 +582,7 @@ impl ServerStoreClient {
         request: F,
     ) -> Result<progenitor_client::ResponseValue<T>>
     where
-        F: FnOnce(fabro_api::Client) -> Fut + Clone,
+        F: FnOnce(fabro_api::ApiClient) -> Fut + Clone,
         Fut: std::future::Future<
                 Output = std::result::Result<
                     progenitor_client::ResponseValue<T>,
@@ -831,6 +837,165 @@ impl ServerStoreClient {
             .id
             .parse()
             .map_err(|err| anyhow!("invalid run ID from server: {err}"))
+    }
+
+    pub(crate) async fn list_secrets(&self) -> Result<Vec<types::SecretMetadata>> {
+        let response = self
+            .send_api(|client| async move { client.list_secrets().send().await })
+            .await?;
+        Ok(response.into_inner().data)
+    }
+
+    pub(crate) async fn create_secret(
+        &self,
+        body: types::CreateSecretRequest,
+    ) -> Result<types::SecretMetadata> {
+        let response = self
+            .send_api(
+                |client| async move { client.create_secret().body(body.clone()).send().await },
+            )
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub(crate) async fn delete_secret_by_name(&self, name: &str) -> Result<()> {
+        self.send_api(|client| async move {
+            client
+                .delete_secret_by_name()
+                .body(types::DeleteSecretRequest {
+                    name: name.to_string(),
+                })
+                .send()
+                .await
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn list_models(
+        &self,
+        provider: Option<&str>,
+        query: Option<&str>,
+    ) -> Result<Vec<Model>> {
+        let mut offset = 0u64;
+        let mut models = Vec::new();
+
+        loop {
+            let response = self
+                .send_api(|client| async move {
+                    let mut request = client.list_models().page_limit(100u64).page_offset(offset);
+                    if let Some(provider) = provider {
+                        request = request.provider(provider.to_string());
+                    }
+                    if let Some(query) = query {
+                        request = request.query(query.to_string());
+                    }
+                    request.send().await
+                })
+                .await?;
+            let parsed = response.into_inner();
+            let count = parsed.data.len() as u64;
+            models.extend(convert_type::<_, Vec<Model>>(parsed.data)?);
+            if !parsed.meta.has_more {
+                break;
+            }
+            offset += count;
+        }
+
+        Ok(models)
+    }
+
+    pub(crate) async fn test_model(
+        &self,
+        id: &str,
+        mode: Option<types::ModelTestMode>,
+    ) -> Result<types::ModelTestResult> {
+        let response = self
+            .send_api(|client| async move {
+                let mut request = client.test_model().id(id.to_string());
+                if let Some(mode) = mode {
+                    request = request.mode(mode);
+                }
+                request.send().await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub(crate) async fn attach_events(
+        &self,
+        run_ids: &[String],
+    ) -> Result<progenitor_client::ByteStream> {
+        let response = self
+            .send_api(|client| async move {
+                let mut request = client.attach_events();
+                if !run_ids.is_empty() {
+                    request = request.run_id(run_ids.join(","));
+                }
+                request.send().await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub(crate) async fn get_system_info(&self) -> Result<types::SystemInfoResponse> {
+        let response = self
+            .send_api(|client| async move { client.get_system_info().send().await })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub(crate) async fn get_system_disk_usage(
+        &self,
+        verbose: bool,
+    ) -> Result<types::DiskUsageResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client.get_system_disk_usage().verbose(verbose).send().await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub(crate) async fn prune_runs(
+        &self,
+        body: types::PruneRunsRequest,
+    ) -> Result<types::PruneRunsResponse> {
+        let response = self
+            .send_api(|client| async move { client.prune_runs().body(body.clone()).send().await })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub(crate) async fn get_health(&self) -> Result<()> {
+        self.send_api(|client| async move { client.get_health().send().await })
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn run_diagnostics(&self) -> Result<types::DiagnosticsReport> {
+        let response = self
+            .send_api(|client| async move { client.run_diagnostics().send().await })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub(crate) async fn get_github_repo(
+        &self,
+        owner: &str,
+        name: &str,
+    ) -> Result<types::RepoCheckResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .get_github_repo()
+                    .owner(owner.to_string())
+                    .name(name.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
     }
 
     pub(crate) async fn run_preflight(

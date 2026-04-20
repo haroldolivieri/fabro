@@ -15,10 +15,7 @@ pub(super) async fn info_command(
 ) -> Result<()> {
     let ctx = CommandContext::for_connection(&args.connection, printer, cli.clone(), cli_layer)?;
     let server = ctx.server().await?;
-    let response = server
-        .send_api(|client| async move { client.get_system_info().send().await })
-        .await?
-        .into_inner();
+    let response = server.get_system_info().await?;
 
     if cli.output.format == OutputFormat::Json {
         print_json_pretty(&response)?;

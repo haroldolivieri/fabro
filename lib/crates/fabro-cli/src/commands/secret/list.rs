@@ -8,7 +8,7 @@ use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
 
 use crate::args::SecretListArgs;
-use crate::server_client::ServerStoreClient;
+use crate::server_client::Client;
 use crate::shared::print_json_pretty;
 
 fn format_age(dt: DateTime<Utc>, now: DateTime<Utc>) -> String {
@@ -23,15 +23,12 @@ fn format_age(dt: DateTime<Utc>, now: DateTime<Utc>) -> String {
 }
 
 pub(super) async fn list_command(
-    client: &ServerStoreClient,
+    client: &Client,
     _args: &SecretListArgs,
     cli: &CliSettings,
     printer: Printer,
 ) -> Result<()> {
-    let response = client
-        .send_api(|api| async move { api.list_secrets().send().await })
-        .await?;
-    let secrets = response.into_inner().data;
+    let secrets = client.list_secrets().await?;
     if cli.output.format == OutputFormat::Json {
         print_json_pretty(&secrets)?;
         return Ok(());

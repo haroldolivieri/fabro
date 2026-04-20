@@ -20,17 +20,35 @@ pub fn process_exists(pid: u32) -> bool {
 
 /// Check whether a process with the given PID is still running.
 ///
-/// On Unix, this treats zombie / defunct processes as not running even though
-/// they still have a visible PID until their parent reaps them. If the
-/// follow-up `ps` probe fails, this falls back to `process_exists(pid)` to
-/// preserve the old conservative behavior.
+/// On Unix, delegates to `process_exists` (a `kill(pid, 0)` probe). Unreaped
+/// zombies count as running here because the callers are hot paths (test
+/// harness marker scans, daemon-liveness probes) where a zombie window is
+/// sub-millisecond and the ~2 ms cost of an authoritative zombie check via
+/// `ps` would dominate. For the narrow set of callers that genuinely need
+/// to treat zombies as stopped (notably the `fabro server stop` polling
+/// loop, which can wait out its full timeout on a zombie child), use
+/// `process_running_strict`.
 pub fn process_running(pid: u32) -> bool {
+    process_exists(pid)
+}
+
+/// Like `process_running`, but treats zombie / defunct processes as not
+/// running.
+///
+/// On Unix, follows a cheap `kill(pid, 0)` probe with a `ps` shell-out to
+/// read the process state character and excludes `Z`/`z` entries. Falls
+/// back to `process_exists(pid)` when the `ps` probe fails, preserving the
+/// old conservative behavior. On non-unix, identical to `process_exists`.
+///
+/// Prefer `process_running` unless you are polling for a child you cannot
+/// `wait()` on — the `ps` invocation costs ~2 ms per call on macOS and is
+/// wasted on hot paths that have no zombie exposure.
+pub fn process_running_strict(pid: u32) -> bool {
     #[cfg(unix)]
     {
         if !process_exists(pid) {
             return false;
         }
-
         unix_process_state(pid).is_none_or(|state| !matches!(state, 'Z' | 'z'))
     }
     #[cfg(not(unix))]
@@ -52,7 +70,6 @@ fn unix_process_state(pid: u32) -> Option<char> {
     if !output.status.success() {
         return None;
     }
-
     String::from_utf8_lossy(&output.stdout)
         .chars()
         .find(|ch| !ch.is_whitespace())
@@ -155,22 +172,23 @@ mod tests {
     use std::process::{Command, Stdio};
     use std::time::Duration;
 
-    use super::{process_exists, process_group_alive, process_running};
+    use super::{process_exists, process_group_alive, process_running, process_running_strict};
     use crate::pre_exec::pre_exec_setpgid;
 
     #[test]
     fn process_running_returns_true_for_current_process() {
         assert!(process_exists(std::process::id()));
         assert!(process_running(std::process::id()));
+        assert!(process_running_strict(std::process::id()));
     }
 
     #[cfg(unix)]
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "process-state test needs to spawn a short-lived child and intentionally leave it unreaped"
+        reason = "zombie-detection test needs to spawn a short-lived child and intentionally leave it unreaped"
     )]
-    fn process_running_returns_false_for_unreaped_zombie_child() {
+    fn process_running_strict_returns_false_for_unreaped_zombie_child() {
         let mut child = Command::new("sh")
             .args(["-c", "exit 0"])
             .spawn()
@@ -184,8 +202,12 @@ mod tests {
             "unreaped zombie should still have a visible pid"
         );
         assert!(
-            !process_running(pid),
-            "unreaped zombie should not count as a running process"
+            process_running(pid),
+            "cheap process_running treats zombies as alive by design"
+        );
+        assert!(
+            !process_running_strict(pid),
+            "process_running_strict should treat zombies as stopped"
         );
 
         let _status = child.wait().expect("child should remain waitable");

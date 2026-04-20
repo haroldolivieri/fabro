@@ -16,7 +16,6 @@ use assert_cmd::Command;
 use fabro_config::Storage;
 use fabro_types::RunId;
 use regex::Regex;
-use serde::Serialize;
 use serde_json::{Map, Value, json};
 use toml::Value as TomlValue;
 use toml::map::Map as TomlMap;
@@ -294,17 +293,34 @@ enum SessionMode {
     Process,
 }
 
-#[derive(Debug, Serialize)]
-struct ClientMarker {
-    pid:           u32,
-    touched_at_ms: u128,
-}
-
 static SESSION_REFS: OnceLock<Mutex<HashMap<PathBuf, usize>>> = OnceLock::new();
 
 fn session_refs() -> &'static Mutex<HashMap<PathBuf, usize>> {
     SESSION_REFS.get_or_init(|| Mutex::new(HashMap::new()))
 }
+
+// Gate the stale-session reap so it fires at most once per process. The
+// reap scans /tmp/fx/{n-*,p-*} to clean up after a prior nextest run
+// that crashed; it's correctness-for-safety work that does not need to
+// happen on every TestContext::new. One gate per SessionMode preserves
+// the existing call structure without introducing cross-mode coupling.
+static NEXTEST_REAPED: OnceLock<()> = OnceLock::new();
+static PROCESS_REAPED: OnceLock<()> = OnceLock::new();
+
+// Advisory-lock-based peer-presence marker. Each test process opens
+// `<session_root>/clients/<pid>` once, holds a shared (LOCK_SH) flock
+// for the lifetime of any live TestContext in the process, and
+// releases it explicitly in `cleanup_session_root` when the refcount
+// drops to zero. Peers detect liveness by attempting LOCK_EX: if it
+// succeeds, the owner is gone (normal exit, panic, SIGKILL, or zombie
+// — the kernel releases flocks at process exit in every case), and
+// the stale marker file is removed.
+//
+// The slot stores the marker path so subsequent rebounds in the same
+// process (e.g., after a drop-to-zero followed by a new TestContext)
+// can re-validate the invariant: a process only ever participates in
+// one session root.
+static MARKER_HANDLE: Mutex<Option<(PathBuf, File)>> = Mutex::new(None);
 
 #[expect(
     clippy::disallowed_methods,
@@ -327,13 +343,6 @@ fn test_case_id() -> String {
             format!("{nanos:032x}")
         });
     ulid
-}
-
-fn current_timestamp_ms() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time should be after unix epoch")
-        .as_millis()
 }
 
 fn current_pid() -> u32 {
@@ -467,6 +476,18 @@ fn with_session_lock<T>(root: &Path, f: impl FnOnce() -> T) -> T {
     result
 }
 
+// Iterate `<root>/clients/` and for each marker file attempt a
+// non-blocking exclusive flock. Success means the previous owner has
+// released the lock (normal exit, panic, SIGKILL, or zombie — the
+// kernel releases flocks at process exit regardless), and the stale
+// marker file is removed. `EWOULDBLOCK` means the owner is still
+// alive and holding LOCK_SH.
+//
+// Same-process subtlety: if our own PID's marker file is in the
+// listing, we have LOCK_SH on it via `MARKER_HANDLE`. On Linux and
+// macOS, flock locks are per-open-file-description, so a fresh
+// `open()` here returns an FD that sees the shared lock and correctly
+// reports EWOULDBLOCK when asked for LOCK_EX.
 fn live_marker_count(root: &Path) -> usize {
     let clients_dir = session_clients_dir(root);
     let Ok(entries) = std::fs::read_dir(&clients_dir) else {
@@ -480,30 +501,73 @@ fn live_marker_count(root: &Path) -> usize {
                 .to_string_lossy()
                 .parse::<u32>()
                 .ok()
-                .map(|pid| (pid, entry.path()))
+                .map(|_pid| entry.path())
         })
-        .filter(|(pid, path)| {
-            if fabro_proc::process_running(*pid) {
-                true
-            } else {
+        .filter(|path| {
+            // Open read-write so LOCK_EX has the access mode it expects
+            // on the widest set of platforms. If the file is missing
+            // between read_dir and open, treat it as already gone.
+            let Ok(file) = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(path)
+            else {
+                return false;
+            };
+            // If the lock is acquired, the previous owner is gone; drop
+            // the file handle (releasing our just-acquired lock) and
+            // remove the marker. Anything else (`Ok(false)` meaning
+            // still held, `Err(_)` for unexpected IO errors) is treated
+            // conservatively as live.
+            if matches!(fabro_proc::try_flock_exclusive(&file), Ok(true)) {
+                drop(file);
                 let _ = std::fs::remove_file(path);
                 false
+            } else {
+                true
             }
         })
         .count()
 }
 
+// Open (or reopen, after a session-drop-to-zero) the per-process
+// marker file and hold a shared advisory lock on it in
+// `MARKER_HANDLE`. Called from inside the `with_session_lock` block
+// of `TestContext::new`.
 fn write_marker(root: &Path) {
-    let marker = ClientMarker {
-        pid:           current_pid(),
-        touched_at_ms: current_timestamp_ms(),
-    };
-    let marker_path = session_marker_path(root, marker.pid);
+    let marker_path = session_marker_path(root, current_pid());
     ensure_parent_dir(&marker_path);
-    let contents =
-        serde_json::to_vec(&marker).expect("client marker should serialize to JSON bytes");
-    std::fs::write(&marker_path, contents)
-        .unwrap_or_else(|err| panic!("failed to write {}: {err}", marker_path.display()));
+
+    let mut slot = MARKER_HANDLE.lock().expect("MARKER_HANDLE lock poisoned");
+
+    if let Some((existing_path, _)) = slot.as_ref() {
+        debug_assert_eq!(
+            existing_path, &marker_path,
+            "marker handle path drifted — session root changed mid-process?"
+        );
+        if marker_path.exists() {
+            return;
+        }
+        // Marker was removed (e.g., by a peer's reap) while we thought
+        // we still owned it. Re-establish by replacing the handle.
+        slot.take();
+    }
+
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .read(true)
+        .write(true)
+        .open(&marker_path)
+        .unwrap_or_else(|err| panic!("failed to open {}: {err}", marker_path.display()));
+    let acquired = fabro_proc::try_flock_shared(&file)
+        .unwrap_or_else(|err| panic!("failed to flock {}: {err}", marker_path.display()));
+    assert!(
+        acquired,
+        "unexpected contention acquiring LOCK_SH on freshly created marker {}",
+        marker_path.display()
+    );
+    *slot = Some((marker_path, file));
 }
 
 fn managed_storage_settings(storage_dir: &Path, rest: &str) -> String {
@@ -898,6 +962,17 @@ fn reap_isolated_servers(root: &Path) {
 
 fn cleanup_session_root(root: &Path) {
     with_session_lock(root, || {
+        // Release our own advisory lock first so `live_marker_count`
+        // below can observe that no one is holding the marker file,
+        // then remove the file. Order matters: if we unlinked before
+        // dropping the handle, peers would still see our LOCK_SH on
+        // the (now-unlinked but still open) inode and count us as
+        // live, preventing the server teardown.
+        {
+            let mut slot = MARKER_HANDLE.lock().expect("MARKER_HANDLE lock poisoned");
+            // Dropping the File closes the FD and releases LOCK_SH.
+            slot.take();
+        }
         let marker_path = session_marker_path(root, current_pid());
         let _ = std::fs::remove_file(&marker_path);
         let live_count = live_marker_count(root);
@@ -964,8 +1039,8 @@ impl TestContext {
             .expect("failed to create temp dir");
         let root_path = context_root.path().to_path_buf();
         let (_, test_run_id, session_paths) = session_paths();
-        reap_stale_session_roots(SessionMode::Nextest);
-        reap_stale_session_roots(SessionMode::Process);
+        NEXTEST_REAPED.get_or_init(|| reap_stale_session_roots(SessionMode::Nextest));
+        PROCESS_REAPED.get_or_init(|| reap_stale_session_roots(SessionMode::Process));
         with_session_lock(&session_paths.root, || {
             std::fs::create_dir_all(session_clients_dir(&session_paths.root)).unwrap_or_else(
                 |err| {

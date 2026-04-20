@@ -169,6 +169,16 @@ struct PendingInstall {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct LlmProvidersInput {
     providers: Vec<LlmProviderInput>,
+    portkey:   Option<PortkeyInstallInput>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct PortkeyInstallInput {
+    url:           String,
+    api_key:       String,
+    provider:      String,
+    provider_slug: Option<String>,
+    config:        Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -504,12 +514,12 @@ async fn put_install_llm(
     }
     observe_operator(&state, &headers);
 
-    if input.providers.is_empty() {
-        return (
+    // At least one provider key OR a portkey config is required.
+    if input.providers.is_empty() && input.portkey.is_none() {
+        return install_error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(serde_json::json!({ "error": "at least one LLM provider is required" })),
-        )
-            .into_response();
+            "add at least one LLM provider key or configure Portkey",
+        );
     }
 
     for provider in &input.providers {
@@ -521,6 +531,18 @@ async fn put_install_llm(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 format!("api_key is required for {}", provider.provider.as_str()),
             );
+        }
+    }
+
+    if let Some(portkey) = &input.portkey {
+        if portkey.url.trim().is_empty() {
+            return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, "portkey url is required");
+        }
+        if portkey.api_key.trim().is_empty() {
+            return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, "portkey api_key is required");
+        }
+        if portkey.provider.trim().is_empty() {
+            return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, "portkey provider is required");
         }
     }
 
@@ -812,6 +834,37 @@ async fn post_install_finish(
             secret_type: VaultSecretType::Credential,
             description: None,
         });
+    }
+
+    if let Some(portkey) = llm.portkey {
+        for (name, value) in [
+            ("PORTKEY_URL",      portkey.url),
+            ("PORTKEY_API_KEY",  portkey.api_key),
+            ("PORTKEY_PROVIDER", portkey.provider),
+        ] {
+            vault_secrets.push(VaultSecretWrite {
+                name:        name.to_string(),
+                value,
+                secret_type: VaultSecretType::Environment,
+                description: None,
+            });
+        }
+        if let Some(slug) = portkey.provider_slug {
+            vault_secrets.push(VaultSecretWrite {
+                name:        "PORTKEY_PROVIDER_SLUG".to_string(),
+                value:       slug,
+                secret_type: VaultSecretType::Environment,
+                description: None,
+            });
+        }
+        if let Some(config) = portkey.config {
+            vault_secrets.push(VaultSecretWrite {
+                name:        "PORTKEY_CONFIG".to_string(),
+                value:       config,
+                secret_type: VaultSecretType::Environment,
+                description: None,
+            });
+        }
     }
 
     let mut server_env_secrets = Vec::new();

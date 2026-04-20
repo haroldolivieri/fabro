@@ -86,14 +86,23 @@ export async function testInstallLlm(
   }
 }
 
+export type PortkeyInstallData = {
+  url: string;
+  api_key: string;
+  provider: string;
+  provider_slug?: string;
+  config?: string;
+};
+
 export async function putInstallLlm(
   token: string,
   providers: InstallLlmProviderInput[],
+  portkey?: PortkeyInstallData,
 ): Promise<void> {
   const response = await installFetch("/install/llm", token, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ providers }),
+    body: JSON.stringify({ providers, ...(portkey ? { portkey } : {}) }),
   });
   if (!response.ok) {
     throw new Error(await readInstallError(response, "install llm request failed"));

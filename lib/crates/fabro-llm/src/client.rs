@@ -138,6 +138,9 @@ impl Client {
                 project_id:    None,
             });
         }
+        if let Some(portkey) = crate::portkey::PortkeyConfig::from_env() {
+            portkey.apply(&mut credentials);
+        }
         Self::from_credentials(credentials).await
     }
 

@@ -7378,6 +7378,7 @@ mod tests {
     use axum::http::{Request, header};
     use fabro_interview::{AnswerValue, ControlInterviewer, Interviewer, Question, QuestionType};
     use fabro_model::Provider;
+    use fabro_test::{assert_axum_status, expect_axum_bytes, expect_axum_json, expect_axum_status};
     use fabro_types::settings::ServerAuthMethod;
     use fabro_types::{InterviewQuestionRecord, InterviewQuestionType, RunBlobId, RunId, fixtures};
     use serde_json::json;
@@ -7412,6 +7413,28 @@ mod tests {
     async fn body_json(body: Body) -> serde_json::Value {
         let bytes = to_bytes(body, usize::MAX).await.unwrap();
         serde_json::from_slice(&bytes).unwrap()
+    }
+
+    async fn assert_status(response: axum::response::Response, expected: StatusCode) {
+        assert_axum_status(response, expected, concat!(file!(), ":", line!())).await;
+    }
+
+    async fn checked_response(
+        response: axum::response::Response,
+        expected: StatusCode,
+    ) -> axum::response::Response {
+        expect_axum_status(response, expected, concat!(file!(), ":", line!())).await
+    }
+
+    async fn response_json(
+        response: axum::response::Response,
+        expected: StatusCode,
+    ) -> serde_json::Value {
+        expect_axum_json(response, expected, concat!(file!(), ":", line!())).await
+    }
+
+    async fn response_bytes(response: axum::response::Response, expected: StatusCode) -> Vec<u8> {
+        expect_axum_bytes(response, expected, concat!(file!(), ":", line!())).await
     }
 
     fn api(path: &str) -> String {
@@ -7484,7 +7507,7 @@ type = "http"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_status(response, StatusCode::INTERNAL_SERVER_ERROR).await;
     }
 
     #[tokio::test]
@@ -7508,9 +7531,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["name"], "/tmp/test.pem");
         assert_eq!(body["type"], "file");
         assert_eq!(body["description"], "Test certificate");
@@ -7532,7 +7553,7 @@ type = "http"
             .oneshot(webhook_request(None, None, body))
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_status(response, StatusCode::UNAUTHORIZED).await;
     }
 
     #[tokio::test]
@@ -7545,7 +7566,7 @@ type = "http"
             .oneshot(webhook_request(Some(&bad_signature), None, body))
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_status(response, StatusCode::UNAUTHORIZED).await;
     }
 
     #[tokio::test]
@@ -7558,7 +7579,7 @@ type = "http"
             .oneshot(webhook_request(Some(&signature), None, body))
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_status(response, StatusCode::OK).await;
     }
 
     #[tokio::test]
@@ -7571,7 +7592,7 @@ type = "http"
             .oneshot(webhook_request(Some(&signature), None, body))
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_status(response, StatusCode::OK).await;
     }
 
     #[tokio::test]
@@ -7588,7 +7609,7 @@ type = "http"
             ))
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_status(response, StatusCode::OK).await;
     }
 
     #[tokio::test]
@@ -7632,7 +7653,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_status(response, StatusCode::OK).await;
         let listed = state.vault.read().await.list();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].name, "openai_codex");
@@ -7667,8 +7688,7 @@ type = "http"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let data = body["data"].as_array().expect("data should be an array");
         let entry = data
             .iter()
@@ -7700,7 +7720,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test]
@@ -7740,7 +7760,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test]
@@ -7762,7 +7782,7 @@ type = "http"
             ))
             .unwrap();
         let create_response = app.clone().oneshot(create_req).await.unwrap();
-        assert_eq!(create_response.status(), StatusCode::OK);
+        assert_status(create_response, StatusCode::OK).await;
 
         let delete_req = Request::builder()
             .method("DELETE")
@@ -7777,7 +7797,7 @@ type = "http"
             .unwrap();
 
         let delete_response = app.oneshot(delete_req).await.unwrap();
-        assert_eq!(delete_response.status(), StatusCode::NO_CONTENT);
+        assert_status(delete_response, StatusCode::NO_CONTENT).await;
         assert!(state.vault.read().await.list().is_empty());
     }
 
@@ -8014,7 +8034,7 @@ type = "http"
             .unwrap();
 
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -8030,9 +8050,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["model_id"], "claude-sonnet-4-6");
         assert_eq!(body["status"], "skip");
     }
@@ -8050,7 +8068,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test]
@@ -8064,9 +8082,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let models = body["data"].as_array().unwrap();
         assert!(!models.is_empty());
         assert!(
@@ -8087,9 +8103,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let model_ids = body["data"]
             .as_array()
             .unwrap()
@@ -8114,7 +8128,7 @@ type = "http"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test]
@@ -8156,7 +8170,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let response = checked_response(response, StatusCode::SEE_OTHER).await;
         let location = response
             .headers()
             .get(axum::http::header::LOCATION)
@@ -8180,7 +8194,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let response = checked_response(response, StatusCode::SEE_OTHER).await;
         assert_eq!(
             response
                 .headers()
@@ -8204,7 +8218,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        let response = checked_response(response, StatusCode::OK).await;
         assert_eq!(
             response
                 .headers()
@@ -8226,9 +8240,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CREATED);
-
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::CREATED).await;
         assert!(body["id"].is_string());
         assert!(!body["id"].as_str().unwrap().is_empty());
     }
@@ -8245,7 +8257,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -8266,9 +8278,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["run_id"].as_str().unwrap(), run_id);
         assert_eq!(body["goal"].as_str().unwrap(), "Test");
         assert_eq!(body["title"].as_str().unwrap(), "Test");
@@ -8290,7 +8300,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -8310,8 +8320,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["run_id"], run_id);
     }
 
@@ -8332,8 +8341,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::BAD_REQUEST).await;
         let detail = body["errors"][0]["detail"]
             .as_str()
             .expect("error detail should be present");
@@ -8374,8 +8382,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["run_id"], newer_id);
         assert_ne!(body["run_id"], older_id);
     }
@@ -8407,8 +8414,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["run_id"], newer_id);
         assert_ne!(body["run_id"], older_id);
     }
@@ -8428,7 +8434,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -8456,9 +8462,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert!(body["data"].is_array());
         assert_eq!(body["meta"]["has_more"], false);
     }
@@ -8478,7 +8482,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -8510,7 +8514,7 @@ slug = "fabro"
         .await
         .unwrap_err();
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test]
@@ -8525,7 +8529,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -8551,8 +8555,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert!(body["nodes"].is_object());
     }
 
@@ -8598,8 +8601,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(
             body["pending_interviews"]["q-1"]["question"]["text"].as_str(),
             Some("Approve deploy?")
@@ -8634,8 +8636,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(
             body["run"]["provenance"]["server"]["version"],
             FABRO_VERSION
@@ -8683,7 +8684,7 @@ slug = "fabro"
             )
             .await
             .unwrap();
-        assert_eq!(login_response.status(), StatusCode::OK);
+        let login_response = checked_response(login_response, StatusCode::OK).await;
         let session_cookie = login_response
             .headers()
             .get(header::SET_COOKIE)
@@ -8705,8 +8706,7 @@ slug = "fabro"
             )
             .await
             .unwrap();
-        assert_eq!(create_response.status(), StatusCode::CREATED);
-        let create_body = body_json(create_response.into_body()).await;
+        let create_body = response_json(create_response, StatusCode::CREATED).await;
         let run_id = create_body["id"].as_str().unwrap();
 
         let state_response = app
@@ -8720,8 +8720,7 @@ slug = "fabro"
             )
             .await
             .unwrap();
-        assert_eq!(state_response.status(), StatusCode::OK);
-        let state_body = body_json(state_response.into_body()).await;
+        let state_body = response_json(state_response, StatusCode::OK).await;
         assert_eq!(
             state_body["run"]["provenance"]["subject"]["auth_method"],
             "dev_token"
@@ -8744,8 +8743,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CREATED);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::CREATED).await;
         let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
 
         let run_store = state.store.open_run_reader(&run_id).await.unwrap();
@@ -8812,8 +8810,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert!(body["data"].is_array());
         assert!(body["meta"]["has_more"].is_boolean());
     }
@@ -8851,7 +8848,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test]
@@ -8879,8 +8876,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::BAD_REQUEST).await;
         assert!(
             body["errors"][0]["detail"]
                 .as_str()
@@ -8914,7 +8910,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        checked_response(response, StatusCode::OK).await;
     }
 
     #[tokio::test]
@@ -8940,8 +8936,7 @@ slug = "fabro"
             .body(Body::from("hello blob"))
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let blob_id = body["id"].as_str().unwrap();
 
         let req = Request::builder()
@@ -8950,8 +8945,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let bytes = response_bytes(response, StatusCode::OK).await;
         assert_eq!(&bytes[..], b"hello blob");
     }
 
@@ -8972,11 +8966,7 @@ slug = "fabro"
             .body(Body::from("fn main() {}"))
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        if response.status() != StatusCode::NO_CONTENT {
-            let status = response.status();
-            let body = body_json(response.into_body()).await;
-            panic!("expected 204, got {status}: {body}");
-        }
+        assert_status(response, StatusCode::NO_CONTENT).await;
 
         let req = Request::builder()
             .method("GET")
@@ -8984,8 +8974,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["data"][0]["filename"], "src/lib.rs");
 
         let req = Request::builder()
@@ -8996,8 +8985,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let bytes = response_bytes(response, StatusCode::OK).await;
         assert_eq!(&bytes[..], b"fn main() {}");
     }
 
@@ -9038,7 +9026,7 @@ slug = "fabro"
             .body(Body::from("nope"))
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test]
@@ -9083,11 +9071,7 @@ slug = "fabro"
             ]))
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        if response.status() != StatusCode::NO_CONTENT {
-            let status = response.status();
-            let body = body_json(response.into_body()).await;
-            panic!("expected 204, got {status}: {body}");
-        }
+        assert_status(response, StatusCode::NO_CONTENT).await;
 
         let req = Request::builder()
             .method("GET")
@@ -9095,8 +9079,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["data"][0]["filename"], "logs/output.txt");
         assert_eq!(body["data"][1]["filename"], "src/lib.rs");
 
@@ -9108,8 +9091,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let bytes = response_bytes(response, StatusCode::OK).await;
         assert_eq!(&bytes[..], log_bytes);
     }
 
@@ -9134,7 +9116,7 @@ slug = "fabro"
             .body(Body::from(body))
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[tokio::test]
@@ -9150,8 +9132,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CREATED);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::CREATED).await;
         assert_eq!(body["status"], "submitted");
     }
 
@@ -9178,8 +9159,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["status"], "queued");
 
         let status = state
@@ -9226,7 +9206,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_status(response, StatusCode::CONFLICT).await;
     }
 
     #[tokio::test]
@@ -9274,7 +9254,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -9319,7 +9299,7 @@ slug = "fabro"
 
         let response = app.oneshot(req).await.unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        let response = checked_response(response, StatusCode::OK).await;
 
         let content_type = response
             .headers()
@@ -9370,7 +9350,7 @@ slug = "fabro"
 
         let response = app.oneshot(req).await.unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        let response = checked_response(response, StatusCode::OK).await;
         assert_eq!(
             response
                 .headers()
@@ -9400,7 +9380,7 @@ slug = "fabro"
         let response =
             render_graph_bytes_with_exe_override("not valid dot {{{", Some(&script_path)).await;
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_status(response, StatusCode::BAD_REQUEST).await;
     }
 
     #[cfg(unix)]
@@ -9438,7 +9418,7 @@ slug = "fabro"
 
         let response = render_graph_with_override("digraph { a -> b }", &script_path).await;
 
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_status(response, StatusCode::INTERNAL_SERVER_ERROR).await;
     }
 
     #[cfg(unix)]
@@ -9467,7 +9447,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -9483,8 +9463,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["data"].as_array().unwrap().len(), 0);
         assert_eq!(body["meta"]["has_more"].as_bool(), Some(false));
 
@@ -9508,8 +9487,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let items = body["data"].as_array().unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["run_id"].as_str().unwrap(), run_id.to_string());
@@ -9561,8 +9539,7 @@ slug = "fabro"
             )
             .await
             .unwrap();
-        assert_eq!(archive_response.status(), StatusCode::OK);
-        let archive_body = body_json(archive_response.into_body()).await;
+        let archive_body = response_json(archive_response, StatusCode::OK).await;
         assert_eq!(archive_body["status"].as_str(), Some("archived"));
 
         let hidden_response = app
@@ -9576,8 +9553,7 @@ slug = "fabro"
             )
             .await
             .unwrap();
-        assert_eq!(hidden_response.status(), StatusCode::OK);
-        let hidden_body = body_json(hidden_response.into_body()).await;
+        let hidden_body = response_json(hidden_response, StatusCode::OK).await;
         assert!(
             !hidden_body["data"]
                 .as_array()
@@ -9598,8 +9574,7 @@ slug = "fabro"
             )
             .await
             .unwrap();
-        assert_eq!(visible_response.status(), StatusCode::OK);
-        let visible_body = body_json(visible_response.into_body()).await;
+        let visible_body = response_json(visible_response, StatusCode::OK).await;
         let archived_item = visible_body["data"]
             .as_array()
             .unwrap()
@@ -9619,8 +9594,7 @@ slug = "fabro"
             )
             .await
             .unwrap();
-        assert_eq!(unarchive_response.status(), StatusCode::OK);
-        let unarchive_body = body_json(unarchive_response.into_body()).await;
+        let unarchive_body = response_json(unarchive_response, StatusCode::OK).await;
         assert_eq!(unarchive_body["status"].as_str(), Some("succeeded"));
 
         let restored_response = app
@@ -9633,8 +9607,7 @@ slug = "fabro"
             )
             .await
             .unwrap();
-        assert_eq!(restored_response.status(), StatusCode::OK);
-        let restored_body = body_json(restored_response.into_body()).await;
+        let restored_body = response_json(restored_response, StatusCode::OK).await;
         let restored_item = restored_body["data"]
             .as_array()
             .unwrap()
@@ -9660,7 +9633,7 @@ slug = "fabro"
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -9685,7 +9658,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_status(response, StatusCode::NO_CONTENT).await;
 
         let req = Request::builder()
             .method("GET")
@@ -9693,7 +9666,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -9718,8 +9691,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CONFLICT);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::CONFLICT).await;
         let short_run_id = &run_id[..12.min(run_id.len())];
         let expected = format!(
             "cannot remove active run {short_run_id} (status: submitted, use force=true or --force to force)"
@@ -9735,7 +9707,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_status(response, StatusCode::OK).await;
     }
 
     #[tokio::test]
@@ -9760,7 +9732,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_status(response, StatusCode::NO_CONTENT).await;
 
         let req = Request::builder()
             .method("GET")
@@ -9768,7 +9740,7 @@ slug = "fabro"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -9783,9 +9755,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["totals"]["runs"].as_i64().unwrap(), 0);
         assert_eq!(body["totals"]["input_tokens"].as_i64().unwrap(), 0);
         assert_eq!(body["totals"]["output_tokens"].as_i64().unwrap(), 0);
@@ -9807,8 +9777,7 @@ slug = "fabro"
             .unwrap();
 
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CREATED);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::CREATED).await;
         let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
 
         // Check status is submitted (no start, no scheduler running)
@@ -9876,8 +9845,7 @@ level = "debug"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CREATED);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::CREATED).await;
         let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
 
         let _run_dir = {
@@ -9960,7 +9928,7 @@ level = "debug"
             .unwrap();
 
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_status(response, StatusCode::OK).await;
 
         // Verify status is cancelled
         let req = Request::builder()
@@ -10028,8 +9996,7 @@ level = "debug"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["pending_control"].as_str(), Some("cancel"));
 
         let summary = state.store.runs().find(&run_id).await.unwrap().unwrap();
@@ -10059,7 +10026,7 @@ level = "debug"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_status(response, StatusCode::CONFLICT).await;
 
         let summary = state.store.runs().find(&run_id).await.unwrap().unwrap();
         assert_eq!(summary.pending_control, Some(RunControlAction::Cancel));
@@ -10085,8 +10052,7 @@ level = "debug"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["status"].as_str(), Some("running"));
         assert_eq!(body["pending_control"].as_str(), Some("pause"));
 
@@ -10151,8 +10117,7 @@ level = "debug"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["status"].as_str(), Some("paused"));
         assert_eq!(
             body["blocked_reason"].as_str(),
@@ -10189,8 +10154,7 @@ level = "debug"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["status"].as_str(), Some("paused"));
         assert_eq!(body["pending_control"].as_str(), Some("unpause"));
 
@@ -10239,8 +10203,7 @@ level = "debug"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["status"].as_str(), Some("blocked"));
         assert_eq!(
             body["blocked_reason"].as_str(),
@@ -10533,7 +10496,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_status(response, StatusCode::OK).await;
 
         runner.await.unwrap();
 
@@ -10543,8 +10506,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = response_bytes(response, StatusCode::OK).await;
         assert!(body.is_empty(), "expected an empty attach stream");
     }
 
@@ -10628,7 +10590,7 @@ timeout = "30s"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_status(response, StatusCode::CONFLICT).await;
     }
 
     #[tokio::test]
@@ -10643,7 +10605,7 @@ timeout = "30s"
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_status(response, StatusCode::UNPROCESSABLE_ENTITY).await;
     }
 
     #[tokio::test]
@@ -10657,8 +10619,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let data = body["data"].as_array().expect("data should be array");
         assert!(!data.is_empty(), "demo should return runs");
         let first = &data[0];
@@ -10684,8 +10645,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         // Should have StoreRunSummary fields, not RunStatusResponse fields
         assert!(body["run_id"].is_string(), "should have run_id field");
         assert!(body["goal"].is_string(), "should have goal field");
@@ -10711,7 +10671,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_status(response, StatusCode::NOT_FOUND).await;
     }
 
     #[tokio::test]
@@ -10734,8 +10694,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let data = body["data"].as_array().expect("data should be array");
         let item = data
             .iter()
@@ -10780,8 +10739,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let data = body["data"].as_array().expect("data should be array");
         let found = data
             .iter()
@@ -10859,8 +10817,7 @@ timeout = "30s"
                 .body(Body::empty())
                 .unwrap();
             let response = app.clone().oneshot(req).await.unwrap();
-            assert_eq!(response.status(), StatusCode::OK);
-            let body = body_json(response.into_body()).await;
+            let body = response_json(response, StatusCode::OK).await;
             assert_eq!(body["status"].as_str(), Some(expected_status));
         }
     }
@@ -11057,8 +11014,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         let data = body["data"].as_array().expect("data should be array");
         let item = data
             .iter()
@@ -11108,8 +11064,7 @@ timeout = "30s"
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(req).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response.into_body()).await;
+        let body = response_json(response, StatusCode::OK).await;
         assert_eq!(body["meta"]["has_more"].as_bool(), Some(true));
 
         let data = body["data"].as_array().expect("data should be array");

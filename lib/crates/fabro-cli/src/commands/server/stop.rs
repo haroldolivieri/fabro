@@ -16,17 +16,24 @@ pub(crate) async fn stop_server(storage_dir: &Path, timeout: Duration) -> Result
 
     fabro_proc::sigterm(record.pid);
 
+    // Use the zombie-aware predicate here: this loop is commonly driven
+    // against a child of the calling process (tests, install/uninstall
+    // in-process shutdowns, a foreground-launching shell). A zombie
+    // child would otherwise satisfy `process_running` until its parent
+    // waits, causing us to burn the whole `timeout` on an already-dead
+    // process. The `ps` cost (~2 ms per poll) is trivial compared to
+    // the 10 s timeout and is only paid while the process still exists.
     let poll_interval = Duration::from_millis(100);
     let mut elapsed = Duration::ZERO;
     while elapsed < timeout {
-        if !fabro_proc::process_running(record.pid) {
+        if !fabro_proc::process_running_strict(record.pid) {
             break;
         }
         time::sleep(poll_interval).await;
         elapsed += poll_interval;
     }
 
-    if fabro_proc::process_running(record.pid) {
+    if fabro_proc::process_running_strict(record.pid) {
         fabro_proc::sigkill(record.pid);
         time::sleep(Duration::from_millis(100)).await;
     }

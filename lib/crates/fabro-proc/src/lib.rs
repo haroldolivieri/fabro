@@ -11,14 +11,14 @@ mod signal;
 mod title;
 
 #[cfg(unix)]
-pub use flock::{flock_unlock, try_flock_exclusive};
+pub use flock::{flock_unlock, try_flock_exclusive, try_flock_shared};
 #[cfg(target_os = "linux")]
 pub use pre_exec::pre_exec_pdeathsig;
 #[cfg(unix)]
 pub use pre_exec::pre_exec_setpgid;
 #[cfg(unix)]
 pub use pre_exec::pre_exec_setsid;
-pub use signal::{process_exists, process_group_alive, process_running};
+pub use signal::{process_exists, process_group_alive, process_running, process_running_strict};
 #[cfg(unix)]
 pub use signal::{
     sigkill, sigkill_process_group, sigterm, sigterm_process_group, sigusr1, sigusr2,

@@ -20,6 +20,25 @@ pub fn try_flock_exclusive(file: &File) -> io::Result<bool> {
     }
 }
 
+/// Try to acquire a shared (read) lock on `file` without blocking.
+///
+/// Returns `Ok(true)` if the lock was acquired, `Ok(false)` if another
+/// process/fd already holds an incompatible lock, and `Err` for unexpected
+/// errors.
+pub fn try_flock_shared(file: &File) -> io::Result<bool> {
+    // SAFETY: flock() on a valid fd is safe; LOCK_NB makes it non-blocking.
+    let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) };
+    if ret == 0 {
+        Ok(true)
+    } else {
+        let err = io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(libc::EWOULDBLOCK) => Ok(false),
+            _ => Err(err),
+        }
+    }
+}
+
 /// Release any lock held on `file`.
 pub fn flock_unlock(file: &File) -> io::Result<()> {
     // SAFETY: flock() with LOCK_UN on a valid fd is safe.

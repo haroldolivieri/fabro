@@ -11,7 +11,7 @@ mod signal;
 mod title;
 
 #[cfg(unix)]
-pub use flock::{flock_unlock, try_flock_exclusive};
+pub use flock::{flock_unlock, try_flock_exclusive, try_flock_shared};
 #[cfg(target_os = "linux")]
 pub use pre_exec::pre_exec_pdeathsig;
 #[cfg(unix)]

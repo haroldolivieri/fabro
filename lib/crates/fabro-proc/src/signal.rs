@@ -20,42 +20,15 @@ pub fn process_exists(pid: u32) -> bool {
 
 /// Check whether a process with the given PID is still running.
 ///
-/// On Unix, this treats zombie / defunct processes as not running even though
-/// they still have a visible PID until their parent reaps them. If the
-/// follow-up `ps` probe fails, this falls back to `process_exists(pid)` to
-/// preserve the old conservative behavior.
+/// On Unix, delegates to `process_exists` (a `kill(pid, 0)` probe). Unreaped
+/// zombies count as running here because callers that need to distinguish
+/// zombies from live processes are a narrow minority; giving every caller
+/// the zombie check would require spawning `ps` on every probe and would
+/// dominate test-harness setup time at the scale we run it. If a caller
+/// needs zombie-aware semantics, it should be introduced alongside that
+/// caller with a benchmark in context.
 pub fn process_running(pid: u32) -> bool {
-    #[cfg(unix)]
-    {
-        if !process_exists(pid) {
-            return false;
-        }
-
-        unix_process_state(pid).is_none_or(|state| !matches!(state, 'Z' | 'z'))
-    }
-    #[cfg(not(unix))]
-    {
-        process_exists(pid)
-    }
-}
-
-#[cfg(unix)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Unix process-state detection shells out to ps to distinguish running processes from zombies"
-)]
-fn unix_process_state(pid: u32) -> Option<char> {
-    let output = std::process::Command::new("ps")
-        .args(["-ww", "-o", "stat=", "-p", &pid.to_string()])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    String::from_utf8_lossy(&output.stdout)
-        .chars()
-        .find(|ch| !ch.is_whitespace())
+    process_exists(pid)
 }
 
 /// Check whether any process in the given process group is alive.
@@ -162,33 +135,6 @@ mod tests {
     fn process_running_returns_true_for_current_process() {
         assert!(process_exists(std::process::id()));
         assert!(process_running(std::process::id()));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "process-state test needs to spawn a short-lived child and intentionally leave it unreaped"
-    )]
-    fn process_running_returns_false_for_unreaped_zombie_child() {
-        let mut child = Command::new("sh")
-            .args(["-c", "exit 0"])
-            .spawn()
-            .expect("short-lived child should spawn");
-        let pid = child.id();
-
-        std::thread::sleep(Duration::from_millis(100));
-
-        assert!(
-            process_exists(pid),
-            "unreaped zombie should still have a visible pid"
-        );
-        assert!(
-            !process_running(pid),
-            "unreaped zombie should not count as a running process"
-        );
-
-        let _status = child.wait().expect("child should remain waitable");
     }
 
     #[cfg(unix)]

@@ -24,7 +24,8 @@ pub struct AwsCredentials {
 
 /// Configuration for routing requests through the Portkey AI gateway.
 ///
-/// Constructed from environment variables via [`PortkeyConfig::from_env`].
+/// Constructed via [`PortkeyConfig::from_lookup`] (generic key-lookup) or the
+/// convenience wrapper [`PortkeyConfig::from_env`] (environment variables).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortkeyConfig {
     pub base_url:      String,         // PORTKEY_URL

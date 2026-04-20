@@ -63,11 +63,6 @@ _version = 1
 type = "http"
 url = "https://fabro.example.com/api/v1"
 
-[cli.target.tls]
-cert = "~/.fabro/tls/client.crt"
-key = "~/.fabro/tls/client.key"
-ca = "~/.fabro/tls/ca.crt"
-
 [cli.exec]
 prevent_idle_sleep = true
 
@@ -263,25 +258,6 @@ fabro model list --server https://fabro.example.com/api/v1
 An explicit `http(s)://...` target is always remote-by-contract. Fabro does not derive auth for that target from a local storage dir, an active local daemon record, or `~/.fabro/dev-token`. Use CLI OAuth (`fabro auth login --server ...`) or an explicit `FABRO_DEV_TOKEN` when you need remote auth.
 
 `fabro exec` does not automatically use `[cli.target]`. It only routes model traffic through a Fabro server when you pass `--server` for that invocation.
-
-### `[cli.target.tls]` section
-
-Optional client-certificate configuration for authenticating with an HTTP target. When present, the CLI presents a client certificate during the TLS handshake with your external HTTPS endpoint or reverse proxy.
-
-```toml title="settings.toml"
-[cli.target.tls]
-cert = "~/.fabro/tls/client.crt"
-key = "~/.fabro/tls/client.key"
-ca = "~/.fabro/tls/ca.crt"
-```
-
-| Key | Description |
-|---|---|
-| `cert` | Path to client certificate PEM file |
-| `key` | Path to client private key PEM file |
-| `ca` | Path to CA certificate PEM file (to verify the server) |
-
-Paths support `~/` expansion.
 
 ## `[run.pull_request]`
 

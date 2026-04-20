@@ -1,7 +1,7 @@
 use fabro_types::settings::cli::{
     CliAuthSettings, CliExecAgentSettings, CliExecLayer, CliExecModelSettings, CliExecSettings,
     CliLayer, CliLoggingSettings, CliOutputSettings, CliSettings, CliTargetLayer,
-    CliTargetSettings, CliTargetTlsSettings, CliUpdatesSettings,
+    CliTargetSettings, CliUpdatesSettings,
 };
 
 use super::{ResolveError, require_interp};
@@ -46,13 +46,8 @@ fn resolve_target(
     errors: &mut Vec<ResolveError>,
 ) -> Option<CliTargetSettings> {
     match target {
-        Some(CliTargetLayer::Http { url, tls }) => Some(CliTargetSettings::Http {
+        Some(CliTargetLayer::Http { url }) => Some(CliTargetSettings::Http {
             url: require_interp(url.as_ref(), "cli.target.url", errors),
-            tls: tls.as_ref().map(|tls| CliTargetTlsSettings {
-                cert: require_interp(tls.cert.as_ref(), "cli.target.tls.cert", errors),
-                key:  require_interp(tls.key.as_ref(), "cli.target.tls.key", errors),
-                ca:   require_interp(tls.ca.as_ref(), "cli.target.tls.ca", errors),
-            }),
         }),
         Some(CliTargetLayer::Unix { path }) => Some(CliTargetSettings::Unix {
             path: require_interp(path.as_ref(), "cli.target.path", errors),

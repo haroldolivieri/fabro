@@ -47,7 +47,7 @@ pub(crate) struct ServerTargetKey(String);
 impl ServerTargetKey {
     pub(crate) fn new(target: &ServerTarget) -> Result<Self, AuthStoreError> {
         match target {
-            ServerTarget::HttpUrl { api_url, .. } => canonical_http_target(api_url).map(Self),
+            ServerTarget::HttpUrl(api_url) => canonical_http_target(api_url).map(Self),
             ServerTarget::UnixSocket(path) => Ok(Self(format!(
                 "unix://{}",
                 canonical_socket_path(path)?.display()
@@ -460,10 +460,7 @@ mod tests {
     }
 
     fn https_target(value: &str) -> ServerTarget {
-        ServerTarget::HttpUrl {
-            api_url: value.to_string(),
-            tls:     None,
-        }
+        ServerTarget::HttpUrl(value.to_string())
     }
 
     #[cfg(unix)]

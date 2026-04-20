@@ -343,10 +343,7 @@ mod tests {
 
     #[test]
     fn token_transport_accepts_only_https_loopback_or_unix() {
-        let target = ServerTarget::HttpUrl {
-            api_url: "https://fabro.example.com".to_string(),
-            tls:     None,
-        };
+        let target = ServerTarget::HttpUrl("https://fabro.example.com".to_string());
         assert_eq!(
             is_loopback_or_unix_socket(&target).unwrap(),
             LoopbackClassification::Https

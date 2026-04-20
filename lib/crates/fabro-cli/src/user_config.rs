@@ -1,26 +1,12 @@
-#![expect(
-    clippy::disallowed_methods,
-    reason = "CLI user config: sync file I/O loading user config"
-)]
-
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 pub(crate) use fabro_config::user::*;
 use fabro_types::settings::cli::CliTargetSettings;
 use fabro_types::settings::{CliSettings, SettingsLayer};
 use fabro_util::version::FABRO_VERSION;
-use serde::{Deserialize, Serialize};
 use tracing::debug;
-
-/// Client-side TLS material for the CLI's remote server target.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) struct ClientTlsSettings {
-    pub cert: PathBuf,
-    pub key:  PathBuf,
-    pub ca:   PathBuf,
-}
 
 use crate::args::ServerTargetArgs;
 
@@ -76,17 +62,14 @@ pub(crate) fn apply_storage_dir_override(
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ServerTarget {
-    HttpUrl {
-        api_url: String,
-        tls:     Option<ClientTlsSettings>,
-    },
+    HttpUrl(String),
     UnixSocket(PathBuf),
 }
 
 impl fmt::Display for ServerTarget {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::HttpUrl { api_url, .. } => f.write_str(api_url),
+            Self::HttpUrl(api_url) => f.write_str(api_url),
             Self::UnixSocket(path) => write!(f, "unix://{}", path.display()),
         }
     }
@@ -101,8 +84,8 @@ pub(crate) fn build_public_http_client(
     target: &ServerTarget,
 ) -> Result<(fabro_http::HttpClient, String)> {
     match target {
-        ServerTarget::HttpUrl { api_url, tls } => {
-            let http_client = build_server_client_builder(tls.as_ref())?.build()?;
+        ServerTarget::HttpUrl(api_url) => {
+            let http_client = cli_http_client_builder().build()?;
             Ok((http_client, normalized_http_base_url(api_url).to_string()))
         }
         ServerTarget::UnixSocket(path) => {
@@ -124,29 +107,21 @@ pub(crate) fn build_public_http_client(
 }
 
 /// Pull the resolved CLI target configuration out of `[cli.target]`.
-/// Returns `(target_string, tls)` where `target_string` is either an
-/// http(s) URL or a unix socket path.
-fn cli_target_from_settings(settings: &CliSettings) -> Option<(String, Option<ClientTlsSettings>)> {
+/// Returns either an http(s) URL or a unix socket path.
+fn cli_target_from_settings(settings: &CliSettings) -> Option<String> {
     let target = settings.target.as_ref()?;
     match target {
-        CliTargetSettings::Http { url, tls } => {
-            let tls_settings = tls.as_ref().map(|tls| ClientTlsSettings {
-                cert: PathBuf::from(tls.cert.as_source()),
-                key:  PathBuf::from(tls.key.as_source()),
-                ca:   PathBuf::from(tls.ca.as_source()),
-            });
-            Some((url.as_source(), tls_settings))
-        }
-        CliTargetSettings::Unix { path } => Some((path.as_source(), None)),
+        CliTargetSettings::Http { url } => Some(url.as_source()),
+        CliTargetSettings::Unix { path } => Some(path.as_source()),
     }
 }
 
 fn configured_server_target(settings: &SettingsLayer) -> Result<Option<ServerTarget>> {
     let cli_settings = resolve_cli_settings(settings)?;
-    let Some((value, tls)) = cli_target_from_settings(&cli_settings) else {
+    let Some(value) = cli_target_from_settings(&cli_settings) else {
         return Ok(None);
     };
-    parse_server_target(&value, tls).map(Some)
+    parse_server_target(&value).map(Some)
 }
 
 pub(crate) fn default_server_target() -> ServerTarget {
@@ -177,12 +152,9 @@ pub(crate) fn storage_dir(settings: &SettingsLayer) -> anyhow::Result<PathBuf> {
     Ok(PathBuf::from(resolved_root.value))
 }
 
-fn parse_server_target(value: &str, tls: Option<ClientTlsSettings>) -> Result<ServerTarget> {
+fn parse_server_target(value: &str) -> Result<ServerTarget> {
     if value.starts_with("http://") || value.starts_with("https://") {
-        return Ok(ServerTarget::HttpUrl {
-            api_url: value.to_string(),
-            tls,
-        });
+        return Ok(ServerTarget::HttpUrl(value.to_string()));
     }
 
     let path = Path::new(value);
@@ -193,26 +165,15 @@ fn parse_server_target(value: &str, tls: Option<ClientTlsSettings>) -> Result<Se
     bail!("server target must be an http(s) URL or absolute Unix socket path")
 }
 
-fn explicit_server_target(
-    args: &ServerTargetArgs,
-    settings: &SettingsLayer,
-) -> Result<Option<ServerTarget>> {
-    let cli_settings = resolve_cli_settings(settings)?;
-    args.as_deref()
-        .map(|value| {
-            parse_server_target(
-                value,
-                cli_target_from_settings(&cli_settings).and_then(|(_, tls)| tls),
-            )
-        })
-        .transpose()
+fn explicit_server_target(args: &ServerTargetArgs) -> Result<Option<ServerTarget>> {
+    args.as_deref().map(parse_server_target).transpose()
 }
 
 pub(crate) fn resolve_nondefault_server_target(
     args: &ServerTargetArgs,
     settings: &SettingsLayer,
 ) -> Result<Option<ServerTarget>> {
-    Ok(explicit_server_target(args, settings)?.or(configured_server_target(settings)?))
+    Ok(explicit_server_target(args)?.or(configured_server_target(settings)?))
 }
 
 pub(crate) fn resolve_server_target(
@@ -222,48 +183,14 @@ pub(crate) fn resolve_server_target(
     Ok(resolve_nondefault_server_target(args, settings)?.unwrap_or_else(default_server_target))
 }
 
-pub(crate) fn exec_server_target(
-    args: &ServerTargetArgs,
-    settings: &SettingsLayer,
-) -> Result<Option<ServerTarget>> {
-    let target = explicit_server_target(args, settings)?;
+pub(crate) fn exec_server_target(args: &ServerTargetArgs) -> Result<Option<ServerTarget>> {
+    let target = explicit_server_target(args)?;
     debug!(?target, "Resolved exec server target");
     Ok(target)
 }
 
 pub(crate) fn cli_http_client_builder() -> fabro_http::HttpClientBuilder {
     fabro_http::HttpClientBuilder::new().user_agent(format!("fabro-cli/{FABRO_VERSION}"))
-}
-
-pub(crate) fn build_server_client_builder(
-    tls: Option<&ClientTlsSettings>,
-) -> anyhow::Result<fabro_http::HttpClientBuilder> {
-    let Some(tls) = tls else {
-        return Ok(cli_http_client_builder());
-    };
-
-    let cert_path = fabro_config::expand_tilde(&tls.cert);
-    let key_path = fabro_config::expand_tilde(&tls.key);
-    let ca_path = fabro_config::expand_tilde(&tls.ca);
-
-    let cert_pem = std::fs::read(&cert_path)
-        .with_context(|| format!("reading TLS client certificate {}", cert_path.display()))?;
-    let key_pem = std::fs::read(&key_path)
-        .with_context(|| format!("reading TLS client key {}", key_path.display()))?;
-    let ca_pem = std::fs::read(&ca_path)
-        .with_context(|| format!("reading TLS CA certificate {}", ca_path.display()))?;
-
-    let mut identity_pem = cert_pem;
-    identity_pem.push(b'\n');
-    identity_pem.extend_from_slice(&key_pem);
-
-    let identity = fabro_http::Identity::from_pem(&identity_pem)?;
-    let ca_cert = fabro_http::Certificate::from_pem(&ca_pem)?;
-
-    Ok(cli_http_client_builder()
-        .use_rustls_tls()
-        .identity(identity)
-        .add_root_certificate(ca_cert))
 }
 
 #[cfg(test)]
@@ -285,53 +212,28 @@ mod tests {
 
     #[test]
     fn exec_has_no_server_target_by_default() {
-        let settings = SettingsLayer::default();
-        assert_eq!(
-            exec_server_target(&server_target_args(None), &settings).unwrap(),
-            None
-        );
+        assert_eq!(exec_server_target(&server_target_args(None)).unwrap(), None);
     }
 
     #[test]
     fn exec_uses_cli_server_target() {
-        let settings = SettingsLayer::default();
         assert_eq!(
-            exec_server_target(
-                &server_target_args(Some("https://cli.example.com")),
-                &settings
-            )
-            .unwrap(),
-            Some(ServerTarget::HttpUrl {
-                api_url: "https://cli.example.com".to_string(),
-                tls:     None,
-            })
+            exec_server_target(&server_target_args(Some("https://cli.example.com"))).unwrap(),
+            Some(ServerTarget::HttpUrl("https://cli.example.com".to_string()))
         );
     }
 
     #[test]
     fn exec_supports_explicit_unix_socket_target() {
-        let settings = SettingsLayer::default();
         assert_eq!(
-            exec_server_target(&server_target_args(Some("/tmp/fabro.sock")), &settings).unwrap(),
+            exec_server_target(&server_target_args(Some("/tmp/fabro.sock"))).unwrap(),
             Some(ServerTarget::UnixSocket(PathBuf::from("/tmp/fabro.sock")))
         );
     }
 
     #[test]
     fn exec_ignores_configured_server_target_without_cli_override() {
-        let settings = parse_v2(
-            r#"
-_version = 1
-
-[cli.target]
-type = "http"
-url = "https://config.example.com"
-"#,
-        );
-        assert_eq!(
-            exec_server_target(&server_target_args(None), &settings).unwrap(),
-            None
-        );
+        assert_eq!(exec_server_target(&server_target_args(None)).unwrap(), None);
     }
 
     #[test]
@@ -347,10 +249,7 @@ url = "https://config.example.com"
         );
         assert_eq!(
             resolve_server_target(&server_target_args(None), &settings).unwrap(),
-            ServerTarget::HttpUrl {
-                api_url: "https://config.example.com".to_string(),
-                tls:     None,
-            }
+            ServerTarget::HttpUrl("https://config.example.com".to_string())
         );
     }
 
@@ -371,10 +270,7 @@ url = "https://config.example.com"
                 &settings
             )
             .unwrap(),
-            ServerTarget::HttpUrl {
-                api_url: "https://cli.example.com".to_string(),
-                tls:     None,
-            }
+            ServerTarget::HttpUrl("https://cli.example.com".to_string())
         );
     }
 
@@ -404,52 +300,13 @@ url = "https://config.example.com"
                 &settings
             )
             .unwrap(),
-            ServerTarget::HttpUrl {
-                api_url: "https://cli.example.com".to_string(),
-                tls:     None,
-            }
-        );
-    }
-
-    #[test]
-    fn remote_target_uses_tls_from_config() {
-        let expected_tls = ClientTlsSettings {
-            cert: PathBuf::from("cert.pem"),
-            key:  PathBuf::from("key.pem"),
-            ca:   PathBuf::from("ca.pem"),
-        };
-        let settings = parse_v2(
-            r#"
-_version = 1
-
-[cli.target]
-type = "http"
-url = "https://config.example.com"
-
-[cli.target.tls]
-cert = "cert.pem"
-key = "key.pem"
-ca = "ca.pem"
-"#,
-        );
-        assert_eq!(
-            exec_server_target(
-                &server_target_args(Some("https://cli.example.com")),
-                &settings
-            )
-            .unwrap(),
-            Some(ServerTarget::HttpUrl {
-                api_url: "https://cli.example.com".to_string(),
-                tls:     Some(expected_tls),
-            })
+            ServerTarget::HttpUrl("https://cli.example.com".to_string())
         );
     }
 
     #[test]
     fn invalid_server_target_is_rejected() {
-        let settings = SettingsLayer::default();
-        let error =
-            exec_server_target(&server_target_args(Some("fabro.internal")), &settings).unwrap_err();
+        let error = exec_server_target(&server_target_args(Some("fabro.internal"))).unwrap_err();
         assert_eq!(
             error.to_string(),
             "server target must be an http(s) URL or absolute Unix socket path"

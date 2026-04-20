@@ -25,8 +25,7 @@ pub mod workflow;
 
 pub use cli::{
     CliAuthSettings, CliExecAgentSettings, CliExecModelSettings, CliExecSettings, CliLayer,
-    CliLoggingSettings, CliOutputSettings, CliSettings, CliTargetSettings, CliTargetTlsSettings,
-    CliUpdatesSettings,
+    CliLoggingSettings, CliOutputSettings, CliSettings, CliTargetSettings, CliUpdatesSettings,
 };
 pub use duration::{Duration, ParseDurationError};
 pub use features::{FeaturesLayer, FeaturesSettings};

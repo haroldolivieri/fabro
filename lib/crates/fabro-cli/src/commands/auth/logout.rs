@@ -85,10 +85,7 @@ fn server_target_from_key(key: &ServerTargetKey) -> Result<ServerTarget> {
         return Ok(ServerTarget::UnixSocket(path.into()));
     }
     if value.starts_with("http://") || value.starts_with("https://") {
-        return Ok(ServerTarget::HttpUrl {
-            api_url: value,
-            tls:     None,
-        });
+        return Ok(ServerTarget::HttpUrl(value));
     }
     bail!("invalid auth store server key `{value}`")
 }
@@ -109,18 +106,14 @@ mod tests {
 
     #[test]
     fn rebuilds_server_target_from_http_key() {
-        let key = ServerTargetKey::new(&ServerTarget::HttpUrl {
-            api_url: "https://fabro.example.com/api/v1".to_string(),
-            tls:     None,
-        })
+        let key = ServerTargetKey::new(&ServerTarget::HttpUrl(
+            "https://fabro.example.com/api/v1".to_string(),
+        ))
         .unwrap();
 
         assert_eq!(
             server_target_from_key(&key).unwrap(),
-            ServerTarget::HttpUrl {
-                api_url: "https://fabro.example.com".to_string(),
-                tls:     None,
-            }
+            ServerTarget::HttpUrl("https://fabro.example.com".to_string())
         );
     }
 
@@ -137,10 +130,9 @@ mod tests {
 
     #[test]
     fn warning_mentions_local_removal_and_remote_failure() {
-        let key = ServerTargetKey::new(&ServerTarget::HttpUrl {
-            api_url: "https://fabro.example.com".to_string(),
-            tls:     None,
-        })
+        let key = ServerTargetKey::new(&ServerTarget::HttpUrl(
+            "https://fabro.example.com".to_string(),
+        ))
         .unwrap();
         let warning = format_warning(&key, "request failed with status 500");
         assert!(warning.contains("removed local session"));

@@ -62,7 +62,9 @@ fn spawn_worker_process(
         "--server",
         server,
         "--run-dir",
-        run_dir.to_str().unwrap(),
+        run_dir
+            .to_str()
+            .expect("run directory path should be valid UTF-8"),
         "--run-id",
         run_id,
         "--mode",

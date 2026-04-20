@@ -337,7 +337,7 @@ fn dump_file_summary(output_dir: &std::path::Path) -> String {
             entry
                 .path()
                 .strip_prefix(output_dir)
-                .unwrap()
+                .expect("walked file should stay under the output directory")
                 .to_string_lossy()
                 .replace('\\', "/")
         })

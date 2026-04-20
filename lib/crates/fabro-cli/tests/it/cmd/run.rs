@@ -96,7 +96,8 @@ fn run_completed_event(run_id: &str) -> serde_json::Value {
 }
 
 fn seed_anthropic_vault(storage_dir: &std::path::Path, base_url: &str) {
-    let mut vault = Vault::load(Storage::new(storage_dir).secrets_path()).unwrap();
+    let mut vault =
+        Vault::load(Storage::new(storage_dir).secrets_path()).expect("test vault should load");
     vault
         .set(
             "anthropic",
@@ -106,11 +107,11 @@ fn seed_anthropic_vault(storage_dir: &std::path::Path, base_url: &str) {
                     key: "vault-anthropic-key".to_string(),
                 },
             })
-            .unwrap(),
+            .expect("Anthropic test credential should serialize"),
             SecretType::Credential,
             None,
         )
-        .unwrap();
+        .expect("Anthropic credential should store in test vault");
     vault
         .set(
             "ANTHROPIC_BASE_URL",
@@ -118,7 +119,7 @@ fn seed_anthropic_vault(storage_dir: &std::path::Path, base_url: &str) {
             SecretType::Environment,
             None,
         )
-        .unwrap();
+        .expect("Anthropic base URL should store in test vault");
 }
 
 fn run_running_event(run_id: &str, seq: u32) -> serde_json::Value {

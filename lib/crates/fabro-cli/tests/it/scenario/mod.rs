@@ -25,7 +25,7 @@ fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .unwrap()
+        .expect("test runtime should build")
         .block_on(future)
 }
 

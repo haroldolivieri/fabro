@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 
+use fabro_auth::{ApiCredential, ApiKeyHeader};
 use fabro_model::Provider;
 use tracing::warn;
 
@@ -25,12 +27,12 @@ pub struct AwsCredentials {
 /// Constructed from environment variables via [`PortkeyConfig::from_env`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortkeyConfig {
-    pub base_url:      String,          // PORTKEY_URL
-    pub api_key:       String,          // PORTKEY_API_KEY
-    pub provider:      Provider,        // PORTKEY_PROVIDER (mandatory Provider enum)
-    pub provider_slug: Option<String>,  // PORTKEY_PROVIDER_SLUG
-    pub config:        Option<String>,  // PORTKEY_CONFIG
-    pub metadata:      Option<String>,  // PORTKEY_METADATA
+    pub base_url:      String,         // PORTKEY_URL
+    pub api_key:       String,         // PORTKEY_API_KEY
+    pub provider:      Provider,       // PORTKEY_PROVIDER (mandatory Provider enum)
+    pub provider_slug: Option<String>, // PORTKEY_PROVIDER_SLUG
+    pub config:        Option<String>, // PORTKEY_CONFIG
+    pub metadata:      Option<String>, // PORTKEY_METADATA
     pub aws:           Option<AwsCredentials>,
 }
 
@@ -48,7 +50,7 @@ impl PortkeyConfig {
     #[must_use]
     pub fn from_env() -> Option<Self> {
         let base_url = std::env::var("PORTKEY_URL").ok()?;
-        let api_key  = std::env::var("PORTKEY_API_KEY").ok()?;
+        let api_key = std::env::var("PORTKEY_API_KEY").ok()?;
 
         let provider_str = std::env::var("PORTKEY_PROVIDER").ok()?;
         let provider = match Provider::from_str(&provider_str) {
@@ -60,16 +62,16 @@ impl PortkeyConfig {
         };
 
         let provider_slug = std::env::var("PORTKEY_PROVIDER_SLUG").ok();
-        let config        = std::env::var("PORTKEY_CONFIG").ok();
-        let metadata      = std::env::var("PORTKEY_METADATA").ok();
+        let config = std::env::var("PORTKEY_CONFIG").ok();
+        let metadata = std::env::var("PORTKEY_METADATA").ok();
 
         let aws = match (
             std::env::var("PORTKEY_AWS_ACCESS_KEY_ID").ok(),
             std::env::var("PORTKEY_AWS_SECRET_ACCESS_KEY").ok(),
         ) {
             (Some(access_key_id), Some(secret_access_key)) => {
-                let region = std::env::var("PORTKEY_AWS_REGION")
-                    .unwrap_or_else(|_| "us-east-1".to_string());
+                let region =
+                    std::env::var("PORTKEY_AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
                 let session_token = std::env::var("PORTKEY_AWS_SESSION_TOKEN").ok();
                 Some(AwsCredentials {
                     access_key_id,
@@ -90,6 +92,95 @@ impl PortkeyConfig {
             metadata,
             aws,
         })
+    }
+
+    /// Build the Portkey-specific HTTP headers that must be injected into
+    /// every outbound request routed through the gateway.
+    fn build_headers(&self) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+
+        headers.insert("x-portkey-api-key".to_string(), self.api_key.clone());
+
+        let provider_value = self
+            .provider_slug
+            .as_deref()
+            .unwrap_or_else(|| self.provider.as_str())
+            .to_string();
+        headers.insert("x-portkey-provider".to_string(), provider_value);
+
+        if let Some(config) = &self.config {
+            headers.insert("x-portkey-config".to_string(), config.clone());
+        }
+
+        if let Some(metadata) = &self.metadata {
+            headers.insert("x-portkey-metadata".to_string(), metadata.clone());
+        }
+
+        if let Some(aws) = &self.aws {
+            headers.insert(
+                "x-portkey-aws-access-key-id".to_string(),
+                aws.access_key_id.clone(),
+            );
+            headers.insert(
+                "x-portkey-aws-secret-access-key".to_string(),
+                aws.secret_access_key.clone(),
+            );
+            headers.insert("x-portkey-aws-region".to_string(), aws.region.clone());
+            if let Some(session_token) = &aws.session_token {
+                headers.insert(
+                    "x-portkey-aws-session-token".to_string(),
+                    session_token.clone(),
+                );
+            }
+        }
+
+        headers
+    }
+
+    /// Build a dummy auth header for a provider.
+    ///
+    /// Portkey acts as the real auth layer; the underlying provider key is
+    /// replaced with a sentinel value that signals "routed via Portkey".
+    fn dummy_auth_header(provider: Provider) -> ApiKeyHeader {
+        match provider {
+            Provider::Anthropic => ApiKeyHeader::Custom {
+                name:  "x-api-key".to_string(),
+                value: "pk-portkey-dummy".to_string(),
+            },
+            _ => ApiKeyHeader::Bearer("pk-portkey-dummy".to_string()),
+        }
+    }
+
+    /// Inject Portkey gateway headers into the credential matching
+    /// `self.provider`.
+    ///
+    /// If no matching credential exists a new one is created with a dummy
+    /// auth key.  The Portkey headers are *inserted* into `extra_headers`
+    /// (existing keys are preserved).
+    pub fn apply(&self, credentials: &mut Vec<ApiCredential>) {
+        let portkey_headers = self.build_headers();
+
+        let credential = match credentials.iter_mut().find(|c| c.provider == self.provider) {
+            Some(existing) => existing,
+            None => {
+                credentials.push(ApiCredential {
+                    provider:      self.provider,
+                    auth_header:   Self::dummy_auth_header(self.provider),
+                    extra_headers: HashMap::new(),
+                    base_url:      None,
+                    codex_mode:    false,
+                    org_id:        None,
+                    project_id:    None,
+                });
+                credentials.last_mut().expect("just pushed")
+            }
+        };
+
+        credential.base_url = Some(self.base_url.clone());
+
+        for (key, value) in portkey_headers {
+            credential.extra_headers.insert(key, value);
+        }
     }
 }
 
@@ -119,8 +210,32 @@ mod tests {
         }
     }
 
+    fn empty_credential(provider: Provider) -> ApiCredential {
+        ApiCredential {
+            provider,
+            auth_header: ApiKeyHeader::Bearer("real-key".to_string()),
+            extra_headers: HashMap::new(),
+            base_url: None,
+            codex_mode: false,
+            org_id: None,
+            project_id: None,
+        }
+    }
+
+    fn portkey_config_anthropic() -> PortkeyConfig {
+        PortkeyConfig {
+            base_url:      "https://api.portkey.ai/v1".to_string(),
+            api_key:       "pk-test".to_string(),
+            provider:      Provider::Anthropic,
+            provider_slug: None,
+            config:        None,
+            metadata:      None,
+            aws:           None,
+        }
+    }
+
     // -----------------------------------------------------------------------
-    // Step 1 — failing cases
+    // from_env — failing cases
     // -----------------------------------------------------------------------
 
     #[test]
@@ -157,7 +272,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Step 5 — success cases
+    // from_env — success cases
     // -----------------------------------------------------------------------
 
     #[test]
@@ -187,7 +302,10 @@ mod tests {
         std::env::set_var("PORTKEY_CONFIG", "pc-config-abc");
         std::env::set_var("PORTKEY_METADATA", r#"{"user":"test"}"#);
         std::env::set_var("PORTKEY_AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
-        std::env::set_var("PORTKEY_AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        std::env::set_var(
+            "PORTKEY_AWS_SECRET_ACCESS_KEY",
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        );
         std::env::set_var("PORTKEY_AWS_REGION", "eu-west-1");
         std::env::set_var("PORTKEY_AWS_SESSION_TOKEN", "session-tok");
 
@@ -199,7 +317,10 @@ mod tests {
 
         let aws = cfg.aws.expect("aws should be Some");
         assert_eq!(aws.access_key_id, "AKIAIOSFODNN7EXAMPLE");
-        assert_eq!(aws.secret_access_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        assert_eq!(
+            aws.secret_access_key,
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        );
         assert_eq!(aws.region, "eu-west-1");
         assert_eq!(aws.session_token.as_deref(), Some("session-tok"));
     }
@@ -214,6 +335,301 @@ mod tests {
         std::env::set_var("PORTKEY_AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
 
         let cfg = PortkeyConfig::from_env().expect("should return Some");
-        assert!(cfg.aws.is_none(), "aws should be None when secret is missing");
+        assert!(
+            cfg.aws.is_none(),
+            "aws should be None when secret is missing"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // apply — new credential creation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn apply_creates_credential_when_none_exists() {
+        let cfg = portkey_config_anthropic();
+        let mut credentials: Vec<ApiCredential> = vec![];
+
+        cfg.apply(&mut credentials);
+
+        assert_eq!(credentials.len(), 1);
+        let cred = &credentials[0];
+
+        // Provider matches
+        assert_eq!(cred.provider, Provider::Anthropic);
+
+        // Dummy auth key was used (Custom header for Anthropic)
+        assert_eq!(cred.auth_header, ApiKeyHeader::Custom {
+            name:  "x-api-key".to_string(),
+            value: "pk-portkey-dummy".to_string(),
+        });
+
+        // base_url set to Portkey URL
+        assert_eq!(cred.base_url.as_deref(), Some("https://api.portkey.ai/v1"));
+
+        // Portkey headers injected
+        assert_eq!(
+            cred.extra_headers
+                .get("x-portkey-api-key")
+                .map(String::as_str),
+            Some("pk-test")
+        );
+        assert_eq!(
+            cred.extra_headers
+                .get("x-portkey-provider")
+                .map(String::as_str),
+            Some("anthropic")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // apply — modifying an existing credential
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn apply_modifies_existing_credential() {
+        let cfg = portkey_config_anthropic();
+        let original_header = ApiKeyHeader::Custom {
+            name:  "x-api-key".to_string(),
+            value: "real-anthropic-key".to_string(),
+        };
+        let mut credentials = vec![ApiCredential {
+            provider:      Provider::Anthropic,
+            auth_header:   original_header.clone(),
+            extra_headers: HashMap::new(),
+            base_url:      Some("https://old-url.example.com".to_string()),
+            codex_mode:    false,
+            org_id:        None,
+            project_id:    None,
+        }];
+
+        cfg.apply(&mut credentials);
+
+        assert_eq!(credentials.len(), 1);
+        let cred = &credentials[0];
+
+        // base_url overridden to Portkey URL
+        assert_eq!(cred.base_url.as_deref(), Some("https://api.portkey.ai/v1"));
+
+        // original auth_header preserved
+        assert_eq!(cred.auth_header, original_header);
+
+        // Portkey headers added
+        assert!(cred.extra_headers.contains_key("x-portkey-api-key"));
+        assert!(cred.extra_headers.contains_key("x-portkey-provider"));
+    }
+
+    #[test]
+    fn apply_preserves_existing_extra_headers() {
+        let cfg = portkey_config_anthropic();
+        let mut existing_headers = HashMap::new();
+        existing_headers.insert("ChatGPT-Account-Id".to_string(), "acct-123".to_string());
+        existing_headers.insert("originator".to_string(), "fabro".to_string());
+
+        let mut credentials = vec![ApiCredential {
+            provider:      Provider::Anthropic,
+            auth_header:   ApiKeyHeader::Bearer("real-key".to_string()),
+            extra_headers: existing_headers,
+            base_url:      None,
+            codex_mode:    false,
+            org_id:        None,
+            project_id:    None,
+        }];
+
+        cfg.apply(&mut credentials);
+
+        let cred = &credentials[0];
+
+        // Original headers preserved
+        assert_eq!(
+            cred.extra_headers
+                .get("ChatGPT-Account-Id")
+                .map(String::as_str),
+            Some("acct-123")
+        );
+        assert_eq!(
+            cred.extra_headers.get("originator").map(String::as_str),
+            Some("fabro")
+        );
+
+        // Portkey headers also present
+        assert!(cred.extra_headers.contains_key("x-portkey-api-key"));
+        assert!(cred.extra_headers.contains_key("x-portkey-provider"));
+    }
+
+    // -----------------------------------------------------------------------
+    // apply — provider slug
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn apply_sets_provider_slug_from_config() {
+        let cfg = PortkeyConfig {
+            provider_slug: Some("@bedrock-sandbox".to_string()),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = vec![];
+        cfg.apply(&mut credentials);
+
+        assert_eq!(
+            credentials[0]
+                .extra_headers
+                .get("x-portkey-provider")
+                .map(String::as_str),
+            Some("@bedrock-sandbox")
+        );
+    }
+
+    #[test]
+    fn apply_defaults_provider_slug_to_provider_name() {
+        let cfg = portkey_config_anthropic(); // provider_slug = None
+        let mut credentials: Vec<ApiCredential> = vec![];
+        cfg.apply(&mut credentials);
+
+        assert_eq!(
+            credentials[0]
+                .extra_headers
+                .get("x-portkey-provider")
+                .map(String::as_str),
+            Some("anthropic")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // apply — optional headers
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn apply_injects_config_header() {
+        let cfg = PortkeyConfig {
+            config: Some("cfg-xxx".to_string()),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = vec![];
+        cfg.apply(&mut credentials);
+
+        assert_eq!(
+            credentials[0]
+                .extra_headers
+                .get("x-portkey-config")
+                .map(String::as_str),
+            Some("cfg-xxx")
+        );
+    }
+
+    #[test]
+    fn apply_injects_metadata_header() {
+        let cfg = PortkeyConfig {
+            metadata: Some(r#"{"user":"alice"}"#.to_string()),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = vec![];
+        cfg.apply(&mut credentials);
+
+        assert_eq!(
+            credentials[0]
+                .extra_headers
+                .get("x-portkey-metadata")
+                .map(String::as_str),
+            Some(r#"{"user":"alice"}"#)
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // apply — AWS headers
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn apply_injects_aws_headers() {
+        let cfg = PortkeyConfig {
+            aws: Some(AwsCredentials {
+                access_key_id:     "AKID".to_string(),
+                secret_access_key: "SECRET".to_string(),
+                region:            "us-west-2".to_string(),
+                session_token:     Some("TOKEN".to_string()),
+            }),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = vec![];
+        cfg.apply(&mut credentials);
+
+        let headers = &credentials[0].extra_headers;
+        assert_eq!(
+            headers
+                .get("x-portkey-aws-access-key-id")
+                .map(String::as_str),
+            Some("AKID")
+        );
+        assert_eq!(
+            headers
+                .get("x-portkey-aws-secret-access-key")
+                .map(String::as_str),
+            Some("SECRET")
+        );
+        assert_eq!(
+            headers.get("x-portkey-aws-region").map(String::as_str),
+            Some("us-west-2")
+        );
+        assert_eq!(
+            headers
+                .get("x-portkey-aws-session-token")
+                .map(String::as_str),
+            Some("TOKEN")
+        );
+    }
+
+    #[test]
+    fn apply_skips_aws_session_token_when_absent() {
+        let cfg = PortkeyConfig {
+            aws: Some(AwsCredentials {
+                access_key_id:     "AKID".to_string(),
+                secret_access_key: "SECRET".to_string(),
+                region:            "us-east-1".to_string(),
+                session_token:     None,
+            }),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = vec![];
+        cfg.apply(&mut credentials);
+
+        let headers = &credentials[0].extra_headers;
+        assert!(headers.contains_key("x-portkey-aws-access-key-id"));
+        assert!(headers.contains_key("x-portkey-aws-secret-access-key"));
+        assert!(headers.contains_key("x-portkey-aws-region"));
+        assert!(
+            !headers.contains_key("x-portkey-aws-session-token"),
+            "session token header should be absent when token is None"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // apply — does not touch unrelated credentials
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn apply_does_not_touch_other_credentials() {
+        let cfg = portkey_config_anthropic(); // targets Anthropic
+        let openai_cred = empty_credential(Provider::OpenAi);
+        let anthropic_cred = empty_credential(Provider::Anthropic);
+        let mut credentials = vec![anthropic_cred, openai_cred.clone()];
+
+        cfg.apply(&mut credentials);
+
+        // OpenAI credential is unchanged
+        let openai_after = credentials
+            .iter()
+            .find(|c| c.provider == Provider::OpenAi)
+            .expect("openai credential should still be present");
+        assert_eq!(*openai_after, openai_cred);
+
+        // Anthropic credential was modified
+        let anthropic_after = credentials
+            .iter()
+            .find(|c| c.provider == Provider::Anthropic)
+            .expect("anthropic credential should be present");
+        assert!(
+            anthropic_after
+                .extra_headers
+                .contains_key("x-portkey-api-key")
+        );
     }
 }

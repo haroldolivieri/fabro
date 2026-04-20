@@ -23,7 +23,7 @@ use tokio::task::spawn_blocking;
 use super::run_export::StoreRunExport;
 use crate::args::StoreDumpArgs;
 use crate::command_context::CommandContext;
-use crate::server_client::ServerStoreClient;
+use crate::server_client::Client;
 use crate::shared::{absolute_or_current, print_json_pretty};
 
 pub(crate) async fn dump_command(
@@ -164,12 +164,12 @@ impl DumpDataSource for LocalDumpSource<'_> {
 }
 
 struct ServerDumpSource<'a> {
-    client: &'a ServerStoreClient,
+    client: &'a Client,
     run_id: &'a RunId,
 }
 
 impl<'a> ServerDumpSource<'a> {
-    fn new(client: &'a ServerStoreClient, run_id: &'a RunId) -> Self {
+    fn new(client: &'a Client, run_id: &'a RunId) -> Self {
         Self { client, run_id }
     }
 }

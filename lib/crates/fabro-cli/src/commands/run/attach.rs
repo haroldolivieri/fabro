@@ -74,7 +74,7 @@ pub(crate) async fn attach_run(
 }
 
 pub(crate) async fn attach_run_with_client(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     kill_on_detach: bool,
     styles: &'static Styles,
@@ -152,7 +152,7 @@ fn replay_run_with_client(
 }
 
 async fn attach_live_run_with_client(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     existing_events: Vec<EventEnvelope>,
     mut stream: server_client::RunAttachEventStream,
@@ -226,7 +226,7 @@ async fn attach_live_run_with_client(
 }
 
 async fn handle_pending_server_interview(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     auto_approve: bool,
     progress_ui: &mut run_progress::ProgressUI,
@@ -262,7 +262,7 @@ async fn handle_pending_server_interview(
 }
 
 async fn handle_detach_signal(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     kill_on_detach: bool,
     printer: Printer,
@@ -316,7 +316,7 @@ fn api_question_to_question(question: &types::ApiQuestion) -> Question {
 }
 
 async fn submit_server_interview_answer(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &RunId,
     qid: &str,
     answer: &fabro_interview::Answer,
@@ -625,7 +625,7 @@ mod tests {
                 .header("Content-Type", "application/json")
                 .body(terminal_run_state_response().to_string());
         });
-        let client = server_client::ServerStoreClient::new_no_proxy(&server.base_url()).unwrap();
+        let client = server_client::Client::new_no_proxy(&server.base_url()).unwrap();
 
         handle_detach_signal(&client, &run_id, true, Printer::Default).await;
 

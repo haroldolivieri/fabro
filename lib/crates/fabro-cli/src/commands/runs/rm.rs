@@ -21,7 +21,7 @@ pub(crate) async fn remove_command(
 
 async fn remove_from(
     args: &RunsRemoveArgs,
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     cli: &CliSettings,
     printer: Printer,
 ) -> Result<()> {
@@ -83,7 +83,7 @@ async fn remove_from(
 }
 
 async fn delete_server_run(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &fabro_types::RunId,
     force: bool,
 ) -> Result<()> {

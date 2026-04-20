@@ -16,18 +16,7 @@ pub(super) async fn events_command(
 ) -> Result<()> {
     let ctx = CommandContext::for_connection(&args.connection, printer, cli.clone(), cli_layer)?;
     let server = ctx.server().await?;
-
-    let run_ids = args.run_ids.join(",");
-    let response = server
-        .send_api(|client| async move {
-            let mut request = client.attach_events();
-            if !run_ids.is_empty() {
-                request = request.run_id(run_ids.clone());
-            }
-            request.send().await
-        })
-        .await?;
-    let mut stream = response.into_inner();
+    let mut stream = server.attach_events(&args.run_ids).await?;
     let mut pending = Vec::new();
 
     let json = cli.output.format == OutputFormat::Json;

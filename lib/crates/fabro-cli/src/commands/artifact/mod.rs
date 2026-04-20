@@ -9,7 +9,7 @@ use fabro_util::printer::Printer;
 
 use crate::args::{ArtifactCommand, ArtifactNamespace, ServerTargetArgs};
 use crate::command_context::CommandContext;
-use crate::server_client::ServerStoreClient;
+use crate::server_client::Client;
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub(super) struct ArtifactEntry {
@@ -29,7 +29,7 @@ pub(super) async fn resolve_artifacts(
     cli: &CliSettings,
     cli_layer: &CliLayer,
     printer: Printer,
-) -> Result<(RunId, ServerStoreClient, Vec<ArtifactEntry>)> {
+) -> Result<(RunId, Client, Vec<ArtifactEntry>)> {
     let ctx = CommandContext::for_target(server, printer, cli.clone(), cli_layer)?;
     let client = ctx.server().await?;
     let run_id = client.resolve_run(run_selector).await?.run_id;

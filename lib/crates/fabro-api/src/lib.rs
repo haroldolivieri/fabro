@@ -13,4 +13,4 @@
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
 }
-pub use generated::{Client, types};
+pub use generated::{Client as ApiClient, types};

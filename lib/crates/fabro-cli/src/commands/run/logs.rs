@@ -152,7 +152,7 @@ fn try_parse_relative_duration(s: &str) -> Option<chrono::Duration> {
 }
 
 async fn follow_store_logs(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &fabro_types::RunId,
     seq: u32,
     pretty: bool,
@@ -225,7 +225,7 @@ async fn follow_store_logs(
 }
 
 async fn run_concluded(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &fabro_types::RunId,
 ) -> Result<bool> {
     let state = client
@@ -239,7 +239,7 @@ async fn run_concluded(
 }
 
 async fn flush_remaining_store_events(
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     run_id: &fabro_types::RunId,
     next_seq: u32,
     pretty: bool,

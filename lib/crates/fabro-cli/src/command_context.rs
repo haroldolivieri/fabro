@@ -9,7 +9,7 @@ use fabro_util::printer::Printer;
 use tokio::sync::OnceCell;
 
 use crate::args::{ServerConnectionArgs, ServerTargetArgs};
-use crate::server_client::ServerStoreClient;
+use crate::server_client::Client;
 use crate::{server_client, user_config};
 
 #[derive(Clone, Debug)]
@@ -35,7 +35,7 @@ pub(crate) struct CommandContext {
     machine_settings: SettingsLayer,
     cli_settings:     CliSettings,
     server_mode:      ServerMode,
-    server:           OnceCell<Arc<ServerStoreClient>>,
+    server:           OnceCell<Arc<Client>>,
 }
 
 impl CommandContext {
@@ -135,7 +135,7 @@ impl CommandContext {
         &self.cli_settings
     }
 
-    pub(crate) async fn server(&self) -> Result<Arc<ServerStoreClient>> {
+    pub(crate) async fn server(&self) -> Result<Arc<Client>> {
         let server_mode = self.server_mode.clone();
         let base_config_path = self.base_config_path.clone();
         let machine_settings = self.machine_settings.clone();

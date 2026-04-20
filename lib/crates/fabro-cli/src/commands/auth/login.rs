@@ -132,7 +132,7 @@ pub(super) async fn login_command(
 #[cfg(unix)]
 async fn fetch_cli_auth_config(target: &ServerTarget) -> Result<types::CliAuthConfig> {
     let (http_client, base_url) = user_config::build_public_http_client(target)?;
-    let client = fabro_api::Client::new_with_client(&base_url, http_client);
+    let client = fabro_api::ApiClient::new_with_client(&base_url, http_client);
     client
         .get_cli_auth_config()
         .send()

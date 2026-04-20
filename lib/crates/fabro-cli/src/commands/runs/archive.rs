@@ -65,7 +65,7 @@ impl Action {
 async fn run_bulk(
     action: Action,
     identifiers: &[String],
-    client: &server_client::ServerStoreClient,
+    client: &server_client::Client,
     cli: &CliSettings,
     printer: Printer,
 ) -> Result<()> {

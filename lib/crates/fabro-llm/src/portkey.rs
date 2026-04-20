@@ -632,4 +632,113 @@ mod tests {
                 .contains_key("x-portkey-api-key")
         );
     }
+
+    // --- Scenario integration tests ---
+
+    #[test]
+    fn scenario_a_direct_provider() {
+        let config = portkey_config_anthropic();
+        let mut credentials: Vec<ApiCredential> = Vec::new();
+        config.apply(&mut credentials);
+        assert_eq!(credentials.len(), 1);
+        assert_eq!(credentials[0].provider, Provider::Anthropic);
+        assert_eq!(credentials[0].base_url.as_deref(), Some("https://api.portkey.ai/v1"));
+        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"anthropic".to_string()));
+        assert_eq!(credentials[0].auth_header, ApiKeyHeader::Custom {
+            name: "x-api-key".to_string(),
+            value: "pk-portkey-dummy".to_string(),
+        });
+    }
+
+    #[test]
+    fn scenario_b_bedrock_model_catalog() {
+        let config = PortkeyConfig {
+            provider_slug: Some("@bedrock-sandbox".to_string()),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = Vec::new();
+        config.apply(&mut credentials);
+        assert_eq!(credentials[0].provider, Provider::Anthropic);
+        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"@bedrock-sandbox".to_string()));
+        assert!(!credentials[0].extra_headers.contains_key("x-portkey-aws-access-key-id"));
+    }
+
+    #[test]
+    fn scenario_c_bedrock_direct_aws() {
+        let config = PortkeyConfig {
+            provider_slug: Some("bedrock".to_string()),
+            aws: Some(AwsCredentials {
+                access_key_id: "AKIA...".to_string(),
+                secret_access_key: "secret".to_string(),
+                region: "eu-west-1".to_string(),
+                session_token: None,
+            }),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = Vec::new();
+        config.apply(&mut credentials);
+        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"bedrock".to_string()));
+        assert_eq!(credentials[0].extra_headers.get("x-portkey-aws-access-key-id"), Some(&"AKIA...".to_string()));
+    }
+
+    #[test]
+    fn scenario_d_config_routing() {
+        let config = PortkeyConfig {
+            config: Some("cfg-xxx".to_string()),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = Vec::new();
+        config.apply(&mut credentials);
+        assert_eq!(credentials[0].extra_headers.get("x-portkey-config"), Some(&"cfg-xxx".to_string()));
+        assert!(credentials[0].extra_headers.contains_key("x-portkey-provider"));
+    }
+
+    #[test]
+    fn scenario_e_openai_through_portkey() {
+        let config = PortkeyConfig {
+            provider: Provider::OpenAi,
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = Vec::new();
+        config.apply(&mut credentials);
+        assert_eq!(credentials[0].provider, Provider::OpenAi);
+        assert_eq!(credentials[0].auth_header, ApiKeyHeader::Bearer("pk-portkey-dummy".to_string()));
+        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"openai".to_string()));
+    }
+
+    #[test]
+    fn scenario_e_gemini_through_portkey() {
+        let config = PortkeyConfig {
+            provider: Provider::Gemini,
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = Vec::new();
+        config.apply(&mut credentials);
+        assert_eq!(credentials[0].provider, Provider::Gemini);
+        assert_eq!(credentials[0].extra_headers.get("x-portkey-provider"), Some(&"gemini".to_string()));
+    }
+
+    #[test]
+    fn scenario_existing_api_key_preserved() {
+        let config = portkey_config_anthropic();
+        let mut credentials = vec![ApiCredential {
+            provider: Provider::Anthropic,
+            auth_header: ApiKeyHeader::Custom {
+                name: "x-api-key".to_string(),
+                value: "sk-ant-real-key".to_string(),
+            },
+            extra_headers: HashMap::new(),
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            codex_mode: false,
+            org_id: None,
+            project_id: None,
+        }];
+        config.apply(&mut credentials);
+        assert_eq!(credentials[0].auth_header, ApiKeyHeader::Custom {
+            name: "x-api-key".to_string(),
+            value: "sk-ant-real-key".to_string(),
+        });
+        assert_eq!(credentials[0].base_url.as_deref(), Some("https://api.portkey.ai/v1"));
+        assert!(credentials[0].extra_headers.contains_key("x-portkey-api-key"));
+    }
 }

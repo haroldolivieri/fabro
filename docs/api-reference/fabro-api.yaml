@@ -2241,16 +2241,19 @@ components:
           type: string
 
     InstallLlmProvidersInput:
-      description: LLM providers selected during browser install.
+      description: LLM providers selected during browser install. Provide direct provider keys, a Portkey gateway config, or both.
       type: object
       required:
         - providers
       properties:
         providers:
           type: array
-          minItems: 1
+          minItems: 0
           items:
             $ref: "#/components/schemas/InstallLlmProviderInput"
+        portkey:
+          description: Optional Portkey AI gateway configuration. When provided, all LLM traffic routes through the Portkey gateway.
+          $ref: "#/components/schemas/InstallPortkeyInput"
 
     InstallLlmProviderInput:
       description: One persisted LLM provider configuration collected during browser install. Supported providers in install v1 are `anthropic`, `openai`, and `gemini`.
@@ -2264,6 +2267,33 @@ components:
           example: anthropic
         api_key:
           type: string
+
+    InstallPortkeyInput:
+      description: Portkey AI gateway configuration collected during browser install.
+      type: object
+      required:
+        - url
+        - api_key
+        - provider
+      properties:
+        url:
+          type: string
+          description: Portkey gateway base URL (e.g. https://api.portkey.ai/v1).
+          example: https://api.portkey.ai/v1
+        api_key:
+          type: string
+          description: Portkey API key.
+        provider:
+          type: string
+          description: "Provider adapter to use. One of: anthropic, openai, gemini, kimi, zai, minimax, inception."
+          example: anthropic
+        provider_slug:
+          type: string
+          description: "Portkey routing target (e.g. @bedrock-sandbox). Defaults to provider when omitted."
+          example: "@bedrock-sandbox"
+        config:
+          type: string
+          description: Portkey config ID or inline JSON for advanced routing (fallbacks, load balancing).
 
     InstallLlmSummary:
       description: Redacted summary of persisted LLM install choices.

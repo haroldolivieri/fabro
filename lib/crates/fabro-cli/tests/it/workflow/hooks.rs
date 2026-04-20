@@ -74,7 +74,7 @@ fn conclusion_status(context: &fabro_test::TestContext) -> String {
     let run_dir = find_run_dir(&context);
     read_conclusion(&run_dir)["status"]
         .as_str()
-        .unwrap()
+        .expect("conclusion should include a string status")
         .to_string()
 }
 

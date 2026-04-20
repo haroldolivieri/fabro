@@ -16,9 +16,9 @@ use git2::{Repository, Signature};
 use crate::support::unique_run_id;
 
 fn list_metadata_run_ids(repo_dir: &Path) -> BTreeSet<String> {
-    let repo = Repository::discover(repo_dir).unwrap();
+    let repo = Repository::discover(repo_dir).expect("recovery fixture should be a git repo");
     repo.references()
-        .unwrap()
+        .expect("recovery fixture should list git references")
         .flatten()
         .filter_map(|reference| reference.name().map(ToOwned::to_owned))
         .filter_map(|name| {
@@ -29,37 +29,41 @@ fn list_metadata_run_ids(repo_dir: &Path) -> BTreeSet<String> {
 }
 
 fn metadata_checkpoints(repo_dir: &Path, run_id: &str) -> Vec<Checkpoint> {
-    let repo = Repository::discover(repo_dir).unwrap();
+    let repo = Repository::discover(repo_dir).expect("recovery fixture should be a git repo");
     let store = GitStore::new(repo);
-    let sig = Signature::now("Fabro", "noreply@fabro.sh").unwrap();
+    let sig =
+        Signature::now("Fabro", "noreply@fabro.sh").expect("test recovery signature should build");
     let branch = format!("fabro/meta/{run_id}");
     let bs = BranchStore::new(&store, &branch, &sig);
 
     bs.log(100)
-        .unwrap()
+        .expect("metadata branch log should load")
         .iter()
         .rev()
         .filter(|commit| commit.message.starts_with("checkpoint"))
         .map(|commit| {
-            serde_json::from_slice::<Checkpoint>(
-                &store
-                    .read_blob_at(commit.oid, "checkpoint.json")
-                    .unwrap()
-                    .unwrap(),
-            )
-            .unwrap()
+            let checkpoint_blob = store
+                .read_blob_at(commit.oid, "checkpoint.json")
+                .expect("checkpoint blob should load")
+                .expect("checkpoint blob should exist");
+            serde_json::from_slice::<Checkpoint>(&checkpoint_blob)
+                .expect("checkpoint blob should deserialize")
         })
         .collect()
 }
 
 fn latest_metadata_checkpoint(repo_dir: &Path, run_id: &str) -> Checkpoint {
-    let repo = Repository::discover(repo_dir).unwrap();
+    let repo = Repository::discover(repo_dir).expect("recovery fixture should be a git repo");
     let store = GitStore::new(repo);
     let tip = store
         .resolve_ref(&format!("fabro/meta/{run_id}"))
-        .unwrap()
-        .unwrap();
-    serde_json::from_slice(&store.read_blob_at(tip, "checkpoint.json").unwrap().unwrap()).unwrap()
+        .expect("metadata branch should resolve")
+        .expect("metadata branch tip should exist");
+    let checkpoint_blob = store
+        .read_blob_at(tip, "checkpoint.json")
+        .expect("latest checkpoint blob should load")
+        .expect("latest checkpoint blob should exist");
+    serde_json::from_slice(&checkpoint_blob).expect("latest checkpoint blob should deserialize")
 }
 
 fn timeline_run_shas(repo_dir: &Path, run_id: &str) -> Vec<Option<String>> {
@@ -85,7 +89,7 @@ fn timeline_node_names(repo_dir: &Path, run_id: &str) -> Vec<String> {
 fn build_timeline_when_ready(repo_dir: &Path, run_id: &str) -> RunTimeline {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
-        let repo = Repository::discover(repo_dir).unwrap();
+        let repo = Repository::discover(repo_dir).expect("recovery fixture should stay a git repo");
         let store = GitStore::new(repo);
         match build_timeline(&store, run_id) {
             Ok(timeline) => return timeline,
@@ -107,10 +111,10 @@ fn build_timeline_when_ready(repo_dir: &Path, run_id: &str) -> RunTimeline {
 fn delete_metadata_branch_when_ready(repo_dir: &Path, run_id: &str) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
-        let repo = Repository::discover(repo_dir).unwrap();
+        let repo = Repository::discover(repo_dir).expect("recovery fixture should stay a git repo");
         let mut reference = repo
             .find_reference(&format!("refs/heads/fabro/meta/{run_id}"))
-            .unwrap();
+            .expect("metadata branch should exist");
         match reference.delete() {
             Ok(()) => return,
             Err(err) => {
@@ -125,7 +129,8 @@ fn delete_metadata_branch_when_ready(repo_dir: &Path, run_id: &str) {
 }
 
 fn init_repo_with_workflow(repo_dir: &Path) {
-    std::fs::write(repo_dir.join("README.md"), "recovery test\n").unwrap();
+    std::fs::write(repo_dir.join("README.md"), "recovery test\n")
+        .expect("recovery README fixture should write");
     std::fs::write(
         repo_dir.join("workflow.fabro"),
         "\
@@ -138,20 +143,20 @@ digraph Recovery {
 }
 ",
     )
-    .unwrap();
+    .expect("recovery workflow fixture should write");
 
     let init = std::process::Command::new("git")
         .args(["init"])
         .current_dir(repo_dir)
         .status()
-        .unwrap();
+        .expect("git init should launch");
     assert!(init.success(), "git init should succeed");
 
     let add = std::process::Command::new("git")
         .args(["add", "README.md", "workflow.fabro"])
         .current_dir(repo_dir)
         .status()
-        .unwrap();
+        .expect("git add should launch");
     assert!(add.success(), "git add should succeed");
 
     let commit = std::process::Command::new("git")
@@ -166,7 +171,7 @@ digraph Recovery {
         ])
         .current_dir(repo_dir)
         .status()
-        .unwrap();
+        .expect("git commit should launch");
     assert!(commit.success(), "git commit should succeed");
 }
 

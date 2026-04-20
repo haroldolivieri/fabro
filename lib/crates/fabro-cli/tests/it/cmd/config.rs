@@ -210,8 +210,9 @@ shared = "cli"
 "#,
     );
 
-    let project = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(project.path().join(".fabro")).unwrap();
+    let project = tempfile::tempdir().expect("project fixture directory should create");
+    std::fs::create_dir_all(project.path().join(".fabro"))
+        .expect("project .fabro directory should create");
     std::fs::write(
         project.path().join(".fabro/project.toml"),
         r#"
@@ -231,10 +232,10 @@ event = "run_complete"
 script = "echo project"
 "#,
     )
-    .unwrap();
+    .expect("project config fixture should write");
 
     let workflow_dir = project.path().join(".fabro").join("workflows").join("demo");
-    std::fs::create_dir_all(&workflow_dir).unwrap();
+    std::fs::create_dir_all(&workflow_dir).expect("workflow fixture directory should create");
     std::fs::write(
         workflow_dir.join("workflow.toml"),
         r#"
@@ -285,13 +286,13 @@ run_only = "1"
 shared = "run"
 "#,
     )
-    .unwrap();
+    .expect("workflow fixture config should write");
 
     std::fs::write(
         project.path().join("standalone.fabro"),
         "digraph Test { start -> end }",
     )
-    .unwrap();
+    .expect("standalone workflow fixture should write");
 
     project
 }
@@ -323,8 +324,9 @@ script = "cli-setup"
         ),
     );
 
-    let project = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(project.path().join(".fabro")).unwrap();
+    let project = tempfile::tempdir().expect("external workflow fixture directory should create");
+    std::fs::create_dir_all(project.path().join(".fabro"))
+        .expect("external workflow .fabro directory should create");
     std::fs::write(
         project.path().join(".fabro/project.toml"),
         r#"
@@ -337,7 +339,7 @@ script = "project-setup"
 preserve = true
 "#,
     )
-    .unwrap();
+    .expect("external workflow project config should write");
 
     std::fs::write(
         project.path().join("workflow.fabro"),
@@ -349,7 +351,7 @@ digraph Test {
 }
 "#,
     )
-    .unwrap();
+    .expect("external workflow graph fixture should write");
 
     std::fs::write(
         project.path().join("workflow.toml"),
@@ -369,7 +371,7 @@ name = "claude-sonnet-4-6"
 script = "workflow-setup"
 "#,
     )
-    .unwrap();
+    .expect("external workflow config should write");
 
     (project, storage_dir)
 }

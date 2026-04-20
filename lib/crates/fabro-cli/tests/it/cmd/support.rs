@@ -654,7 +654,7 @@ fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .unwrap()
+        .expect("test runtime should build")
         .block_on(future)
 }
 
@@ -1101,7 +1101,7 @@ fn setup_git_backed_run(context: &TestContext, workflow: GitWorkflowKind) -> Git
             .start
             .expect("start record should exist"),
     )
-    .unwrap();
+    .expect("start record should serialize to JSON");
     assert_eq!(
         start["run_branch"].as_str(),
         Some(format!("fabro/run/{}", run.run_id).as_str())

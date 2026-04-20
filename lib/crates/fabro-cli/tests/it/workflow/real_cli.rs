@@ -10,7 +10,7 @@ use fabro_workflow::handler::llm::cli::AgentCliBackend;
 
 /// Run a real CLI tool via LocalSandbox and verify the full flow.
 async fn run_real_cli_test(provider: Provider, model: &str) {
-    let workspace = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().expect("real CLI test workspace should create");
     let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
         workspace.path().to_path_buf(),
     ));

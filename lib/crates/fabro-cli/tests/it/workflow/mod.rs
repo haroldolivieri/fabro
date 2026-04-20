@@ -72,7 +72,9 @@ pub(super) fn store_dump_export(context: &TestContext, run_id: &str) -> PathBuf 
             "store",
             "dump",
             "--output",
-            output_dir.to_str().unwrap(),
+            output_dir
+                .to_str()
+                .expect("store dump output path should be valid UTF-8"),
             run_id,
         ])
         .assert()
@@ -102,7 +104,7 @@ fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .unwrap()
+        .expect("test runtime should build")
         .block_on(future)
 }
 

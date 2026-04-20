@@ -287,17 +287,25 @@ async fn auth_login_refresh_logout_flow_against_real_server_and_twin_github() {
     assert!(harness.api_requests.contains("POST /auth/cli/token"));
     assert!(!harness.web_requests.contains("POST /auth/cli/token"));
 
-    expire_saved_access_token(&context, &harness.web_base_url);
-    let system_info = context
-        .command()
-        .args(["--json", "system", "info", "--server", &target])
-        .output()
-        .expect("system info should run");
+    harness.api_requests.clear();
+    let workflow = context.install_fixture("simple.fabro");
+    let first_run_id = run_detached(&context, &target, &workflow);
+    assert!(harness.api_requests.contains("POST /api/v1/runs"));
     assert!(
-        system_info.status.success(),
-        "system info failed\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&system_info.stdout),
-        String::from_utf8_lossy(&system_info.stderr)
+        harness
+            .api_requests
+            .contains(&format!("POST /api/v1/runs/{first_run_id}/start"))
+    );
+
+    harness.api_requests.clear();
+    expire_saved_access_token(&context, &harness.web_base_url);
+    let second_run_id = run_detached(&context, &target, &workflow);
+    assert!(harness.api_requests.contains("POST /api/v1/runs"));
+    assert!(harness.api_requests.contains("POST /auth/cli/refresh"));
+    assert!(
+        harness
+            .api_requests
+            .contains(&format!("POST /api/v1/runs/{second_run_id}/start"))
     );
 
     let refreshed_entry = saved_auth_entry(&context);
@@ -324,6 +332,25 @@ async fn auth_login_refresh_logout_flow_against_real_server_and_twin_github() {
         Some(0)
     );
 
+    let logged_out_run = context
+        .run_cmd()
+        .args([
+            "--server",
+            &target,
+            "--detach",
+            "--dry-run",
+            "--auto-approve",
+            workflow.to_str().unwrap(),
+        ])
+        .output()
+        .expect("logged-out detached run should execute");
+    assert!(
+        !logged_out_run.status.success(),
+        "detached run should fail after logout\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&logged_out_run.stdout),
+        String::from_utf8_lossy(&logged_out_run.stderr)
+    );
+
     let refresh_response = fabro_test::test_http_client()
         .post(format!("{}/auth/cli/refresh", harness.api_base_url))
         .bearer_auth(&refreshed_refresh_token)
@@ -336,7 +363,6 @@ async fn auth_login_refresh_logout_flow_against_real_server_and_twin_github() {
         .await
         .expect("refresh error body should parse");
     assert_eq!(refresh_body["error"], "refresh_token_expired");
-    assert!(harness.api_requests.contains("POST /auth/cli/refresh"));
     assert!(harness.api_requests.contains("POST /auth/cli/logout"));
 
     harness.shutdown().await;
@@ -785,6 +811,32 @@ async fn complete_login_via_browser(
         },
         browser_url,
     )
+}
+
+fn run_detached(
+    context: &fabro_test::TestContext,
+    target: &str,
+    workflow: &std::path::Path,
+) -> String {
+    let output = context
+        .run_cmd()
+        .args([
+            "--server",
+            target,
+            "--detach",
+            "--dry-run",
+            "--auto-approve",
+            workflow.to_str().unwrap(),
+        ])
+        .output()
+        .expect("detached run should execute");
+    assert!(
+        output.status.success(),
+        "detached run failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
 fn saved_auth_entry(context: &fabro_test::TestContext) -> Value {

@@ -210,8 +210,9 @@ pub(crate) async fn connect_server_with_settings(
     base_config_path: &Path,
 ) -> Result<ServerStoreClient> {
     if let Some(target) = user_config::resolve_nondefault_server_target(args, settings)? {
-        if args.server.is_none() && matches!(target, user_config::ServerTarget::UnixSocket(_)) {
-            return connect_local_api_client_bundle(
+        if let user_config::ServerTarget::UnixSocket(path) = &target {
+            return connect_managed_unix_socket_target_api_client_bundle(
+                path,
                 &user_config::storage_dir(settings)?,
                 base_config_path,
             )
@@ -221,6 +222,52 @@ pub(crate) async fn connect_server_with_settings(
     }
 
     connect_local_api_client_bundle(&user_config::storage_dir(settings)?, base_config_path).await
+}
+
+async fn connect_managed_unix_socket_target_api_client_bundle(
+    path: &Path,
+    storage_dir: &Path,
+    active_config_path: &Path,
+) -> Result<ServerStoreClient> {
+    let target = user_config::ServerTarget::UnixSocket(path.to_path_buf());
+    let bearer = resolve_target_bearer(
+        &target,
+        Some(storage_dir),
+        local_dev_token_fallback(&target),
+    )?;
+    let refreshable_oauth = refreshable_oauth(&target, bearer.as_ref())?;
+
+    if let Ok(bundle) = try_connect_unix_socket_api_client_bundle(
+        path,
+        Some(storage_dir),
+        bearer.as_ref().map(ResolvedBearer::bearer_token),
+    )
+    .await
+    {
+        return Ok(ServerStoreClient::from_bundle(
+            bundle,
+            "http://fabro".to_string(),
+            refreshable_oauth,
+        ));
+    }
+
+    start::ensure_server_running_on_socket(path, active_config_path, storage_dir)
+        .await
+        .with_context(|| format!("Failed to start fabro server for {}", path.display()))?;
+
+    let bundle = connect_unix_socket_api_client_bundle(
+        path,
+        Some(storage_dir),
+        bearer.as_ref().map(ResolvedBearer::bearer_token),
+    )
+    .await
+    .with_context(|| format!("Failed to connect to fabro server at {}", path.display()))?;
+
+    Ok(ServerStoreClient::from_bundle(
+        bundle,
+        "http://fabro".to_string(),
+        refreshable_oauth,
+    ))
 }
 
 async fn connect_local_api_client_bundle(

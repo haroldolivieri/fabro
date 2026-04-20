@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import * as runDetailModule from "./run-detail";
-
-const { action, lifecycleActionVisibility, loader } = runDetailModule;
+import {
+  action,
+  handleLifecycleToastResult,
+  lifecycleActionVisibility,
+  loader,
+  type LifecycleToastState,
+  type RunDetailActionResult,
+} from "./run-detail";
 
 type StubFetchEntry = {
   status: number;
@@ -199,170 +204,83 @@ describe("lifecycleActionVisibility", () => {
   });
 });
 
-describe("run detail archive toast handling", () => {
-  test("replaying the same archive success result does not enqueue a duplicate archive toast", () => {
-    const handleArchiveToastResult = (
-      runDetailModule as Record<string, unknown>
-    ).handleArchiveToastResult as
-      | ((
-          result: runDetailModule.RunDetailActionResult | undefined,
-          state: {
-            activeArchiveToastId: string | null;
-            lastArchiveResultKey: string | null;
-            lastUnarchiveResultKey: string | null;
-          },
-          toastApi: {
-            push: (toast: unknown) => string;
-            dismiss: (id: string) => void;
-          },
-          onUnarchive: () => void,
-        ) => {
-          activeArchiveToastId: string | null;
-          lastArchiveResultKey: string | null;
-          lastUnarchiveResultKey: string | null;
-        })
-      | undefined;
+describe("handleLifecycleToastResult", () => {
+  type PushedToast = { message: string; action?: { label: string; onClick: () => void } };
 
-    expect(handleArchiveToastResult).toBeDefined();
-
-    const pushedToasts: Array<{ message: string; action?: { label: string; onClick: () => void } }> = [];
-    const dismissedToastIds: string[] = [];
-    let unarchiveClicks = 0;
-    const result: runDetailModule.RunDetailActionResult = {
-      intent: "archive",
-      ok: true,
-      run: {
-        id: "run-1",
-        status: "archived",
-        created_at: "2026-04-20T12:00:00Z",
+  function makeToastApi() {
+    const pushed: PushedToast[] = [];
+    const dismissed: string[] = [];
+    return {
+      pushed,
+      dismissed,
+      api: {
+        push: (toast: PushedToast) => {
+          pushed.push(toast);
+          return `toast-${pushed.length}`;
+        },
+        dismiss: (id: string) => {
+          dismissed.push(id);
+        },
       },
     };
+  }
 
-    const firstState = handleArchiveToastResult!(
-      result,
-      {
-        activeArchiveToastId: null,
-        lastArchiveResultKey: null,
-        lastUnarchiveResultKey: null,
-      },
-      {
-        push: (toast) => {
-          pushedToasts.push(toast as (typeof pushedToasts)[number]);
-          return `toast-${pushedToasts.length}`;
-        },
-        dismiss: (id) => {
-          dismissedToastIds.push(id);
-        },
-      },
-      () => {
-        unarchiveClicks += 1;
-      },
-    );
+  const initialState: LifecycleToastState = {
+    activeArchiveToastId: null,
+    lastProcessed: null,
+  };
 
-    expect(pushedToasts).toHaveLength(1);
-    expect(pushedToasts[0]?.message).toBe("Run archived.");
-    expect(pushedToasts[0]?.action?.label).toBe("Unarchive");
-    pushedToasts[0]?.action?.onClick();
+  test("replaying the same archive success result does not enqueue a duplicate toast", () => {
+    const { pushed, dismissed, api } = makeToastApi();
+    let unarchiveClicks = 0;
+    const result: RunDetailActionResult = {
+      intent: "archive",
+      ok: true,
+      run: { id: "run-1", status: "archived", created_at: "2026-04-20T12:00:00Z" },
+    };
+
+    const firstState = handleLifecycleToastResult("archive", result, initialState, api, () => {
+      unarchiveClicks += 1;
+    });
+
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]?.message).toBe("Run archived.");
+    expect(pushed[0]?.action?.label).toBe("Unarchive");
+    pushed[0]?.action?.onClick();
     expect(unarchiveClicks).toBe(1);
     expect(firstState.activeArchiveToastId).toBe("toast-1");
-    expect(dismissedToastIds).toEqual([]);
 
-    const replayedState = handleArchiveToastResult!(
-      result,
-      firstState,
-      {
-        push: (toast) => {
-          pushedToasts.push(toast as (typeof pushedToasts)[number]);
-          return `toast-${pushedToasts.length}`;
-        },
-        dismiss: (id) => {
-          dismissedToastIds.push(id);
-        },
-      },
-      () => {
-        unarchiveClicks += 1;
-      },
-    );
+    const replayedState = handleLifecycleToastResult("archive", result, firstState, api, () => {
+      unarchiveClicks += 1;
+    });
 
-    expect(pushedToasts).toHaveLength(1);
-    expect(replayedState).toEqual(firstState);
-    expect(dismissedToastIds).toEqual([]);
+    expect(pushed).toHaveLength(1);
+    expect(replayedState).toBe(firstState);
+    expect(dismissed).toEqual([]);
   });
 
   test("successful unarchive dismisses the active archive toast before showing restore feedback", () => {
-    const handleUnarchiveToastResult = (
-      runDetailModule as Record<string, unknown>
-    ).handleUnarchiveToastResult as
-      | ((
-          result: runDetailModule.RunDetailActionResult | undefined,
-          state: {
-            activeArchiveToastId: string | null;
-            lastArchiveResultKey: string | null;
-            lastUnarchiveResultKey: string | null;
-          },
-          toastApi: {
-            push: (toast: unknown) => string;
-            dismiss: (id: string) => void;
-          },
-        ) => {
-          activeArchiveToastId: string | null;
-          lastArchiveResultKey: string | null;
-          lastUnarchiveResultKey: string | null;
-        })
-      | undefined;
-
-    expect(handleUnarchiveToastResult).toBeDefined();
-
-    const pushedToasts: Array<{ message: string }> = [];
-    const dismissedToastIds: string[] = [];
-    const result: runDetailModule.RunDetailActionResult = {
+    const { pushed, dismissed, api } = makeToastApi();
+    const result: RunDetailActionResult = {
       intent: "unarchive",
       ok: true,
-      run: {
-        id: "run-1",
-        status: "succeeded",
-        created_at: "2026-04-20T12:00:00Z",
-      },
+      run: { id: "run-1", status: "succeeded", created_at: "2026-04-20T12:00:00Z" },
+    };
+    const stateWithActiveToast: LifecycleToastState = {
+      activeArchiveToastId: "toast-9",
+      lastProcessed: null,
     };
 
-    const nextState = handleUnarchiveToastResult!(
-      result,
-      {
-        activeArchiveToastId: "toast-9",
-        lastArchiveResultKey: "archive:ok:run-1:archived::2026-04-20T12:00:00Z",
-        lastUnarchiveResultKey: null,
-      },
-      {
-        push: (toast) => {
-          pushedToasts.push(toast as (typeof pushedToasts)[number]);
-          return `toast-${pushedToasts.length}`;
-        },
-        dismiss: (id) => {
-          dismissedToastIds.push(id);
-        },
-      },
-    );
+    const nextState = handleLifecycleToastResult("unarchive", result, stateWithActiveToast, api);
 
-    expect(dismissedToastIds).toEqual(["toast-9"]);
-    expect(pushedToasts).toEqual([{ message: "Run restored." }]);
+    expect(dismissed).toEqual(["toast-9"]);
+    expect(pushed).toEqual([{ message: "Run restored." }]);
     expect(nextState.activeArchiveToastId).toBeNull();
 
-    const replayedState = handleUnarchiveToastResult!(
-      result,
-      nextState,
-      {
-        push: (toast) => {
-          pushedToasts.push(toast as (typeof pushedToasts)[number]);
-          return `toast-${pushedToasts.length}`;
-        },
-        dismiss: (id) => {
-          dismissedToastIds.push(id);
-        },
-      },
-    );
+    const replayedState = handleLifecycleToastResult("unarchive", result, nextState, api);
 
-    expect(dismissedToastIds).toEqual(["toast-9"]);
-    expect(pushedToasts).toEqual([{ message: "Run restored." }]);
-    expect(replayedState).toEqual(nextState);
+    expect(dismissed).toEqual(["toast-9"]);
+    expect(pushed).toEqual([{ message: "Run restored." }]);
+    expect(replayedState).toBe(nextState);
   });
 });

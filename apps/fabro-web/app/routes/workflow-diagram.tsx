@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDownIcon, ArrowRightIcon, MinusIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { useTheme } from "../lib/theme";
-import { getGraphTheme } from "../lib/graph-theme";
+import { graphTheme } from "../lib/graph-theme";
 
 type Direction = "LR" | "TB";
 
-function buildDot(direction: Direction, theme: ReturnType<typeof getGraphTheme>) {
+function buildDot(direction: Direction) {
+  const theme = graphTheme;
   return `digraph fix_build {
     graph [
         label="Fix Build"
@@ -78,8 +78,6 @@ export default function WorkflowDiagram() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragState = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
   const zoom = ZOOM_STEPS[zoomIndex];
-  const { theme } = useTheme();
-  const graphTheme = getGraphTheme(theme);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +88,7 @@ export default function WorkflowDiagram() {
       if (cancelled) return;
 
       try {
-        const svg = viz.renderSVGElement(buildDot(direction, graphTheme));
+        const svg = viz.renderSVGElement(buildDot(direction));
         stripGraphTitle(svg);
 
         svgRef.current = svg;
@@ -105,7 +103,7 @@ export default function WorkflowDiagram() {
     setPan({ x: 0, y: 0 });
     render();
     return () => { cancelled = true; };
-  }, [direction, graphTheme]);
+  }, [direction]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;

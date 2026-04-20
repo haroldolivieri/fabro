@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
-import { useTheme } from "../lib/theme";
-import { getGraphTheme } from "../lib/graph-theme";
+import { graphTheme } from "../lib/graph-theme";
 import { apiFetch, apiJsonOrNull } from "../api";
 import { isVisibleStage } from "../data/runs";
 import { formatDurationSecs } from "../lib/format";
@@ -34,7 +33,8 @@ export async function loader({ request, params }: any) {
 
 type Direction = "LR" | "TB";
 
-function buildDot(direction: Direction, gt: ReturnType<typeof getGraphTheme>) {
+function buildDot(direction: Direction) {
+  const gt = graphTheme;
   return `digraph sync {
     graph [label="Sync"]
     rankdir=${direction}
@@ -89,7 +89,8 @@ function stripGraphTitle(svg: SVGSVGElement) {
   title.remove();
 }
 
-function annotateRunningNodes(svg: SVGSVGElement, gt: ReturnType<typeof getGraphTheme>, stageList: Stage[]) {
+function annotateRunningNodes(svg: SVGSVGElement, stageList: Stage[]) {
+  const gt = graphTheme;
   const runningDotIds = new Set(
     stageList.filter((s) => s.status === "running").map((s) => s.dotId),
   );
@@ -185,8 +186,6 @@ export default function RunGraph({ loaderData }: any) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragState = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
   const zoom = GRAPH_ZOOM_STEPS[zoomIndex];
-  const { theme } = useTheme();
-  const graphTheme = getGraphTheme(theme);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,7 +213,7 @@ export default function RunGraph({ loaderData }: any) {
           const { instance } = await import("@viz-js/viz");
           const viz = await instance();
           if (cancelled) return;
-          svg = viz.renderSVGElement(buildDot(direction, graphTheme));
+          svg = viz.renderSVGElement(buildDot(direction));
         }
 
         stripGraphTitle(svg);
@@ -231,7 +230,7 @@ export default function RunGraph({ loaderData }: any) {
     setPan({ x: 0, y: 0 });
     render();
     return () => { cancelled = true; };
-  }, [direction, graphTheme, graphSvg, id]);
+  }, [direction, graphSvg, id]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;

@@ -644,10 +644,11 @@ mod tests {
     use std::sync::Arc;
 
     use axum::Extension;
-    use axum::body::{Body, to_bytes};
+    use axum::body::Body;
     use axum::extract::State;
     use axum::http::{Request, StatusCode, header};
     use axum_extra::extract::cookie::Key;
+    use fabro_test::{assert_axum_status, expect_axum_json};
     use fabro_types::RunAuthMethod;
     use fabro_types::settings::SettingsLayer;
     use fabro_types::settings::server::{
@@ -739,7 +740,18 @@ mod tests {
     }
 
     async fn response_json(response: axum::response::Response) -> Value {
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
+        expect_axum_json(response, StatusCode::OK, concat!(file!(), ":", line!())).await
+    }
+
+    async fn assert_status(response: axum::response::Response, expected: StatusCode) {
+        assert_axum_status(response, expected, concat!(file!(), ":", line!())).await;
+    }
+
+    async fn checked_response(
+        response: axum::response::Response,
+        expected: StatusCode,
+    ) -> axum::response::Response {
+        fabro_test::expect_axum_status(response, expected, concat!(file!(), ":", line!())).await
     }
 
     #[tokio::test]
@@ -759,7 +771,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        let response = checked_response(response, StatusCode::OK).await;
 
         let session_cookie = response
             .headers()
@@ -788,7 +800,6 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
         let body = response_json(response).await;
         assert_eq!(body["provider"], "dev-token");
         assert_eq!(body["user"]["login"], "dev");
@@ -813,7 +824,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_status(response, StatusCode::UNAUTHORIZED).await;
     }
 
     #[tokio::test]
@@ -830,7 +841,6 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
         let body = response_json(response).await;
         assert_eq!(body, json!({ "methods": ["dev-token"] }));
     }
@@ -851,8 +861,7 @@ mod tests {
             )
             .await
             .unwrap();
-
-        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let response = checked_response(response, StatusCode::SEE_OTHER).await;
         let set_cookie = response
             .headers()
             .get(header::SET_COOKIE)
@@ -881,8 +890,7 @@ mod tests {
             )
             .await
             .unwrap();
-
-        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let response = checked_response(response, StatusCode::SEE_OTHER).await;
         assert_eq!(
             response
                 .headers()

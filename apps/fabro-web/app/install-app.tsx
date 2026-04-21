@@ -1175,13 +1175,13 @@ function PortkeySection({
               selected={routingMode === "catalog"}
               onSelect={() => setRoutingMode("catalog")}
               title="Model Catalog"
-              body="Use a provider slug from your Portkey Model Catalog. Portkey handles routing and credentials."
+              body="Asks for: Provider Slug. Uses your Portkey Model Catalog for routing and credentials."
             />
             <OptionCard
               selected={routingMode === "config"}
               onSelect={() => setRoutingMode("config")}
               title="Config"
-              body="Use a Portkey config ID for advanced routing: fallbacks, load balancing, conditional routing."
+              body="Asks for: Provider Slug + Config ID. For advanced routing: fallbacks, load balancing, conditional routing."
             />
           </div>
         </fieldset>
@@ -1194,13 +1194,13 @@ function PortkeySection({
               selected={formatMode === "universal"}
               onSelect={() => setFormatMode("universal")}
               title="Universal"
-              body="OpenAI-compatible format. Works with any provider, no extra setup needed."
+              body="No extra fields. OpenAI-compatible format — works with any provider."
             />
             <OptionCard
               selected={formatMode === "native"}
               onSelect={() => setFormatMode("native")}
               title="Native adapter"
-              body="Use the provider's native API format. Unlocks Anthropic prompt caching, extended thinking, and other provider-specific features."
+              body="Asks for: Provider. Unlocks provider-specific features like Anthropic prompt caching and extended thinking."
             />
           </div>
         </fieldset>

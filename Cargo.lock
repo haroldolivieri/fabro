@@ -2074,6 +2074,7 @@ dependencies = [
  "dashmap",
  "fabro-types",
  "futures",
+ "insta",
  "object_store",
  "percent-encoding",
  "serde",

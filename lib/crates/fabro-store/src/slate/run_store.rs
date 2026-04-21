@@ -10,6 +10,7 @@ use slatedb::{Db, DbRead};
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
+use super::blob_store::BlobStore;
 use crate::run_state::EventProjectionCache;
 use crate::{Error, EventEnvelope, EventPayload, Result, RunProjection, RunSummary, keys};
 
@@ -284,17 +285,15 @@ impl RunDatabase {
         if self.read_only {
             return Err(Error::ReadOnly);
         }
-        let id = RunBlobId::new(data);
-        self.inner.db.put(keys::blob_key(&id), data).await?;
-        Ok(id)
+        BlobStore::new(Arc::new(self.inner.db.clone()))
+            .write(data)
+            .await
     }
 
     pub async fn read_blob(&self, id: &RunBlobId) -> Result<Option<Bytes>> {
-        let global = self.inner.db.get(keys::blob_key(id)).await?;
-        if global.is_some() {
-            return Ok(global);
-        }
-        Ok(None)
+        BlobStore::new(Arc::new(self.inner.db.clone()))
+            .read(id)
+            .await
     }
 
     pub async fn list_blobs(&self) -> Result<Vec<RunBlobId>> {

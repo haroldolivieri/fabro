@@ -1019,10 +1019,7 @@ mod tests {
         let run_store = store.open_run_reader(&created.run_id).await.unwrap();
         let events = run_store.list_events().await.unwrap();
 
-        assert_eq!(
-            events.first().unwrap().payload.as_value()["event"],
-            "run.created"
-        );
+        assert_eq!(events.first().unwrap().event.event_name(), "run.created");
     }
 
     #[tokio::test]

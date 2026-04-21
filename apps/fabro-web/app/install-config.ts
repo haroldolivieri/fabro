@@ -76,9 +76,9 @@ export const PORTKEY_FIELDS = [
     isSecret: false,
     placeholder: "@bedrock-sandbox",
     help: {
-      text: "The Portkey routing target sent as x-portkey-provider. Leave blank for direct routing (e.g. Provider = anthropic → routes straight to Anthropic). Set this when the target differs from the adapter — e.g. @bedrock-sandbox for AWS Bedrock via Portkey Model Catalog, or @azure-prod for Azure OpenAI.",
-      url: "https://portkey.ai/docs/product/ai-gateway/virtual-keys" as string | null,
-      linkText: "portkey.ai/docs → Model Catalog" as string | null,
+      text: "Only needed when routing to Bedrock or Azure — where the Portkey target differs from the provider adapter. Leave blank for direct routing (e.g. Provider = anthropic routes straight to Anthropic). For Bedrock, set this to the slug of your configured Model Catalog provider (e.g. @bedrock-sandbox). Find your slugs in the Portkey Model Catalog.",
+      url: "https://app.portkey.ai/model-catalog" as string | null,
+      linkText: "app.portkey.ai/model-catalog" as string | null,
     },
   },
   {

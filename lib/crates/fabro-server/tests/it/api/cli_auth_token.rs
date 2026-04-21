@@ -43,7 +43,7 @@ fn test_app(settings: fabro_types::settings::SettingsLayer) -> (axum::Router, Ar
             Arc::clone(&store),
             artifact_store,
         ),
-        auth_mode,
+        &auth_mode,
         Arc::new(IpAllowlistConfig::default()),
         RouterOptions::default(),
     );

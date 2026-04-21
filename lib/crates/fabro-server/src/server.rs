@@ -13,7 +13,7 @@ use axum::body::to_bytes;
 use axum::extract::{self as axum_extract, DefaultBodyLimit, Path, Query, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
-use axum::middleware::{self, Next};
+use axum::middleware::{self};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -109,7 +109,7 @@ use tower_http::trace::TraceLayer;
 use tracing::{debug, error, info, warn};
 use ulid::Ulid;
 
-use crate::auth::{self, GithubEndpoints};
+use crate::auth::{self, GithubEndpoints, auth_translation_middleware, demo_routing_middleware};
 use crate::bind::Bind;
 use crate::error::ApiError;
 use crate::github_webhooks::{
@@ -917,10 +917,14 @@ fn start_optional_slack_service(state: &Arc<AppState>) {
 }
 
 /// Build the axum Router with all run endpoints and embedded static assets.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Public router helper keeps the existing ergonomic API and forwards by reference."
+)]
 pub fn build_router(state: Arc<AppState>, auth_mode: AuthMode) -> Router {
     build_router_with_options(
         state,
-        auth_mode,
+        &auth_mode,
         Arc::new(IpAllowlistConfig::default()),
         RouterOptions::default(),
     )
@@ -950,14 +954,14 @@ fn removed_web_route(path: &str) -> bool {
 /// Build the axum Router with configurable web surface routing.
 pub fn build_router_with_options(
     state: Arc<AppState>,
-    auth_mode: AuthMode,
+    auth_mode: &AuthMode,
     ip_allowlist_config: Arc<IpAllowlistConfig>,
     options: RouterOptions,
 ) -> Router {
     start_optional_slack_service(&state);
     let web_enabled = options.web_enabled;
     let webhook_ip_allowlist = options.github_webhook_ip_allowlist;
-    let middleware_state = Arc::clone(&state);
+    let translation_state = Arc::clone(&state);
     let github_endpoints = options
         .github_endpoints
         .clone()
@@ -985,7 +989,6 @@ pub fn build_router_with_options(
         real_router = real_router.nest("/auth", web_auth::routes().merge(auth::web_routes()));
     }
     let real_router = real_router
-        .layer(axum::Extension(auth_mode))
         .layer(axum::Extension(github_endpoints))
         .with_state(state);
 
@@ -1044,17 +1047,16 @@ pub fn build_router_with_options(
             }
         }));
 
-    if web_enabled {
-        app_router = app_router.layer(middleware::from_fn_with_state(
-            middleware_state,
-            cookie_and_demo_middleware,
-        ));
-    }
-
     app_router = app_router.layer(middleware::from_fn_with_state(
         Arc::clone(&ip_allowlist_config),
         ip_allowlist_middleware,
     ));
+    app_router = app_router.layer(middleware::from_fn_with_state(
+        translation_state,
+        auth_translation_middleware,
+    ));
+    app_router = app_router.layer(middleware::from_fn(demo_routing_middleware));
+    app_router = app_router.layer(axum::Extension(auth_mode.clone()));
 
     let mut router = app_router;
     if let Some(secret) = webhook_secret {
@@ -2173,27 +2175,6 @@ async fn openapi_spec() -> Response {
     let value: serde_json::Value =
         serde_yaml::from_str(yaml).expect("embedded OpenAPI YAML is invalid");
     Json(value).into_response()
-}
-
-async fn cookie_and_demo_middleware(
-    State(state): State<Arc<AppState>>,
-    mut req: axum_extract::Request,
-    next: Next,
-) -> Response {
-    let cookies = web_auth::parse_cookie_header(req.headers());
-    if cookies
-        .get("fabro-demo")
-        .is_some_and(|cookie| cookie.value() == "1")
-    {
-        req.headers_mut()
-            .insert("x-fabro-demo", HeaderValue::from_static("1"));
-    }
-    if let Some(key) = state.session_key() {
-        if let Some(session) = web_auth::read_private_session(req.headers(), &key) {
-            req.extensions_mut().insert(session);
-        }
-    }
-    next.run(req).await
 }
 
 async fn get_aggregate_billing(
@@ -7454,6 +7435,10 @@ mod tests {
         format!("/api/v1{path}")
     }
 
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Test helper mirrors the public build_router convenience API."
+    )]
     fn webhook_test_app(auth_mode: AuthMode) -> Router {
         let secret = TEST_WEBHOOK_SECRET.to_string();
         let state = create_app_state_with_env_lookup(SettingsLayer::default(), 5, move |name| {
@@ -7461,7 +7446,7 @@ mod tests {
         });
         build_router_with_options(
             state,
-            auth_mode,
+            &auth_mode,
             Arc::new(IpAllowlistConfig::default()),
             RouterOptions {
                 web_enabled: false,
@@ -8686,8 +8671,11 @@ slug = "fabro"
             AuthMode::Enabled(ConfiguredAuth {
                 methods:    vec![ServerAuthMethod::DevToken],
                 dev_token:  Some(DEV_TOKEN.to_string()),
-                jwt_key:    None,
-                jwt_issuer: None,
+                jwt_key:    Some(
+                    auth::derive_jwt_key(b"server-test-session-key-0123456789")
+                        .expect("test JWT key should derive"),
+                ),
+                jwt_issuer: Some("https://fabro.example".to_string()),
             }),
         );
 

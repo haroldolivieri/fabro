@@ -547,7 +547,7 @@ where
     .await?;
     let router = build_router_with_options(
         Arc::clone(&state),
-        auth_mode,
+        &auth_mode,
         Arc::clone(&default_ip_allowlist),
         RouterOptions {
             web_enabled,

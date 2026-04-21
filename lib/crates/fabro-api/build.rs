@@ -160,31 +160,27 @@ fn main() {
 
     let mut settings = GenerationSettings::default();
     settings.with_interface(InterfaceStyle::Builder);
-    settings.with_replacement(
-        "RunStatus",
-        "fabro_types::status::RunStatus",
-        [TypeImpl::FromStr, TypeImpl::Display].into_iter(),
-    );
-    settings.with_replacement(
-        "StatusReason",
-        "fabro_types::status::StatusReason",
-        std::iter::empty::<TypeImpl>(),
-    );
-    settings.with_replacement(
-        "BlockedReason",
-        "fabro_types::status::BlockedReason",
-        std::iter::empty::<TypeImpl>(),
-    );
-    settings.with_replacement(
-        "RunControlAction",
-        "fabro_types::status::RunControlAction",
-        std::iter::empty::<TypeImpl>(),
-    );
-    settings.with_replacement(
-        "RunStatusRecord",
-        "fabro_types::status::RunStatusRecord",
-        std::iter::empty::<TypeImpl>(),
-    );
+    let replacements: &[(&str, &str, &[TypeImpl])] = &[
+        ("RunStatus", "fabro_types::status::RunStatus", &[
+            TypeImpl::FromStr,
+            TypeImpl::Display,
+        ]),
+        ("StatusReason", "fabro_types::status::StatusReason", &[]),
+        ("BlockedReason", "fabro_types::status::BlockedReason", &[]),
+        (
+            "RunControlAction",
+            "fabro_types::status::RunControlAction",
+            &[],
+        ),
+        (
+            "RunStatusRecord",
+            "fabro_types::status::RunStatusRecord",
+            &[],
+        ),
+    ];
+    for (name, path, impls) in replacements {
+        settings.with_replacement(*name, *path, impls.iter().copied());
+    }
 
     let mut generator = Generator::new(&settings);
     let tokens = generator

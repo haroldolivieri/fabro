@@ -4,6 +4,7 @@ import type {
   InstallGithubAppManifestResponse,
   InstallGithubAppOwner,
   InstallLlmProviderInput,
+  InstallPortkeyInput,
   InstallSessionResponse,
 } from "@qltysh/fabro-api-client";
 
@@ -13,8 +14,12 @@ export type {
   InstallGithubAppManifestResponse,
   InstallGithubAppOwner,
   InstallLlmProviderInput,
+  InstallPortkeyInput,
   InstallSessionResponse,
 };
+
+// Alias for callers that import by this name (e.g. install-app.tsx).
+export type PortkeyInstallData = InstallPortkeyInput;
 
 const INSTALL_TOKEN_KEY = "fabro-install-token";
 
@@ -85,14 +90,6 @@ export async function testInstallLlm(
     throw new Error(await readInstallError(response, "install llm validation failed"));
   }
 }
-
-export type PortkeyInstallData = {
-  url: string;
-  api_key: string;
-  provider: string;
-  provider_slug?: string;
-  config?: string;
-};
 
 export async function putInstallLlm(
   token: string,

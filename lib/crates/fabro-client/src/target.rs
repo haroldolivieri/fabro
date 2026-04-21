@@ -146,6 +146,10 @@ fn canonical_http_url(value: &str) -> Result<String> {
         _ => bail!("server target must be an http(s) URL or absolute Unix socket path"),
     };
 
+    if raw_url_host(normalized).is_some_and(is_obfuscated_ipv4_literal) {
+        bail!("server target must be an http(s) URL or absolute Unix socket path");
+    }
+
     let Some(host) = url.host_str() else {
         bail!("server target must be an http(s) URL or absolute Unix socket path");
     };
@@ -164,6 +168,32 @@ fn canonical_http_url(value: &str) -> Result<String> {
 fn trim_api_path_suffix(value: &str) -> &str {
     let trimmed = value.trim_end_matches('/');
     trimmed.strip_suffix("/api/v1").unwrap_or(trimmed)
+}
+
+/// Extract the host substring from `value` without going through
+/// [`fabro_http::Url`]. `Url` normalizes decimal/hex IPv4 literals into dotted
+/// form, which hides the original input from later inspection.
+fn raw_url_host(value: &str) -> Option<&str> {
+    let (_, remainder) = value.split_once("://")?;
+    let authority_end = remainder.find(['/', '?', '#']).unwrap_or(remainder.len());
+    let authority = &remainder[..authority_end];
+    let after_userinfo = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if after_userinfo.starts_with('[') {
+        return None;
+    }
+    let host = after_userinfo
+        .split_once(':')
+        .map_or(after_userinfo, |(host, _)| host);
+    (!host.is_empty()).then_some(host)
+}
+
+fn is_obfuscated_ipv4_literal(host: &str) -> bool {
+    if host.starts_with("0x") || host.starts_with("0X") {
+        return true;
+    }
+    !host.contains('.') && !host.is_empty() && host.bytes().all(|b| b.is_ascii_digit())
 }
 
 fn lexical_normalize_absolute_path(path: &Path) -> Result<PathBuf> {

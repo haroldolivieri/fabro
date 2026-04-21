@@ -115,7 +115,7 @@ The slug is still required — it serves as the default target when the config d
 |----------|----------|-------------|
 | `PORTKEY_URL` | Yes | Gateway base URL. For hosted Portkey: `https://api.portkey.ai/v1`. For self-hosted gateways, use your gateway URL with `/v1` appended. |
 | `PORTKEY_API_KEY` | Yes | Your Portkey API key. [Get one here](https://app.portkey.ai/api-keys). |
-| `PORTKEY_PROVIDER_SLUG` | Yes | Model Catalog slug (e.g. `@openai-prod`). Sent as the `x-portkey-provider` header. [Find yours here](https://app.portkey.ai/model-catalog). |
+| `PORTKEY_PROVIDER_SLUG` | Yes (unless `PORTKEY_CONFIG` is set) | Model Catalog slug (e.g. `@openai-prod`). Sent as the `x-portkey-provider` header. [Find yours here](https://app.portkey.ai/model-catalog). |
 | `PORTKEY_PROVIDER` | No | Set to use the provider's native API format and unlock provider-specific features (e.g. `anthropic` for prompt caching and extended thinking). When unset, OpenAI-compatible format is used. Valid values: `anthropic`, `openai`, `gemini`, `kimi`, `zai`, `minimax`, `inception`. |
 | `PORTKEY_CONFIG` | No | Config ID for advanced routing (fallbacks, load balancing). [Manage configs](https://app.portkey.ai/configs). |
 | `PORTKEY_AWS_ACCESS_KEY_ID` | No | AWS access key for direct Bedrock access (Path C). |

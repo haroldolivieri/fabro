@@ -121,7 +121,9 @@ impl PortkeyConfig {
         let mut headers = HashMap::new();
 
         headers.insert("x-portkey-api-key".to_string(), self.api_key.clone());
-        headers.insert("x-portkey-provider".to_string(), self.provider_slug.clone());
+        if !self.provider_slug.is_empty() {
+            headers.insert("x-portkey-provider".to_string(), self.provider_slug.clone());
+        }
 
         if let Some(config) = &self.config {
             headers.insert("x-portkey-config".to_string(), config.clone());
@@ -894,6 +896,50 @@ mod tests {
         assert_eq!(config.provider, Some(Provider::Anthropic));
         assert_eq!(config.config.as_deref(), Some("cfg-abc"));
         assert_eq!(config.aws.as_ref().unwrap().region, "eu-west-1");
+    }
+
+    #[test]
+    fn from_lookup_config_only_no_slug_returns_some() {
+        let lookup = |k: &str| match k {
+            "PORTKEY_URL" => Some("https://api.portkey.ai/v1".to_string()),
+            "PORTKEY_API_KEY" => Some("pk-test".to_string()),
+            "PORTKEY_CONFIG" => Some("cfg-xxx".to_string()),
+            _ => None,
+        };
+        let config = PortkeyConfig::from_lookup(lookup).unwrap();
+        assert!(config.provider_slug.is_empty());
+        assert_eq!(config.config.as_deref(), Some("cfg-xxx"));
+    }
+
+    #[test]
+    fn from_lookup_no_slug_no_config_returns_none() {
+        let lookup = |k: &str| match k {
+            "PORTKEY_URL" => Some("https://api.portkey.ai/v1".to_string()),
+            "PORTKEY_API_KEY" => Some("pk-test".to_string()),
+            _ => None,
+        };
+        assert!(PortkeyConfig::from_lookup(lookup).is_none());
+    }
+
+    #[test]
+    fn config_only_apply_omits_empty_provider_header() {
+        let config = PortkeyConfig {
+            provider_slug: String::new(),
+            config: Some("cfg-xxx".to_string()),
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = Vec::new();
+        config.apply(&mut credentials);
+        assert!(
+            !credentials[0]
+                .extra_headers
+                .contains_key("x-portkey-provider"),
+            "empty provider_slug should not produce an x-portkey-provider header"
+        );
+        assert_eq!(
+            credentials[0].extra_headers.get("x-portkey-config"),
+            Some(&"cfg-xxx".to_string())
+        );
     }
 
     #[test]

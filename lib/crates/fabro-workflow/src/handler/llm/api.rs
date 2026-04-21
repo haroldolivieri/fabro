@@ -10,6 +10,7 @@ use fabro_agent::{
 use fabro_auth::{CredentialResolver, CredentialUsage, ResolveError, ResolvedCredential};
 use fabro_graphviz::graph::Node;
 use fabro_llm::client::Client;
+use fabro_llm::portkey::PortkeyConfig;
 use fabro_llm::types::{Message, Request, TokenCounts};
 use fabro_mcp::config::McpServerSettings;
 use fabro_model::{FallbackTarget, Provider};
@@ -69,9 +70,9 @@ pub(crate) async fn build_llm_client(
 
     // Apply Portkey gateway config if configured — reads from env first,
     // then falls back to vault Environment secrets via the resolver.
-    if let Some(portkey) = fabro_llm::portkey::PortkeyConfig::from_lookup(|k| {
-        std::env::var(k).ok().or_else(|| resolver.lookup_env(k))
-    }) {
+    if let Some(portkey) =
+        PortkeyConfig::from_lookup(|k| std::env::var(k).ok().or_else(|| resolver.lookup_env(k)))
+    {
         portkey.apply(&mut api_credentials);
     }
 

@@ -43,10 +43,6 @@ impl ServerSecrets {
     pub(crate) fn get(&self, name: &str) -> Option<String> {
         (self.env_lookup)(name).or_else(|| self.file_entries.get(name).cloned())
     }
-
-    pub(crate) fn file_entries(&self) -> &HashMap<String, String> {
-        &self.file_entries
-    }
 }
 
 impl std::fmt::Debug for ServerSecrets {

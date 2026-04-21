@@ -789,14 +789,7 @@ pub(crate) fn wait_for_event_names(run_dir: &Path, expected: &[&str]) {
     loop {
         let event_names = run_events(run_dir)
             .into_iter()
-            .filter_map(|event| {
-                event
-                    .payload
-                    .as_value()
-                    .get("event")
-                    .and_then(serde_json::Value::as_str)
-                    .map(ToString::to_string)
-            })
+            .map(|event| event.event.event_name().to_string())
             .collect::<Vec<_>>();
 
         if expected

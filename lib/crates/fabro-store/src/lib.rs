@@ -11,14 +11,16 @@ mod types;
 
 pub use artifact_store::{ArtifactStore, NodeArtifact};
 pub use error::{Error, Result};
-pub use fabro_types::{RunBlobId, StageId};
+pub use fabro_types::{
+    EventEnvelope, NodeState, PendingInterviewRecord, RunBlobId, RunProjection, StageId,
+};
 pub(crate) use keyed_mutex::KeyedMutex;
-pub use run_state::{NodeState, PendingInterviewRecord, RunProjection};
+pub use run_state::RunProjectionReducer;
 pub use slate::{
     AuthCode, AuthCodeStore, Blob, BlobStore, ConsumeOutcome, Database, RefreshToken,
     RefreshTokenStore, RunCatalogIndex, RunDatabase, Runs,
 };
-pub use types::{EventEnvelope, EventPayload, RunSummary};
+pub use types::EventPayload;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ListRunsQuery {

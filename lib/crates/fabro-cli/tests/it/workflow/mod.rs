@@ -54,14 +54,9 @@ pub(super) fn completed_nodes(run_dir: &Path) -> Vec<String> {
 }
 
 pub(super) fn has_event(run_dir: &Path, event_name: &str) -> bool {
-    run_events(run_dir).into_iter().any(|event| {
-        event
-            .payload
-            .as_value()
-            .get("event")
-            .and_then(Value::as_str)
-            == Some(event_name)
-    })
+    run_events(run_dir)
+        .into_iter()
+        .any(|event| event.event.event_name() == event_name)
 }
 
 pub(super) fn store_dump_export(context: &TestContext, run_id: &str) -> PathBuf {

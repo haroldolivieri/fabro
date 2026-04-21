@@ -12,7 +12,7 @@ use std::time::Duration;
 pub use auth_codes::{AuthCode, AuthCodeStore};
 pub use auth_tokens::{ConsumeOutcome, RefreshToken, RefreshTokenStore};
 pub use blob_store::{Blob, BlobStore};
-use fabro_types::RunId;
+use fabro_types::{RunId, RunSummary};
 use object_store::ObjectStore;
 pub use run_catalog_index::RunCatalogIndex;
 pub use run_store::RunDatabase;
@@ -20,7 +20,8 @@ use run_store::RunDatabaseInner;
 use slatedb::config::{CompressionCodec, Settings};
 use tokio::sync::{Mutex, OnceCell};
 
-use crate::{Error, ListRunsQuery, Result, RunSummary, keys};
+use crate::run_state::build_summary;
+use crate::{Error, ListRunsQuery, Result, keys};
 
 #[derive(Clone)]
 pub struct Database {
@@ -177,7 +178,7 @@ impl Database {
         let mut summaries = Vec::new();
         for run_id in run_ids {
             if let Some(active) = self.get_active_run(&run_id).await {
-                summaries.push(active.state().await?.build_summary(&run_id));
+                summaries.push(build_summary(&active.state().await?, &run_id));
                 continue;
             }
             if !RunDatabase::has_any_events(&db, &run_id).await? {
@@ -274,7 +275,7 @@ impl Runs {
 
     pub async fn find(&self, run_id: &RunId) -> Result<Option<RunSummary>> {
         match self.db.open_run_reader(run_id).await {
-            Ok(run_db) => Ok(Some(run_db.state().await?.build_summary(run_id))),
+            Ok(run_db) => Ok(Some(build_summary(&run_db.state().await?, run_id))),
             Err(Error::RunNotFound(_)) => Ok(None),
             Err(err) => Err(err),
         }

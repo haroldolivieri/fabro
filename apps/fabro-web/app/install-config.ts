@@ -50,9 +50,9 @@ export const PORTKEY_FIELDS = [
     isSecret: true,
     placeholder: "PORTKEY_API_KEY",
     help: {
-      text: "Your Portkey API key. Find it in the Portkey dashboard under Settings → API Keys.",
-      url: "https://app.portkey.ai/" as string | null,
-      linkText: "app.portkey.ai" as string | null,
+      text: "Your Portkey API key. Create or copy one from the Portkey API Keys page.",
+      url: "https://app.portkey.ai/api-keys" as string | null,
+      linkText: "app.portkey.ai/api-keys" as string | null,
     },
   },
   {

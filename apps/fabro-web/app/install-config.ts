@@ -37,7 +37,7 @@ export const PORTKEY_FIELDS = [
     isSecret: false,
     placeholder: "https://api.portkey.ai/v1",
     help: {
-      text: "Your Portkey gateway base URL. For the hosted Portkey service use https://api.portkey.ai/v1. For a self-hosted or enterprise gateway (e.g. internal Skyscanner instance), use that URL with /v1 appended.",
+      text: "Your Portkey gateway base URL. For the hosted Portkey service use https://api.portkey.ai/v1. For a self-hosted or enterprise gateway, use that URL with /v1 appended.",
       url: "https://portkey.ai/docs" as string | null,
       linkText: "portkey.ai/docs" as string | null,
     },

@@ -301,27 +301,36 @@ async fn upload_data_files(
     _run_dir: &Path,
     target_dir: &str,
 ) -> anyhow::Result<()> {
-    let progress_content = {
-        let lines: Vec<String> = events
-            .iter()
-            .filter_map(|env| serde_json::to_string(&env.event).ok())
-            .collect();
-        if lines.is_empty() {
-            None
-        } else {
-            Some(lines.join("\n") + "\n")
+    let progress_content = (!events.is_empty()).then(|| {
+        let mut buf = String::new();
+        for env in events {
+            if let Ok(line) = serde_json::to_string(&env.event) {
+                buf.push_str(&line);
+                buf.push('\n');
+            }
         }
-    };
-    upload_file(sandbox, target_dir, "progress.jsonl", progress_content).await?;
-
-    let run_content = Some(serde_json::to_string_pretty(&SerializableProjection(
-        state,
-    ))?);
-    upload_file(sandbox, target_dir, "run.json", run_content).await?;
+        buf
+    });
     upload_file(
         sandbox,
         target_dir,
-        "graph.fabro",
+        Path::new("progress.jsonl"),
+        progress_content,
+    )
+    .await?;
+
+    let run_content = serde_json::to_string_pretty(&SerializableProjection(state))?;
+    upload_file(
+        sandbox,
+        target_dir,
+        Path::new("run.json"),
+        Some(run_content),
+    )
+    .await?;
+    upload_file(
+        sandbox,
+        target_dir,
+        Path::new("graph.fabro"),
         state.graph_source.clone(),
     )
     .await?;
@@ -337,62 +346,76 @@ async fn upload_data_files(
             continue;
         };
         let base = PathBuf::from("stages").join(stage_id.to_string());
-        let prompt_path = base.join("prompt.md").to_string_lossy().into_owned();
-        let response_path = base.join("response.md").to_string_lossy().into_owned();
-        let status_path = base.join("status.json").to_string_lossy().into_owned();
-        let provider_used_path = base
-            .join("provider_used.json")
-            .to_string_lossy()
-            .into_owned();
-        let diff_path = base.join("diff.patch").to_string_lossy().into_owned();
-        let script_invocation_path = base
-            .join("script_invocation.json")
-            .to_string_lossy()
-            .into_owned();
-        let script_timing_path = base
-            .join("script_timing.json")
-            .to_string_lossy()
-            .into_owned();
-        let parallel_results_path = base
-            .join("parallel_results.json")
-            .to_string_lossy()
-            .into_owned();
-        let stdout_path = base.join("stdout.log").to_string_lossy().into_owned();
-        let stderr_path = base.join("stderr.log").to_string_lossy().into_owned();
-        upload_file(sandbox, target_dir, &prompt_path, node.prompt.clone()).await?;
-        upload_file(sandbox, target_dir, &response_path, node.response.clone()).await?;
-        upload_json_file(sandbox, target_dir, &status_path, node.status.as_ref()).await?;
+        upload_file(
+            sandbox,
+            target_dir,
+            &base.join("prompt.md"),
+            node.prompt.clone(),
+        )
+        .await?;
+        upload_file(
+            sandbox,
+            target_dir,
+            &base.join("response.md"),
+            node.response.clone(),
+        )
+        .await?;
         upload_json_file(
             sandbox,
             target_dir,
-            &provider_used_path,
+            &base.join("status.json"),
+            node.status.as_ref(),
+        )
+        .await?;
+        upload_json_file(
+            sandbox,
+            target_dir,
+            &base.join("provider_used.json"),
             node.provider_used.as_ref(),
         )
         .await?;
-        upload_file(sandbox, target_dir, &diff_path, node.diff.clone()).await?;
+        upload_file(
+            sandbox,
+            target_dir,
+            &base.join("diff.patch"),
+            node.diff.clone(),
+        )
+        .await?;
         upload_json_file(
             sandbox,
             target_dir,
-            &script_invocation_path,
+            &base.join("script_invocation.json"),
             node.script_invocation.as_ref(),
         )
         .await?;
         upload_json_file(
             sandbox,
             target_dir,
-            &script_timing_path,
+            &base.join("script_timing.json"),
             node.script_timing.as_ref(),
         )
         .await?;
         upload_json_file(
             sandbox,
             target_dir,
-            &parallel_results_path,
+            &base.join("parallel_results.json"),
             node.parallel_results.as_ref(),
         )
         .await?;
-        upload_file(sandbox, target_dir, &stdout_path, node.stdout.clone()).await?;
-        upload_file(sandbox, target_dir, &stderr_path, node.stderr.clone()).await?;
+        upload_file(
+            sandbox,
+            target_dir,
+            &base.join("stdout.log"),
+            node.stdout.clone(),
+        )
+        .await?;
+        upload_file(
+            sandbox,
+            target_dir,
+            &base.join("stderr.log"),
+            node.stderr.clone(),
+        )
+        .await?;
     }
 
     Ok(())
@@ -401,32 +424,33 @@ async fn upload_data_files(
 async fn upload_file(
     sandbox: &Arc<dyn Sandbox>,
     target_dir: &str,
-    filename: &str,
+    relative: &Path,
     content: Option<String>,
 ) -> anyhow::Result<()> {
-    if let Some(content) = content {
-        let path = Path::new(target_dir).join(filename);
-        let remote_path = path.to_string_lossy().into_owned();
-        ensure_remote_dir(sandbox, &path).await?;
-        sandbox
-            .write_file(&remote_path, &content)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to upload {filename}: {e}"))?;
-    }
+    let Some(content) = content else {
+        return Ok(());
+    };
+    let path = Path::new(target_dir).join(relative);
+    let remote_path = path.to_string_lossy().into_owned();
+    ensure_remote_dir(sandbox, &path).await?;
+    sandbox
+        .write_file(&remote_path, &content)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to upload {}: {e}", relative.display()))?;
     Ok(())
 }
 
 async fn upload_json_file<T>(
     sandbox: &Arc<dyn Sandbox>,
     target_dir: &str,
-    filename: &str,
+    relative: &Path,
     value: Option<&T>,
 ) -> anyhow::Result<()>
 where
     T: serde::Serialize,
 {
     let content = value.map(serde_json::to_string_pretty).transpose()?;
-    upload_file(sandbox, target_dir, filename, content).await
+    upload_file(sandbox, target_dir, relative, content).await
 }
 
 async fn ensure_remote_dir(sandbox: &Arc<dyn Sandbox>, path: &Path) -> anyhow::Result<()> {
@@ -456,6 +480,7 @@ mod tests {
     use fabro_agent::LocalSandbox;
     use fabro_store::{NodeState, StageId};
     use fabro_types::{NodeStatusRecord, StageStatus};
+    use tokio::fs;
 
     use super::*;
 
@@ -555,7 +580,9 @@ mod tests {
             .expect("retro files should upload");
 
         let run_json: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(target_dir.join("run.json")).expect("run.json should exist"),
+            &fs::read_to_string(target_dir.join("run.json"))
+                .await
+                .expect("run.json should exist"),
         )
         .expect("run.json should parse");
         assert!(run_json.get("spec").is_some());
@@ -563,22 +590,26 @@ mod tests {
         assert!(run_json["nodes"]["build@2"]["prompt"].is_null());
         assert!(run_json["nodes"]["build@2"]["diff"].is_null());
         assert_eq!(
-            std::fs::read_to_string(target_dir.join("graph.fabro"))
+            fs::read_to_string(target_dir.join("graph.fabro"))
+                .await
                 .expect("graph.fabro should exist"),
             "digraph Ship {}"
         );
         assert_eq!(
-            std::fs::read_to_string(target_dir.join("stages/build@2/prompt.md"))
+            fs::read_to_string(target_dir.join("stages/build@2/prompt.md"))
+                .await
                 .expect("prompt file should exist"),
             "plan"
         );
         assert_eq!(
-            std::fs::read_to_string(target_dir.join("stages/build@2/response.md"))
+            fs::read_to_string(target_dir.join("stages/build@2/response.md"))
+                .await
                 .expect("response file should exist"),
             "done"
         );
         assert_eq!(
-            std::fs::read_to_string(target_dir.join("stages/build@2/stdout.log"))
+            fs::read_to_string(target_dir.join("stages/build@2/stdout.log"))
+                .await
                 .expect("stdout file should exist"),
             "stdout"
         );

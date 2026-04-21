@@ -82,10 +82,9 @@ fn fork_from_entry(
         .context("source run projection has no spec")?;
     run_spec.run_id = new_run_id;
 
-    let now = new_run_id.created_at();
     let start_record = StartRecord {
         run_id:     new_run_id,
-        start_time: now,
+        start_time: new_run_id.created_at(),
         run_branch: Some(new_run_branch.clone()),
         base_sha:   None,
     };

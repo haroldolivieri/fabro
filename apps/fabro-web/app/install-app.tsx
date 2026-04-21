@@ -910,9 +910,16 @@ function ReviewScreen({
   submitting: boolean;
   onInstall: () => Promise<void>;
 }) {
-  const providers = (session?.llm?.providers ?? [])
+  const directProviders = (session?.llm?.providers ?? [])
     .map((provider) => describeProvider(provider.provider))
     .join(", ");
+  // portkey is not in the generated type yet — access via unknown cast
+  const portkeySlug = (session?.llm as { portkey?: { provider_slug?: string } } | undefined)
+    ?.portkey?.provider_slug;
+  const providers =
+    directProviders ||
+    (portkeySlug ? `Portkey (${portkeySlug})` : null) ||
+    null;
   const serverUrl =
     session?.server?.canonical_url || session?.prefill.canonical_url || "Unknown";
   return (
@@ -1064,6 +1071,64 @@ function ProviderFields({
   );
 }
 
+type PortkeyRoutingMode = "catalog" | "config";
+type PortkeyFormatMode = "universal" | "native";
+
+function PortkeyField({
+  id,
+  label,
+  value,
+  onChange,
+  isSecret,
+  placeholder,
+  help,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  isSecret: boolean;
+  placeholder: string;
+  help: { text: string; url: string | null; linkText: string | null };
+}) {
+  return (
+    <div>
+      <label htmlFor={`portkey_${id}`} className="text-sm font-medium text-fg">
+        {label}
+      </label>
+      <div className="mt-2">
+        {isSecret ? (
+          <PasswordInput
+            id={`portkey_${id}`}
+            name={`portkey_${id}`}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+          />
+        ) : (
+          <input
+            type={id === "url" ? "url" : "text"}
+            id={`portkey_${id}`}
+            name={`portkey_${id}`}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className={`${INPUT_CLASS} font-mono`}
+            placeholder={placeholder}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        )}
+      </div>
+      <HelpDisclosure summary="Where do I get this?">
+        <p>{help.text}</p>
+        {help.url && help.linkText && (
+          <ExternalLink href={help.url}>{help.linkText}</ExternalLink>
+        )}
+      </HelpDisclosure>
+    </div>
+  );
+}
+
 function PortkeySection({
   value,
   onChange,
@@ -1071,8 +1136,14 @@ function PortkeySection({
   value: PortkeySelection;
   onChange: (next: PortkeySelection) => void;
 }) {
-  const requiredFields = PORTKEY_FIELDS.filter((f) => f.required);
-  const optionalFields = PORTKEY_FIELDS.filter((f) => !f.required);
+  const [routingMode, setRoutingMode] = useState<PortkeyRoutingMode>("catalog");
+  const [formatMode, setFormatMode] = useState<PortkeyFormatMode>("universal");
+
+  const urlField = PORTKEY_FIELDS.find((f) => f.id === "url")!;
+  const apiKeyField = PORTKEY_FIELDS.find((f) => f.id === "api_key")!;
+  const slugField = PORTKEY_FIELDS.find((f) => f.id === "provider_slug")!;
+  const configField = PORTKEY_FIELDS.find((f) => f.id === "config")!;
+  const providerField = PORTKEY_FIELDS.find((f) => f.id === "provider")!;
 
   return (
     <details className="group rounded-lg border border-white/10 bg-panel">
@@ -1093,89 +1164,103 @@ function PortkeySection({
             Portkey
           </a>{" "}
           for observability, cost tracking, and provider routing (e.g. AWS Bedrock, Azure OpenAI).
-          Filling the three required fields below replaces the need for direct provider API keys
-          above.
+          Configuring Portkey below replaces the need for direct provider API keys above.
         </p>
 
-        {requiredFields.map((field) => (
-          <div key={field.id}>
-            <label htmlFor={`portkey_${field.id}`} className="text-sm font-medium text-fg">
-              {field.label}
-              <span className="ml-1 text-xs text-fg-3">(required)</span>
-            </label>
-            <div className="mt-2">
-              {field.isSecret ? (
-                <PasswordInput
-                  id={`portkey_${field.id}`}
-                  name={`portkey_${field.id}`}
-                  value={value[field.id]}
-                  onChange={(next) => onChange({ ...value, [field.id]: next })}
-                  placeholder={field.placeholder}
-                />
-              ) : (
-                <input
-                  type={field.id === "url" ? "url" : "text"}
-                  id={`portkey_${field.id}`}
-                  name={`portkey_${field.id}`}
-                  value={value[field.id]}
-                  onChange={(e) => onChange({ ...value, [field.id]: e.target.value })}
-                  className={`${INPUT_CLASS} font-mono`}
-                  placeholder={field.placeholder}
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-              )}
-            </div>
-            <HelpDisclosure summary="Where do I get this?">
-              <p>{field.help.text}</p>
-              {field.help.url && field.help.linkText && (
-                <ExternalLink href={field.help.url}>{field.help.linkText}</ExternalLink>
-              )}
-            </HelpDisclosure>
+        {/* Routing mode */}
+        <fieldset>
+          <legend className="text-sm font-medium text-fg">Routing</legend>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <OptionCard
+              selected={routingMode === "catalog"}
+              onSelect={() => setRoutingMode("catalog")}
+              title="Model Catalog"
+              body="Use a provider slug from your Portkey Model Catalog. Portkey handles routing and credentials."
+            />
+            <OptionCard
+              selected={routingMode === "config"}
+              onSelect={() => setRoutingMode("config")}
+              title="Config"
+              body="Use a Portkey config ID for advanced routing: fallbacks, load balancing, conditional routing."
+            />
           </div>
-        ))}
+        </fieldset>
 
-        {optionalFields.length > 0 && (
-          <details className="group/optional">
-            <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-xs text-fg-3 hover:text-fg-2 [&::-webkit-details-marker]:hidden">
-              <ChevronDownIcon className="size-3.5 shrink-0 transition-transform group-open/optional:-rotate-180" />
-              <span>Advanced routing</span>
-            </summary>
-            <div className="mt-4 space-y-6">
-              {optionalFields.map((field) => (
-                <div key={field.id}>
-                  <label
-                    htmlFor={`portkey_${field.id}`}
-                    className="text-sm font-medium text-fg"
-                  >
-                    {field.label}
-                    <span className="ml-1 text-xs text-fg-3">(optional)</span>
-                  </label>
-                  <div className="mt-2">
-                    <input
-                      type="text"
-                      id={`portkey_${field.id}`}
-                      name={`portkey_${field.id}`}
-                      value={value[field.id]}
-                      onChange={(e) => onChange({ ...value, [field.id]: e.target.value })}
-                      className={`${INPUT_CLASS} font-mono`}
-                      placeholder={field.placeholder}
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                  </div>
-                  <HelpDisclosure summary="Where do I get this?">
-                    <p>{field.help.text}</p>
-                    {field.help.url && field.help.linkText && (
-                      <ExternalLink href={field.help.url}>{field.help.linkText}</ExternalLink>
-                    )}
-                  </HelpDisclosure>
-                </div>
-              ))}
-            </div>
-          </details>
+        {/* Provider format */}
+        <fieldset>
+          <legend className="text-sm font-medium text-fg">Provider format</legend>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <OptionCard
+              selected={formatMode === "universal"}
+              onSelect={() => setFormatMode("universal")}
+              title="Universal"
+              body="OpenAI-compatible format. Works with any provider, no extra setup needed."
+            />
+            <OptionCard
+              selected={formatMode === "native"}
+              onSelect={() => setFormatMode("native")}
+              title="Native adapter"
+              body="Use the provider's native API format. Unlocks Anthropic prompt caching, extended thinking, and other provider-specific features."
+            />
+          </div>
+        </fieldset>
+
+        {/* Always-required fields */}
+        <PortkeyField
+          id={urlField.id}
+          label={urlField.label}
+          value={value[urlField.id]}
+          onChange={(v) => onChange({ ...value, [urlField.id]: v })}
+          isSecret={urlField.isSecret}
+          placeholder={urlField.placeholder}
+          help={urlField.help}
+        />
+        <PortkeyField
+          id={apiKeyField.id}
+          label={apiKeyField.label}
+          value={value[apiKeyField.id]}
+          onChange={(v) => onChange({ ...value, [apiKeyField.id]: v })}
+          isSecret={apiKeyField.isSecret}
+          placeholder={apiKeyField.placeholder}
+          help={apiKeyField.help}
+        />
+
+        {/* Routing-mode-specific fields */}
+        <PortkeyField
+          id={slugField.id}
+          label={slugField.label}
+          value={value[slugField.id]}
+          onChange={(v) => onChange({ ...value, [slugField.id]: v })}
+          isSecret={slugField.isSecret}
+          placeholder={slugField.placeholder}
+          help={slugField.help}
+        />
+        {routingMode === "config" && (
+          <PortkeyField
+            id={configField.id}
+            label={configField.label}
+            value={value[configField.id]}
+            onChange={(v) => onChange({ ...value, [configField.id]: v })}
+            isSecret={configField.isSecret}
+            placeholder={configField.placeholder}
+            help={configField.help}
+          />
         )}
 
+        {/* Format-mode-specific field */}
+        {formatMode === "native" && (
+          <PortkeyField
+            id={providerField.id}
+            label={providerField.label}
+            value={value[providerField.id]}
+            onChange={(v) => onChange({ ...value, [providerField.id]: v })}
+            isSecret={providerField.isSecret}
+            placeholder={providerField.placeholder}
+            help={providerField.help}
+          />
+        )}
+
+        {/* Env-only settings reference */}
         <details className="group/env">
           <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-xs text-fg-3 hover:text-fg-2 [&::-webkit-details-marker]:hidden">
             <ChevronDownIcon className="size-3.5 shrink-0 transition-transform group-open/env:-rotate-180" />

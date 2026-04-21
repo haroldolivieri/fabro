@@ -1168,12 +1168,19 @@ fn redacted_llm(pending_install: &PendingInstall) -> serde_json::Value {
     pending_install.llm.as_ref().map_or_else(
         || serde_json::Value::Null,
         |llm| {
-            serde_json::json!({
+            let mut obj = serde_json::json!({
                 "providers": llm.providers.iter().map(|provider| serde_json::json!({
                     "provider": provider.provider.as_str(),
                     "configured": true,
                 })).collect::<Vec<_>>()
-            })
+            });
+            if let Some(portkey) = &llm.portkey {
+                obj["portkey"] = serde_json::json!({
+                    "provider_slug": portkey.provider_slug,
+                    "configured": true,
+                });
+            }
+            obj
         },
     )
 }

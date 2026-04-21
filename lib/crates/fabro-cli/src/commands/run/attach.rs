@@ -57,14 +57,14 @@ pub(crate) async fn attach_run(
 
     if let (Some(storage_dir), Some(run_id)) = (storage_dir.as_deref(), run_id.as_ref()) {
         let client = server_client::connect_server(storage_dir).await?;
-        return attach_run_with_client(
+        return Box::pin(attach_run_with_client(
             &client,
             run_id,
             kill_on_detach,
             styles,
             json_output,
             Printer::Default,
-        )
+        ))
         .await;
     }
 
@@ -535,9 +535,16 @@ mod tests {
     async fn attach_errors_without_store_context() {
         let dir = tempfile::tempdir().unwrap();
 
-        let err = attach_run(dir.path(), None, None, false, no_color_styles(), false)
-            .await
-            .unwrap_err();
+        let err = Box::pin(attach_run(
+            dir.path(),
+            None,
+            None,
+            false,
+            no_color_styles(),
+            false,
+        ))
+        .await
+        .unwrap_err();
 
         assert!(
             err.to_string()

@@ -221,7 +221,7 @@ impl RunDump {
             .iter()
             .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
             .collect();
-        store.write_files(run_id, &refs, message)?;
+        store.write_snapshot(run_id, &refs, message)?;
         Ok(())
     }
 

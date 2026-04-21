@@ -48,7 +48,7 @@ pub async fn rebuild_metadata_branch(
             let stored = &event.event;
             let is_checkpoint = matches!(stored.body, EventBody::CheckpointCompleted(_));
 
-            if !is_checkpoint && projection.spec.is_some() {
+            if !init_written && !is_checkpoint && projection.spec.is_some() {
                 latest_init_snapshot = Some(projection.clone());
             }
 
@@ -56,7 +56,7 @@ pub async fn rebuild_metadata_branch(
 
             if is_checkpoint {
                 if !init_written {
-                    let init_snapshot = latest_init_snapshot.clone().unwrap_or_else(|| {
+                    let init_snapshot = latest_init_snapshot.take().unwrap_or_else(|| {
                         let mut snapshot = projection.clone();
                         snapshot.checkpoint = None;
                         snapshot.checkpoints.clear();
@@ -147,7 +147,7 @@ pub async fn find_run_id_by_prefix_or_store(
     fabro_store: &DurableStore,
     prefix: &str,
 ) -> Result<RunId> {
-    if let Some(run_id) = find_run_id_by_prefix_in_refs(repo, prefix)? {
+    if let Some(run_id) = rewind::find_run_id_by_prefix_opt(repo, prefix)? {
         return Ok(run_id);
     }
 
@@ -259,37 +259,6 @@ fn backfill_missing_checkpoint_shas(
             }
         }
     }
-}
-
-fn find_run_id_by_prefix_in_refs(repo: &Repository, prefix: &str) -> Result<Option<RunId>> {
-    let refs = repo.references()?;
-    let pattern = "refs/heads/fabro/meta/";
-    let mut matches = Vec::new();
-
-    for reference in refs.flatten() {
-        let Some(name) = reference.name() else {
-            continue;
-        };
-        let Some(run_id) = name.strip_prefix(pattern) else {
-            continue;
-        };
-        let Ok(run_id) = run_id.parse::<RunId>() else {
-            continue;
-        };
-
-        if run_id.to_string() == prefix {
-            return Ok(Some(run_id));
-        }
-        if run_id.to_string().starts_with(prefix) {
-            matches.push(run_id);
-        }
-    }
-
-    if matches.is_empty() {
-        return Ok(None);
-    }
-
-    resolve_prefix_matches(prefix, matches).map(Some)
 }
 
 fn repo_root_path(repo: &Repository) -> PathBuf {

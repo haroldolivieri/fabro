@@ -12,8 +12,8 @@ use crate::git::Store;
 
 /// Git-native metadata storage for pipeline runs.
 ///
-/// Stores checkpoint data, run specs, and metadata on an orphan branch
-/// (`fabro/meta/{run_id}`) so that runs can be resumed from git alone.
+/// Stores a unified `RunProjection` snapshot (plus artifacts) on an orphan
+/// branch (`fabro/meta/{run_id}`) so that runs can be resumed from git alone.
 pub struct MetadataStore {
     repo_path: PathBuf,
     author:    GitAuthor,
@@ -57,23 +57,8 @@ impl MetadataStore {
         Ok(())
     }
 
-    /// Write arbitrary files to the metadata branch.
-    pub fn write_files(
-        &self,
-        run_id: &str,
-        entries: &[(&str, &[u8])],
-        message: &str,
-    ) -> Result<(), MetadataError> {
-        let (store, sig) = self.open_store()?;
-        let branch = Self::branch_name(run_id);
-        let branch_store = BranchStore::new(&store, &branch, &sig);
-        let message = self.commit_message(message);
-        branch_store.write_entries(entries, &message)?;
-        Ok(())
-    }
-
-    /// Write a projection snapshot commit to the metadata branch and return
-    /// the new commit SHA.
+    /// Write a snapshot commit to the metadata branch and return the new
+    /// commit SHA.
     pub fn write_snapshot(
         &self,
         run_id: &str,
@@ -112,39 +97,16 @@ impl MetadataStore {
         run_id: &str,
     ) -> Result<Option<RunProjection>, MetadataError> {
         let branch = Self::branch_name(run_id);
-        match Self::read_file(repo_path, run_id, "run.json")? {
-            Some(bytes) => {
-                let projection: RunProjection =
-                    serde_json::from_slice(&bytes).map_err(|source| {
-                        MetadataError::Deserialize {
-                            entity: "run projection",
-                            branch: branch.clone(),
-                            source,
-                        }
-                    })?;
-                let has_projection_data = projection.spec.is_some()
-                    || projection.start.is_some()
-                    || projection.status.is_some()
-                    || projection.checkpoint.is_some()
-                    || projection.conclusion.is_some()
-                    || projection.sandbox.is_some()
-                    || projection.retro.is_some()
-                    || projection.graph_source.is_some()
-                    || projection.iter_nodes().next().is_some();
-                if !has_projection_data {
-                    return Err(MetadataError::Deserialize {
-                        entity: "run projection",
-                        branch,
-                        source: serde_json::Error::io(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "run.json does not contain a serialized projection snapshot",
-                        )),
-                    });
-                }
-                Ok(Some(projection))
-            }
-            None => Ok(None),
-        }
+        let Some(bytes) = Self::read_file(repo_path, run_id, "run.json")? else {
+            return Ok(None);
+        };
+        let projection: RunProjection =
+            serde_json::from_slice(&bytes).map_err(|source| MetadataError::Deserialize {
+                entity: "run projection",
+                branch,
+                source,
+            })?;
+        Ok(Some(projection))
     }
 
     /// Read a checkpoint from the metadata branch. Returns `None` if branch or
@@ -414,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn metadata_store_write_files() {
+    fn metadata_store_write_snapshot_preserves_prior_files() {
         let dir = tempfile::tempdir().unwrap();
         init_repo(dir.path());
 
@@ -426,7 +388,7 @@ mod tests {
             .unwrap();
 
         store
-            .write_files(
+            .write_snapshot(
                 &run_id,
                 &[("retro/prompt.md", b"how did it go?")],
                 "finalize run",

@@ -3,6 +3,7 @@ use std::fmt::Write;
 use std::str::FromStr;
 
 use anyhow::{Context, Result, bail};
+use fabro_checkpoint::META_BRANCH_PREFIX;
 use fabro_checkpoint::branch::{BranchStore, CommitInfo};
 use fabro_checkpoint::git::Store;
 use fabro_graphviz::graph::Graph;
@@ -319,37 +320,42 @@ fn rewind_to_entry(store: &Store, run_id: &RunId, entry: &TimelineEntry, push: b
 }
 
 pub fn find_run_id_by_prefix(repo: &Repository, prefix: &str) -> Result<RunId> {
+    find_run_id_by_prefix_opt(repo, prefix)?
+        .ok_or_else(|| anyhow::anyhow!("no run found matching '{prefix}'"))
+}
+
+/// Resolve a run id from the metadata branch refs. `Ok(None)` when no run
+/// matches; `Err` when the prefix matches more than one.
+pub(super) fn find_run_id_by_prefix_opt(repo: &Repository, prefix: &str) -> Result<Option<RunId>> {
     let refs = repo.references()?;
-    let pattern = "refs/heads/fabro/meta/";
+    let pattern = format!("refs/heads/{META_BRANCH_PREFIX}");
     let mut matches = Vec::new();
 
     for reference in refs.flatten() {
         let Some(name) = reference.name() else {
             continue;
         };
-        if let Some(run_id) = name.strip_prefix(pattern) {
-            let Ok(run_id) = run_id.parse::<RunId>() else {
-                continue;
-            };
-            if run_id.to_string() == prefix {
-                return Ok(run_id);
-            }
-            if run_id.to_string().starts_with(prefix) {
-                matches.push(run_id);
-            }
+        let Some(run_id) = name.strip_prefix(&pattern) else {
+            continue;
+        };
+        let Ok(run_id) = run_id.parse::<RunId>() else {
+            continue;
+        };
+        if run_id.to_string() == prefix {
+            return Ok(Some(run_id));
+        }
+        if run_id.to_string().starts_with(prefix) {
+            matches.push(run_id);
         }
     }
 
     match matches.len() {
-        0 => bail!("no run found matching '{prefix}'"),
-        1 => Ok(matches
-            .into_iter()
-            .next()
-            .expect("exactly one run should match when len is 1")),
+        0 => Ok(None),
+        1 => Ok(matches.into_iter().next()),
         _ => {
             let mut msg = format!("ambiguous run ID prefix '{prefix}', matches:\n");
-            for m in &matches {
-                let _ = writeln!(msg, "  {m}");
+            for run_id in &matches {
+                let _ = writeln!(msg, "  {run_id}");
             }
             bail!("{msg}")
         }

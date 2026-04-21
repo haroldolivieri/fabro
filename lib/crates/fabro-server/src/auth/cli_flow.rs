@@ -826,92 +826,158 @@ fn browser_shell(status: StatusCode, title: &str, body: &str) -> Response {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{title} · Fabro</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <style>
       :root {{
-        color-scheme: light;
-        font-family: InterVariable, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color-scheme: dark;
+        --page:       #0F1729;
+        --overlay:    rgba(255, 255, 255, 0.04);
+        --overlay-2:  rgba(255, 255, 255, 0.08);
+        --line:       rgba(255, 255, 255, 0.08);
+        --fg:         #ffffff;
+        --fg-2:       #E8EDF3;
+        --fg-3:       #A8B5C5;
+        --teal-500:   #67B2D7;
+        --teal-700:   #357F9E;
+        --mint:       #5AC8A8;
+        --coral:      #E86B6B;
+        --on-primary: #0F1729;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
       }}
-      * {{
-        box-sizing: border-box;
-      }}
+      * {{ box-sizing: border-box; }}
       body {{
         margin: 0;
-        min-height: 100vh;
-        background: #ffffff;
-        color: #0f172a;
+        min-height: 100dvh;
+        color: var(--fg-2);
+        background-color: var(--page);
+        background-image:
+          radial-gradient(ellipse 120% 60% at 15% 5%, rgba(53, 127, 158, 0.14) 0%, transparent 50%),
+          radial-gradient(ellipse 80% 50% at 85% 90%, rgba(90, 200, 168, 0.08) 0%, transparent 45%);
+        background-attachment: fixed;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 1rem;
       }}
-      main {{
-        width: min(100%, 34rem);
-        margin: 0 auto;
-        padding: 4rem 1.5rem;
+      main {{ width: 100%; max-width: 24rem; }}
+      .brand {{
+        display: flex;
+        justify-content: center;
+        margin-bottom: 1.75rem;
       }}
+      .brand img {{ width: 3rem; height: 3rem; }}
       .panel {{
-        border: 1px solid rgba(15, 23, 42, 0.12);
-        border-radius: 1.5rem;
-        background: #ffffff;
-        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
+        background: rgba(37, 44, 61, 0.82);
+        border: 1px solid var(--line);
+        border-radius: 0.75rem;
         padding: 2rem;
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
       }}
+      .stack > * + * {{ margin-top: 1.5rem; }}
       .eyebrow {{
-        margin: 0 0 0.75rem;
-        color: #475569;
-        font-size: 0.95rem;
-        line-height: 1.5;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0;
+        color: var(--mint);
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }}
+      .eyebrow::before {{
+        content: "";
+        width: 0.375rem;
+        height: 0.375rem;
+        border-radius: 9999px;
+        background: var(--mint);
+        box-shadow: 0 0 0 3px rgba(90, 200, 168, 0.22);
+      }}
+      .eyebrow.error {{ color: var(--coral); }}
+      .eyebrow.error::before {{
+        background: var(--coral);
+        box-shadow: 0 0 0 3px rgba(232, 107, 107, 0.22);
       }}
       h1 {{
-        margin: 0;
-        font-size: 2rem;
+        margin: 0.625rem 0 0;
+        color: var(--fg);
+        font-size: 1.5rem;
+        line-height: 1.2;
         font-weight: 600;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.015em;
         text-wrap: balance;
       }}
       p {{
         margin: 0;
-        color: #334155;
-        font-size: 1rem;
-        line-height: 1.65;
+        color: var(--fg-3);
+        font-size: 0.875rem;
+        line-height: 1.6;
         text-wrap: pretty;
       }}
-      .stack {{
-        display: grid;
-        gap: 1rem;
+      code {{
+        font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+        font-size: 0.8125em;
+        padding: 0.1em 0.35em;
+        border-radius: 0.25rem;
+        background: var(--overlay-2);
+        color: var(--fg-2);
       }}
       .identity {{
-        display: grid;
-        gap: 0.5rem;
-        padding: 1rem 1.125rem;
-        border-radius: 1rem;
-        background: #f8fafc;
-        border: 1px solid rgba(15, 23, 42, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding: 0.875rem 1rem;
+        border-radius: 0.5rem;
+        background: var(--overlay);
+        border: 1px solid var(--line);
       }}
       .identity strong {{
-        color: #0f172a;
-        font-size: 1rem;
+        color: var(--fg);
+        font-size: 0.9375rem;
         font-weight: 600;
+      }}
+      .identity-meta {{
+        color: var(--fg-3);
+        font-size: 0.8125rem;
+        font-feature-settings: "tnum";
+        word-break: break-word;
       }}
       .button {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        width: 100%;
         appearance: none;
         border: 0;
-        border-radius: 999px;
-        background: #0f172a;
-        color: #ffffff;
-        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        background: var(--teal-500);
+        color: var(--on-primary);
+        padding: 0.625rem 1rem;
         font: inherit;
-        font-size: 1rem;
+        font-size: 0.875rem;
         font-weight: 600;
         cursor: pointer;
+        transition: background-color 120ms ease, color 120ms ease;
       }}
+      .button:hover {{ background: var(--teal-700); color: var(--fg); }}
       .button:focus-visible {{
-        outline: 2px solid #2563eb;
+        outline: 2px solid var(--teal-500);
         outline-offset: 2px;
       }}
-      form {{
-        margin: 0;
+      form {{ margin: 0; }}
+      @media (prefers-reduced-motion: reduce) {{
+        .button {{ transition: none; }}
       }}
     </style>
   </head>
   <body>
     <main>
+      <div class="brand">
+        <img src="/logo.svg" alt="Fabro" width="48" height="48">
+      </div>
       <div class="panel">
         <div class="stack">
           {body}
@@ -950,15 +1016,17 @@ fn cli_login_confirmation_page(session: &SessionCookie) -> Response {
         "Authorize CLI login",
         &format!(
             r#"
-<p class="eyebrow">GitHub session ready.</p>
-<h1>Authorize CLI login</h1>
-<p>This browser tab is confirming a Fabro CLI login on this machine. Only continue if you started <code>fabro auth login</code> in your terminal.</p>
+<div>
+  <p class="eyebrow">Signed in with GitHub</p>
+  <h1>Authorize CLI login</h1>
+</div>
+<p>You started <code>fabro auth login</code> in a terminal on this machine. If that wasn't you, close this tab to cancel.</p>
 <div class="identity">
   <strong>{display_name}</strong>
-  <p>@{login} · {email}</p>
+  <span class="identity-meta">@{login} · {email}</span>
 </div>
 <form method="post" action="/auth/cli/resume">
-  <button class="button" type="submit">Continue as {login}</button>
+  <button class="button" type="submit">Continue as @{login}</button>
 </form>
 "#
         ),
@@ -1145,10 +1213,12 @@ fn static_error_page(body: &'static str) -> Response {
         "Login failed",
         &format!(
             r#"
-<p class="eyebrow">Login failed:</p>
-<h1>CLI sign-in could not continue</h1>
+<div>
+  <p class="eyebrow error">Login failed</p>
+  <h1>CLI sign-in could not continue</h1>
+</div>
 <p>{body}</p>
-<p>Return to your terminal and run the login command again.</p>
+<p>Return to your terminal and run <code>fabro auth login</code> again.</p>
 "#
         ),
     )
@@ -1610,7 +1680,7 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
         assert!(html.contains("Authorize CLI login"));
-        assert!(html.contains("Continue as octocat"));
+        assert!(html.contains("Continue as @octocat"));
         assert!(html.contains("form"));
         assert!(html.contains("method=\"post\""));
     }
@@ -1715,7 +1785,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
-        assert!(html.contains("Login failed:"));
+        assert!(html.contains("Login failed"));
     }
 
     #[tokio::test]

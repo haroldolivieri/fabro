@@ -421,14 +421,14 @@ async fn drive_browser_flow(browser_url: &str) {
                 return;
             }
             assert!(
-                status == reqwest::StatusCode::BAD_REQUEST && body.contains("Login failed:"),
+                status == reqwest::StatusCode::BAD_REQUEST && body.contains("Login failed"),
                 "browser confirmation failed with {status}\n{body}"
             );
         }
         return;
     }
     assert!(
-        status == reqwest::StatusCode::BAD_REQUEST && body.contains("Login failed:"),
+        status == reqwest::StatusCode::BAD_REQUEST && body.contains("Login failed"),
         "browser flow failed with {status}\n{body}"
     );
 }

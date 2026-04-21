@@ -25,12 +25,19 @@ import {
   persistInstallToken,
   putInstallGithubToken,
   putInstallLlm,
+  type PortkeyInstallData,
   putInstallServer,
   readStoredInstallToken,
   testInstallGithubToken,
   testInstallLlm,
 } from "./install-api";
-import { INSTALL_PROVIDERS } from "./install-config";
+import {
+  INSTALL_PROVIDERS,
+  PORTKEY_ENV_ONLY_FIELDS,
+  PORTKEY_FIELDS,
+  defaultPortkeySelection,
+  type PortkeySelection,
+} from "./install-config";
 import { shouldRedirectAfterHealthPoll } from "./install-flow";
 import {
   consumeInstallGithubErrorFromUrl,
@@ -88,6 +95,9 @@ export default function InstallApp() {
   const [manualToken, setManualToken] = useState("");
   const [llmSelection, setLlmSelection] = useState<ProviderSelection>(() =>
     defaultProviderSelection(),
+  );
+  const [portkeySelection, setPortkeySelection] = useState<PortkeySelection>(
+    () => defaultPortkeySelection(),
   );
   const [canonicalUrl, setCanonicalUrl] = useState("");
   const [githubStrategy, setGithubStrategy] = useState<GithubStrategy>("token");
@@ -298,39 +308,58 @@ export default function InstallApp() {
           submitting={submitting}
           backHref="/install/server"
           onSubmit={async () => {
-            const providers = INSTALL_PROVIDERS.map(({ id }) => {
-              const current = llmSelection[id] ?? { apiKey: "" };
-              return {
-                provider: id,
-                api_key: current.apiKey.trim(),
-              };
-            }).filter((provider) => provider.api_key.length > 0);
+              const providers = INSTALL_PROVIDERS.map(({ id }) => {
+                const current = llmSelection[id] ?? { apiKey: "" };
+                return { provider: id, api_key: current.apiKey.trim() };
+              }).filter((provider) => provider.api_key.length > 0);
 
-            if (providers.length === 0) {
-              setSaveError("Add at least one provider API key before continuing.");
-              return;
-            }
+              const portkey: PortkeyInstallData | undefined =
+                portkeySelection.url.trim() &&
+                portkeySelection.api_key.trim() &&
+                portkeySelection.provider.trim()
+                  ? {
+                      url: portkeySelection.url.trim(),
+                      api_key: portkeySelection.api_key.trim(),
+                      provider: portkeySelection.provider.trim(),
+                      ...(portkeySelection.provider_slug.trim()
+                        ? { provider_slug: portkeySelection.provider_slug.trim() }
+                        : {}),
+                      ...(portkeySelection.config.trim()
+                        ? { config: portkeySelection.config.trim() }
+                        : {}),
+                    }
+                  : undefined;
 
-            setSubmitting(true);
-            setSaveError(null);
-            try {
-              await Promise.all(
-                providers.map((provider) => testInstallLlm(installToken, provider)),
-              );
-              await putInstallLlm(installToken, providers);
-              const nextSession = await getInstallSession(installToken);
-              setSessionState({ status: "ready", data: nextSession });
-              navigate("/install/github");
-            } catch (error) {
-              setSaveError(
-                error instanceof Error ? error.message : "Failed to save LLM settings.",
-              );
-            } finally {
-              setSubmitting(false);
-            }
-          }}
+              if (providers.length === 0 && !portkey) {
+                setSaveError(
+                  "Add at least one provider API key or configure Portkey before continuing.",
+                );
+                return;
+              }
+
+              setSubmitting(true);
+              setSaveError(null);
+              try {
+                await Promise.all(
+                  providers.map((provider) => testInstallLlm(installToken, provider)),
+                );
+                await putInstallLlm(installToken, providers, portkey);
+                const nextSession = await getInstallSession(installToken);
+                setSessionState({ status: "ready", data: nextSession });
+                navigate("/install/github");
+              } catch (error) {
+                setSaveError(
+                  error instanceof Error ? error.message : "Failed to save LLM settings.",
+                );
+              } finally {
+                setSubmitting(false);
+              }
+            }}
         >
-          <ProviderFields value={llmSelection} onChange={setLlmSelection} />
+          <div className="space-y-8">
+            <ProviderFields value={llmSelection} onChange={setLlmSelection} />
+            <PortkeySection value={portkeySelection} onChange={setPortkeySelection} />
+          </div>
         </StepPanel>
       ) : location.pathname === "/install/server" ? (
         <StepPanel
@@ -1032,6 +1061,137 @@ function ProviderFields({
         );
       })}
     </div>
+  );
+}
+
+function PortkeySection({
+  value,
+  onChange,
+}: {
+  value: PortkeySelection;
+  onChange: (next: PortkeySelection) => void;
+}) {
+  const requiredFields = PORTKEY_FIELDS.filter((f) => f.required);
+  const optionalFields = PORTKEY_FIELDS.filter((f) => !f.required);
+
+  return (
+    <details className="group rounded-lg border border-white/10 bg-panel">
+      <summary className="flex cursor-pointer select-none list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-fg [&::-webkit-details-marker]:hidden">
+        <span>Portkey AI Gateway</span>
+        <ChevronDownIcon className="size-4 shrink-0 text-fg-3 transition-transform group-open:-rotate-180" />
+      </summary>
+
+      <div className="space-y-6 border-t border-white/10 px-4 py-4">
+        <p className="text-xs/5 text-fg-3">
+          Route all LLM traffic through{" "}
+          <a
+            href="https://portkey.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-teal-300 hover:text-teal-500"
+          >
+            Portkey
+          </a>{" "}
+          for observability, cost tracking, and provider routing (e.g. AWS Bedrock, Azure OpenAI).
+          Filling the three required fields below replaces the need for direct provider API keys
+          above.
+        </p>
+
+        {requiredFields.map((field) => (
+          <div key={field.id}>
+            <label htmlFor={`portkey_${field.id}`} className="text-sm font-medium text-fg">
+              {field.label}
+              <span className="ml-1 text-xs text-fg-3">(required)</span>
+            </label>
+            <div className="mt-2">
+              {field.isSecret ? (
+                <PasswordInput
+                  id={`portkey_${field.id}`}
+                  name={`portkey_${field.id}`}
+                  value={value[field.id]}
+                  onChange={(next) => onChange({ ...value, [field.id]: next })}
+                  placeholder={field.placeholder}
+                />
+              ) : (
+                <input
+                  type="text"
+                  id={`portkey_${field.id}`}
+                  name={`portkey_${field.id}`}
+                  value={value[field.id]}
+                  onChange={(e) => onChange({ ...value, [field.id]: e.target.value })}
+                  className={`${INPUT_CLASS} font-mono`}
+                  placeholder={field.placeholder}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              )}
+            </div>
+            <HelpDisclosure summary="Where do I get this?">
+              <p>{field.help.text}</p>
+              {field.help.url && field.help.linkText && (
+                <ExternalLink href={field.help.url}>{field.help.linkText}</ExternalLink>
+              )}
+            </HelpDisclosure>
+          </div>
+        ))}
+
+        {optionalFields.length > 0 && (
+          <details className="group/optional">
+            <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-xs text-fg-3 hover:text-fg-2 [&::-webkit-details-marker]:hidden">
+              <ChevronDownIcon className="size-3.5 shrink-0 transition-transform group-open/optional:-rotate-180" />
+              <span>Advanced routing</span>
+            </summary>
+            <div className="mt-4 space-y-6">
+              {optionalFields.map((field) => (
+                <div key={field.id}>
+                  <label
+                    htmlFor={`portkey_${field.id}`}
+                    className="text-sm font-medium text-fg"
+                  >
+                    {field.label}
+                    <span className="ml-1 text-xs text-fg-3">(optional)</span>
+                  </label>
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      id={`portkey_${field.id}`}
+                      name={`portkey_${field.id}`}
+                      value={value[field.id]}
+                      onChange={(e) => onChange({ ...value, [field.id]: e.target.value })}
+                      className={`${INPUT_CLASS} font-mono`}
+                      placeholder={field.placeholder}
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <HelpDisclosure summary="Where do I get this?">
+                    <p>{field.help.text}</p>
+                    {field.help.url && field.help.linkText && (
+                      <ExternalLink href={field.help.url}>{field.help.linkText}</ExternalLink>
+                    )}
+                  </HelpDisclosure>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        <details className="group/env">
+          <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-xs text-fg-3 hover:text-fg-2 [&::-webkit-details-marker]:hidden">
+            <ChevronDownIcon className="size-3.5 shrink-0 transition-transform group-open/env:-rotate-180" />
+            <span>Environment-variable-only settings</span>
+          </summary>
+          <div className="mt-3 space-y-3">
+            {PORTKEY_ENV_ONLY_FIELDS.map((field) => (
+              <div key={field.envVar} className="rounded-md bg-panel-alt px-3 py-2">
+                <p className="font-mono text-xs text-teal-300">{field.envVar}</p>
+                <p className="mt-1 text-xs/5 text-fg-3">{field.description}</p>
+              </div>
+            ))}
+          </div>
+        </details>
+      </div>
+    </details>
   );
 }
 

@@ -28,10 +28,14 @@ pub struct AwsCredentials {
 /// convenience wrapper [`PortkeyConfig::from_env`] (environment variables).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortkeyConfig {
-    pub base_url:      String,         // PORTKEY_URL
-    pub api_key:       String,         // PORTKEY_API_KEY
-    pub provider:      Provider,       // PORTKEY_PROVIDER (mandatory Provider enum)
-    pub provider_slug: Option<String>, // PORTKEY_PROVIDER_SLUG
+    pub base_url:      String, // PORTKEY_URL
+    pub api_key:       String, // PORTKEY_API_KEY
+    pub provider_slug: String, // PORTKEY_PROVIDER_SLUG (required)
+    /// Optional: set to use the provider's native API format and unlock
+    /// provider-specific features (e.g. Anthropic prompt caching, extended
+    /// thinking). When absent, requests are sent in OpenAI-compatible format,
+    /// which works universally but foregoes native features.
+    pub provider:      Option<Provider>, // PORTKEY_PROVIDER
     pub config:        Option<String>, // PORTKEY_CONFIG
     pub metadata:      Option<String>, // PORTKEY_METADATA
     pub aws:           Option<AwsCredentials>,
@@ -49,17 +53,19 @@ impl PortkeyConfig {
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Option<Self> {
         let base_url = lookup("PORTKEY_URL")?;
         let api_key = lookup("PORTKEY_API_KEY")?;
+        let provider_slug = lookup("PORTKEY_PROVIDER_SLUG")?;
 
-        let provider_str = lookup("PORTKEY_PROVIDER")?;
-        let provider = match Provider::from_str(&provider_str) {
-            Ok(p) => p,
-            Err(e) => {
-                warn!(value = %provider_str, error = %e, "PORTKEY_PROVIDER is not a valid provider");
-                return None;
-            }
+        let provider = match lookup("PORTKEY_PROVIDER") {
+            Some(s) => match Provider::from_str(&s) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    warn!(value = %s, error = %e, "PORTKEY_PROVIDER is not a valid provider, ignoring");
+                    None
+                }
+            },
+            None => None,
         };
 
-        let provider_slug = lookup("PORTKEY_PROVIDER_SLUG");
         let config = lookup("PORTKEY_CONFIG");
         let metadata = lookup("PORTKEY_METADATA");
 
@@ -84,8 +90,8 @@ impl PortkeyConfig {
         Some(Self {
             base_url,
             api_key,
-            provider,
             provider_slug,
+            provider,
             config,
             metadata,
             aws,
@@ -106,13 +112,7 @@ impl PortkeyConfig {
         let mut headers = HashMap::new();
 
         headers.insert("x-portkey-api-key".to_string(), self.api_key.clone());
-
-        let provider_value = self
-            .provider_slug
-            .as_deref()
-            .unwrap_or_else(|| self.provider.as_str())
-            .to_string();
-        headers.insert("x-portkey-provider".to_string(), provider_value);
+        headers.insert("x-portkey-provider".to_string(), self.provider_slug.clone());
 
         if let Some(config) = &self.config {
             headers.insert("x-portkey-config".to_string(), config.clone());
@@ -164,17 +164,24 @@ impl PortkeyConfig {
     /// auth key.  The Portkey headers are *inserted* into `extra_headers`
     /// (existing keys are preserved).
     pub fn apply(&self, credentials: &mut Vec<ApiCredential>) {
+        // When PORTKEY_PROVIDER is set, use its native adapter (full features).
+        // Otherwise fall back to OpenAI-compatible format, which Portkey accepts
+        // universally for all providers.
+        let effective_provider = self.provider.unwrap_or(Provider::OpenAi);
         let portkey_headers = self.build_headers();
 
-        if let Some(credential) = credentials.iter_mut().find(|c| c.provider == self.provider) {
+        if let Some(credential) = credentials
+            .iter_mut()
+            .find(|c| c.provider == effective_provider)
+        {
             credential.base_url = Some(self.base_url.clone());
             for (key, value) in portkey_headers {
                 credential.extra_headers.insert(key, value);
             }
         } else {
             credentials.push(ApiCredential {
-                provider:      self.provider,
-                auth_header:   Self::dummy_auth_header(self.provider),
+                provider:      effective_provider,
+                auth_header:   Self::dummy_auth_header(effective_provider),
                 extra_headers: portkey_headers,
                 base_url:      Some(self.base_url.clone()),
                 codex_mode:    false,
@@ -227,8 +234,8 @@ mod tests {
         PortkeyConfig {
             base_url:      "https://api.portkey.ai/v1".to_string(),
             api_key:       "pk-test".to_string(),
-            provider:      Provider::Anthropic,
-            provider_slug: None,
+            provider_slug: "@anthropic".to_string(),
+            provider:      Some(Provider::Anthropic),
             config:        None,
             metadata:      None,
             aws:           None,
@@ -236,14 +243,14 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // from_env — failing cases
+    // from_env — failing cases (slug is required, not provider)
     // -----------------------------------------------------------------------
 
     #[test]
     fn from_env_returns_none_when_url_missing() {
         clear_portkey_env();
         std::env::set_var("PORTKEY_API_KEY", "key");
-        std::env::set_var("PORTKEY_PROVIDER", "anthropic");
+        std::env::set_var("PORTKEY_PROVIDER_SLUG", "@openai-prod");
         assert!(PortkeyConfig::from_env().is_none());
     }
 
@@ -251,12 +258,12 @@ mod tests {
     fn from_env_returns_none_when_api_key_missing() {
         clear_portkey_env();
         std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
-        std::env::set_var("PORTKEY_PROVIDER", "anthropic");
+        std::env::set_var("PORTKEY_PROVIDER_SLUG", "@openai-prod");
         assert!(PortkeyConfig::from_env().is_none());
     }
 
     #[test]
-    fn from_env_returns_none_when_provider_missing() {
+    fn from_env_returns_none_when_slug_missing() {
         clear_portkey_env();
         std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
         std::env::set_var("PORTKEY_API_KEY", "key");
@@ -264,12 +271,27 @@ mod tests {
     }
 
     #[test]
-    fn from_env_returns_none_on_invalid_provider() {
+    fn from_env_succeeds_without_provider() {
+        // Provider is optional — slug is the only required routing field.
         clear_portkey_env();
         std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
         std::env::set_var("PORTKEY_API_KEY", "key");
+        std::env::set_var("PORTKEY_PROVIDER_SLUG", "@openai-prod");
+        let cfg = PortkeyConfig::from_env().expect("should return Some without provider");
+        assert!(cfg.provider.is_none());
+    }
+
+    #[test]
+    fn from_env_invalid_provider_warns_but_proceeds() {
+        // Invalid PORTKEY_PROVIDER emits a warning but does not abort — config
+        // is returned with provider = None (falls back to OpenAI-compat format).
+        clear_portkey_env();
+        std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
+        std::env::set_var("PORTKEY_API_KEY", "key");
+        std::env::set_var("PORTKEY_PROVIDER_SLUG", "@openai-prod");
         std::env::set_var("PORTKEY_PROVIDER", "not_a_real_provider");
-        assert!(PortkeyConfig::from_env().is_none());
+        let cfg = PortkeyConfig::from_env().expect("should return Some even with invalid provider");
+        assert!(cfg.provider.is_none());
     }
 
     // -----------------------------------------------------------------------
@@ -281,25 +303,25 @@ mod tests {
         clear_portkey_env();
         std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
         std::env::set_var("PORTKEY_API_KEY", "pk-test-key");
-        std::env::set_var("PORTKEY_PROVIDER", "openai");
+        std::env::set_var("PORTKEY_PROVIDER_SLUG", "@openai-prod");
 
         let cfg = PortkeyConfig::from_env().expect("should return Some");
         assert_eq!(cfg.base_url, "https://api.portkey.ai/v1");
         assert_eq!(cfg.api_key, "pk-test-key");
-        assert_eq!(cfg.provider, Provider::OpenAi);
-        assert!(cfg.provider_slug.is_none());
+        assert_eq!(cfg.provider_slug, "@openai-prod");
+        assert!(cfg.provider.is_none());
         assert!(cfg.config.is_none());
         assert!(cfg.metadata.is_none());
         assert!(cfg.aws.is_none());
     }
 
     #[test]
-    fn from_env_parses_optional_fields() {
+    fn from_env_parses_optional_provider() {
         clear_portkey_env();
         std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
         std::env::set_var("PORTKEY_API_KEY", "pk-test-key");
+        std::env::set_var("PORTKEY_PROVIDER_SLUG", "@bedrock-prod");
         std::env::set_var("PORTKEY_PROVIDER", "anthropic");
-        std::env::set_var("PORTKEY_PROVIDER_SLUG", "my-anthropic-slug");
         std::env::set_var("PORTKEY_CONFIG", "pc-config-abc");
         std::env::set_var("PORTKEY_METADATA", r#"{"user":"test"}"#);
         std::env::set_var("PORTKEY_AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
@@ -311,8 +333,8 @@ mod tests {
         std::env::set_var("PORTKEY_AWS_SESSION_TOKEN", "session-tok");
 
         let cfg = PortkeyConfig::from_env().expect("should return Some");
-        assert_eq!(cfg.provider, Provider::Anthropic);
-        assert_eq!(cfg.provider_slug.as_deref(), Some("my-anthropic-slug"));
+        assert_eq!(cfg.provider, Some(Provider::Anthropic));
+        assert_eq!(cfg.provider_slug, "@bedrock-prod");
         assert_eq!(cfg.config.as_deref(), Some("pc-config-abc"));
         assert_eq!(cfg.metadata.as_deref(), Some(r#"{"user":"test"}"#));
 
@@ -331,7 +353,7 @@ mod tests {
         clear_portkey_env();
         std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
         std::env::set_var("PORTKEY_API_KEY", "pk-test-key");
-        std::env::set_var("PORTKEY_PROVIDER", "anthropic");
+        std::env::set_var("PORTKEY_PROVIDER_SLUG", "@bedrock-prod");
         // Only set access key, omit secret key
         std::env::set_var("PORTKEY_AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
 
@@ -356,7 +378,7 @@ mod tests {
         assert_eq!(credentials.len(), 1);
         let cred = &credentials[0];
 
-        // Provider matches
+        // Provider matches (Some(Anthropic) → uses Anthropic adapter)
         assert_eq!(cred.provider, Provider::Anthropic);
 
         // Dummy auth key was used (Custom header for Anthropic)
@@ -368,7 +390,7 @@ mod tests {
         // base_url set to Portkey URL
         assert_eq!(cred.base_url.as_deref(), Some("https://api.portkey.ai/v1"));
 
-        // Portkey headers injected
+        // Portkey headers injected; provider header comes from slug
         assert_eq!(
             cred.extra_headers
                 .get("x-portkey-api-key")
@@ -379,7 +401,31 @@ mod tests {
             cred.extra_headers
                 .get("x-portkey-provider")
                 .map(String::as_str),
-            Some("anthropic")
+            Some("@anthropic")
+        );
+    }
+
+    #[test]
+    fn apply_without_provider_defaults_to_openai_adapter() {
+        let cfg = PortkeyConfig {
+            provider: None,
+            ..portkey_config_anthropic()
+        };
+        let mut credentials: Vec<ApiCredential> = vec![];
+        cfg.apply(&mut credentials);
+        // Falls back to OpenAI-compatible format
+        assert_eq!(credentials[0].provider, Provider::OpenAi);
+        assert_eq!(
+            credentials[0].auth_header,
+            ApiKeyHeader::Bearer("pk-portkey-dummy".to_string())
+        );
+        // Slug still used for routing header
+        assert_eq!(
+            credentials[0]
+                .extra_headers
+                .get("x-portkey-provider")
+                .map(String::as_str),
+            Some("@anthropic")
         );
     }
 
@@ -463,9 +509,9 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn apply_sets_provider_slug_from_config() {
+    fn apply_uses_slug_as_provider_header() {
         let cfg = PortkeyConfig {
-            provider_slug: Some("@bedrock-sandbox".to_string()),
+            provider_slug: "@bedrock-sandbox".to_string(),
             ..portkey_config_anthropic()
         };
         let mut credentials: Vec<ApiCredential> = vec![];
@@ -477,21 +523,6 @@ mod tests {
                 .get("x-portkey-provider")
                 .map(String::as_str),
             Some("@bedrock-sandbox")
-        );
-    }
-
-    #[test]
-    fn apply_defaults_provider_slug_to_provider_name() {
-        let cfg = portkey_config_anthropic(); // provider_slug = None
-        let mut credentials: Vec<ApiCredential> = vec![];
-        cfg.apply(&mut credentials);
-
-        assert_eq!(
-            credentials[0]
-                .extra_headers
-                .get("x-portkey-provider")
-                .map(String::as_str),
-            Some("anthropic")
         );
     }
 
@@ -637,7 +668,8 @@ mod tests {
     // --- Scenario integration tests ---
 
     #[test]
-    fn scenario_a_direct_provider() {
+    fn scenario_a_direct_provider_with_slug() {
+        // slug required; provider optional → uses Anthropic native adapter
         let config = portkey_config_anthropic();
         let mut credentials: Vec<ApiCredential> = Vec::new();
         config.apply(&mut credentials);
@@ -649,7 +681,7 @@ mod tests {
         );
         assert_eq!(
             credentials[0].extra_headers.get("x-portkey-provider"),
-            Some(&"anthropic".to_string())
+            Some(&"@anthropic".to_string())
         );
         assert_eq!(credentials[0].auth_header, ApiKeyHeader::Custom {
             name:  "x-api-key".to_string(),
@@ -660,7 +692,7 @@ mod tests {
     #[test]
     fn scenario_b_bedrock_model_catalog() {
         let config = PortkeyConfig {
-            provider_slug: Some("@bedrock-sandbox".to_string()),
+            provider_slug: "@bedrock-sandbox".to_string(),
             ..portkey_config_anthropic()
         };
         let mut credentials: Vec<ApiCredential> = Vec::new();
@@ -680,7 +712,7 @@ mod tests {
     #[test]
     fn scenario_c_bedrock_direct_aws() {
         let config = PortkeyConfig {
-            provider_slug: Some("bedrock".to_string()),
+            provider_slug: "@bedrock-sandbox".to_string(),
             aws: Some(AwsCredentials {
                 access_key_id:     "AKIA...".to_string(),
                 secret_access_key: "secret".to_string(),
@@ -693,7 +725,7 @@ mod tests {
         config.apply(&mut credentials);
         assert_eq!(
             credentials[0].extra_headers.get("x-portkey-provider"),
-            Some(&"bedrock".to_string())
+            Some(&"@bedrock-sandbox".to_string())
         );
         assert_eq!(
             credentials[0]
@@ -706,6 +738,8 @@ mod tests {
     #[test]
     fn scenario_d_config_routing() {
         let config = PortkeyConfig {
+            provider_slug: "@openai-prod".to_string(),
+            provider: None,
             config: Some("cfg-xxx".to_string()),
             ..portkey_config_anthropic()
         };
@@ -715,17 +749,18 @@ mod tests {
             credentials[0].extra_headers.get("x-portkey-config"),
             Some(&"cfg-xxx".to_string())
         );
-        assert!(
-            credentials[0]
-                .extra_headers
-                .contains_key("x-portkey-provider")
+        // Slug always present in header
+        assert_eq!(
+            credentials[0].extra_headers.get("x-portkey-provider"),
+            Some(&"@openai-prod".to_string())
         );
     }
 
     #[test]
-    fn scenario_e_openai_through_portkey() {
+    fn scenario_e_openai_slug_with_provider() {
         let config = PortkeyConfig {
-            provider: Provider::OpenAi,
+            provider_slug: "@openai-prod".to_string(),
+            provider: Some(Provider::OpenAi),
             ..portkey_config_anthropic()
         };
         let mut credentials: Vec<ApiCredential> = Vec::new();
@@ -737,22 +772,24 @@ mod tests {
         );
         assert_eq!(
             credentials[0].extra_headers.get("x-portkey-provider"),
-            Some(&"openai".to_string())
+            Some(&"@openai-prod".to_string())
         );
     }
 
     #[test]
-    fn scenario_e_gemini_through_portkey() {
+    fn scenario_slug_only_no_provider_uses_openai_compat() {
+        // Without PORTKEY_PROVIDER, fabro uses OpenAI-compatible format
         let config = PortkeyConfig {
-            provider: Provider::Gemini,
+            provider_slug: "@my-custom-provider".to_string(),
+            provider: None,
             ..portkey_config_anthropic()
         };
         let mut credentials: Vec<ApiCredential> = Vec::new();
         config.apply(&mut credentials);
-        assert_eq!(credentials[0].provider, Provider::Gemini);
+        assert_eq!(credentials[0].provider, Provider::OpenAi);
         assert_eq!(
             credentials[0].extra_headers.get("x-portkey-provider"),
-            Some(&"gemini".to_string())
+            Some(&"@my-custom-provider".to_string())
         );
     }
 
@@ -795,7 +832,17 @@ mod tests {
     fn from_lookup_returns_none_when_url_missing() {
         let lookup = |k: &str| match k {
             "PORTKEY_API_KEY" => Some("pk-test".to_string()),
-            "PORTKEY_PROVIDER" => Some("anthropic".to_string()),
+            "PORTKEY_PROVIDER_SLUG" => Some("@openai-prod".to_string()),
+            _ => None,
+        };
+        assert!(PortkeyConfig::from_lookup(lookup).is_none());
+    }
+
+    #[test]
+    fn from_lookup_returns_none_when_slug_missing() {
+        let lookup = |k: &str| match k {
+            "PORTKEY_URL" => Some("https://api.portkey.ai/v1".to_string()),
+            "PORTKEY_API_KEY" => Some("pk-test".to_string()),
             _ => None,
         };
         assert!(PortkeyConfig::from_lookup(lookup).is_none());
@@ -806,14 +853,14 @@ mod tests {
         let lookup = |k: &str| match k {
             "PORTKEY_URL" => Some("https://api.portkey.ai/v1".to_string()),
             "PORTKEY_API_KEY" => Some("pk-test".to_string()),
-            "PORTKEY_PROVIDER" => Some("anthropic".to_string()),
+            "PORTKEY_PROVIDER_SLUG" => Some("@openai-prod".to_string()),
             _ => None,
         };
         let config = PortkeyConfig::from_lookup(lookup).unwrap();
         assert_eq!(config.base_url, "https://api.portkey.ai/v1");
         assert_eq!(config.api_key, "pk-test");
-        assert_eq!(config.provider, Provider::Anthropic);
-        assert!(config.provider_slug.is_none());
+        assert_eq!(config.provider_slug, "@openai-prod");
+        assert!(config.provider.is_none());
         assert!(config.aws.is_none());
     }
 
@@ -822,8 +869,8 @@ mod tests {
         let lookup = |k: &str| match k {
             "PORTKEY_URL" => Some("https://api.portkey.ai/v1".to_string()),
             "PORTKEY_API_KEY" => Some("pk-key".to_string()),
-            "PORTKEY_PROVIDER" => Some("anthropic".to_string()),
             "PORTKEY_PROVIDER_SLUG" => Some("@bedrock-sandbox".to_string()),
+            "PORTKEY_PROVIDER" => Some("anthropic".to_string()),
             "PORTKEY_CONFIG" => Some("cfg-abc".to_string()),
             "PORTKEY_METADATA" => Some(r#"{"team":"eng"}"#.to_string()),
             "PORTKEY_AWS_ACCESS_KEY_ID" => Some("AKIA...".to_string()),
@@ -832,7 +879,8 @@ mod tests {
             _ => None,
         };
         let config = PortkeyConfig::from_lookup(lookup).unwrap();
-        assert_eq!(config.provider_slug.as_deref(), Some("@bedrock-sandbox"));
+        assert_eq!(config.provider_slug, "@bedrock-sandbox");
+        assert_eq!(config.provider, Some(Provider::Anthropic));
         assert_eq!(config.config.as_deref(), Some("cfg-abc"));
         assert_eq!(config.aws.as_ref().unwrap().region, "eu-west-1");
     }
@@ -842,9 +890,10 @@ mod tests {
         clear_portkey_env();
         std::env::set_var("PORTKEY_URL", "https://api.portkey.ai/v1");
         std::env::set_var("PORTKEY_API_KEY", "pk-env");
+        std::env::set_var("PORTKEY_PROVIDER_SLUG", "@openai-prod");
         std::env::set_var("PORTKEY_PROVIDER", "openai");
         let config = PortkeyConfig::from_env().unwrap();
         assert_eq!(config.api_key, "pk-env");
-        assert_eq!(config.provider, Provider::OpenAi);
+        assert_eq!(config.provider, Some(Provider::OpenAi));
     }
 }

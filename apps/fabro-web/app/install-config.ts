@@ -56,29 +56,29 @@ export const PORTKEY_FIELDS = [
     },
   },
   {
-    id: "provider" as const,
-    label: "Provider",
-    envVar: "PORTKEY_PROVIDER",
-    required: true,
-    isSecret: false,
-    placeholder: "anthropic",
-    help: {
-      text: "The LLM adapter to use — determines the request format. Must match the upstream provider's API. Valid values: anthropic, openai, gemini, kimi, zai, minimax, inception. For AWS Bedrock (Claude models), use anthropic.",
-      url: null as string | null,
-      linkText: null as string | null,
-    },
-  },
-  {
     id: "provider_slug" as const,
     label: "Provider Slug",
     envVar: "PORTKEY_PROVIDER_SLUG",
-    required: false,
+    required: true,
     isSecret: false,
     placeholder: "@openai-prod",
     help: {
-      text: "Only needed when the Portkey routing target differs from the provider adapter — e.g. routing to Bedrock, Azure, or any custom Model Catalog provider. Leave blank for direct routing (e.g. Provider = anthropic routes straight to Anthropic). Set this to the slug of your configured Model Catalog provider (e.g. @openai-prod). Find your slugs in the Portkey Model Catalog.",
+      text: "The slug of your configured Portkey Model Catalog provider (e.g. @openai-prod, @bedrock-sandbox). This tells Portkey which integration to use for routing and authentication. Find your slugs in the Portkey Model Catalog.",
       url: "https://app.portkey.ai/model-catalog" as string | null,
       linkText: "app.portkey.ai/model-catalog" as string | null,
+    },
+  },
+  {
+    id: "provider" as const,
+    label: "Provider",
+    envVar: "PORTKEY_PROVIDER",
+    required: false,
+    isSecret: false,
+    placeholder: "anthropic",
+    help: {
+      text: "Optional. Set this to use the provider's native API format and unlock provider-specific features such as Anthropic prompt caching and extended thinking. When left blank, requests use OpenAI-compatible format, which works universally but does not support native features. Valid values: anthropic, openai, gemini, kimi, zai, minimax, inception.",
+      url: null as string | null,
+      linkText: null as string | null,
     },
   },
   {
@@ -89,9 +89,9 @@ export const PORTKEY_FIELDS = [
     isSecret: false,
     placeholder: "cfg-xxxx",
     help: {
-      text: "A Portkey config ID or inline JSON for advanced routing strategies: fallbacks, load balancing, or conditional routing across providers. Create configs in the Portkey dashboard. Leave blank for simple single-provider routing.",
-      url: "https://app.portkey.ai/" as string | null,
-      linkText: "app.portkey.ai → Configs" as string | null,
+      text: "A Portkey config ID for advanced routing strategies: fallbacks, load balancing, or conditional routing across providers. Find or create configs in the Portkey Configs page.",
+      url: "https://app.portkey.ai/configs" as string | null,
+      linkText: "app.portkey.ai/configs" as string | null,
     },
   },
 ] as const;

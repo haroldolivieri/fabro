@@ -213,6 +213,15 @@ mod tests {
             .unwrap();
         vault
             .set(
+                "PORTKEY_PROVIDER_SLUG",
+                "@anthropic",
+                SecretType::Environment,
+                None,
+            )
+            .unwrap();
+        // Optional: set native provider for Anthropic adapter (enables caching etc.)
+        vault
+            .set(
                 "PORTKEY_PROVIDER",
                 "anthropic",
                 SecretType::Environment,

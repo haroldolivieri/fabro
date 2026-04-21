@@ -177,8 +177,11 @@ struct LlmProvidersInput {
 struct PortkeyInstallInput {
     url:           String,
     api_key:       String,
-    provider:      String,
-    provider_slug: Option<String>,
+    provider_slug: String,
+    /// Optional: set to use the provider's native API format and unlock
+    /// provider-specific features (e.g. Anthropic prompt caching, extended
+    /// thinking). When absent, requests are sent in OpenAI-compatible format.
+    provider:      Option<String>,
     config:        Option<String>,
 }
 
@@ -554,21 +557,23 @@ async fn put_install_llm(
                 "portkey api_key is required",
             );
         }
-        if portkey.provider.trim().is_empty() {
+        if portkey.provider_slug.trim().is_empty() {
             return install_error_response(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "portkey provider is required",
+                "portkey provider_slug is required",
             );
         }
-        if Provider::from_str(portkey.provider.trim()).is_err() {
-            return install_error_response(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                format!(
-                    "portkey provider '{}' is not a valid provider (valid: anthropic, openai, \
-                     gemini, kimi, zai, minimax, inception)",
-                    portkey.provider.trim()
-                ),
-            );
+        if let Some(provider) = &portkey.provider {
+            if Provider::from_str(provider.trim()).is_err() {
+                return install_error_response(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!(
+                        "portkey provider '{}' is not a valid provider (valid: anthropic, openai, \
+                         gemini, kimi, zai, minimax, inception)",
+                        provider.trim()
+                    ),
+                );
+            }
         }
     }
 
@@ -863,10 +868,11 @@ async fn post_install_finish(
     }
 
     if let Some(portkey) = llm.portkey {
+        // Required fields
         for (name, value) in [
             ("PORTKEY_URL", portkey.url),
             ("PORTKEY_API_KEY", portkey.api_key),
-            ("PORTKEY_PROVIDER", portkey.provider),
+            ("PORTKEY_PROVIDER_SLUG", portkey.provider_slug),
         ] {
             vault_secrets.push(VaultSecretWrite {
                 name: name.to_string(),
@@ -875,10 +881,11 @@ async fn post_install_finish(
                 description: None,
             });
         }
-        if let Some(slug) = portkey.provider_slug {
+        // Optional: native provider format for full feature support
+        if let Some(provider) = portkey.provider {
             vault_secrets.push(VaultSecretWrite {
-                name:        "PORTKEY_PROVIDER_SLUG".to_string(),
-                value:       slug,
+                name:        "PORTKEY_PROVIDER".to_string(),
+                value:       provider,
                 secret_type: VaultSecretType::Environment,
                 description: None,
             });

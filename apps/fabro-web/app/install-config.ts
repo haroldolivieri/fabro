@@ -37,7 +37,7 @@ export const PORTKEY_FIELDS = [
     isSecret: false,
     placeholder: "https://api.portkey.ai/v1",
     help: {
-      text: "Your Portkey gateway base URL. For the hosted Portkey service use https://api.portkey.ai/v1. For a self-hosted or enterprise gateway, use that URL with /v1 appended.",
+      text: "For most users this is https://api.portkey.ai/v1 — Portkey's hosted service. You'd only need a different URL if you're using a self-hosted or enterprise gateway.",
       url: "https://portkey.ai/docs" as string | null,
       linkText: "portkey.ai/docs" as string | null,
     },

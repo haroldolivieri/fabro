@@ -1154,10 +1154,11 @@ async fn build_api_request(
     // Older reasoning models (e.g. claude-sonnet-4-5) need `thinking` with
     // `budget_tokens` instead.
     let model_info = fabro_model::Catalog::builtin().get(&request.model);
-    // Only send output_config.effort for models known to support it.
-    // Unknown models (e.g. Bedrock inference profile IDs not in the catalog)
-    // default to false — Bedrock rejects the field for unsupported models.
-    let supports_effort = model_info.is_some_and(|m| m.features.effort);
+    // Bedrock does not support output_config.effort — disable it when routing
+    // through Bedrock. For unknown models on non-Bedrock endpoints (e.g. a
+    // freshly-released Anthropic model not yet in the catalog), preserve the
+    // original permissive behaviour so reasoning still works.
+    let supports_effort = model_info.map_or(!is_bedrock_routing, |m| m.features.effort);
 
     let mut resolved_max_tokens = request
         .max_tokens

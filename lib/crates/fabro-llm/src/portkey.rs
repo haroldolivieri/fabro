@@ -183,12 +183,9 @@ impl PortkeyConfig {
             .iter_mut()
             .find(|c| c.provider == effective_provider)
         {
+            // Preserve the existing auth header — if the user has a real
+            // provider API key set, Portkey forwards it to the upstream.
             credential.base_url = Some(self.base_url.clone());
-            // Replace the auth header with a dummy key — Portkey (via the
-            // x-portkey-api-key header) handles actual upstream authentication.
-            // The original provider key may not be a valid provider-format key
-            // (e.g. when a Portkey API key was stored as ANTHROPIC_API_KEY).
-            credential.auth_header = Self::dummy_auth_header(effective_provider);
             for (key, value) in portkey_headers {
                 credential.extra_headers.insert(key, value);
             }
@@ -398,7 +395,7 @@ mod tests {
         // Dummy auth key was used (Custom header for Anthropic)
         assert_eq!(cred.auth_header, ApiKeyHeader::Custom {
             name:  "x-api-key".to_string(),
-            value: "pk-portkey-dummy".to_string(),
+            value: "portkey-managed-auth".to_string(),
         });
 
         // base_url set to Portkey URL
@@ -431,7 +428,7 @@ mod tests {
         assert_eq!(credentials[0].provider, Provider::OpenAi);
         assert_eq!(
             credentials[0].auth_header,
-            ApiKeyHeader::Bearer("pk-portkey-dummy".to_string())
+            ApiKeyHeader::Bearer("portkey-managed-auth".to_string())
         );
         // Slug still used for routing header
         assert_eq!(
@@ -699,7 +696,7 @@ mod tests {
         );
         assert_eq!(credentials[0].auth_header, ApiKeyHeader::Custom {
             name:  "x-api-key".to_string(),
-            value: "pk-portkey-dummy".to_string(),
+            value: "portkey-managed-auth".to_string(),
         });
     }
 
@@ -782,7 +779,7 @@ mod tests {
         assert_eq!(credentials[0].provider, Provider::OpenAi);
         assert_eq!(
             credentials[0].auth_header,
-            ApiKeyHeader::Bearer("pk-portkey-dummy".to_string())
+            ApiKeyHeader::Bearer("portkey-managed-auth".to_string())
         );
         assert_eq!(
             credentials[0].extra_headers.get("x-portkey-provider"),

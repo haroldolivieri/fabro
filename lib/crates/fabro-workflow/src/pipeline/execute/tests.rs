@@ -645,7 +645,7 @@ async fn execute_conditional_routing_uses_unconditional_success_path() {
 }
 
 #[tokio::test]
-async fn execute_writes_start_json_and_node_status() {
+async fn execute_persists_start_record_and_node_status() {
     let dir = tempfile::tempdir().unwrap();
     let mut run_options = test_run_options(dir.path(), "test-run");
     run_options.git = Some(GitCheckpointOptions {

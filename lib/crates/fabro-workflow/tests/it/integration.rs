@@ -71,16 +71,6 @@ fn test_run_id(label: &str) -> RunId {
 }
 
 fn load_checkpoint(path: &Path) -> Result<Checkpoint, Box<dyn std::error::Error>> {
-    if !path.exists()
-        && path
-            .file_name()
-            .is_some_and(|name| name == "checkpoint.json")
-    {
-        let run_dir = path
-            .parent()
-            .ok_or("checkpoint path should have a parent")?;
-        return load_run_checkpoint(run_dir);
-    }
     let data = std::fs::read_to_string(path)?;
     Ok(serde_json::from_str(&data)?)
 }
@@ -188,9 +178,9 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
 }
 
 fn save_checkpoint(path: &Path, checkpoint: &Checkpoint) {
-    let checkpoint_json =
+    let serialized_checkpoint =
         serde_json::to_string_pretty(checkpoint).expect("checkpoint should serialize to JSON");
-    std::fs::write(path, checkpoint_json).expect("checkpoint file should be written");
+    std::fs::write(path, serialized_checkpoint).expect("checkpoint file should be written");
 }
 
 fn test_artifact_store(run_dir: &Path) -> ArtifactStore {
@@ -1462,7 +1452,7 @@ async fn pipeline_with_many_nodes() {
 #[test]
 fn checkpoint_save_and_resume_roundtrip() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("checkpoint.json");
+    let path = dir.path().join("checkpoint_state.json");
 
     let ctx = Context::new();
     ctx.set("goal", serde_json::json!("Test checkpoint"));

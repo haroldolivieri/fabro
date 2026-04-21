@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalize_writes_conclusion_json() {
+    async fn finalize_persists_conclusion_in_projection() {
         let temp = tempfile::tempdir().unwrap();
         let run_dir = temp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();

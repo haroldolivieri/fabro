@@ -160,9 +160,9 @@ impl PortkeyConfig {
         match provider {
             Provider::Anthropic => ApiKeyHeader::Custom {
                 name:  "x-api-key".to_string(),
-                value: "sk-ant-dummy-key".to_string(),
+                value: "portkey-managed-auth".to_string(),
             },
-            _ => ApiKeyHeader::Bearer("sk-dummy-key".to_string()),
+            _ => ApiKeyHeader::Bearer("portkey-managed-auth".to_string()),
         }
     }
 

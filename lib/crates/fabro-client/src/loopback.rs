@@ -163,8 +163,6 @@ mod tests {
             "http://127.0.0.1:1@attacker.com",
             "http://localhost",
             "http://localhost.evil.com",
-            "http://2130706433",
-            "http://0x7f000001",
         ];
 
         for api_url in cases {
@@ -172,6 +170,16 @@ mod tests {
             assert_eq!(
                 target.loopback_classification().unwrap(),
                 LoopbackClassification::Rejected
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_obfuscated_ipv4_literals_at_parse_time() {
+        for api_url in ["http://2130706433", "http://0x7f000001"] {
+            assert!(
+                ServerTarget::http_url(api_url).is_err(),
+                "{api_url} should not parse as a server target"
             );
         }
     }

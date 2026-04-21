@@ -308,53 +308,53 @@ export default function InstallApp() {
           submitting={submitting}
           backHref="/install/server"
           onSubmit={async () => {
-              const providers = INSTALL_PROVIDERS.map(({ id }) => {
-                const current = llmSelection[id] ?? { apiKey: "" };
-                return { provider: id, api_key: current.apiKey.trim() };
-              }).filter((provider) => provider.api_key.length > 0);
+            const providers = INSTALL_PROVIDERS.map(({ id }) => {
+              const current = llmSelection[id] ?? { apiKey: "" };
+              return { provider: id, api_key: current.apiKey.trim() };
+            }).filter((provider) => provider.api_key.length > 0);
 
-              const portkey: PortkeyInstallData | undefined =
-                portkeySelection.url.trim() &&
-                portkeySelection.api_key.trim() &&
-                portkeySelection.provider.trim()
-                  ? {
-                      url: portkeySelection.url.trim(),
-                      api_key: portkeySelection.api_key.trim(),
-                      provider: portkeySelection.provider.trim(),
-                      ...(portkeySelection.provider_slug.trim()
-                        ? { provider_slug: portkeySelection.provider_slug.trim() }
-                        : {}),
-                      ...(portkeySelection.config.trim()
-                        ? { config: portkeySelection.config.trim() }
-                        : {}),
-                    }
-                  : undefined;
+            const portkey: PortkeyInstallData | undefined =
+              portkeySelection.url.trim() &&
+              portkeySelection.api_key.trim() &&
+              portkeySelection.provider.trim()
+                ? {
+                    url: portkeySelection.url.trim(),
+                    api_key: portkeySelection.api_key.trim(),
+                    provider: portkeySelection.provider.trim(),
+                    ...(portkeySelection.provider_slug.trim()
+                      ? { provider_slug: portkeySelection.provider_slug.trim() }
+                      : {}),
+                    ...(portkeySelection.config.trim()
+                      ? { config: portkeySelection.config.trim() }
+                      : {}),
+                  }
+                : undefined;
 
-              if (providers.length === 0 && !portkey) {
-                setSaveError(
-                  "Add at least one provider API key or configure Portkey before continuing.",
-                );
-                return;
-              }
+            if (providers.length === 0 && !portkey) {
+              setSaveError(
+                "Add at least one provider API key or configure Portkey before continuing.",
+              );
+              return;
+            }
 
-              setSubmitting(true);
-              setSaveError(null);
-              try {
-                await Promise.all(
-                  providers.map((provider) => testInstallLlm(installToken, provider)),
-                );
-                await putInstallLlm(installToken, providers, portkey);
-                const nextSession = await getInstallSession(installToken);
-                setSessionState({ status: "ready", data: nextSession });
-                navigate("/install/github");
-              } catch (error) {
-                setSaveError(
-                  error instanceof Error ? error.message : "Failed to save LLM settings.",
-                );
-              } finally {
-                setSubmitting(false);
-              }
-            }}
+            setSubmitting(true);
+            setSaveError(null);
+            try {
+              await Promise.all(
+                providers.map((provider) => testInstallLlm(installToken, provider)),
+              );
+              await putInstallLlm(installToken, providers, portkey);
+              const nextSession = await getInstallSession(installToken);
+              setSessionState({ status: "ready", data: nextSession });
+              navigate("/install/github");
+            } catch (error) {
+              setSaveError(
+                error instanceof Error ? error.message : "Failed to save LLM settings.",
+              );
+            } finally {
+              setSubmitting(false);
+            }
+          }}
         >
           <div className="space-y-8">
             <ProviderFields value={llmSelection} onChange={setLlmSelection} />
@@ -1114,7 +1114,7 @@ function PortkeySection({
                 />
               ) : (
                 <input
-                  type="text"
+                  type={field.id === "url" ? "url" : "text"}
                   id={`portkey_${field.id}`}
                   name={`portkey_${field.id}`}
                   value={value[field.id]}

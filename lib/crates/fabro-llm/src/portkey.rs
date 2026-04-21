@@ -49,11 +49,21 @@ impl PortkeyConfig {
     /// source. [`PortkeyConfig::from_env`] delegates here with `std::env::var`.
     ///
     /// Returns `None` if any required variable is missing or invalid.
+    ///
+    /// `PORTKEY_PROVIDER_SLUG` is required unless `PORTKEY_CONFIG` is set —
+    /// standard configs with fixed targets are self-contained and do not need
+    /// a slug. Configs with `passthrough: true` targets still need the slug
+    /// (it resolves the passthrough via `x-portkey-provider`).
     #[must_use]
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Option<Self> {
         let base_url = lookup("PORTKEY_URL")?;
         let api_key = lookup("PORTKEY_API_KEY")?;
-        let provider_slug = lookup("PORTKEY_PROVIDER_SLUG")?;
+        let config = lookup("PORTKEY_CONFIG");
+        let provider_slug = match lookup("PORTKEY_PROVIDER_SLUG") {
+            Some(s) => s,
+            None if config.is_some() => String::new(), // config is self-sufficient
+            None => return None,
+        };
 
         let provider = match lookup("PORTKEY_PROVIDER") {
             Some(s) => match Provider::from_str(&s) {
@@ -66,7 +76,6 @@ impl PortkeyConfig {
             None => None,
         };
 
-        let config = lookup("PORTKEY_CONFIG");
         let metadata = lookup("PORTKEY_METADATA");
 
         let aws = match (

@@ -557,10 +557,11 @@ async fn put_install_llm(
                 "portkey api_key is required",
             );
         }
-        if portkey.provider_slug.trim().is_empty() {
+        let config_set = portkey.config.as_deref().is_some_and(|c| !c.trim().is_empty());
+        if portkey.provider_slug.trim().is_empty() && !config_set {
             return install_error_response(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "portkey provider_slug is required",
+                "portkey provider_slug is required (or set a config for self-contained routing)",
             );
         }
         if let Some(provider) = &portkey.provider {

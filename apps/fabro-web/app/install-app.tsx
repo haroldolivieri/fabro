@@ -1181,7 +1181,7 @@ function PortkeySection({
               selected={routingMode === "config"}
               onSelect={() => setRoutingMode("config")}
               title="Config"
-              body="Asks for: Provider Slug + Config ID. For advanced routing: fallbacks, load balancing, conditional routing."
+              body="Asks for: Config ID (+ optional Provider Slug). For advanced routing: fallbacks, load balancing, conditional routing."
             />
           </div>
         </fieldset>

@@ -63,7 +63,7 @@ export const PORTKEY_FIELDS = [
     isSecret: false,
     placeholder: "@openai-prod",
     help: {
-      text: "The slug of your configured Portkey Model Catalog provider (e.g. @openai-prod, @bedrock-sandbox). This tells Portkey which integration to use for routing and authentication. Find your slugs in the Portkey Model Catalog.",
+      text: "The slug of your configured Portkey Model Catalog provider (e.g. @openai-prod, @bedrock-sandbox). Required when using Model Catalog routing. Optional when using a Config — only needed if the config uses passthrough targets that defer provider selection to the request.",
       url: "https://app.portkey.ai/model-catalog" as string | null,
       linkText: "app.portkey.ai/model-catalog" as string | null,
     },

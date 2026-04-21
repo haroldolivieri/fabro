@@ -316,13 +316,13 @@ export default function InstallApp() {
             const portkey: PortkeyInstallData | undefined =
               portkeySelection.url.trim() &&
               portkeySelection.api_key.trim() &&
-              portkeySelection.provider.trim()
+              portkeySelection.provider_slug.trim()
                 ? {
                     url: portkeySelection.url.trim(),
                     api_key: portkeySelection.api_key.trim(),
-                    provider: portkeySelection.provider.trim(),
-                    ...(portkeySelection.provider_slug.trim()
-                      ? { provider_slug: portkeySelection.provider_slug.trim() }
+                    provider_slug: portkeySelection.provider_slug.trim(),
+                    ...(portkeySelection.provider.trim()
+                      ? { provider: portkeySelection.provider.trim() }
                       : {}),
                     ...(portkeySelection.config.trim()
                       ? { config: portkeySelection.config.trim() }

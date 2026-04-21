@@ -10,14 +10,16 @@ mod types;
 
 pub use artifact_store::{ArtifactStore, NodeArtifact};
 pub use error::{Error, Result};
-pub use fabro_types::{RunBlobId, StageId};
-pub use run_state::{NodeState, PendingInterviewRecord, RunProjection};
+pub use fabro_types::{
+    EventEnvelope, NodeState, PendingInterviewRecord, RunBlobId, RunProjection, RunSummary, StageId,
+};
+pub use run_state::RunProjectionReducer;
 pub use serializable_projection::SerializableProjection;
 pub use slate::{
     AuthCode, ConsumeOutcome, Database, RefreshToken, RunDatabase, Runs, SlateAuthCodeStore,
     SlateAuthTokenStore,
 };
-pub use types::{EventEnvelope, EventPayload, RunSummary};
+pub use types::EventPayload;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ListRunsQuery {

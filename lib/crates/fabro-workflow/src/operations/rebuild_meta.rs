@@ -5,8 +5,10 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use fabro_checkpoint::branch::BranchStore;
 use fabro_checkpoint::git::Store as GitStore;
-use fabro_store::{Database as DurableStore, RunDatabase as DurableRunStore, RunProjection};
-use fabro_types::{EventBody, RunEvent, RunId};
+use fabro_store::{
+    Database as DurableStore, RunDatabase as DurableRunStore, RunProjection, RunProjectionReducer,
+};
+use fabro_types::{EventBody, RunId};
 use git2::{Repository, Signature};
 use tokio::task::spawn_blocking;
 use ulid::Ulid;
@@ -43,8 +45,7 @@ pub async fn rebuild_metadata_branch(
         let mut checkpoint_snapshots: Vec<(u32, RunProjection)> = Vec::new();
 
         for event in &events {
-            let stored = RunEvent::from_ref(event.payload.as_value())
-                .map_err(|err| anyhow::anyhow!("invalid stored event: {err}"))?;
+            let stored = &event.event;
             let is_checkpoint = matches!(stored.body, EventBody::CheckpointCompleted(_));
 
             if !is_checkpoint && projection.spec.is_some() {

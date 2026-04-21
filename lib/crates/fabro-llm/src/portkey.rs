@@ -160,9 +160,9 @@ impl PortkeyConfig {
         match provider {
             Provider::Anthropic => ApiKeyHeader::Custom {
                 name:  "x-api-key".to_string(),
-                value: "pk-portkey-dummy".to_string(),
+                value: "sk-ant-dummy-key".to_string(),
             },
-            _ => ApiKeyHeader::Bearer("pk-portkey-dummy".to_string()),
+            _ => ApiKeyHeader::Bearer("sk-dummy-key".to_string()),
         }
     }
 
@@ -184,6 +184,11 @@ impl PortkeyConfig {
             .find(|c| c.provider == effective_provider)
         {
             credential.base_url = Some(self.base_url.clone());
+            // Replace the auth header with a dummy key — Portkey (via the
+            // x-portkey-api-key header) handles actual upstream authentication.
+            // The original provider key may not be a valid provider-format key
+            // (e.g. when a Portkey API key was stored as ANTHROPIC_API_KEY).
+            credential.auth_header = Self::dummy_auth_header(effective_provider);
             for (key, value) in portkey_headers {
                 credential.extra_headers.insert(key, value);
             }

@@ -557,7 +557,10 @@ async fn put_install_llm(
                 "portkey api_key is required",
             );
         }
-        let config_set = portkey.config.as_deref().is_some_and(|c| !c.trim().is_empty());
+        let config_set = portkey
+            .config
+            .as_deref()
+            .is_some_and(|c| !c.trim().is_empty());
         if portkey.provider_slug.trim().is_empty() && !config_set {
             return install_error_response(
                 StatusCode::UNPROCESSABLE_ENTITY,

@@ -183,6 +183,22 @@ impl CredentialResolver {
         (self.env_lookup)(name).or_else(|| vault.get(name).map(str::to_string))
     }
 
+    /// Look up a key from process env first, then vault Environment secrets.
+    /// Used by external callers (e.g. Portkey config loading) that need a
+    /// vault-aware lookup without access to the internal vault reference.
+    pub fn lookup_env(&self, name: &str) -> Option<String> {
+        (self.env_lookup)(name).or_else(|| {
+            // Block briefly to read vault — CredentialResolver is used in
+            // sync contexts so we use try_read to avoid deadlocks.
+            self.vault.try_read().ok().and_then(|vault| {
+                vault
+                    .get_entry(name)
+                    .filter(|e| e.secret_type == fabro_vault::SecretType::Environment)
+                    .map(|e| e.value.clone())
+            })
+        })
+    }
+
     fn to_api_credential(&self, vault: &Vault, credential: &AuthCredential) -> ApiCredential {
         let mut extra_headers = HashMap::new();
         let base_url = match credential.provider {

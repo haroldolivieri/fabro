@@ -473,6 +473,20 @@ where
     let server_secrets = ServerSecrets::load(server_env_path.clone())?;
     let webhook_secret_present = server_secrets.get(WEBHOOK_SECRET_ENV).is_some();
 
+    // Inject vault Environment secrets into the process environment so that
+    // code paths using std::env::var() (e.g. Client::from_env() in the
+    // workflow engine) can pick up secrets stored via the install wizard.
+    // Only inject when the var is not already set — explicit process env wins.
+    {
+        let vault = fabro_vault::Vault::load(vault_path.clone())
+            .context("loading vault for env injection")?;
+        for (name, value) in vault.snapshot() {
+            if std::env::var(&name).is_err() {
+                std::env::set_var(&name, &value);
+            }
+        }
+    }
+
     // Shared config for live reloading
     let effective_settings = apply_runtime_settings(&disk_settings, &args, &data_dir);
     let resolved_server_settings = resolve_server_settings(&effective_settings)?;
@@ -509,7 +523,17 @@ where
     let (artifact_object_store, artifact_prefix) =
         build_artifact_object_store(&resolved_server_settings)?;
     let artifact_store = fabro_store::ArtifactStore::new(artifact_object_store, artifact_prefix);
-    let env_lookup: EnvLookup = Arc::new(|name| std::env::var(name).ok());
+    // env_lookup checks process env first, then server.env file entries.
+    // This ensures Portkey and other credentials written to server.env
+    // (via vault Environment secrets) are visible to ProviderCredentials.
+    let env_lookup: EnvLookup = {
+        let file_entries = server_secrets.file_entries().clone();
+        Arc::new(move |name: &str| {
+            std::env::var(name)
+                .ok()
+                .or_else(|| file_entries.get(name).cloned())
+        })
+    };
     let state = build_app_state(AppStateConfig {
         settings: Arc::clone(&shared_settings),
         registry_factory_override: None,

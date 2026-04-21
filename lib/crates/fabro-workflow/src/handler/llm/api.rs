@@ -67,6 +67,14 @@ pub(crate) async fn build_llm_client(
         }
     }
 
+    // Apply Portkey gateway config if configured — reads from env first,
+    // then falls back to vault Environment secrets via the resolver.
+    if let Some(portkey) = fabro_llm::portkey::PortkeyConfig::from_lookup(|k| {
+        std::env::var(k).ok().or_else(|| resolver.lookup_env(k))
+    }) {
+        portkey.apply(&mut api_credentials);
+    }
+
     let client = Client::from_credentials(api_credentials)
         .await
         .map_err(|e| Error::handler(format!("Failed to create LLM client: {e}")))?;

@@ -2300,7 +2300,7 @@ client_id = "client-id"
                 .iter()
                 .map(|value| value.as_str().expect("auth method should be a string"))
                 .collect::<Vec<_>>(),
-            vec!["dev-token", "github"]
+            vec!["github"]
         );
 
         let allowed_usernames = doc

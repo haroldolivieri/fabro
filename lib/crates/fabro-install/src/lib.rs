@@ -215,6 +215,7 @@ pub fn write_github_app_settings(
     if !methods.iter().any(|value| value.as_str() == Some("github")) {
         methods.push(toml::Value::String("github".to_string()));
     }
+    methods.retain(|value| value.as_str() != Some("dev-token"));
     let github_auth = ensure_table(auth, "github")?;
     github_auth.insert(
         "allowed_usernames".to_string(),
@@ -437,6 +438,22 @@ name = "custom"
         assert_eq!(
             github.get("client_id").and_then(toml::Value::as_str),
             Some("client-id")
+        );
+
+        let methods = doc
+            .get("server")
+            .and_then(toml::Value::as_table)
+            .and_then(|server| server.get("auth"))
+            .and_then(toml::Value::as_table)
+            .and_then(|auth| auth.get("methods"))
+            .and_then(toml::Value::as_array)
+            .expect("server.auth.methods should exist");
+        assert_eq!(
+            methods
+                .iter()
+                .map(|value| value.as_str().expect("auth method should be a string"))
+                .collect::<Vec<_>>(),
+            vec!["github"]
         );
     }
 

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::str::FromStr;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -541,6 +542,12 @@ async fn put_install_llm(
                 "portkey url is required",
             );
         }
+        if let Err(err) = validate_canonical_url(portkey.url.trim()) {
+            return install_error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("portkey url: {err}"),
+            );
+        }
         if portkey.api_key.trim().is_empty() {
             return install_error_response(
                 StatusCode::UNPROCESSABLE_ENTITY,
@@ -551,6 +558,16 @@ async fn put_install_llm(
             return install_error_response(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "portkey provider is required",
+            );
+        }
+        if Provider::from_str(portkey.provider.trim()).is_err() {
+            return install_error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "portkey provider '{}' is not a valid provider (valid: anthropic, openai, \
+                     gemini, kimi, zai, minimax, inception)",
+                    portkey.provider.trim()
+                ),
             );
         }
     }

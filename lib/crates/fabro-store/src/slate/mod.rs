@@ -1,6 +1,7 @@
 mod auth_codes;
 mod auth_tokens;
-mod catalog;
+mod blob_store;
+mod run_catalog_index;
 mod run_store;
 
 use std::collections::HashMap;
@@ -8,10 +9,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub use auth_codes::{AuthCode, SlateAuthCodeStore};
-pub use auth_tokens::{ConsumeOutcome, RefreshToken, SlateAuthTokenStore};
+pub use auth_codes::{AuthCode, AuthCodeStore};
+pub use auth_tokens::{ConsumeOutcome, RefreshToken, RefreshTokenStore};
+pub use blob_store::{Blob, BlobStore};
 use fabro_types::RunId;
 use object_store::ObjectStore;
+pub use run_catalog_index::RunCatalogIndex;
 pub use run_store::RunDatabase;
 use run_store::RunDatabaseInner;
 use slatedb::config::{CompressionCodec, Settings};
@@ -27,8 +30,10 @@ pub struct Database {
     cache_path:     Option<PathBuf>,
     db:             Arc<OnceCell<slatedb::Db>>,
     active_runs:    Arc<Mutex<HashMap<RunId, Arc<RunDatabaseInner>>>>,
-    auth_codes:     Arc<OnceCell<Arc<SlateAuthCodeStore>>>,
-    auth_tokens:    Arc<OnceCell<Arc<SlateAuthTokenStore>>>,
+    blobs:          Arc<OnceCell<Arc<BlobStore>>>,
+    catalog_index:  Arc<OnceCell<Arc<RunCatalogIndex>>>,
+    auth_codes:     Arc<OnceCell<Arc<AuthCodeStore>>>,
+    refresh_tokens: Arc<OnceCell<Arc<RefreshTokenStore>>>,
 }
 
 impl std::fmt::Debug for Database {
@@ -55,8 +60,10 @@ impl Database {
             cache_path,
             db: Arc::new(OnceCell::new()),
             active_runs: Arc::new(Mutex::new(HashMap::new())),
+            blobs: Arc::new(OnceCell::new()),
+            catalog_index: Arc::new(OnceCell::new()),
             auth_codes: Arc::new(OnceCell::new()),
-            auth_tokens: Arc::new(OnceCell::new()),
+            refresh_tokens: Arc::new(OnceCell::new()),
         }
     }
 
@@ -116,7 +123,7 @@ impl Database {
             if run_exists && !active.matches_run(run_id) {
                 return Err(Error::RunAlreadyExists(run_id.to_string()));
             }
-            catalog::write_index(&db, run_id).await?;
+            self.catalog_index().await?.add(run_id).await?;
             return Ok(active);
         }
 
@@ -124,7 +131,7 @@ impl Database {
             return Err(Error::RunAlreadyExists(run_id.to_string()));
         }
 
-        catalog::write_index(&db, run_id).await?;
+        self.catalog_index().await?.add(run_id).await?;
         let run_store = RunDatabase::open_writer(*run_id, db).await?;
         self.cache_active_run(&run_store).await;
         Ok(run_store)
@@ -166,7 +173,7 @@ impl Database {
 
     pub async fn list_runs(&self, query: &ListRunsQuery) -> Result<Vec<RunSummary>> {
         let db = self.open_db().await?;
-        let run_ids = catalog::list_run_ids(&db, query).await?;
+        let run_ids = self.catalog_index().await?.list(query).await?;
         let mut summaries = Vec::new();
         for run_id in run_ids {
             if let Some(active) = self.get_active_run(&run_id).await {
@@ -201,27 +208,49 @@ impl Database {
         for key in keys_to_delete {
             db.delete(key).await?;
         }
-        catalog::delete_index(&db, run_id).await?;
+        self.catalog_index().await?.remove(run_id).await?;
         Ok(())
     }
 
-    pub async fn auth_codes(&self) -> Result<Arc<SlateAuthCodeStore>> {
+    pub async fn auth_codes(&self) -> Result<Arc<AuthCodeStore>> {
         let store = self
             .auth_codes
             .get_or_try_init(|| async {
                 let db = Arc::new(self.open_db().await?);
-                Ok::<_, Error>(Arc::new(SlateAuthCodeStore::new(db)))
+                Ok::<_, Error>(Arc::new(AuthCodeStore::new(db)))
             })
             .await?;
         Ok(Arc::clone(store))
     }
 
-    pub async fn auth_tokens(&self) -> Result<Arc<SlateAuthTokenStore>> {
+    pub async fn catalog_index(&self) -> Result<Arc<RunCatalogIndex>> {
         let store = self
-            .auth_tokens
+            .catalog_index
             .get_or_try_init(|| async {
                 let db = Arc::new(self.open_db().await?);
-                Ok::<_, Error>(Arc::new(SlateAuthTokenStore::new(db)))
+                Ok::<_, Error>(Arc::new(RunCatalogIndex::new(db)))
+            })
+            .await?;
+        Ok(Arc::clone(store))
+    }
+
+    pub async fn blobs(&self) -> Result<Arc<BlobStore>> {
+        let store = self
+            .blobs
+            .get_or_try_init(|| async {
+                let db = Arc::new(self.open_db().await?);
+                Ok::<_, Error>(Arc::new(BlobStore::new(db)))
+            })
+            .await?;
+        Ok(Arc::clone(store))
+    }
+
+    pub async fn refresh_tokens(&self) -> Result<Arc<RefreshTokenStore>> {
+        let store = self
+            .refresh_tokens
+            .get_or_try_init(|| async {
+                let db = Arc::new(self.open_db().await?);
+                Ok::<_, Error>(Arc::new(RefreshTokenStore::new(db)))
             })
             .await?;
         Ok(Arc::clone(store))

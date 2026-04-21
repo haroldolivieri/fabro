@@ -33,3 +33,4 @@ uuid.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
 ulid.workspace = true
+insta = { workspace = true }

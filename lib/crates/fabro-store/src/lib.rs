@@ -2,7 +2,9 @@ use chrono::{DateTime, Utc};
 
 mod artifact_store;
 mod error;
+mod keyed_mutex;
 mod keys;
+mod record;
 mod run_state;
 mod slate;
 mod types;
@@ -10,10 +12,11 @@ mod types;
 pub use artifact_store::{ArtifactStore, NodeArtifact};
 pub use error::{Error, Result};
 pub use fabro_types::{RunBlobId, StageId};
+pub(crate) use keyed_mutex::KeyedMutex;
 pub use run_state::{NodeState, PendingInterviewRecord, RunProjection};
 pub use slate::{
-    AuthCode, ConsumeOutcome, Database, RefreshToken, RunDatabase, Runs, SlateAuthCodeStore,
-    SlateAuthTokenStore,
+    AuthCode, AuthCodeStore, Blob, BlobStore, ConsumeOutcome, Database, RefreshToken,
+    RefreshTokenStore, RunCatalogIndex, RunDatabase, Runs,
 };
 pub use types::{EventEnvelope, EventPayload, RunSummary};
 

@@ -308,7 +308,7 @@ async fn upload_data_files(
     let progress_content = {
         let lines: Vec<String> = events
             .iter()
-            .filter_map(|env| serde_json::to_string(env.payload.as_value()).ok())
+            .filter_map(|env| serde_json::to_string(&env.event).ok())
             .collect();
         if lines.is_empty() {
             None

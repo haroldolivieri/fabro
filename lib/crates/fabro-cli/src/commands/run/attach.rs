@@ -21,7 +21,7 @@ use fabro_interview::{AnswerValue, ConsoleInterviewer, Question, QuestionOption,
 use fabro_store::EventEnvelope;
 use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::run::ApprovalMode;
-use fabro_types::{EventBody, RunEvent, RunId};
+use fabro_types::{EventBody, RunId};
 use fabro_util::json::normalize_json_value;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
@@ -155,7 +155,7 @@ async fn attach_live_run_with_client(
     client: &server_client::Client,
     run_id: &RunId,
     existing_events: Vec<EventEnvelope>,
-    mut stream: server_client::RunAttachEventStream,
+    mut stream: server_client::RunEventStream,
     styles: &'static Styles,
     opts: AttachOptions,
     printer: Printer,
@@ -392,7 +392,7 @@ fn show_progress(progress_ui: &mut run_progress::ProgressUI, json_output: bool) 
 }
 
 fn event_payload_line(event: &EventEnvelope) -> Result<String> {
-    let mut value = normalize_json_value(event.payload.as_value().clone());
+    let mut value = normalize_json_value(event.event.to_value()?);
     restore_empty_run_properties(&mut value);
     serde_json::to_string(&value).map_err(Into::into)
 }
@@ -462,8 +462,7 @@ fn state_exit_code(state: &server_client::RunProjection) -> Option<ExitCode> {
 }
 
 fn event_exit_code(event: &EventEnvelope) -> Option<ExitCode> {
-    let run_event = RunEvent::try_from(&event.payload).ok()?;
-    match run_event.body {
+    match &event.event.body {
         EventBody::RunCompleted(props) => Some(
             if props.status == "success" || props.status == "partial_success" {
                 ExitCode::from(0)
@@ -477,10 +476,7 @@ fn event_exit_code(event: &EventEnvelope) -> Option<ExitCode> {
 }
 
 fn event_starts_interview(event: &EventEnvelope) -> bool {
-    let Ok(run_event) = RunEvent::try_from(&event.payload) else {
-        return false;
-    };
-    matches!(run_event.body, EventBody::InterviewStarted(_))
+    matches!(event.event.body, EventBody::InterviewStarted(_))
 }
 
 #[cfg(test)]

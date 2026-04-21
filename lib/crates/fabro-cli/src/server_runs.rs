@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use fabro_store::RunSummary;
-use fabro_types::{RunId, RunStatus, StatusReason};
+use fabro_types::{RunId, RunStatus, RunSummary, StatusReason};
 
 use crate::server_client::Client;
 

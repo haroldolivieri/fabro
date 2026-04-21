@@ -885,9 +885,7 @@ fn start_optional_slack_service(state: &Arc<AppState>) {
         loop {
             match rx.recv().await {
                 Ok(envelope) => {
-                    if let Ok(event) = RunEvent::try_from(&envelope.payload) {
-                        event_service.handle_event(&event).await;
-                    }
+                    event_service.handle_event(&envelope.event).await;
                 }
                 Err(RecvError::Lagged(_)) => {}
                 Err(RecvError::Closed) => break,
@@ -1553,7 +1551,7 @@ struct PrunePlan {
     reason = "sync helper invoked from async handler via spawn_blocking (see callers at :1301 / :1341)"
 )]
 fn build_disk_usage_response(
-    summaries: &[fabro_store::RunSummary],
+    summaries: &[fabro_types::RunSummary],
     storage_dir: &std::path::Path,
     verbose: bool,
 ) -> anyhow::Result<DiskUsageResponse> {
@@ -1626,7 +1624,7 @@ fn build_disk_usage_response(
 
 fn build_prune_plan(
     request: &PruneRunsRequest,
-    summaries: &[fabro_store::RunSummary],
+    summaries: &[fabro_types::RunSummary],
     storage_dir: &std::path::Path,
 ) -> anyhow::Result<PrunePlan> {
     let scratch_base_dir = scratch_base(storage_dir);
@@ -1772,16 +1770,7 @@ fn event_matches_run_filter(event: &EventEnvelope, run_filter: Option<&HashSet<R
     let Some(run_filter) = run_filter else {
         return true;
     };
-    let Some(run_id) = event
-        .payload
-        .as_value()
-        .get("run_id")
-        .and_then(serde_json::Value::as_str)
-        .and_then(|value| value.parse::<RunId>().ok())
-    else {
-        return false;
-    };
-    run_filter.contains(&run_id)
+    run_filter.contains(&event.event.run_id)
 }
 
 fn sse_event_from_store(event: &EventEnvelope) -> Option<Event> {
@@ -1791,11 +1780,8 @@ fn sse_event_from_store(event: &EventEnvelope) -> Option<Event> {
 }
 
 fn attach_event_is_terminal(event: &EventEnvelope) -> bool {
-    let Ok(run_event) = RunEvent::try_from(&event.payload) else {
-        return false;
-    };
     matches!(
-        run_event.body,
+        &event.event.body,
         EventBody::RunCompleted(_) | EventBody::RunFailed(_)
     )
 }
@@ -2771,7 +2757,7 @@ fn elapsed_secs(duration_ms: Option<u64>) -> Option<f64> {
     duration_ms.map(|ms| ms as f64 / 1000.0)
 }
 
-fn summary_to_api_run_summary(summary: fabro_store::RunSummary) -> serde_json::Value {
+fn summary_to_api_run_summary(summary: fabro_types::RunSummary) -> serde_json::Value {
     let goal = summary.goal.unwrap_or_default();
     let title = truncate_goal(&goal);
     let repository = repository_name(summary.host_repo_path.as_deref());
@@ -3302,9 +3288,13 @@ fn octet_stream_response(bytes: Bytes) -> Response {
     reason = "Stored event conversion surfaces HTTP errors directly."
 )]
 fn api_event_envelope_from_store(event: &EventEnvelope) -> Result<ApiEventEnvelope, Response> {
-    // The payload is already a serde_json::Value; merge `seq` into it
-    // instead of serializing the whole envelope and re-parsing.
-    let mut obj = event.payload.as_value().clone();
+    let mut obj = event.event.to_value().map_err(|err| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to serialize stored event: {err}"),
+        )
+        .into_response()
+    })?;
     if let serde_json::Value::Object(ref mut map) = obj {
         map.insert("seq".into(), serde_json::Value::from(event.seq));
     }
@@ -3578,11 +3568,9 @@ async fn forward_run_events_to_global(
     loop {
         match run_events.recv().await {
             Ok(event) => {
-                if let Ok(run_event) = RunEvent::try_from(&event.payload) {
-                    let mut runs = state.runs.lock().expect("runs lock poisoned");
-                    if let Some(managed_run) = runs.get_mut(&run_id) {
-                        reconcile_live_interview_state_for_event(managed_run, &run_event);
-                    }
+                let mut runs = state.runs.lock().expect("runs lock poisoned");
+                if let Some(managed_run) = runs.get_mut(&run_id) {
+                    reconcile_live_interview_state_for_event(managed_run, &event.event);
                 }
                 let _ = state.global_event_tx.send(event);
             }
@@ -8767,8 +8755,8 @@ slug = "fabro"
 
         let run_store = state.store.open_run_reader(&run_id).await.unwrap();
         let events = run_store.list_events().await.unwrap();
-        let created = events[0].payload.as_value();
-        let submitted = events[1].payload.as_value();
+        let created = events[0].event.to_value().unwrap();
+        let submitted = events[1].event.to_value().unwrap();
         let manifest_blob = created["properties"]["manifest_blob"]
             .as_str()
             .expect("run.created should carry manifest_blob")

@@ -29,7 +29,7 @@ fn stored_worker_events(run_dir: &std::path::Path) -> Vec<RunEvent> {
 }
 
 fn run_event(event: &EventEnvelope) -> RunEvent {
-    RunEvent::try_from(&event.payload).expect("stored event should parse")
+    event.event.clone()
 }
 
 fn assert_worker_succeeded(run_dir: &std::path::Path, stdout: &[u8]) {

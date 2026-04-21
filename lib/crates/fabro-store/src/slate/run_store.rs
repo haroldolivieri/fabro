@@ -4,14 +4,14 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use bytes::Bytes;
 use chrono::Utc;
-use fabro_types::{RunBlobId, RunId};
+use fabro_types::{RunBlobId, RunEvent, RunId, RunSummary};
 use futures::Stream;
 use slatedb::{Db, DbRead};
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use crate::run_state::EventProjectionCache;
-use crate::{Error, EventEnvelope, EventPayload, Result, RunProjection, RunSummary, keys};
+use crate::run_state::{EventProjectionCache, RunProjectionReducer, build_summary};
+use crate::{Error, EventEnvelope, EventPayload, Result, RunProjection, keys};
 
 const DEFAULT_EVENT_TAIL_LIMIT: usize = 1024;
 #[derive(Clone)]
@@ -131,7 +131,7 @@ impl RunDatabase {
     {
         let events = list_events_from(db, run_id, 1).await?;
         let state = RunProjection::apply_events(&events)?;
-        Ok(state.build_summary(run_id))
+        Ok(build_summary(&state, run_id))
     }
 
     async fn projected_state(&self) -> Result<RunProjection> {
@@ -193,7 +193,7 @@ impl RunDatabase {
         let seq = self.inner.event_seq.fetch_add(1, Ordering::SeqCst);
         let event = EventEnvelope {
             seq,
-            payload: payload.clone(),
+            event: RunEvent::try_from(payload)?,
         };
         self.inner
             .db
@@ -341,7 +341,7 @@ where
         }
         events.push(EventEnvelope {
             seq,
-            payload: serde_json::from_slice(&entry.value)?,
+            event: serde_json::from_slice(&entry.value)?,
         });
     }
     events.sort_by_key(|event| event.seq);

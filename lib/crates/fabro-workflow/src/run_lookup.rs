@@ -11,8 +11,8 @@ use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use fabro_config::Storage;
 use fabro_config::user::default_storage_dir;
-use fabro_store::{Database, RunSummary};
-use fabro_types::RunId;
+use fabro_store::Database;
+use fabro_types::{RunId, RunSummary};
 use serde::Serialize;
 
 use crate::operations::make_run_dir;

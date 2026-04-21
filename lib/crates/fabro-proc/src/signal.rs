@@ -110,6 +110,10 @@ pub fn process_group_alive(pgid: u32) -> bool {
 }
 
 #[cfg(target_os = "linux")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Linux /proc walk is a cheap synchronous probe; used only after a kill(2) probe already confirmed the group matches, and we are not inside a Tokio hot path."
+)]
 fn linux_group_has_non_zombie(pgid: u32) -> bool {
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return true;

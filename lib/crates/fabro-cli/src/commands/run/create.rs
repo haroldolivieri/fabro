@@ -73,14 +73,15 @@ pub(crate) async fn create_run(
     }
 
     let created_run_id = client.create_run_from_manifest(built.manifest).await?;
-    let local_run_dir = match &target {
-        ServerTarget::UnixSocket(_) => Some(
+    let local_run_dir = if target.is_unix_socket() {
+        Some(
             Storage::new(user_config::storage_dir(ctx.machine_settings())?)
                 .run_scratch(&created_run_id)
                 .root()
                 .to_path_buf(),
-        ),
-        ServerTarget::HttpUrl(_) => None,
+        )
+    } else {
+        None
     };
 
     Ok(CreatedRun {

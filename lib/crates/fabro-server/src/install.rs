@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::str::FromStr;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};

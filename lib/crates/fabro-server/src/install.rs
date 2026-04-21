@@ -545,7 +545,7 @@ async fn put_install_llm(
                 "portkey url is required",
             );
         }
-        if let Err(err) = validate_canonical_url(portkey.url.trim()) {
+        if let Err(err) = validate_gateway_url(portkey.url.trim()) {
             return install_error_response(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 format!("portkey url: {err}"),
@@ -1207,6 +1207,20 @@ fn missing_step_response(step: &str) -> Response {
 
 fn install_error_response(status: StatusCode, message: impl Into<String>) -> Response {
     ApiError::new(status, message).into_response()
+}
+
+/// Validates a gateway/provider base URL — must use http/https and have a
+/// host, but paths (e.g. `/v1`) are allowed. Used for Portkey gateway URLs.
+fn validate_gateway_url(value: &str) -> Result<(), String> {
+    let parsed = fabro_http::Url::parse(value.trim()).map_err(|err| err.to_string())?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => return Err(format!("must use http or https, got {other}")),
+    }
+    if parsed.host_str().is_none() {
+        return Err("must include a host".to_string());
+    }
+    Ok(())
 }
 
 fn validate_canonical_url(value: &str) -> Result<(), String> {

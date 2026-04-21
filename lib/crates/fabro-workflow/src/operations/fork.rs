@@ -252,15 +252,15 @@ mod tests {
         for (i, node) in nodes.iter().enumerate() {
             let mut projection = init_projection.clone();
             projection.checkpoint = Some(
-                serde_json::from_slice(&make_checkpoint_json(
+                serde_json::from_slice(&make_checkpoint_bytes(
                     node,
                     1,
                     Some(&run_oids[i].to_string()),
                 ))
                 .unwrap(),
             );
-            let checkpoint_json = serde_json::to_vec_pretty(&projection).unwrap();
-            bs.write_entry("run.json", &checkpoint_json, "checkpoint")
+            let projection_json = serde_json::to_vec_pretty(&projection).unwrap();
+            bs.write_entry("run.json", &projection_json, "checkpoint")
                 .unwrap();
         }
 
@@ -318,7 +318,7 @@ mod tests {
 
         let mut checkpoint_projection = make_run_projection(&run_id);
         checkpoint_projection.checkpoint =
-            Some(serde_json::from_slice(&make_checkpoint_json("start", 1, None)).unwrap());
+            Some(serde_json::from_slice(&make_checkpoint_bytes("start", 1, None)).unwrap());
         let cp = serde_json::to_vec_pretty(&checkpoint_projection).unwrap();
         let oid = bs.write_entry("run.json", &cp, "checkpoint").unwrap();
         let entry = TimelineEntry {

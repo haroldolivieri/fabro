@@ -405,7 +405,7 @@ mod tests {
     ) -> Vec<u8> {
         let mut projection = RunProjection::default();
         projection.checkpoint = Some(
-            serde_json::from_slice(&make_checkpoint_json(current_node, visit, git_commit_sha))
+            serde_json::from_slice(&make_checkpoint_bytes(current_node, visit, git_commit_sha))
                 .unwrap(),
         );
         serde_json::to_vec_pretty(&projection).unwrap()

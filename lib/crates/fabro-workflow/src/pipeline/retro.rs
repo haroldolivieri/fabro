@@ -312,7 +312,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retro_phase_writes_retro_json() {
+    async fn retro_phase_persists_retro_in_projection() {
         let temp = tempfile::tempdir().unwrap();
         let run_dir = temp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();

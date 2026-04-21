@@ -488,6 +488,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auth_translation_passes_refresh_token_through_unchanged() {
+        let state = test_state();
+        let refresh_token = "fabro_refresh_abcdefghijklmnop";
+        let response = translation_router(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/inspect")
+                    .header(header::AUTHORIZATION, format!("Bearer {refresh_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let json = response_json!(response).await;
+        assert_eq!(json["authorization"], format!("Bearer {refresh_token}"));
+    }
+
+    #[tokio::test]
+    async fn auth_translation_mints_from_session_even_when_demo_header_set() {
+        let state = test_state();
+        let cookie = session_cookie(&github_session(), state.as_ref());
+        let response = translation_router(Arc::clone(&state))
+            .oneshot(
+                Request::builder()
+                    .uri("/inspect")
+                    .header(header::COOKIE, cookie)
+                    .header("x-fabro-demo", "1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let json = response_json!(response).await;
+        let token = json["authorization"]
+            .as_str()
+            .and_then(|value| value.strip_prefix("Bearer "))
+            .expect("authorization should be minted despite demo header");
+        let claims = auth::verify(&signing_key(), "https://fabro.example", token).unwrap();
+        assert_eq!(claims.login, "octocat");
+        assert_eq!(claims.auth_method, RunAuthMethod::Github);
+        assert_eq!(json["demo"], "1");
+    }
+
+    #[tokio::test]
     async fn auth_translation_panics_without_auth_mode_extension() {
         let state = test_state();
         let handle = tokio::spawn(async move {

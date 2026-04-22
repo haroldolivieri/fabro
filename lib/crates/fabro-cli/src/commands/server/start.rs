@@ -14,10 +14,10 @@ use fabro_server::bind::{Bind, BindRequest};
 use fabro_server::jwt_auth::auth_method_name;
 use fabro_server::serve;
 use fabro_server::serve::{DEFAULT_TCP_PORT, ServeArgs};
-use fabro_util::printer::Printer;
-use fabro_util::terminal::Styles;
-use fabro_util::session_secret;
 use fabro_types::settings::ServerAuthMethod;
+use fabro_util::printer::Printer;
+use fabro_util::session_secret;
+use fabro_util::terminal::Styles;
 use tokio::net::{TcpStream, UnixStream};
 use tokio::process::Command as TokioCommand;
 use tokio::task::spawn_blocking;
@@ -265,12 +265,14 @@ async fn execute_foreground(
     let session_secret = load_or_create_local_session_secret(&storage_dir)?;
     let prior_session_secret = std::env::var_os("SESSION_SECRET");
     std::env::set_var("SESSION_SECRET", &session_secret);
-    let _env_guard = scopeguard::guard(prior_session_secret, |prior_session_secret| {
-        match prior_session_secret {
-            Some(value) => std::env::set_var("SESSION_SECRET", value),
-            None => std::env::remove_var("SESSION_SECRET"),
-        }
-    });
+    let _env_guard =
+        scopeguard::guard(
+            prior_session_secret,
+            |prior_session_secret| match prior_session_secret {
+                Some(value) => std::env::set_var("SESSION_SECRET", value),
+                None => std::env::remove_var("SESSION_SECRET"),
+            },
+        );
 
     let runtime_state = ServerRuntimeState::new(&storage_dir);
     let record_path = runtime_state.record_path();

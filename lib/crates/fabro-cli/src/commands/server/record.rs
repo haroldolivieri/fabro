@@ -127,9 +127,9 @@ mod tests {
 
     fn test_record(bind: Bind) -> ServerRecord {
         ServerRecord {
-            pid:        std::process::id(),
+            pid: std::process::id(),
             bind,
-            log_path:   PathBuf::from("/tmp/storage/logs/server.log"),
+            log_path: PathBuf::from("/tmp/storage/logs/server.log"),
             started_at: Utc::now(),
         }
     }

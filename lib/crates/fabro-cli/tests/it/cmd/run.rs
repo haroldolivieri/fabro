@@ -275,7 +275,10 @@ fn detach_uses_configured_server_target_without_server_flag() {
 #[test]
 fn run_uses_vault_credentials_for_worker_execution() {
     let mut context = test_context!();
-    context.write_home(".fabro/settings.toml", "[server.auth]\nmethods = [\"dev-token\"]\n");
+    context.write_home(
+        ".fabro/settings.toml",
+        "[server.auth]\nmethods = [\"dev-token\"]\n",
+    );
     context.isolated_server();
     let run_id = unique_run_id();
     let llm_server = MockServer::start();

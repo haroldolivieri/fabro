@@ -6,15 +6,17 @@ fn start_status_stop_lifecycle() {
     let storage_root = tempfile::tempdir_in("/tmp").unwrap();
     let storage_dir = storage_root.path().join("storage");
     std::fs::create_dir_all(&storage_dir).unwrap();
-    context.write_home(".fabro/settings.toml", "[server.auth]\nmethods = [\"dev-token\"]\n");
-    let server_env_path = fabro_config::Storage::new(&storage_dir).runtime_state().env_path();
-    fabro_config::envfile::merge_env_file(
-        &server_env_path,
-        [(
-            "FABRO_DEV_TOKEN",
-            "fabro_dev_abababababababababababababababababababababababababababababababab",
-        )],
-    )
+    context.write_home(
+        ".fabro/settings.toml",
+        "[server.auth]\nmethods = [\"dev-token\"]\n",
+    );
+    let server_env_path = fabro_config::Storage::new(&storage_dir)
+        .runtime_state()
+        .env_path();
+    fabro_config::envfile::merge_env_file(&server_env_path, [(
+        "FABRO_DEV_TOKEN",
+        "fabro_dev_abababababababababababababababababababababababababababababababab",
+    )])
     .unwrap();
     fabro_util::dev_token::write_dev_token(
         &context.home_dir.join(".fabro").join("dev-token"),

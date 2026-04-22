@@ -33,11 +33,7 @@ fn write_dev_token_server_settings(config_path: &std::path::Path, rest: &str) {
 fn provision_dev_token_auth(home_dir: &std::path::Path, storage_dir: &std::path::Path) {
     let server_env_path = Storage::new(storage_dir).runtime_state().env_path();
     envfile::merge_env_file(&server_env_path, [("FABRO_DEV_TOKEN", TEST_DEV_TOKEN)]).unwrap();
-    dev_token::write_dev_token(
-        &home_dir.join(".fabro").join("dev-token"),
-        TEST_DEV_TOKEN,
-    )
-    .unwrap();
+    dev_token::write_dev_token(&home_dir.join(".fabro").join("dev-token"), TEST_DEV_TOKEN).unwrap();
 }
 
 #[test]
@@ -103,7 +99,10 @@ fn start_already_running_exits_with_error() {
     let context = test_context!();
     let storage_root = isolated_storage_dir();
     let storage_dir = storage_root.path().join("storage");
-    context.write_home(".fabro/settings.toml", "[server.auth]\nmethods = [\"dev-token\"]\n");
+    context.write_home(
+        ".fabro/settings.toml",
+        "[server.auth]\nmethods = [\"dev-token\"]\n",
+    );
     provision_dev_token_auth(&context.home_dir, &storage_dir);
 
     let sock_dir = tempfile::tempdir_in("/tmp").unwrap();
@@ -699,7 +698,10 @@ fn start_without_bind_uses_home_socket_instead_of_storage_socket() {
     let context = test_context!();
     let storage_root = isolated_storage_dir();
     let storage_dir = storage_root.path().join("storage");
-    context.write_home(".fabro/settings.toml", "[server.auth]\nmethods = [\"dev-token\"]\n");
+    context.write_home(
+        ".fabro/settings.toml",
+        "[server.auth]\nmethods = [\"dev-token\"]\n",
+    );
     provision_dev_token_auth(&context.home_dir, &storage_dir);
     let expected_socket = context.home_dir.join(".fabro").join("fabro.sock");
     let storage_socket = storage_dir.join("fabro.sock");
@@ -794,7 +796,10 @@ fn start_with_tcp_host_only_bind_resolves_to_host_and_port() {
     let context = test_context!();
     let storage_root = isolated_storage_dir();
     let storage_dir = storage_root.path().join("storage");
-    context.write_home(".fabro/settings.toml", "[server.auth]\nmethods = [\"dev-token\"]\n");
+    context.write_home(
+        ".fabro/settings.toml",
+        "[server.auth]\nmethods = [\"dev-token\"]\n",
+    );
     provision_dev_token_auth(&context.home_dir, &storage_dir);
 
     let mut cmd = context.command();
@@ -846,7 +851,10 @@ fn start_with_tcp_host_only_bind_warns_and_falls_back_when_default_port_is_unava
     let context = test_context!();
     let storage_root = isolated_storage_dir();
     let storage_dir = storage_root.path().join("storage");
-    context.write_home(".fabro/settings.toml", "[server.auth]\nmethods = [\"dev-token\"]\n");
+    context.write_home(
+        ".fabro/settings.toml",
+        "[server.auth]\nmethods = [\"dev-token\"]\n",
+    );
     let occupied = match std::net::TcpListener::bind(("127.0.0.1", 32276)) {
         Ok(listener) => listener,
         Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
@@ -954,7 +962,10 @@ fn default_test_context_server_keeps_object_store_off_disk() {
 #[test]
 fn isolated_server_switches_context_to_separate_daemon() {
     let mut context = test_context!();
-    context.write_home(".fabro/settings.toml", "[server.auth]\nmethods = [\"dev-token\"]\n");
+    context.write_home(
+        ".fabro/settings.toml",
+        "[server.auth]\nmethods = [\"dev-token\"]\n",
+    );
     let shared_storage_dir = context.storage_dir.clone();
     let shared_status = context
         .command()

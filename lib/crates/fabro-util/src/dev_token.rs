@@ -53,8 +53,8 @@ pub fn read_dev_token_file(path: &Path) -> Option<String> {
 }
 
 pub fn read_dev_token_or_err(path: &Path) -> Result<String> {
-    let contents = fs::read_to_string(path)
-        .with_context(|| format!("read dev token {}", path.display()))?;
+    let contents =
+        fs::read_to_string(path).with_context(|| format!("read dev token {}", path.display()))?;
     let token = contents.trim().to_string();
     if validate_dev_token_format(&token) {
         Ok(token)

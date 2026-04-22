@@ -27,6 +27,7 @@ use tokio::time::interval;
 use tracing::{error, info, warn};
 
 use crate::bind::{self, Bind, BindRequest};
+use crate::canonical_origin::validate_canonical_origin;
 use crate::github_webhooks::{TailscaleFunnelManager, WEBHOOK_ROUTE, WEBHOOK_SECRET_ENV};
 use crate::ip_allowlist::{GitHubMetaResolver, IpAllowlistConfig, resolve_ip_allowlist_config};
 use crate::jwt_auth::resolve_auth_mode_with_lookup;
@@ -510,6 +511,8 @@ where
         build_artifact_object_store(&resolved_server_settings)?;
     let artifact_store = fabro_store::ArtifactStore::new(artifact_object_store, artifact_prefix);
     let env_lookup: EnvLookup = Arc::new(|name| std::env::var(name).ok());
+    validate_canonical_origin(&resolved_server_settings, &env_lookup)
+        .map_err(anyhow::Error::msg)?;
     let state = build_app_state(AppStateConfig {
         settings: Arc::clone(&shared_settings),
         registry_factory_override: None,
@@ -607,14 +610,8 @@ where
                             .expect("config lock poisoned");
                         *cfg != effective
                     };
-                    if changed {
-                        match state_for_poll.replace_settings(effective) {
-                            Ok(()) => info!("Server config reloaded"),
-                            Err(error) => warn!(
-                                error = %error,
-                                "Failed to resolve reloaded server config, keeping previous"
-                            ),
-                        }
+                    if changed && state_for_poll.replace_settings(effective).is_ok() {
+                        info!("Server config reloaded");
                     }
                 }
                 Err(e) => {

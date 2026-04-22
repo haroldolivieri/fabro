@@ -22,7 +22,7 @@ use tracing::{info, warn};
 use url::{Host, Url};
 
 use crate::auth::{self, AuthCode, ConsumeOutcome, JwtSubject, RefreshToken};
-use crate::jwt_auth::{AuthMode, ConfiguredAuth, auth_method_name};
+use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 use crate::server::AppState;
 use crate::web_auth::{SessionCookie, read_private_session};
 
@@ -42,16 +42,6 @@ const INVALID_CONFIRMATION_REQUEST: &str =
 struct OAuthErrorResponse<'a> {
     error:             &'a str,
     error_description: &'a str,
-}
-
-#[derive(Serialize)]
-struct CliAuthConfigResponse {
-    enabled: bool,
-    #[serde(rename = "web_url")]
-    web_url: Option<String>,
-    methods: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason:  Option<&'static str>,
 }
 
 #[derive(Deserialize)]
@@ -100,10 +90,6 @@ struct CliTokenResponse {
     subject:                  CliAuthSubjectResponse,
 }
 
-pub(crate) fn api_routes() -> Router<Arc<AppState>> {
-    Router::new().route("/auth/cli/config", get(config))
-}
-
 pub(crate) fn web_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/cli/start", get(start))
@@ -113,42 +99,12 @@ pub(crate) fn web_routes() -> Router<Arc<AppState>> {
         .route("/cli/logout", post(logout))
 }
 
-async fn config(
-    State(state): State<Arc<AppState>>,
-    Extension(auth_mode): Extension<AuthMode>,
-) -> Json<CliAuthConfigResponse> {
-    let methods = configured_methods(&auth_mode);
-    let settings = state.server_settings();
-    let web_enabled = settings.web.enabled;
-    let web_url = resolved_web_url(state.as_ref());
-    let github_enabled = methods.iter().any(|method| method == "github");
-    let enabled = web_enabled && github_enabled;
-    let reason = if enabled {
-        None
-    } else if !web_enabled {
-        Some("web_not_enabled")
-    } else {
-        Some("github_not_enabled")
-    };
-
-    Json(CliAuthConfigResponse {
-        enabled,
-        web_url: enabled.then_some(web_url).flatten(),
-        methods,
-        reason,
-    })
-}
-
 async fn start(
     State(state): State<Arc<AppState>>,
     Extension(auth_mode): Extension<AuthMode>,
     Query(params): Query<CliStartParams>,
     headers: HeaderMap,
 ) -> Response {
-    if !github_enabled(&auth_mode) {
-        return static_error_page(GITHUB_NOT_CONFIGURED);
-    }
-
     let Some(redirect_uri) = params
         .redirect_uri
         .as_deref()
@@ -163,6 +119,24 @@ async fn start(
     if !valid_state_token(state_token) {
         return static_error_page(INVALID_OR_MISSING_STATE);
     }
+
+    if !github_enabled(&auth_mode) {
+        return redirect_with_error(
+            &redirect_uri,
+            state_token,
+            "github_not_configured",
+            "GitHub authentication is not enabled on this server",
+        );
+    }
+
+    let Some(session_key) = state.session_key() else {
+        return redirect_with_error(
+            &redirect_uri,
+            state_token,
+            "server_error",
+            "SESSION_SECRET is not configured on this server",
+        );
+    };
 
     let Some(code_challenge) = params.code_challenge.as_deref() else {
         return redirect_with_error(
@@ -180,10 +154,6 @@ async fn start(
             "Invalid PKCE parameters",
         );
     }
-
-    let Some(session_key) = state.session_key() else {
-        return static_error_page(GITHUB_NOT_CONFIGURED);
-    };
     let session = read_private_session(&headers, &session_key);
 
     let secure = session_cookie_secure(state.as_ref());
@@ -703,17 +673,6 @@ async fn logout(
     StatusCode::NO_CONTENT.into_response()
 }
 
-fn configured_methods(auth_mode: &AuthMode) -> Vec<String> {
-    match auth_mode {
-        AuthMode::Enabled(config) => config
-            .methods
-            .iter()
-            .map(|method| auth_method_name(*method).to_string())
-            .collect(),
-        AuthMode::Disabled => Vec::new(),
-    }
-}
-
 fn github_enabled(auth_mode: &AuthMode) -> bool {
     matches!(
         auth_mode,
@@ -739,14 +698,7 @@ fn github_auth_not_configured() -> Response {
 }
 
 fn resolved_web_url(state: &AppState) -> Option<String> {
-    state
-        .server_settings()
-        .web
-        .url
-        .resolve(|name| std::env::var(name).ok())
-        .ok()
-        .map(|resolved| resolved.value)
-        .filter(|value| !value.is_empty())
+    state.canonical_origin().ok()
 }
 
 fn session_cookie_secure(state: &AppState) -> bool {
@@ -1367,8 +1319,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        CliFlowCookie, add_cli_flow_cookie, api_routes, read_private_cli_flow,
-        user_agent_fingerprint, web_routes,
+        CliFlowCookie, add_cli_flow_cookie, read_private_cli_flow, user_agent_fingerprint,
+        web_routes,
     };
     use crate::auth::{self, AuthCode, RefreshToken};
     use crate::jwt_auth::{AuthMode, ConfiguredAuth};
@@ -1423,7 +1375,6 @@ mod tests {
             false,
         );
         let app = axum::Router::new()
-            .nest("/api/v1", api_routes())
             .nest("/auth", web_routes())
             .layer(Extension(github_auth_mode()))
             .with_state(Arc::clone(&state));

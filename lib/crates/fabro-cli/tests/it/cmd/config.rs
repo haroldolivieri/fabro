@@ -682,9 +682,11 @@ name = "legacy-model"
         .assert()
         .success();
 
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(stderr.contains("warning: server config:"));
-    assert!(stderr.contains("server.auth.methods"));
+    assert!(
+        assert.get_output().stderr.is_empty(),
+        "settings should not warn about legacy config files: {}",
+        String::from_utf8_lossy(&assert.get_output().stderr)
+    );
 
     let cfg = parse_settings(&assert.get_output().stdout);
     assert_eq!(cfg["cli"]["output"]["verbosity"].as_str(), Some("normal"));
@@ -719,9 +721,11 @@ name = "legacy-model"
         .assert()
         .success();
 
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(stderr.contains("warning: server config:"));
-    assert!(stderr.contains("server.auth.methods"));
+    assert!(
+        assert.get_output().stderr.is_empty(),
+        "settings should not warn about legacy config files: {}",
+        String::from_utf8_lossy(&assert.get_output().stderr)
+    );
 
     let cfg = parse_settings(&assert.get_output().stdout);
     assert_eq!(cfg["cli"]["output"]["verbosity"].as_str(), Some("normal"));
@@ -756,9 +760,11 @@ name = "legacy-model"
         .assert()
         .success();
 
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(stderr.contains("warning: server config:"));
-    assert!(stderr.contains("server.auth.methods"));
+    assert!(
+        assert.get_output().stderr.is_empty(),
+        "settings should not warn about legacy config files: {}",
+        String::from_utf8_lossy(&assert.get_output().stderr)
+    );
 
     let cfg = parse_settings(&assert.get_output().stdout);
     assert_eq!(cfg["cli"]["output"]["verbosity"].as_str(), Some("normal"));

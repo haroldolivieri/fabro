@@ -7,10 +7,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use chrono::Utc;
 use fabro_config::user::{FABRO_CONFIG_ENV, default_settings_path, load_settings_config};
-use fabro_config::{ServerRuntimeState, envfile};
+use fabro_config::{RuntimeDirectory, envfile};
 use fabro_server::bind::{Bind, BindRequest};
+use fabro_server::daemon::ServerDaemon;
 use fabro_server::jwt_auth::auth_method_name;
 use fabro_server::serve;
 use fabro_server::serve::{DEFAULT_TCP_PORT, ServeArgs};
@@ -23,7 +23,6 @@ use tokio::process::Command as TokioCommand;
 use tokio::task::spawn_blocking;
 use tokio::time;
 
-use super::record;
 use crate::local_server;
 
 pub(crate) struct ForegroundServerLogBootstrap {
@@ -70,7 +69,8 @@ pub(crate) async fn prepare_foreground_server_log(
     storage_dir: &Path,
 ) -> Result<ForegroundServerLogBootstrap> {
     let lock_file = acquire_lock(storage_dir).await?;
-    if let Some(existing) = record::active_server_record(storage_dir)? {
+    let runtime_directory = RuntimeDirectory::new(storage_dir);
+    if let Some(existing) = ServerDaemon::load_running(&runtime_directory)? {
         bail!(
             "Server already running (pid {}) on {}",
             existing.pid,
@@ -78,7 +78,7 @@ pub(crate) async fn prepare_foreground_server_log(
         );
     }
 
-    let log_path = ServerRuntimeState::new(storage_dir).log_path();
+    let log_path = runtime_directory.log_path();
     if let Some(parent) = log_path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating log directory {}", parent.display()))?;
@@ -119,7 +119,8 @@ async fn ensure_server_running_with_bind(
     config_path: &Path,
     storage_dir: &Path,
 ) -> Result<Bind> {
-    if let Some(existing) = record::active_server_record(storage_dir)? {
+    let runtime_directory = RuntimeDirectory::new(storage_dir);
+    if let Some(existing) = ServerDaemon::load_running(&runtime_directory)? {
         if bind_request
             .as_ref()
             .is_none_or(|requested| bind_matches_request(&existing.bind, requested))
@@ -163,7 +164,7 @@ async fn ensure_server_running_with_bind(
     )
     .await
     {
-        Ok(()) => record::active_server_record(storage_dir)?
+        Ok(()) => ServerDaemon::load_running(&runtime_directory)?
             .map(|server| server.bind)
             .ok_or_else(|| {
                 anyhow!(
@@ -172,7 +173,7 @@ async fn ensure_server_running_with_bind(
                 )
             }),
         Err(err) => {
-            if let Some(existing) = record::active_server_record(storage_dir)? {
+            if let Some(existing) = ServerDaemon::load_running(&runtime_directory)? {
                 Ok(existing.bind)
             } else {
                 Err(err)
@@ -235,7 +236,7 @@ fn load_or_create_local_session_secret(storage_dir: &Path) -> Result<String> {
         return Ok(secret);
     }
 
-    let server_env_path = ServerRuntimeState::new(storage_dir).env_path();
+    let server_env_path = RuntimeDirectory::new(storage_dir).env_path();
     if let Some(secret) = envfile::read_env_file(&server_env_path)
         .ok()
         .and_then(|entries| entries.get("SESSION_SECRET").cloned())
@@ -274,13 +275,13 @@ async fn execute_foreground(
             },
         );
 
-    let runtime_state = ServerRuntimeState::new(&storage_dir);
-    let record_path = runtime_state.record_path();
-    let log_path = runtime_state.log_path();
+    let runtime_directory = RuntimeDirectory::new(&storage_dir);
+    let log_path = runtime_directory.log_path();
     let pid = std::process::id();
+    let daemon_dir = runtime_directory.clone();
 
-    let _record_guard = scopeguard::guard(record_path.clone(), |path| {
-        record::remove_server_record(&path);
+    let _record_guard = scopeguard::guard(runtime_directory.clone(), |dir| {
+        ServerDaemon::remove(&dir);
     });
 
     let _socket_guard = if let BindRequest::Unix(ref path) = bind {
@@ -297,12 +298,7 @@ async fn execute_foreground(
         styles,
         Some(storage_dir),
         move |resolved_bind| {
-            record::write_server_record(&record_path, &record::ServerRecord {
-                pid,
-                bind: resolved_bind.clone(),
-                log_path: log_path.clone(),
-                started_at: Utc::now(),
-            })
+            ServerDaemon::new(pid, resolved_bind.clone(), log_path.clone()).write(&daemon_dir)
         },
     ))
     .await
@@ -323,7 +319,8 @@ async fn execute_daemon(
     let lock_file = acquire_lock(storage_dir).await?;
     let _lock_file = lock_file;
 
-    if let Some(existing) = record::active_server_record(storage_dir)? {
+    let runtime_directory = RuntimeDirectory::new(storage_dir);
+    if let Some(existing) = ServerDaemon::load_running(&runtime_directory)? {
         if announce {
             bail!(
                 "Server already running (pid {}) on {}",
@@ -334,14 +331,12 @@ async fn execute_daemon(
         return Ok(());
     }
 
-    let runtime_state = ServerRuntimeState::new(storage_dir);
-    let log_path = runtime_state.log_path();
+    let log_path = runtime_directory.log_path();
     if let Some(parent) = log_path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating log directory {}", parent.display()))?;
     }
 
-    let record_path = runtime_state.record_path();
     let log_file = std::fs::File::create(&log_path)
         .with_context(|| format!("creating server log file {}", log_path.display()))?;
     let stdout_log = log_file
@@ -351,8 +346,6 @@ async fn execute_daemon(
 
     let mut cmd = TokioCommand::new(&exe);
     cmd.args(["server", "__serve"])
-        .arg("--record-path")
-        .arg(&record_path)
         .arg("--bind")
         .arg(bind.to_string());
 
@@ -399,7 +392,7 @@ async fn execute_daemon(
         .with_context(|| format!("spawning fabro server subprocess {}", exe.display()))?;
 
     if let Ok(Some(status)) = child.try_wait() {
-        record::remove_server_record(&record_path);
+        ServerDaemon::remove(&runtime_directory);
         let tail = read_log_tail(&log_path, 20);
         if !tail.is_empty() {
             fabro_util::printerr!(printer, "{tail}");
@@ -412,18 +405,27 @@ async fn execute_daemon(
     let mut elapsed = Duration::ZERO;
 
     while elapsed < timeout {
-        if let Some(record) = record::read_server_record(&record_path) {
-            if try_connect(&record.bind).await {
+        let daemon = match ServerDaemon::read(&runtime_directory) {
+            Ok(daemon) => daemon,
+            Err(err) => {
+                ServerDaemon::remove(&runtime_directory);
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                return Err(err);
+            }
+        };
+        if let Some(daemon) = daemon {
+            if try_connect(&daemon.bind).await {
                 if announce {
                     let pid = child.id().unwrap_or_default();
-                    maybe_warn_host_port_fallback(bind, &record.bind, printer);
+                    maybe_warn_host_port_fallback(bind, &daemon.bind, printer);
                     fabro_util::printerr!(
                         printer,
                         "Server started (pid {}) on {}",
                         pid,
-                        record.bind
+                        daemon.bind
                     );
-                    if let Bind::Tcp(addr) = &record.bind {
+                    if let Bind::Tcp(addr) = &daemon.bind {
                         let url = format!("http://{addr}");
                         let styled = match styles {
                             Some(s) => format!("{}", s.cyan.apply_to(&url)),
@@ -438,7 +440,7 @@ async fn execute_daemon(
         }
 
         if let Ok(Some(status)) = child.try_wait() {
-            record::remove_server_record(&record_path);
+            ServerDaemon::remove(&runtime_directory);
             let tail = read_log_tail(&log_path, 20);
             if !tail.is_empty() {
                 fabro_util::printerr!(printer, "{tail}");
@@ -450,7 +452,7 @@ async fn execute_daemon(
         elapsed += poll_interval;
     }
 
-    record::remove_server_record(&record_path);
+    ServerDaemon::remove(&runtime_directory);
     let _ = child.kill().await;
     let _ = child.wait().await;
     let tail = read_log_tail(&log_path, 20);
@@ -471,7 +473,7 @@ fn print_auth_methods(printer: Printer, serve_args: &ServeArgs) {
 // ---------------------------------------------------------------------------
 
 async fn acquire_lock(storage_dir: &Path) -> Result<std::fs::File> {
-    let lock_path = ServerRuntimeState::new(storage_dir).lock_path();
+    let lock_path = RuntimeDirectory::new(storage_dir).lock_path();
     if let Some(parent) = lock_path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating server lock directory {}", parent.display()))?;

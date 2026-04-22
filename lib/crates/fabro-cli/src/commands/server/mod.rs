@@ -1,5 +1,4 @@
 pub(crate) mod foreground;
-pub(crate) mod record;
 pub(crate) mod start;
 pub(crate) mod status;
 pub(crate) mod stop;
@@ -124,7 +123,6 @@ pub(crate) async fn dispatch(
         }
         ServerCommand::Serve(ServerServeArgs {
             storage_dir,
-            record_path,
             serve_args,
         }) => {
             let settings = user_config::load_settings_with_config_and_storage_dir(
@@ -141,7 +139,6 @@ pub(crate) async fn dispatch(
             let bind_addr = local_server::bind_request(&settings, serve_args.bind.as_deref())?;
             let styles: &'static Styles = Box::leak(Box::new(Styles::detect_stderr()));
             Box::pin(foreground::execute(
-                record_path,
                 ServeArgs {
                     config: active_config_path,
                     ..serve_args

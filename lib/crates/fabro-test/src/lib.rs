@@ -629,7 +629,7 @@ fn write_settings_file(path: &Path, storage_dir: &Path, rest: &str) {
 }
 
 fn write_test_server_dev_token(storage_dir: &Path) {
-    let server_env_path = Storage::new(storage_dir).runtime_state().env_path();
+    let server_env_path = Storage::new(storage_dir).runtime_directory().env_path();
     envfile::merge_env_file(&server_env_path, [("FABRO_DEV_TOKEN", TEST_DEV_TOKEN)])
         .unwrap_or_else(|err| panic!("failed to write {}: {err}", server_env_path.display()));
 }
@@ -876,7 +876,7 @@ fn clear_server_storage(table: &mut TomlMap<String, TomlValue>) {
 }
 
 fn server_record_path(storage_dir: &Path) -> PathBuf {
-    storage_dir.join("server.json")
+    Storage::new(storage_dir).runtime_directory().record_path()
 }
 
 fn server_record_pid(storage_dir: &Path) -> Option<u32> {

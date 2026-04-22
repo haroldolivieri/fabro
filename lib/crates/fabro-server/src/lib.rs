@@ -12,6 +12,7 @@ pub mod auth;
 pub mod bind;
 mod canonical_origin;
 pub mod csp;
+pub mod daemon;
 #[allow(
     clippy::wildcard_imports,
     clippy::absolute_paths,

@@ -111,6 +111,7 @@ use ulid::Ulid;
 
 use crate::auth::{self, GithubEndpoints, auth_translation_middleware, demo_routing_middleware};
 use crate::bind::Bind;
+use crate::canonical_origin::resolve_canonical_origin;
 use crate::error::ApiError;
 use crate::github_webhooks::{
     WEBHOOK_ROUTE, WEBHOOK_SECRET_ENV, parse_event_metadata, verify_signature,
@@ -578,6 +579,7 @@ pub struct AppState {
     pub(crate) settings:             Arc<RwLock<SettingsLayer>>,
     pub(crate) server_settings:      RwLock<Arc<ResolvedServerSettings>>,
     pub(crate) local_daemon_mode:    bool,
+    pub(crate) env_lookup:           EnvLookup,
     http_client:                     Option<fabro_http::HttpClient>,
     shutting_down:                   AtomicBool,
     registry_factory_override:       Option<Box<RegistryFactoryOverride>>,
@@ -694,6 +696,17 @@ impl AppState {
         self.server_secrets.get(name)
     }
 
+    pub(crate) fn resolve_interp(&self, value: &InterpString) -> anyhow::Result<String> {
+        value
+            .resolve(|name| (self.env_lookup)(name))
+            .map(|resolved| resolved.value)
+            .map_err(anyhow::Error::from)
+    }
+
+    pub(crate) fn canonical_origin(&self) -> Result<String, String> {
+        resolve_canonical_origin(&self.server_settings(), &self.env_lookup)
+    }
+
     pub(crate) fn session_key(&self) -> Option<Key> {
         self.server_secret("SESSION_SECRET")
             .and_then(|value| auth::derive_cookie_key(value.as_bytes()).ok())
@@ -783,6 +796,7 @@ impl AppState {
                     .join("\n")
             )
         })?);
+        resolve_canonical_origin(&resolved, &self.env_lookup).map_err(anyhow::Error::msg)?;
 
         *self.settings.write().expect("settings lock poisoned") = settings;
         *self
@@ -968,12 +982,9 @@ pub fn build_router_with_options(
     let api_common = if web_enabled {
         Router::new()
             .route("/openapi.json", get(openapi_spec))
-            .merge(auth::api_routes())
             .merge(web_auth::api_routes())
     } else {
-        Router::new()
-            .route("/openapi.json", get(openapi_spec))
-            .merge(auth::api_routes())
+        Router::new().route("/openapi.json", get(openapi_spec))
     };
 
     let demo_router = Router::new()
@@ -1558,7 +1569,7 @@ fn build_disk_usage_response(
     verbose: bool,
 ) -> anyhow::Result<DiskUsageResponse> {
     let scratch_base_dir = scratch_base(storage_dir);
-    let logs_base_dir = Storage::new(storage_dir).logs_dir();
+    let logs_base_dir = Storage::new(storage_dir).runtime_state().logs_dir();
     let runs = scan_runs_with_summaries(summaries, &scratch_base_dir)?;
 
     let mut active_count = 0u64;
@@ -2693,6 +2704,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         settings,
         server_settings: RwLock::new(resolved_server_settings),
         local_daemon_mode,
+        env_lookup: Arc::clone(&env_lookup),
         http_client,
         shutting_down: AtomicBool::new(false),
         registry_factory_override,
@@ -3751,7 +3763,7 @@ struct WorkerServerRecord {
 }
 
 fn current_server_target(storage_dir: &std::path::Path) -> anyhow::Result<String> {
-    let record_path = Storage::new(storage_dir).server_state().record_path();
+    let record_path = Storage::new(storage_dir).runtime_state().record_path();
     #[expect(
         clippy::disallowed_methods,
         reason = "sync helper invoked from worker_command (sync) via spawn_blocking at the async \
@@ -7440,6 +7452,18 @@ mod tests {
         })
     }
 
+    fn canonical_origin_settings(url: &str) -> SettingsLayer {
+        fabro_config::parse_settings_layer(&format!(
+            r#"
+_version = 1
+
+[server.web]
+url = "{url}"
+"#
+        ))
+        .expect("settings fixture should parse")
+    }
+
     #[tokio::test]
     async fn resolved_settings_view_returns_internal_error_when_runtime_settings_stop_resolving() {
         let state = create_app_state();
@@ -7466,6 +7490,33 @@ type = "http"
             .unwrap();
 
         assert_status!(response, StatusCode::INTERNAL_SERVER_ERROR).await;
+    }
+
+    #[test]
+    fn replace_settings_rejects_invalid_canonical_origin_and_keeps_previous_settings() {
+        for invalid in ["", "/relative/path", "ftp://fabro.example.com"] {
+            let state = create_app_state_with_env_lookup(
+                canonical_origin_settings("http://valid.example.com"),
+                5,
+                {
+                    let invalid = invalid.to_string();
+                    move |name| (name == "FABRO_WEB_URL").then(|| invalid.clone())
+                },
+            );
+
+            let err = state
+                .replace_settings(canonical_origin_settings("{{ env.FABRO_WEB_URL }}"))
+                .expect_err("invalid canonical origin should be rejected");
+            assert!(
+                err.to_string()
+                    .contains("server.web.url is required and must be an absolute http(s) URL"),
+                "unexpected error for {invalid}: {err}"
+            );
+            assert_eq!(
+                state.canonical_origin().unwrap(),
+                "http://valid.example.com".to_string()
+            );
+        }
     }
 
     #[tokio::test]
@@ -7840,7 +7891,7 @@ allowed_usernames = ["octocat"]
                 .join(", ")
         ))
         .unwrap();
-        let record_path = Storage::new(storage_dir).server_state().record_path();
+        let record_path = Storage::new(storage_dir).runtime_state().record_path();
         std::fs::create_dir_all(record_path.parent().unwrap()).unwrap();
         std::fs::write(
             &record_path,

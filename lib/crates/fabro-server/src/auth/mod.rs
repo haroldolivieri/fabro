@@ -4,7 +4,7 @@ mod jwt;
 mod keys;
 mod translate;
 
-pub(crate) use cli_flow::{api_routes, web_routes};
+pub(crate) use cli_flow::web_routes;
 pub(crate) use fabro_store::{AuthCode, ConsumeOutcome, RefreshToken};
 pub use github_endpoints::GithubEndpoints;
 pub(crate) use jwt::{JwtError, JwtSubject, issue, verify};

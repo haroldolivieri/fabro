@@ -27,6 +27,7 @@ use tokio::time::interval;
 use tracing::{error, info, warn};
 
 use crate::bind::{self, Bind, BindRequest};
+use crate::canonical_origin::resolve_canonical_origin;
 use crate::github_webhooks::{TailscaleFunnelManager, WEBHOOK_ROUTE, WEBHOOK_SECRET_ENV};
 use crate::ip_allowlist::{GitHubMetaResolver, IpAllowlistConfig, resolve_ip_allowlist_config};
 use crate::jwt_auth::resolve_auth_mode_with_lookup;
@@ -469,7 +470,7 @@ where
     };
     let storage = Storage::new(&data_dir);
     let vault_path = storage.secrets_path();
-    let server_env_path = storage.server_state().env_path();
+    let server_env_path = storage.runtime_state().env_path();
     let server_secrets = ServerSecrets::load(server_env_path.clone())?;
     let webhook_secret_present = server_secrets.get(WEBHOOK_SECRET_ENV).is_some();
 
@@ -510,6 +511,7 @@ where
         build_artifact_object_store(&resolved_server_settings)?;
     let artifact_store = fabro_store::ArtifactStore::new(artifact_object_store, artifact_prefix);
     let env_lookup: EnvLookup = Arc::new(|name| std::env::var(name).ok());
+    resolve_canonical_origin(&resolved_server_settings, &env_lookup).map_err(anyhow::Error::msg)?;
     let state = build_app_state(AppStateConfig {
         settings: Arc::clone(&shared_settings),
         registry_factory_override: None,
@@ -610,10 +612,9 @@ where
                     if changed {
                         match state_for_poll.replace_settings(effective) {
                             Ok(()) => info!("Server config reloaded"),
-                            Err(error) => warn!(
-                                error = %error,
-                                "Failed to resolve reloaded server config, keeping previous"
-                            ),
+                            Err(err) => {
+                                warn!(error = %err, "Rejected reloaded server config, keeping previous");
+                            }
                         }
                     }
                 }

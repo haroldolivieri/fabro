@@ -43,12 +43,9 @@ pub(crate) const TEST_DEV_TOKEN: &str =
 
 pub(crate) struct RealAuthHarness {
     pub(crate) api_base_url: String,
-    pub(crate) web_base_url: String,
     api_server:              RunningHttpServer,
-    web_server:              RunningHttpServer,
     twin:                    fabro_test::TwinGitHub,
     pub(crate) api_requests: ListenerRequestLog,
-    pub(crate) web_requests: ListenerRequestLog,
 }
 
 impl RealAuthHarness {
@@ -71,9 +68,8 @@ impl RealAuthHarness {
         let twin = fabro_test::TwinGitHub::start(github_state).await;
 
         let (api_listener, api_base_url) = bind_listener().await;
-        let (web_listener, web_base_url) = bind_listener().await;
 
-        let settings = auth_settings(&web_base_url, &github_client_id, auth_methods);
+        let settings = auth_settings(&api_base_url, &github_client_id, auth_methods);
         let resolved = resolve_server_from_file(&settings).expect("settings should resolve");
         let dev_token = dev_token.map(str::to_string);
         let auth_mode = resolve_auth_mode_with_lookup(&resolved, |name| match name {
@@ -105,22 +101,15 @@ impl RealAuthHarness {
         );
 
         let api_requests = ListenerRequestLog::default();
-        let web_requests = ListenerRequestLog::default();
-        let api_server = RunningHttpServer::start(api_listener, router.clone(), &api_requests);
-        let web_server = RunningHttpServer::start(web_listener, router, &web_requests);
+        let api_server = RunningHttpServer::start(api_listener, router, &api_requests);
         wait_for_http_ready(&api_base_url).await;
-        wait_for_http_ready(&web_base_url).await;
         api_requests.clear();
-        web_requests.clear();
 
         Self {
             api_base_url,
-            web_base_url,
             api_server,
-            web_server,
             twin,
             api_requests,
-            web_requests,
         }
     }
 
@@ -130,7 +119,6 @@ impl RealAuthHarness {
 
     pub(crate) async fn shutdown(self) {
         self.api_server.shutdown().await;
-        self.web_server.shutdown().await;
         self.twin.shutdown().await;
     }
 }
@@ -354,7 +342,7 @@ async fn bind_listener() -> (TcpListener, String) {
 }
 
 fn auth_settings(
-    web_base_url: &str,
+    api_base_url: &str,
     github_client_id: &str,
     auth_methods: &[&str],
 ) -> fabro_types::settings::SettingsLayer {
@@ -374,7 +362,7 @@ methods = [{auth_methods}]
 allowed_usernames = ["octocat"]
 
 [server.web]
-url = "{web_base_url}"
+url = "{api_base_url}"
 
 [server.integrations.github]
 client_id = "{github_client_id}"

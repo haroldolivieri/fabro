@@ -31,7 +31,7 @@ fn write_dev_token_server_settings(config_path: &std::path::Path, rest: &str) {
 }
 
 fn provision_dev_token_auth(home_dir: &std::path::Path, storage_dir: &std::path::Path) {
-    let server_env_path = Storage::new(storage_dir).server_state().env_path();
+    let server_env_path = Storage::new(storage_dir).runtime_state().env_path();
     envfile::merge_env_file(&server_env_path, [("FABRO_DEV_TOKEN", TEST_DEV_TOKEN)]).unwrap();
     dev_token::write_dev_token(
         &home_dir.join(".fabro").join("dev-token"),

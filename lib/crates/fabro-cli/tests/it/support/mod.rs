@@ -62,6 +62,20 @@ pub(crate) fn run_output_filters(context: &TestContext) -> Vec<(String, String)>
     filters
 }
 
+pub(crate) fn fatal_error_line(stderr: &[u8]) -> String {
+    static ANSI_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let ansi_re = ANSI_RE.get_or_init(|| {
+        regex::Regex::new(r"\x1b\[[0-9;]*m").expect("ANSI-stripping regex should compile")
+    });
+    let stderr = String::from_utf8_lossy(stderr);
+    let stripped = ansi_re.replace_all(&stderr, "");
+    stripped
+        .lines()
+        .rev()
+        .find_map(|line| line.strip_prefix("error: ").map(ToOwned::to_owned))
+        .expect("stderr should contain a fatal `error:` line")
+}
+
 pub(crate) fn unique_run_id() -> String {
     RunId::new().to_string()
 }

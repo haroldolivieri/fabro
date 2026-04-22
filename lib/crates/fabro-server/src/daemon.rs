@@ -83,7 +83,18 @@ impl ServerDaemon {
     }
 
     pub fn remove(dir: &RuntimeDirectory) {
-        let _ = std::fs::remove_file(dir.record_path());
+        let record_path = dir.record_path();
+        if let Err(err) = std::fs::remove_file(&record_path) {
+            if err.kind() == ErrorKind::NotFound {
+                return;
+            }
+
+            tracing::warn!(
+                path = %record_path.display(),
+                error = %err,
+                "Failed to remove server record"
+            );
+        }
     }
 
     #[must_use]

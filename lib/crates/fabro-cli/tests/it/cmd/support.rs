@@ -706,10 +706,7 @@ pub(crate) fn server_target(storage_dir: &Path) -> String {
     let daemon = ServerDaemon::read(&runtime_directory)
         .expect("server record should parse")
         .expect("server record should exist");
-    match daemon.bind {
-        Bind::Unix(path) => path.to_string_lossy().to_string(),
-        Bind::Tcp(addr) => format!("http://{addr}"),
-    }
+    daemon.bind.to_target()
 }
 
 async fn get_server_json<T: serde::de::DeserializeOwned>(run_dir: &Path, path: &str) -> T {

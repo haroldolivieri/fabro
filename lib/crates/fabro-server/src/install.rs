@@ -956,10 +956,7 @@ async fn validate_install_object_store_selection(
             }
         }
         Err(_) => {
-            return Err(
-                "Timed out while checking S3 access. Verify the bucket, region, and network path, then try again."
-                    .to_string(),
-            );
+            return Err(VALIDATION_TIMEOUT_MSG.to_string());
         }
         Ok(Ok(_)) => {}
     }
@@ -985,30 +982,35 @@ async fn validate_install_object_store_selection(
     )
     .map_err(|err| err.to_string())?;
 
-    let prefixes = ["artifacts", "slatedb"];
-    let probe = async {
-        for (index, prefix) in prefixes.iter().enumerate() {
-            let path = ObjectStorePath::from(*prefix);
-            if let Err(err) = object_store.list_with_delimiter(Some(&path)).await {
-                return Err((index, err));
-            }
+    let probe_prefix = |index: usize, prefix: &'static str| {
+        let object_store = &object_store;
+        async move {
+            let path = ObjectStorePath::from(prefix);
+            object_store
+                .list_with_delimiter(Some(&path))
+                .await
+                .map(|_| ())
+                .map_err(|err| (index, err))
         }
-        Ok::<(), (usize, object_store::Error)>(())
+    };
+    let probe = async {
+        tokio::try_join!(probe_prefix(0, "artifacts"), probe_prefix(1, "slatedb")).map(|_| ())
     };
 
     match timeout(VALIDATION_TIMEOUT, probe).await {
         Ok(Ok(())) => Ok(()),
-        Err(_) => Err(
-            "Timed out while checking S3 access. Verify the bucket, region, and network path, then try again."
-                .to_string(),
-        ),
+        Err(_) => Err(VALIDATION_TIMEOUT_MSG.to_string()),
         Ok(Err((index, err))) => Err(classify_object_store_validation_error(
-            bucket,
-            region,
-            index,
-            &err,
+            bucket, region, index, &err,
         )),
     }
+}
+
+const PREFIX_ACCESS_ERROR_MSG: &str = "Fabro reached the bucket but could not verify access to slatedb/ and artifacts/. Validation requires bucket list access plus object access under both prefixes.";
+const VALIDATION_TIMEOUT_MSG: &str = "Timed out while checking S3 access. Verify the bucket, region, and network path, then try again.";
+
+fn bucket_credentials_error(bucket: &str, region: &str) -> String {
+    format!("Could not access bucket {bucket} in region {region} with the selected credentials.")
 }
 
 fn classify_object_store_validation_error(
@@ -1017,18 +1019,16 @@ fn classify_object_store_validation_error(
     prefix_index: usize,
     err: &object_store::Error,
 ) -> String {
+    let credentials_or_prefix_error = || {
+        if prefix_index == 0 {
+            bucket_credentials_error(bucket, region)
+        } else {
+            PREFIX_ACCESS_ERROR_MSG.to_string()
+        }
+    };
     match err {
         object_store::Error::PermissionDenied { .. }
-        | object_store::Error::Unauthenticated { .. } => {
-            if prefix_index == 0 {
-                format!(
-                    "Could not access bucket {bucket} in region {region} with the selected credentials."
-                )
-            } else {
-                "Fabro reached the bucket but could not verify access to slatedb/ and artifacts/. Validation requires bucket list access plus object access under both prefixes."
-                    .to_string()
-            }
-        }
+        | object_store::Error::Unauthenticated { .. } => credentials_or_prefix_error(),
         object_store::Error::NotFound { .. } => format!("Bucket {bucket} was not found."),
         object_store::Error::Generic { .. } => {
             let rendered = err.to_string();
@@ -1038,27 +1038,11 @@ fn classify_object_store_validation_error(
                 )
             } else if rendered.contains("not found") {
                 format!("Bucket {bucket} was not found.")
-            } else if prefix_index == 0 {
-                format!(
-                    "Could not access bucket {bucket} in region {region} with the selected credentials."
-                )
             } else {
-                "Fabro reached the bucket but could not verify access to slatedb/ and artifacts/. Validation requires bucket list access plus object access under both prefixes."
-                    .to_string()
+                credentials_or_prefix_error()
             }
         }
-        object_store::Error::NotSupported { .. }
-        | object_store::Error::AlreadyExists { .. }
-        | object_store::Error::Precondition { .. }
-        | object_store::Error::NotModified { .. }
-        | object_store::Error::InvalidPath { .. }
-        | object_store::Error::NotImplemented { .. }
-        | object_store::Error::UnknownConfigurationKey { .. } => {
-            "Fabro reached the bucket but could not verify access to slatedb/ and artifacts/. Validation requires bucket list access plus object access under both prefixes."
-                .to_string()
-        }
-        _ => "Fabro reached the bucket but could not verify access to slatedb/ and artifacts/. Validation requires bucket list access plus object access under both prefixes."
-            .to_string(),
+        _ => PREFIX_ACCESS_ERROR_MSG.to_string(),
     }
 }
 

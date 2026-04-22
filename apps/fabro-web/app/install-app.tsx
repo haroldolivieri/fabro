@@ -247,14 +247,12 @@ export default function InstallApp() {
     };
   }, [finishState]);
 
-  const currentStep = useMemo<StepId>(() => {
-    if (location.pathname.startsWith("/install/object-store")) return "object_store";
-    if (location.pathname.startsWith("/install/llm")) return "llm";
-    if (location.pathname.startsWith("/install/server")) return "server";
-    if (location.pathname.startsWith("/install/github")) return "github";
-    if (location.pathname.startsWith("/install/review")) return "review";
-    return "welcome";
-  }, [location.pathname]);
+  const currentStep = useMemo<StepId>(
+    () =>
+      STEPPER_STEPS.find((step) => location.pathname.startsWith(step.href))?.id ??
+      "welcome",
+    [location.pathname],
+  );
 
   const completedSteps = new Set(session?.completed_steps ?? []);
 
@@ -471,8 +469,10 @@ export default function InstallApp() {
             }
           }}
         >
-          <ObjectStoreProviderPicker
-            provider={objectStoreForm.provider}
+          <CardPicker
+            legend="Object store"
+            options={OBJECT_STORE_PROVIDER_OPTIONS}
+            value={objectStoreForm.provider}
             onChange={(provider) => {
               setObjectStoreForm((current) => ({ ...current, provider }));
               if (provider === "s3") {
@@ -516,8 +516,10 @@ export default function InstallApp() {
                   autoCapitalize="off"
                 />
               </Field>
-              <ObjectStoreCredentialModePicker
-                credentialMode={objectStoreForm.credentialMode}
+              <CardPicker
+                legend="Credentials"
+                options={OBJECT_STORE_CREDENTIAL_MODE_OPTIONS}
+                value={objectStoreForm.credentialMode}
                 onChange={(credentialMode) => {
                   setObjectStoreForm((current) => ({ ...current, credentialMode }));
                   if (credentialMode === "access_key") {
@@ -642,7 +644,12 @@ export default function InstallApp() {
             }
           }}
         >
-          <GithubStrategyPicker strategy={githubStrategy} onChange={setGithubStrategy} />
+          <CardPicker
+            legend="Authentication"
+            options={GITHUB_STRATEGY_OPTIONS}
+            value={githubStrategy}
+            onChange={(strategy) => setGithubStrategy(strategy)}
+          />
           {githubStrategy === "token" ? (
             <div className="space-y-5">
               <div>
@@ -683,9 +690,11 @@ export default function InstallApp() {
             </div>
           ) : (
             <div className="space-y-5">
-              <OwnerPicker
-                ownerKind={appForm.owner.kind}
-                setOwnerKind={(kind) =>
+              <CardPicker
+                legend="Owner"
+                options={GITHUB_OWNER_OPTIONS}
+                value={appForm.owner.kind}
+                onChange={(kind) =>
                   setAppForm((current) => ({
                     ...current,
                     owner:
@@ -1247,33 +1256,27 @@ function ProviderFields({
   );
 }
 
-function GithubStrategyPicker({
-  strategy,
+type CardOption<T extends string> = { id: T; title: string; body: string };
+
+function CardPicker<T extends string>({
+  legend,
+  options,
+  value,
   onChange,
 }: {
-  strategy: GithubStrategy;
-  onChange: (value: GithubStrategy) => void;
+  legend:   string;
+  options:  ReadonlyArray<CardOption<T>>;
+  value:    T;
+  onChange: (value: T) => void;
 }) {
-  const options: Array<{ id: GithubStrategy; title: string; body: string }> = [
-    {
-      id: "token",
-      title: "Personal access token",
-      body: "Quickest path. Validates a PAT and stores it in the vault.",
-    },
-    {
-      id: "app",
-      title: "GitHub App",
-      body: "Recommended for teams. Enables OAuth.",
-    },
-  ];
   return (
     <fieldset>
-      <legend className="text-sm font-medium text-fg">Authentication</legend>
+      <legend className="text-sm font-medium text-fg">{legend}</legend>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {options.map((option) => (
           <OptionCard
             key={option.id}
-            selected={strategy === option.id}
+            selected={value === option.id}
             onSelect={() => onChange(option.id)}
             title={option.title}
             body={option.body}
@@ -1284,120 +1287,59 @@ function GithubStrategyPicker({
   );
 }
 
-function ObjectStoreProviderPicker({
-  provider,
-  onChange,
-}: {
-  provider: ObjectStoreProvider;
-  onChange: (value: ObjectStoreProvider) => void;
-}) {
-  const options: Array<{ id: ObjectStoreProvider; title: string; body: string }> = [
-    {
-      id: "local",
-      title: "Local disk",
-      body: "Uses the host filesystem for SlateDB and run artifacts.",
-    },
-    {
-      id: "s3",
-      title: "AWS S3",
-      body: "Uses one S3 bucket with fixed slatedb/ and artifacts/ prefixes.",
-    },
-  ];
-  return (
-    <fieldset>
-      <legend className="text-sm font-medium text-fg">Object store</legend>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {options.map((option) => (
-          <OptionCard
-            key={option.id}
-            selected={provider === option.id}
-            onSelect={() => onChange(option.id)}
-            title={option.title}
-            body={option.body}
-          />
-        ))}
-      </div>
-    </fieldset>
-  );
-}
+const GITHUB_STRATEGY_OPTIONS: ReadonlyArray<CardOption<GithubStrategy>> = [
+  {
+    id:    "token",
+    title: "Personal access token",
+    body:  "Quickest path. Validates a PAT and stores it in the vault.",
+  },
+  {
+    id:    "app",
+    title: "GitHub App",
+    body:  "Recommended for teams. Enables OAuth.",
+  },
+];
 
-function ObjectStoreCredentialModePicker({
-  credentialMode,
-  onChange,
-}: {
-  credentialMode: ObjectStoreCredentialMode;
-  onChange: (value: ObjectStoreCredentialMode) => void;
-}) {
-  const options: Array<{
-    id: ObjectStoreCredentialMode;
-    title: string;
-    body: string;
-  }> = [
-    {
-      id: "runtime",
-      title: "Use AWS runtime credentials",
-      body: "Use credentials already supplied by the deployment environment.",
-    },
-    {
-      id: "access_key",
-      title: "Enter AWS access key credentials",
-      body: "Store an access key pair in server.env for startup and validation.",
-    },
-  ];
-  return (
-    <fieldset>
-      <legend className="text-sm font-medium text-fg">Credentials</legend>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {options.map((option) => (
-          <OptionCard
-            key={option.id}
-            selected={credentialMode === option.id}
-            onSelect={() => onChange(option.id)}
-            title={option.title}
-            body={option.body}
-          />
-        ))}
-      </div>
-    </fieldset>
-  );
-}
+const OBJECT_STORE_PROVIDER_OPTIONS: ReadonlyArray<CardOption<ObjectStoreProvider>> = [
+  {
+    id:    "local",
+    title: "Local disk",
+    body:  "Uses the host filesystem for SlateDB and run artifacts.",
+  },
+  {
+    id:    "s3",
+    title: "AWS S3",
+    body:  "Uses one S3 bucket with fixed slatedb/ and artifacts/ prefixes.",
+  },
+];
 
-function OwnerPicker({
-  ownerKind,
-  setOwnerKind,
-}: {
-  ownerKind: GithubOwnerKind;
-  setOwnerKind: (value: GithubOwnerKind) => void;
-}) {
-  const options: Array<{ id: GithubOwnerKind; title: string; body: string }> = [
-    {
-      id: "personal",
-      title: "Personal account",
-      body: "GitHub's personal app creation flow.",
-    },
-    {
-      id: "org",
-      title: "Organization",
-      body: "GitHub's org flow — requires the org slug.",
-    },
-  ];
-  return (
-    <fieldset>
-      <legend className="text-sm font-medium text-fg">Owner</legend>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {options.map((option) => (
-          <OptionCard
-            key={option.id}
-            selected={ownerKind === option.id}
-            onSelect={() => setOwnerKind(option.id)}
-            title={option.title}
-            body={option.body}
-          />
-        ))}
-      </div>
-    </fieldset>
-  );
-}
+const OBJECT_STORE_CREDENTIAL_MODE_OPTIONS: ReadonlyArray<
+  CardOption<ObjectStoreCredentialMode>
+> = [
+  {
+    id:    "runtime",
+    title: "Use AWS runtime credentials",
+    body:  "Use credentials already supplied by the deployment environment.",
+  },
+  {
+    id:    "access_key",
+    title: "Enter AWS access key credentials",
+    body:  "Store an access key pair in server.env for startup and validation.",
+  },
+];
+
+const GITHUB_OWNER_OPTIONS: ReadonlyArray<CardOption<GithubOwnerKind>> = [
+  {
+    id:    "personal",
+    title: "Personal account",
+    body:  "GitHub's personal app creation flow.",
+  },
+  {
+    id:    "org",
+    title: "Organization",
+    body:  "GitHub's org flow — requires the org slug.",
+  },
+];
 
 function OptionCard({
   selected,

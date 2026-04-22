@@ -110,7 +110,6 @@ use tracing::{debug, error, info, warn};
 use ulid::Ulid;
 
 use crate::auth::{self, GithubEndpoints, auth_translation_middleware, demo_routing_middleware};
-use crate::bind::Bind;
 use crate::canonical_origin::resolve_canonical_origin;
 use crate::daemon::ServerDaemon;
 use crate::error::ApiError;
@@ -3761,21 +3760,6 @@ async fn append_worker_exit_failure(
     }
 }
 
-fn current_server_target(storage_dir: &std::path::Path) -> anyhow::Result<String> {
-    let runtime_directory = Storage::new(storage_dir).runtime_directory();
-    let daemon = ServerDaemon::read(&runtime_directory)?.with_context(|| {
-        format!(
-            "server record {} is missing",
-            runtime_directory.record_path().display()
-        )
-    })?;
-
-    Ok(match daemon.bind {
-        Bind::Unix(path) => path.to_string_lossy().to_string(),
-        Bind::Tcp(addr) => format!("http://{addr}"),
-    })
-}
-
 fn worker_command(
     state: &AppState,
     run_id: RunId,
@@ -3785,7 +3769,14 @@ fn worker_command(
     let current_exe = std::env::current_exe().context("reading current executable path")?;
     let exe = std::env::var_os("CARGO_BIN_EXE_fabro").map_or(current_exe, PathBuf::from);
     let storage_dir = state.server_storage_dir();
-    let server_target = current_server_target(&storage_dir)?;
+    let runtime_directory = Storage::new(&storage_dir).runtime_directory();
+    let daemon = ServerDaemon::read(&runtime_directory)?.with_context(|| {
+        format!(
+            "server record {} is missing",
+            runtime_directory.record_path().display()
+        )
+    })?;
+    let server_target = daemon.bind.to_target();
     let artifact_upload_token = state
         .issue_artifact_upload_token(&run_id)
         .map_err(|_| anyhow::anyhow!("failed to sign artifact upload token"))?;
@@ -7339,6 +7330,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+    use crate::bind::Bind;
     use crate::github_webhooks::compute_signature;
     use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 

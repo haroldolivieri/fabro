@@ -7837,7 +7837,8 @@ type = "http"
     #[test]
     fn worker_command_injects_dev_token_only_when_enabled() {
         let github_only = tempfile::tempdir().unwrap();
-        let github_state = worker_command_test_state(github_only.path(), &["github"], Some(TEST_DEV_TOKEN));
+        let github_state =
+            worker_command_test_state(github_only.path(), &["github"], Some(TEST_DEV_TOKEN));
         let github_cmd = worker_command(
             github_state.as_ref(),
             RunId::new(),
@@ -7845,7 +7846,10 @@ type = "http"
             github_only.path(),
         )
         .unwrap();
-        assert_eq!(command_env_value(&github_cmd, "FABRO_DEV_TOKEN"), Some(None));
+        assert_eq!(
+            command_env_value(&github_cmd, "FABRO_DEV_TOKEN"),
+            Some(None)
+        );
 
         let dev_token = tempfile::tempdir().unwrap();
         let dev_token_state =
@@ -7911,7 +7915,8 @@ allowed_usernames = ["octocat"]
     #[cfg(unix)]
     fn command_env_value(cmd: &Command, key: &str) -> Option<Option<String>> {
         cmd.as_std().get_envs().find_map(|(name, value)| {
-            (name.to_str() == Some(key)).then(|| value.map(|value| value.to_string_lossy().into_owned()))
+            (name.to_str() == Some(key))
+                .then(|| value.map(|value| value.to_string_lossy().into_owned()))
         })
     }
 

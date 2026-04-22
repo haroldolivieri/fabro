@@ -248,7 +248,10 @@ url = "https://config.example.com"
     fn storage_dir_defaults_without_server_auth_methods() {
         let settings = SettingsLayer::default();
 
-        assert_eq!(storage_dir(&settings).unwrap(), fabro_config::user::default_storage_dir());
+        assert_eq!(
+            storage_dir(&settings).unwrap(),
+            fabro_config::user::default_storage_dir()
+        );
     }
 
     #[test]

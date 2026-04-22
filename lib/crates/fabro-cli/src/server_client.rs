@@ -204,10 +204,7 @@ fn load_cli_dev_token() -> Option<String> {
     load_cli_dev_token_from_sources(env_token.as_deref(), &Home::from_env())
 }
 
-fn load_cli_dev_token_from_sources(
-    env_token: Option<&str>,
-    home: &Home,
-) -> Option<String> {
+fn load_cli_dev_token_from_sources(env_token: Option<&str>, home: &Home) -> Option<String> {
     if let Some(token) = env_token.filter(|token| validate_dev_token_format(token)) {
         return Some(token.to_owned());
     }
@@ -304,7 +301,12 @@ fn resolve_local_tcp_credential_with_store(
 fn resolve_local_tcp_credential(target: &ServerTarget) -> Result<Option<Credential>> {
     let env_token = std::env::var("FABRO_DEV_TOKEN").ok();
     let store = AuthStore::default();
-    resolve_local_tcp_credential_with_store(target, env_token.as_deref(), &store, chrono::Utc::now())
+    resolve_local_tcp_credential_with_store(
+        target,
+        env_token.as_deref(),
+        &store,
+        chrono::Utc::now(),
+    )
 }
 
 fn resolve_target_credential(
@@ -323,8 +325,10 @@ fn resolve_target_credential(
     }
 
     if allow_local_dev_token_fallback {
-        return Ok(load_cli_dev_token_from_sources(env_token.as_deref(), &Home::from_env())
-            .map(Credential::DevToken));
+        return Ok(
+            load_cli_dev_token_from_sources(env_token.as_deref(), &Home::from_env())
+                .map(Credential::DevToken),
+        );
     }
 
     Ok(None)
@@ -418,9 +422,7 @@ mod tests {
 
         let credential = resolve_local_tcp_credential_with_store(
             &target,
-            Some(
-                "fabro_dev_cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
-            ),
+            Some("fabro_dev_cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"),
             &store,
             Utc::now(),
         )
@@ -436,7 +438,13 @@ mod tests {
         let store = AuthStore::new(dir.path().join("auth.json"));
         let now = Utc::now();
         store
-            .put(&target, oauth_entry(now + ChronoDuration::minutes(5), now - ChronoDuration::minutes(1)))
+            .put(
+                &target,
+                oauth_entry(
+                    now + ChronoDuration::minutes(5),
+                    now - ChronoDuration::minutes(1),
+                ),
+            )
             .unwrap();
 
         let credential =
@@ -511,11 +519,19 @@ mod tests {
 
     #[test]
     fn bypasses_proxy_for_loopback_http_targets() {
-        assert!(should_bypass_proxy_for_http_target("http://127.0.0.1:32276"));
+        assert!(should_bypass_proxy_for_http_target(
+            "http://127.0.0.1:32276"
+        ));
         assert!(should_bypass_proxy_for_http_target("http://[::1]:32276"));
-        assert!(should_bypass_proxy_for_http_target("http://localhost:32276"));
-        assert!(!should_bypass_proxy_for_http_target("https://fabro.example.com"));
-        assert!(!should_bypass_proxy_for_http_target("http://fabro.example.com"));
+        assert!(should_bypass_proxy_for_http_target(
+            "http://localhost:32276"
+        ));
+        assert!(!should_bypass_proxy_for_http_target(
+            "https://fabro.example.com"
+        ));
+        assert!(!should_bypass_proxy_for_http_target(
+            "http://fabro.example.com"
+        ));
     }
 
     #[test]
@@ -535,18 +551,18 @@ mod tests {
         refresh_token_expires_at: chrono::DateTime<chrono::Utc>,
     ) -> AuthEntry {
         AuthEntry {
-            access_token:             "access-token".to_string(),
+            access_token: "access-token".to_string(),
             access_token_expires_at,
-            refresh_token:            "refresh-token".to_string(),
+            refresh_token: "refresh-token".to_string(),
             refresh_token_expires_at,
-            subject:                  StoredSubject {
+            subject: StoredSubject {
                 idp_issuer:  "https://github.com/login/oauth".to_string(),
                 idp_subject: "subject-123".to_string(),
                 login:       "octocat".to_string(),
                 name:        "Octo Cat".to_string(),
                 email:       "octocat@example.com".to_string(),
             },
-            logged_in_at:             Utc::now(),
+            logged_in_at: Utc::now(),
         }
     }
 }

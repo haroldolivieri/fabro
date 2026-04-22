@@ -15,12 +15,7 @@ pub(crate) fn storage_dir(settings: &SettingsLayer) -> Result<PathBuf> {
     let storage_root = fabro_config::resolve_storage_root(settings);
     let resolved_root = storage_root
         .resolve(|name| std::env::var(name).ok())
-        .map_err(|err| {
-            anyhow::anyhow!(
-                "failed to resolve {}: {err}",
-                storage_root.as_source()
-            )
-        })?;
+        .map_err(|err| anyhow::anyhow!("failed to resolve {}: {err}", storage_root.as_source()))?;
     Ok(PathBuf::from(resolved_root.value))
 }
 

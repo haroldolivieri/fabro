@@ -1,8 +1,8 @@
 use fabro_config::parse_settings_layer;
 use fabro_config::user::default_storage_dir;
 use fabro_types::settings::server::{
-    GithubIntegrationStrategy, IpAllowEntry, ObjectStoreSettings, ServerListenSettings,
-    ServerAuthMethod,
+    GithubIntegrationStrategy, IpAllowEntry, ObjectStoreSettings, ServerAuthMethod,
+    ServerListenSettings,
 };
 use fabro_types::settings::{InterpString, SettingsLayer};
 use fabro_util::Home;
@@ -486,7 +486,10 @@ root = "/srv/fabro"
 "#,
     );
 
-    assert_eq!(fabro_config::resolve_storage_root(&file).as_source(), "/srv/fabro");
+    assert_eq!(
+        fabro_config::resolve_storage_root(&file).as_source(),
+        "/srv/fabro"
+    );
 }
 
 #[test]
@@ -536,5 +539,7 @@ methods = ["dev-token", "github"]
     assert!(fabro_config::dev_token_auth_enabled(&dev_token_only));
     assert!(!fabro_config::dev_token_auth_enabled(&github_only));
     assert!(fabro_config::dev_token_auth_enabled(&both));
-    assert!(!fabro_config::dev_token_auth_enabled(&SettingsLayer::default()));
+    assert!(!fabro_config::dev_token_auth_enabled(
+        &SettingsLayer::default()
+    ));
 }

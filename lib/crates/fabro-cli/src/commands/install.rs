@@ -1803,7 +1803,8 @@ async fn run_install_inner(
             .context("failed to parse generated settings.toml")?,
         args.storage_dir.as_deref(),
     );
-    fabro_config::resolve_server_from_file(&install_settings).map_err(render_server_resolve_errors)?;
+    fabro_config::resolve_server_from_file(&install_settings)
+        .map_err(render_server_resolve_errors)?;
 
     // Secrets and auth material
     {

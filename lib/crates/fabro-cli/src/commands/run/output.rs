@@ -133,7 +133,6 @@ pub(crate) fn api_check_report_to_local(report: &types::PreflightCheckReport) ->
 pub(crate) async fn print_run_summary_with_client(
     client: &server_client::Client,
     run_id: &fabro_types::RunId,
-    local_run_dir: Option<&Path>,
     styles: &Styles,
     printer: Printer,
 ) -> Result<()> {
@@ -151,7 +150,7 @@ pub(crate) async fn print_run_summary_with_client(
     print_run_conclusion(
         &conclusion,
         run_id,
-        local_run_dir,
+        None,
         None,
         pr_url.as_deref(),
         styles,
@@ -160,9 +159,7 @@ pub(crate) async fn print_run_summary_with_client(
     let final_output =
         resolve_final_output_with_client(client, run_id, checkpoint.as_ref()).await?;
     print_final_output(final_output.as_deref(), styles, printer);
-    if local_run_dir.is_some() {
-        print_assets_with_client(client, run_id, styles, printer).await?;
-    }
+    print_assets_with_client(client, run_id, styles, printer).await?;
     Ok(())
 }
 

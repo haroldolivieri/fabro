@@ -62,8 +62,20 @@ pub(crate) async fn run_uninstall(
     let storage_dir = user_config::load_settings().map_or_else(
         |_| user_config::default_storage_dir(),
         |settings| {
-            user_config::storage_dir(&settings)
-                .unwrap_or_else(|_| user_config::default_storage_dir())
+            // Uninstall is a documented server-host exception: it may read
+            // [server.*] directly.
+            fabro_config::resolve_server_from_file(&settings)
+                .ok()
+                .and_then(|resolved| {
+                    resolved
+                        .storage
+                        .root
+                        .resolve(|name| std::env::var(name).ok())
+                        .ok()
+                })
+                .map_or_else(user_config::default_storage_dir, |resolved_root| {
+                    PathBuf::from(resolved_root.value)
+                })
         },
     );
 

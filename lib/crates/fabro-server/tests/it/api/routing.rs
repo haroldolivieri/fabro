@@ -4,9 +4,9 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Method, Request, StatusCode};
-use fabro_config::parse_settings_layer;
+use fabro_config::{parse_settings_layer, resolve_server_from_file};
 use fabro_server::ip_allowlist::{IpAllowlist, IpAllowlistConfig};
-use fabro_server::jwt_auth::AuthMode;
+use fabro_server::jwt_auth::{AuthMode, resolve_auth_mode_with_lookup};
 use fabro_server::server::{
     RouterOptions, build_router, build_router_with_options, create_app_state,
     create_app_state_with_options,
@@ -15,6 +15,29 @@ use fabro_types::settings::SettingsLayer;
 use tower::ServiceExt;
 
 use crate::helpers::{checked_response, response_json, response_status, response_text};
+
+const DEV_TOKEN: &str =
+    "fabro_dev_abababababababababababababababababababababababababababababababab";
+const SESSION_SECRET: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+fn dev_token_enabled_auth_mode() -> AuthMode {
+    let settings = parse_settings_layer(
+        r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+"#,
+    )
+    .expect("settings fixture should parse");
+    let resolved = resolve_server_from_file(&settings).expect("settings should resolve");
+    resolve_auth_mode_with_lookup(&resolved, |name| match name {
+        "SESSION_SECRET" => Some(SESSION_SECRET.to_string()),
+        "FABRO_DEV_TOKEN" => Some(DEV_TOKEN.to_string()),
+        _ => None,
+    })
+    .expect("auth mode should resolve")
+}
 
 #[tokio::test]
 async fn old_unversioned_routes_return_404() {
@@ -213,6 +236,59 @@ async fn web_enabled_serves_web_only_routes() {
         "GET /api/v2/nonexistent",
     )
     .await;
+}
+
+#[tokio::test]
+async fn toggle_demo_rejects_unauthenticated_requests() {
+    let app = build_router(create_app_state(), dev_token_enabled_auth_mode());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/demo/toggle")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"enabled":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_status(
+        response,
+        StatusCode::UNAUTHORIZED,
+        "POST /api/v1/demo/toggle without auth",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn toggle_demo_allows_authenticated_requests() {
+    let app = build_router(create_app_state(), dev_token_enabled_auth_mode());
+
+    let response = checked_response(
+        app.oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/demo/toggle")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"enabled":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap(),
+        StatusCode::OK,
+        "POST /api/v1/demo/toggle with dev token",
+    )
+    .await;
+    assert!(
+        response
+            .headers()
+            .get("set-cookie")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.contains("fabro-demo=1")),
+        "authenticated demo toggle should set the demo cookie"
+    );
 }
 
 #[tokio::test]

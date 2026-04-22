@@ -40,16 +40,14 @@ Identity is the OIDC-style composite `(idp_issuer, idp_subject)`, future-proof f
 
 No new auth primitives on the wire: bearer credentials ride `Authorization: Bearer <token>`; web sessions continue to ride the `Cookie` header. The existing `jwt_auth.rs` extractor keeps reading session cookies where it already does, and the bearer-header validation is extended to distinguish (by prefix) dev-token vs JWT access token.
 
-**Canonical origin.** All browser-visible CLI-flow URLs (`/auth/cli/start`, `/auth/cli/resume`, the chained `/auth/login/github` → `/auth/callback/github`) run against `server.web.url`, not against whatever `--server` URL the CLI was given. The existing OAuth flow is hard-coded to redirect to `{server.web.url}/auth/callback/github` (`web_auth.rs:339`), and `fabro_oauth_state` / the new `fabro_cli_flow` cookies are cookie-jar-bound to that origin. If the CLI target differs (e.g. `--server http://127.0.0.1:3000` with `server.web.url=https://fabro.example.com`, or a Unix-socket target), the browser flow still runs on `server.web.url`. The CLI discovers this origin via a new unauthenticated preflight endpoint `GET /api/v1/auth/cli/config` (see Server endpoints), called over the CLI's normal transport. The non-browser step (POST `/auth/cli/token`, `/auth/cli/refresh`, `/auth/cli/logout`) continues to use the CLI's normal transport and can therefore target a Unix socket.
+**Canonical origin.** `server.web.url` is the single canonical origin for the server. The browser-visible CLI-flow URLs (`/auth/cli/start`, `/auth/cli/resume`, `/auth/login/github`, `/auth/callback/github`) all run on that same origin, and `fabro auth login` opens the browser against its resolved HTTP(S) `--server` target directly. Dual-origin API/web deployments and the old `/api/v1/auth/cli/config` preflight are no longer part of the design. Unix-socket targets do not support browser OAuth login; they use the local dev-token flow instead.
 
 **Web mode and config validation.** `/auth/*` only mounts when `server.web.enabled = true` (`server.rs:916-918`). The config-validity matrix:
 
 - `auth.methods = [..., "github", ...]` **and** `web.enabled = false` → **startup error**. These two settings contradict each other; the admin must pick one.
-- `auth.methods` excludes `"github"` (regardless of `web.enabled`) → server starts normally. CLI login is not available; preflight `GET /api/v1/auth/cli/config` returns `enabled: false`.
-- `web.enabled = false` with `"github"` also absent → server starts; `/auth/cli/*` routes don't mount; preflight (mounted on the always-available API router) returns `enabled: false`.
-- `web.enabled = true` and `auth.methods` includes `"github"` → everything mounted; preflight returns `enabled: true`.
-
-The CLI always hits the preflight first and fails fast with an actionable message rather than opening a doomed browser.
+- `auth.methods` excludes `"github"` (regardless of `web.enabled`) → server starts normally. Direct hits to `/auth/cli/start` redirect back to the validated CLI loopback with `error=github_not_configured`.
+- `web.enabled = false` with `"github"` also absent → server starts; `/auth/cli/*` routes do not mount, so CLI login is unsupported and `/auth/cli/start` returns `404`.
+- `web.enabled = true` and `auth.methods` includes `"github"` → the browser flow is mounted on the server origin and CLI login is available for HTTP(S) targets.
 
 **Browser-to-CLI error handoff.** Server-side failures during the browser flow (invalid PKCE params, ineligible session, allowlist rejection at callback) need to reach the terminal without devolving into a loopback-listener timeout. The contract, matching OAuth 2.0 RFC 6749 §4.1.2.1:
 

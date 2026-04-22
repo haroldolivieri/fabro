@@ -7,7 +7,7 @@ fn start_status_stop_lifecycle() {
     let storage_dir = storage_root.path().join("storage");
     std::fs::create_dir_all(&storage_dir).unwrap();
     context.write_home(".fabro/settings.toml", "[server.auth]\nmethods = [\"dev-token\"]\n");
-    let server_env_path = fabro_config::Storage::new(&storage_dir).server_state().env_path();
+    let server_env_path = fabro_config::Storage::new(&storage_dir).runtime_state().env_path();
     fabro_config::envfile::merge_env_file(
         &server_env_path,
         [(

@@ -13,6 +13,7 @@ use fabro_config::user::{FABRO_CONFIG_ENV, active_settings_path, default_storage
 use fabro_server::bind::{self, Bind, BindRequest};
 use fabro_server::install::{self, InstallAppState};
 use fabro_server::serve::{self, ServeArgs};
+use fabro_util::browser;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
 use ring::rand::{SecureRandom, SystemRandom};
@@ -22,7 +23,7 @@ use crate::args::{
     GlobalArgs, ServerCommand, ServerRestartArgs, ServerServeArgs, ServerStartArgs,
     ServerStatusArgs, ServerStopArgs,
 };
-use crate::user_config;
+use crate::{local_server, user_config};
 
 pub(crate) async fn dispatch(
     command: ServerCommand,
@@ -54,9 +55,8 @@ pub(crate) async fn dispatch(
                 serve_args.config.as_deref(),
                 storage_dir.as_deref(),
             )?;
-            let storage_dir = user_config::storage_dir(&settings)?;
-            let bind_addr =
-                serve::resolve_bind_request_from_settings(&settings, serve_args.bind.as_deref())?;
+            let storage_dir = local_server::storage_dir(&settings)?;
+            let bind_addr = local_server::bind_request(&settings, serve_args.bind.as_deref())?;
             let styles: &'static Styles = Box::leak(Box::new(Styles::detect_stderr()));
             Box::pin(start::execute(
                 bind_addr,
@@ -74,7 +74,7 @@ pub(crate) async fn dispatch(
             timeout,
         }) => {
             let settings = user_config::load_settings_with_storage_dir(storage_dir.as_deref())?;
-            let storage_dir = user_config::storage_dir(&settings)?;
+            let storage_dir = local_server::storage_dir(&settings)?;
             stop::execute(&storage_dir, Duration::from_secs(timeout), printer).await
         }
         ServerCommand::Restart(ServerRestartArgs {
@@ -102,10 +102,9 @@ pub(crate) async fn dispatch(
                 serve_args.config.as_deref(),
                 storage_dir.as_deref(),
             )?;
-            let storage_dir = user_config::storage_dir(&settings)?;
+            let storage_dir = local_server::storage_dir(&settings)?;
             stop::stop_server(&storage_dir, Duration::from_secs(timeout)).await?;
-            let bind_addr =
-                serve::resolve_bind_request_from_settings(&settings, serve_args.bind.as_deref())?;
+            let bind_addr = local_server::bind_request(&settings, serve_args.bind.as_deref())?;
             let styles: &'static Styles = Box::leak(Box::new(Styles::detect_stderr()));
             Box::pin(start::execute(
                 bind_addr,
@@ -120,7 +119,7 @@ pub(crate) async fn dispatch(
         }
         ServerCommand::Status(ServerStatusArgs { storage_dir, json }) => {
             let settings = user_config::load_settings_with_storage_dir(storage_dir.as_deref())?;
-            let storage_dir = user_config::storage_dir(&settings)?;
+            let storage_dir = local_server::storage_dir(&settings)?;
             status::execute(&storage_dir, json, printer)
         }
         ServerCommand::Serve(ServerServeArgs {
@@ -138,9 +137,8 @@ pub(crate) async fn dispatch(
                     .clone()
                     .unwrap_or_else(|| user_config::active_settings_path(None)),
             );
-            let storage_dir = user_config::storage_dir(&settings)?;
-            let bind_addr =
-                serve::resolve_bind_request_from_settings(&settings, serve_args.bind.as_deref())?;
+            let storage_dir = local_server::storage_dir(&settings)?;
+            let bind_addr = local_server::bind_request(&settings, serve_args.bind.as_deref())?;
             let styles: &'static Styles = Box::leak(Box::new(Styles::detect_stderr()));
             Box::pin(foreground::execute(
                 record_path,
@@ -226,7 +224,7 @@ fn announce_install_mode(bind: &Bind, token: &str, styles: &Styles, printer: Pri
         Some(url) => {
             fabro_util::printerr!(printer, "  Open this URL in your browser to finish setup:");
             fabro_util::printerr!(printer, "    {url}");
-            if let Err(e) = open::that(&url) {
+            if let Err(e) = browser::try_open(&url) {
                 fabro_util::printerr!(printer, "");
                 fabro_util::printerr!(printer, "  Could not open a browser automatically: {e}");
                 fabro_util::printerr!(printer, "  Open the URL above manually to continue.");

@@ -15,6 +15,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use assert_cmd::Command;
 use fabro_config::{Storage, envfile};
 use fabro_types::RunId;
+use fabro_util::browser;
 use regex::Regex;
 use serde_json::{Map, Value, json};
 use toml::Value as TomlValue;
@@ -165,7 +166,8 @@ fn apply_test_isolation_with_lookup(
     cmd.env("HOME", home_dir);
     cmd.env("FABRO_NO_UPGRADE_CHECK", "true")
         .env("FABRO_HTTP_PROXY_POLICY", "disabled")
-        .env("FABRO_TELEMETRY", "off");
+        .env("FABRO_TELEMETRY", "off")
+        .env(browser::SUPPRESS_ENV_VAR, "1");
     cmd.env("FABRO_SERVER_MAX_CONCURRENT_RUNS", "64");
     cmd.env(TEST_IN_MEMORY_STORE_ENV, "1");
 }
@@ -627,7 +629,7 @@ fn write_settings_file(path: &Path, storage_dir: &Path, rest: &str) {
 }
 
 fn write_test_server_dev_token(storage_dir: &Path) {
-    let server_env_path = Storage::new(storage_dir).server_state().env_path();
+    let server_env_path = Storage::new(storage_dir).runtime_state().env_path();
     envfile::merge_env_file(&server_env_path, [("FABRO_DEV_TOKEN", TEST_DEV_TOKEN)])
         .unwrap_or_else(|err| panic!("failed to write {}: {err}", server_env_path.display()));
 }

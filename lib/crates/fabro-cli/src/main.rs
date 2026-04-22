@@ -8,6 +8,7 @@ mod command_context;
 mod commands;
 mod gh;
 mod landing;
+mod local_server;
 mod logging;
 mod manifest_builder;
 mod server_client;
@@ -32,6 +33,7 @@ use fabro_types::settings::SettingsLayer;
 use fabro_types::settings::cli::OutputVerbosity;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
+use fabro_util::{browser, exit};
 use rustls::crypto::ring::default_provider;
 use tracing::debug;
 
@@ -77,6 +79,7 @@ async fn main() {
 
     let (command_name, result) = Box::pin(main_inner()).await;
     let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let exit_code = result.as_ref().err().map_or(0, exit::exit_code_for);
 
     let is_error = result.is_err();
     // An empty command_name means no subcommand was invoked (landing was shown);
@@ -93,7 +96,7 @@ async fn main() {
                 "repository": repository,
                 "ci": ci,
                 "success": false,
-                "exitCode": 1,
+                "exitCode": exit_code,
             }, error);
         } else {
             fabro_telemetry::track!("CLI Executed", {
@@ -127,7 +130,7 @@ async fn main() {
                 }
             }
         }
-        std::process::exit(1);
+        std::process::exit(exit_code);
     }
 }
 
@@ -273,7 +276,7 @@ async fn main_inner() -> (String, Result<()>) {
                         "url": "https://fabro.sh/discord",
                     }))?;
                 } else {
-                    open::that("https://fabro.sh/discord")?;
+                    browser::try_open("https://fabro.sh/discord")?;
                 }
             }
             Commands::Docs => {
@@ -282,7 +285,7 @@ async fn main_inner() -> (String, Result<()>) {
                         "url": "https://docs.fabro.sh/",
                     }))?;
                 } else {
-                    open::that("https://docs.fabro.sh/")?;
+                    browser::try_open("https://docs.fabro.sh/")?;
                 }
             }
             Commands::Repo(ns) => {
@@ -479,8 +482,8 @@ async fn prepare_server_bootstrap(
 ) -> Result<PreTracingBootstrap> {
     let settings =
         user_config::load_settings_with_config_and_storage_dir(config_path, storage_dir)?;
-    let storage_dir = user_config::storage_dir(&settings)?;
-    let storage = fabro_config::Storage::new(&storage_dir);
+    let storage_dir = local_server::storage_dir(&settings)?;
+    let runtime_state = fabro_config::ServerRuntimeState::new(storage_dir.clone());
     let foreground_server_log_bootstrap = if foreground {
         Some(commands::server::start::prepare_foreground_server_log(&storage_dir).await?)
     } else {
@@ -489,19 +492,11 @@ async fn prepare_server_bootstrap(
 
     Ok(PreTracingBootstrap {
         sink: logging::InternalLogSink::Server {
-            path: storage.server_state().log_path(),
+            path: runtime_state.log_path(),
         },
-        config_log_level: server_config_log_level(&settings),
+        config_log_level: local_server::config_log_level(&settings),
         foreground_server_log_bootstrap,
     })
-}
-
-fn server_config_log_level(settings: &SettingsLayer) -> Option<String> {
-    settings
-        .server
-        .as_ref()
-        .and_then(|server| server.logging.as_ref())
-        .and_then(|logging| logging.level.clone())
 }
 
 #[cfg(test)]

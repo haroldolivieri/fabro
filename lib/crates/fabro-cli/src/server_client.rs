@@ -18,6 +18,7 @@ use tokio::time::sleep;
 
 use crate::args::ServerTargetArgs;
 use crate::commands::server::start;
+use crate::local_server;
 use crate::user_config::{self, cli_http_client_builder};
 
 #[derive(Debug)]
@@ -65,7 +66,7 @@ pub(crate) async fn connect_server_with_settings(
         if let Some(path) = target.as_unix_socket_path() {
             return connect_managed_unix_socket_api_client_bundle(
                 path,
-                &user_config::storage_dir(settings)?,
+                &local_server::storage_dir(settings)?,
                 base_config_path,
             )
             .await;
@@ -73,7 +74,7 @@ pub(crate) async fn connect_server_with_settings(
         return connect_target_api_client_bundle(&target).await;
     }
 
-    connect_local_api_client_bundle(&user_config::storage_dir(settings)?, base_config_path).await
+    connect_local_api_client_bundle(&local_server::storage_dir(settings)?, base_config_path).await
 }
 
 async fn connect_managed_unix_socket_api_client_bundle(
@@ -127,16 +128,6 @@ async fn connect_local_api_client_bundle(
             build_client(target, credential, oauth_session, None).await
         }
     }
-}
-
-#[allow(
-    dead_code,
-    reason = "Retained for pending storage-backed internal callers and referenced in existing design docs."
-)]
-pub(crate) async fn connect_api_client(storage_dir: &Path) -> Result<fabro_api::ApiClient> {
-    connect_local_api_client_bundle(storage_dir, &user_config::active_settings_path(None))
-        .await
-        .map(|client| client.api_client())
 }
 
 async fn connect_target_api_client_bundle(target: &ServerTarget) -> Result<Client> {

@@ -5,14 +5,14 @@ use httpmock::MockServer;
 use serde_json::Value;
 
 use super::support::{local_dev_token, setup_completed_fast_dry_run, setup_created_fast_dry_run};
-use crate::support::unique_run_id;
+use crate::support::{fatal_error_line, unique_run_id};
 
 const TEST_DEV_TOKEN: &str =
     "fabro_dev_abababababababababababababababababababababababababababababababab";
 
 fn provision_local_server_auth(context: &fabro_test::TestContext, storage_dir: &std::path::Path) {
     context.ensure_home_server_auth_methods();
-    let server_env_path = Storage::new(storage_dir).server_state().env_path();
+    let server_env_path = Storage::new(storage_dir).runtime_state().env_path();
     envfile::merge_env_file(&server_env_path, [("FABRO_DEV_TOKEN", TEST_DEV_TOKEN)]).unwrap();
     dev_token::write_dev_token(
         &context.home_dir.join(".fabro").join("dev-token"),
@@ -100,12 +100,8 @@ fn ps_explicit_local_tcp_server_target_requires_explicit_auth() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("Authentication required."),
-        "explicit local TCP target should fail with an auth error:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert_eq!(output.status.code(), Some(4));
+    assert_eq!(fatal_error_line(&output.stderr), "Authentication required.");
 }
 
 #[test]

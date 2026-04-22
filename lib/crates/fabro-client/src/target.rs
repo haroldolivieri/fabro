@@ -4,8 +4,6 @@ use std::str::FromStr;
 
 use anyhow::{Result, bail};
 
-use crate::loopback::{LoopbackClassification, TargetSchemeError, classify_target};
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ServerTarget {
     HttpUrl(CanonicalHttpUrl),
@@ -73,10 +71,6 @@ impl ServerTarget {
             let _ = path;
             bail!("Unix-socket HTTP client is not supported on this platform")
         }
-    }
-
-    pub fn loopback_classification(&self) -> Result<LoopbackClassification, TargetSchemeError> {
-        classify_target(self)
     }
 }
 

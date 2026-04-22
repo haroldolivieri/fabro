@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use anyhow::{Context as _, Result, anyhow, bail};
+use anyhow::{Context as _, Result, bail};
 use chrono::{DateTime, Utc};
-use fabro_api::types;
-use fabro_client::{AuthEntry, AuthStore, StoredSubject, ensure_refresh_target_transport};
+use fabro_client::{AuthEntry, AuthStore, StoredSubject};
 use fabro_http::header::CONTENT_TYPE;
 use fabro_types::settings::CliSettings;
 use fabro_types::settings::cli::CliLayer;
+use fabro_util::browser;
 use fabro_util::printer::Printer;
 use serde::Deserialize;
 use tokio::time::timeout;
@@ -55,16 +55,7 @@ pub(super) async fn login_command(
     {
         let ctx = CommandContext::base(printer, cli.clone(), cli_layer)?;
         let target = user_config::resolve_server_target(&args.server, ctx.machine_settings())?;
-        let config = fetch_cli_auth_config(&target).await?;
-        if !config.enabled {
-            bail!("{}", cli_auth_unavailable_message(config.reason.as_deref()));
-        }
-
-        let web_url = config
-            .web_url
-            .as_deref()
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| anyhow!("CLI login is not available on this server."))?;
+        let web_url = browser_origin(&target)?;
         let pkce = fabro_oauth::generate_pkce();
         let state = fabro_oauth::generate_state();
         let callback_path = "/callback";
@@ -96,8 +87,6 @@ pub(super) async fn login_command(
             }
         };
 
-        ensure_refresh_target_transport(&target)?;
-
         let tokens = exchange_cli_token(&target, &code, &pkce.verifier, &redirect_uri).await?;
         let entry = AuthEntry {
             access_token:             tokens.access_token,
@@ -121,15 +110,16 @@ pub(super) async fn login_command(
 }
 
 #[cfg(unix)]
-async fn fetch_cli_auth_config(target: &ServerTarget) -> Result<types::CliAuthConfig> {
-    let (http_client, base_url) = target.build_public_http_client()?;
-    let client = fabro_api::ApiClient::new_with_client(&base_url, http_client);
-    client
-        .get_cli_auth_config()
-        .send()
-        .await
-        .map(progenitor_client::ResponseValue::into_inner)
-        .map_err(|err| anyhow!("{err}"))
+fn browser_origin(target: &ServerTarget) -> Result<&str> {
+    if target.as_unix_socket_path().is_some() {
+        bail!(
+            "fabro auth login requires an HTTP(S) server target. Unix-socket targets use a dev-token instead. Pass --server http(s)://... or configure [cli.target] with an http/https URL."
+        );
+    }
+
+    target
+        .as_http_url()
+        .ok_or_else(|| anyhow::anyhow!("server target must be an http(s) URL"))
 }
 
 #[cfg(unix)]
@@ -200,22 +190,10 @@ fn open_browser_or_print(browser_url: &str, no_browser: bool, printer: Printer) 
         return;
     }
 
-    if let Err(error) = open::that(browser_url) {
+    if let Err(error) = browser::try_open(browser_url) {
         fabro_util::printerr!(printer, "Could not open a browser automatically: {error}");
         fabro_util::printerr!(printer, "Open this URL to continue login:");
         fabro_util::printerr!(printer, "{browser_url}");
-    }
-}
-
-fn cli_auth_unavailable_message(reason: Option<&str>) -> &'static str {
-    match reason {
-        Some("github_not_enabled") => {
-            "CLI login is not available on this server because GitHub login is not enabled."
-        }
-        Some("web_not_enabled") => {
-            "CLI login is not available on this server because the web UI is disabled."
-        }
-        _ => "CLI login is not available on this server.",
     }
 }
 
@@ -224,9 +202,15 @@ fn login_failure_message(error_code: &str, error_description: Option<&str>) -> S
         "github_session_required" => {
             "GitHub session required. Complete sign-in in the browser and try again.".to_string()
         }
+        "github_not_configured" => {
+            "The fabro server does not have GitHub login enabled. Ask the operator to enable it or use a dev-token.".to_string()
+        }
         "access_denied" => "Authorization denied.".to_string(),
         "unauthorized" => "Login not permitted.".to_string(),
-        "server_error" => "Could not complete GitHub sign-in.".to_string(),
+        "server_error" => error_description
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Could not complete GitHub sign-in.")
+            .to_string(),
         _ => error_description
             .filter(|value| !value.is_empty())
             .unwrap_or("Could not complete login.")
@@ -255,11 +239,10 @@ struct OAuthErrorBody {
 mod tests {
     use base64::Engine as _;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use fabro_client::LoopbackClassification;
     use insta::assert_snapshot;
     use sha2::{Digest, Sha256};
 
-    use super::{build_browser_url, cli_auth_unavailable_message, login_failure_message};
+    use super::{browser_origin, build_browser_url, login_failure_message};
     use crate::user_config::ServerTarget;
 
     #[test]
@@ -270,36 +253,16 @@ mod tests {
     }
 
     #[test]
-    fn browser_url_uses_web_origin_and_callback_params() {
+    fn browser_url_uses_server_target_origin_and_callback_params() {
         let url = build_browser_url(
-            "https://app.fabro.example",
+            "https://fabro.example",
             "http://127.0.0.1:41234/callback",
             "state-123",
             "challenge-abc",
         )
         .unwrap();
 
-        assert_snapshot!(url, @"https://app.fabro.example/auth/cli/start?redirect_uri=http%3A%2F%2F127.0.0.1%3A41234%2Fcallback&state=state-123&code_challenge=challenge-abc&code_challenge_method=S256");
-    }
-
-    #[test]
-    fn unavailable_reason_messages_cover_known_and_unknown_values() {
-        assert_eq!(
-            cli_auth_unavailable_message(Some("github_not_enabled")),
-            "CLI login is not available on this server because GitHub login is not enabled."
-        );
-        assert_eq!(
-            cli_auth_unavailable_message(Some("web_not_enabled")),
-            "CLI login is not available on this server because the web UI is disabled."
-        );
-        assert_eq!(
-            cli_auth_unavailable_message(Some("future_reason")),
-            "CLI login is not available on this server."
-        );
-        assert_eq!(
-            cli_auth_unavailable_message(None),
-            "CLI login is not available on this server."
-        );
+        assert_snapshot!(url, @"https://fabro.example/auth/cli/start?redirect_uri=http%3A%2F%2F127.0.0.1%3A41234%2Fcallback&state=state-123&code_challenge=challenge-abc&code_challenge_method=S256");
     }
 
     #[test]
@@ -317,21 +280,31 @@ mod tests {
             "Login not permitted."
         );
         assert_eq!(
-            login_failure_message("server_error", Some("Could not complete GitHub sign-in")),
-            "Could not complete GitHub sign-in."
+            login_failure_message(
+                "github_not_configured",
+                Some("GitHub authentication is not enabled on this server")
+            ),
+            "The fabro server does not have GitHub login enabled. Ask the operator to enable it or use a dev-token."
         );
         assert_eq!(
-            login_failure_message("future_code", Some("Future description")),
-            "Future description"
+            login_failure_message("server_error", Some("SESSION_SECRET is not configured")),
+            "SESSION_SECRET is not configured"
         );
     }
 
     #[test]
-    fn token_transport_accepts_only_https_loopback_or_unix() {
-        let target = ServerTarget::http_url("https://fabro.example.com").unwrap();
-        assert_eq!(
-            target.loopback_classification().unwrap(),
-            LoopbackClassification::Https
+    fn auth_login_accepts_http_target() {
+        let target = ServerTarget::http_url("http://fabro.example.com/api/v1").unwrap();
+        assert_eq!(browser_origin(&target).unwrap(), "http://fabro.example.com");
+    }
+
+    #[test]
+    fn auth_login_rejects_unix_socket_target() {
+        let target = ServerTarget::unix_socket_path("/tmp/fabro.sock").unwrap();
+        let err = browser_origin(&target).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("fabro auth login requires an HTTP(S) server target")
         );
     }
 }

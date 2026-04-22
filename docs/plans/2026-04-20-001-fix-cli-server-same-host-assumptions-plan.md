@@ -11,6 +11,8 @@ date: 2026-04-20
 
 Tighten the CLI/server contract so an explicit `http(s)://...` target is always treated as a remote server, never as a disguised local daemon. This removes the remaining places where the CLI still derives remote behavior from local storage, local dev-token files, or colocated-network assumptions left over from the earlier same-host architecture.
 
+Historical note (2026-04-21): the auth flow now also assumes a single origin. `fabro auth login` opens the browser flow on the resolved HTTP(S) target directly; the old `/api/v1/auth/cli/config` preflight no longer exists.
+
 ## Problem Frame
 
 The codebase already moved most commands to a server-target model, but a few central helpers still collapse explicit remote targets back into local-machine state:

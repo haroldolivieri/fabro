@@ -1,4 +1,3 @@
-mod cli_auth_config;
 mod cli_auth_token;
 mod docs;
 mod install;

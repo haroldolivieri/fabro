@@ -38,7 +38,7 @@ pub use resolve::{
     resolve_storage_root, resolve_workflow, resolve_workflow_from_file,
 };
 use serde::de::DeserializeOwned;
-pub use storage::{RunScratch, ServerRuntimeState, Storage};
+pub use storage::{RunScratch, RuntimeDirectory, Storage};
 
 pub fn load_and_resolve(
     layers: effective_settings::EffectiveSettingsLayers,

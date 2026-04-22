@@ -112,6 +112,7 @@ use ulid::Ulid;
 use crate::auth::{self, GithubEndpoints, auth_translation_middleware, demo_routing_middleware};
 use crate::bind::Bind;
 use crate::canonical_origin::resolve_canonical_origin;
+use crate::daemon::ServerDaemon;
 use crate::error::ApiError;
 use crate::github_webhooks::{
     WEBHOOK_ROUTE, WEBHOOK_SECRET_ENV, parse_event_metadata, verify_signature,
@@ -1569,7 +1570,7 @@ fn build_disk_usage_response(
     verbose: bool,
 ) -> anyhow::Result<DiskUsageResponse> {
     let scratch_base_dir = scratch_base(storage_dir);
-    let logs_base_dir = Storage::new(storage_dir).runtime_state().logs_dir();
+    let logs_base_dir = Storage::new(storage_dir).runtime_directory().logs_dir();
     let runs = scan_runs_with_summaries(summaries, &scratch_base_dir)?;
 
     let mut active_count = 0u64;
@@ -3760,28 +3761,16 @@ async fn append_worker_exit_failure(
     }
 }
 
-#[derive(serde::Deserialize)]
-struct WorkerServerRecord {
-    bind: Bind,
-}
-
 fn current_server_target(storage_dir: &std::path::Path) -> anyhow::Result<String> {
-    let record_path = Storage::new(storage_dir).runtime_state().record_path();
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "sync helper invoked from worker_command (sync) via spawn_blocking at the async \
-                  boundary in execute_run_subprocess; see commit 9d1c0d98c"
-    )]
-    let content = std::fs::read_to_string(&record_path)
-        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", record_path.display()))?;
-    let record: WorkerServerRecord = serde_json::from_str(&content).map_err(|err| {
-        anyhow::anyhow!(
-            "failed to parse server record {}: {err}",
-            record_path.display()
+    let runtime_directory = Storage::new(storage_dir).runtime_directory();
+    let daemon = ServerDaemon::read(&runtime_directory)?.with_context(|| {
+        format!(
+            "server record {} is missing",
+            runtime_directory.record_path().display()
         )
     })?;
 
-    Ok(match record.bind {
+    Ok(match daemon.bind {
         Bind::Unix(path) => path.to_string_lossy().to_string(),
         Bind::Tcp(addr) => format!("http://{addr}"),
     })
@@ -7901,15 +7890,13 @@ allowed_usernames = ["octocat"]
                 .join(", ")
         ))
         .unwrap();
-        let record_path = Storage::new(storage_dir).runtime_state().record_path();
-        std::fs::create_dir_all(record_path.parent().unwrap()).unwrap();
-        std::fs::write(
-            &record_path,
-            serde_json::to_string(&json!({
-                "bind": Bind::Tcp("127.0.0.1:32276".parse::<std::net::SocketAddr>().unwrap()),
-            }))
-            .unwrap(),
+        let runtime_directory = Storage::new(storage_dir).runtime_directory();
+        ServerDaemon::new(
+            std::process::id(),
+            Bind::Tcp("127.0.0.1:32276".parse::<std::net::SocketAddr>().unwrap()),
+            runtime_directory.log_path(),
         )
+        .write(&runtime_directory)
         .unwrap();
 
         create_app_state_with_env_lookup(settings, 5, move |name| match name {

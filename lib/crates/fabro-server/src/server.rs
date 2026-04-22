@@ -108,6 +108,7 @@ use ulid::Ulid;
 
 use crate::auth::{self, GithubEndpoints, auth_translation_middleware, demo_routing_middleware};
 use crate::bind::Bind;
+use crate::canonical_origin::{resolve_canonical_origin, validate_canonical_origin};
 use crate::error::ApiError;
 use crate::github_webhooks::{
     WEBHOOK_ROUTE, WEBHOOK_SECRET_ENV, parse_event_metadata, verify_signature,
@@ -575,6 +576,7 @@ pub struct AppState {
     pub(crate) settings:             Arc<RwLock<SettingsLayer>>,
     pub(crate) server_settings:      RwLock<Arc<ResolvedServerSettings>>,
     pub(crate) local_daemon_mode:    bool,
+    pub(crate) env_lookup:           EnvLookup,
     http_client:                     Option<fabro_http::HttpClient>,
     shutting_down:                   AtomicBool,
     registry_factory_override:       Option<Box<RegistryFactoryOverride>>,
@@ -691,6 +693,17 @@ impl AppState {
         self.server_secrets.get(name)
     }
 
+    pub(crate) fn resolve_interp(&self, value: &InterpString) -> anyhow::Result<String> {
+        value
+            .resolve(|name| (self.env_lookup)(name))
+            .map(|resolved| resolved.value)
+            .map_err(anyhow::Error::from)
+    }
+
+    pub(crate) fn canonical_origin(&self) -> Result<String, String> {
+        resolve_canonical_origin(&self.server_settings(), &self.env_lookup)
+    }
+
     pub(crate) fn session_key(&self) -> Option<Key> {
         self.server_secret("SESSION_SECRET")
             .and_then(|value| auth::derive_cookie_key(value.as_bytes()).ok())
@@ -780,6 +793,15 @@ impl AppState {
                     .join("\n")
             )
         })?);
+        let resolved_ref = Arc::as_ref(&resolved);
+        if let Err(error) = validate_canonical_origin(resolved_ref, &self.env_lookup) {
+            let error = anyhow::anyhow!(error);
+            warn!(
+                error = %error,
+                "Failed to resolve reloaded server config, keeping previous"
+            );
+            return Err(error);
+        }
 
         *self.settings.write().expect("settings lock poisoned") = settings;
         *self
@@ -965,12 +987,9 @@ pub fn build_router_with_options(
     let api_common = if web_enabled {
         Router::new()
             .route("/openapi.json", get(openapi_spec))
-            .merge(auth::api_routes())
             .merge(web_auth::api_routes())
     } else {
-        Router::new()
-            .route("/openapi.json", get(openapi_spec))
-            .merge(auth::api_routes())
+        Router::new().route("/openapi.json", get(openapi_spec))
     };
 
     let demo_router = Router::new()
@@ -2674,6 +2693,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         settings,
         server_settings: RwLock::new(resolved_server_settings),
         local_daemon_mode,
+        env_lookup: Arc::clone(&env_lookup),
         http_client,
         shutting_down: AtomicBool::new(false),
         registry_factory_override,
@@ -7297,6 +7317,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     #[cfg(unix)]
     use std::process::Stdio;
+    use std::sync::{Arc as StdArc, Mutex as StdMutex};
 
     use axum::body::Body;
     use axum::http::{Request, header};
@@ -7306,6 +7327,10 @@ mod tests {
     use fabro_types::{InterviewQuestionRecord, InterviewQuestionType, RunBlobId, RunId, fixtures};
     use serde_json::json;
     use tower::ServiceExt;
+    use tracing::field::{Field, Visit};
+    use tracing::{Event, Subscriber};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::{Layer, Registry};
 
     use super::*;
     use crate::github_webhooks::compute_signature;
@@ -7413,6 +7438,66 @@ mod tests {
         })
     }
 
+    #[derive(Debug)]
+    struct LogCapture {
+        level:  tracing::Level,
+        target: String,
+        fields: Vec<(String, String)>,
+    }
+
+    #[derive(Default)]
+    struct LogCaptureVisitor {
+        fields: Vec<(String, String)>,
+    }
+
+    impl Visit for LogCaptureVisitor {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.fields
+                .push((field.name().to_string(), format!("{value:?}")));
+        }
+    }
+
+    struct LogCaptureLayer {
+        events: StdArc<StdMutex<Vec<LogCapture>>>,
+    }
+
+    impl<S: Subscriber> Layer<S> for LogCaptureLayer {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            if event.metadata().target() != "fabro_server::server" {
+                return;
+            }
+
+            let mut visitor = LogCaptureVisitor::default();
+            event.record(&mut visitor);
+            self.events.lock().unwrap().push(LogCapture {
+                level:  *event.metadata().level(),
+                target: event.metadata().target().to_string(),
+                fields: visitor.fields,
+            });
+        }
+    }
+
+    fn capture_logs<T>(f: impl FnOnce() -> T) -> (T, StdArc<StdMutex<Vec<LogCapture>>>) {
+        let events = StdArc::new(StdMutex::new(Vec::<LogCapture>::new()));
+        let subscriber = Registry::default().with(LogCaptureLayer {
+            events: StdArc::clone(&events),
+        });
+        let result = tracing::subscriber::with_default(subscriber, f);
+        (result, events)
+    }
+
+    fn canonical_origin_settings(url: &str) -> SettingsLayer {
+        fabro_config::parse_settings_layer(&format!(
+            r#"
+_version = 1
+
+[server.web]
+url = "{url}"
+"#
+        ))
+        .expect("settings fixture should parse")
+    }
+
     #[tokio::test]
     async fn resolved_settings_view_returns_internal_error_when_runtime_settings_stop_resolving() {
         let state = create_app_state();
@@ -7439,6 +7524,47 @@ type = "http"
             .unwrap();
 
         assert_status!(response, StatusCode::INTERNAL_SERVER_ERROR).await;
+    }
+
+    #[test]
+    fn replace_settings_rejects_invalid_canonical_origin_and_keeps_previous_settings() {
+        for invalid in ["", "/relative/path", "ftp://fabro.example.com"] {
+            let state = create_app_state_with_env_lookup(
+                canonical_origin_settings("http://valid.example.com"),
+                5,
+                {
+                    let invalid = invalid.to_string();
+                    move |name| (name == "FABRO_WEB_URL").then(|| invalid.clone())
+                },
+            );
+
+            let (result, logs) = capture_logs(|| {
+                state.replace_settings(canonical_origin_settings("{{ env.FABRO_WEB_URL }}"))
+            });
+
+            let err = result.expect_err("invalid canonical origin should be rejected");
+            assert!(
+                err.to_string()
+                    .contains("server.web.url is required and must be an absolute http(s) URL"),
+                "unexpected error for {invalid}: {err}"
+            );
+            assert_eq!(
+                state.canonical_origin().unwrap(),
+                "http://valid.example.com".to_string()
+            );
+
+            let logs = logs.lock().unwrap();
+            assert!(logs.iter().any(|event| {
+                event.level == tracing::Level::WARN
+                    && event.target == "fabro_server::server"
+                    && event.fields.iter().any(|(name, value)| {
+                        name == "message"
+                            && value.contains(
+                                "Failed to resolve reloaded server config, keeping previous",
+                            )
+                    })
+            }));
+        }
     }
 
     #[tokio::test]

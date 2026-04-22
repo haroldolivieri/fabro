@@ -25,7 +25,6 @@ use crate::error::{
     ApiError, ApiFailure, classify_api_error, classify_http_response, convert_type,
     is_not_found_error, map_api_error, raw_response_failure_error,
 };
-use crate::loopback::LoopbackClassification;
 use crate::session::OAuthSession;
 use crate::target::ServerTarget;
 use crate::{AuthEntry, StoredSubject, sse};
@@ -355,8 +354,6 @@ impl Client {
             self.rebuild_with_fallback(oauth_session).await?;
             bail!("CLI session has expired. Run `fabro auth login` again.");
         }
-        ensure_refresh_target_transport(&oauth_session.target)?;
-
         let (http_client, base_url) = oauth_session.target.build_public_http_client()?;
         let response = http_client
             .post(format!("{base_url}/auth/cli/refresh"))
@@ -1307,21 +1304,6 @@ pub fn apply_bearer_token_auth(
     Ok(builder.default_headers(headers))
 }
 
-pub fn ensure_refresh_target_transport(target: &ServerTarget) -> Result<()> {
-    match target.loopback_classification()? {
-        LoopbackClassification::Https
-        | LoopbackClassification::LoopbackHttp
-        | LoopbackClassification::UnixSocket => Ok(()),
-        LoopbackClassification::Rejected => bail!(refresh_transport_error(target)),
-    }
-}
-
-fn refresh_transport_error(target: &ServerTarget) -> String {
-    format!(
-        "Refusing to send refresh-token credentials over plaintext HTTP to a non-loopback host ({target}). Use HTTPS, or bind the server to 127.0.0.1 / ::1."
-    )
-}
-
 fn non_zero_u64_from_u32(value: u32) -> Option<NonZeroU64> {
     NonZeroU64::new(u64::from(value))
 }
@@ -1333,6 +1315,8 @@ fn non_zero_u64_from_usize(value: usize) -> Option<NonZeroU64> {
 #[cfg(test)]
 mod tests {
     use chrono::Duration as ChronoDuration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     use super::*;
     use crate::AuthStore;
@@ -1357,10 +1341,42 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn refresh_access_token_rejects_plain_http_non_loopback_targets() {
+    async fn refresh_access_token_allows_plain_http_targets() {
         let temp = tempfile::tempdir().unwrap();
         let auth_store = AuthStore::new(temp.path().join("auth.json"));
-        let target = ServerTarget::http_url("http://fabro.example.com").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = vec![0_u8; 4096];
+            let read = stream.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(
+                request.starts_with("POST /auth/cli/refresh HTTP/1.1"),
+                "unexpected refresh request: {request}"
+            );
+            let body = serde_json::json!({
+                "access_token": "access-refreshed",
+                "access_token_expires_at": (chrono::Utc::now() + ChronoDuration::minutes(10)).to_rfc3339(),
+                "refresh_token": "refresh-refreshed",
+                "refresh_token_expires_at": (chrono::Utc::now() + ChronoDuration::days(30)).to_rfc3339(),
+                "subject": {
+                    "idp_issuer": "https://github.com",
+                    "idp_subject": "12345",
+                    "login": "octocat",
+                    "name": "Name octocat",
+                    "email": "octocat@example.com"
+                }
+            })
+            .to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+        let target = ServerTarget::http_url(format!("http://localhost:{port}")).unwrap();
         let entry = oauth_entry("octocat");
         auth_store.put(&target, entry.clone()).unwrap();
 
@@ -1368,25 +1384,15 @@ mod tests {
             .target(target.clone())
             .credential(Credential::OAuth(entry))
             .oauth_session(OAuthSession::new(target.clone(), auth_store.clone()))
-            .transport(
-                "http://fabro.example.com",
-                fabro_http::HttpClientBuilder::new()
-                    .no_proxy()
-                    .build()
-                    .unwrap(),
-            )
+            .transport("http://localhost", fabro_http::test_http_client().unwrap())
             .connect()
             .await
             .unwrap();
 
-        let err = client
-            .refresh_access_token("access-octocat")
-            .await
-            .unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("Refusing to send refresh-token credentials over plaintext HTTP")
-        );
-        assert!(auth_store.get(&target).unwrap().is_some());
+        client.refresh_access_token("access-octocat").await.unwrap();
+        let refreshed = auth_store.get(&target).unwrap().unwrap();
+        assert_eq!(refreshed.access_token, "access-refreshed");
+        assert_eq!(refreshed.refresh_token, "refresh-refreshed");
+        server.abort();
     }
 }

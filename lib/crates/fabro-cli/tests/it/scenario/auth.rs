@@ -30,16 +30,6 @@ fn auth_login_refresh_logout_flow() {
     let server = MockServer::start();
     let target = server_target(&server);
 
-    let config_mock = server.mock(|when, then| {
-        when.method(GET).path("/api/v1/auth/cli/config");
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "enabled": true,
-                "web_url": server.base_url(),
-                "methods": ["github"]
-            }));
-    });
     let token_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/auth/cli/token")
@@ -61,7 +51,6 @@ fn auth_login_refresh_logout_flow() {
         "login output should confirm success:\n{}",
         String::from_utf8_lossy(&login_output.stderr)
     );
-    config_mock.assert();
     token_mock.assert();
 
     let status = auth_status(&context, &target);
@@ -167,16 +156,6 @@ fn auth_refresh_failure_clears_local_session() {
         "fabro_dev_abababababababababababababababababababababababababababababababab\n",
     );
 
-    server.mock(|when, then| {
-        when.method(GET).path("/api/v1/auth/cli/config");
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({
-                "enabled": true,
-                "web_url": server.base_url(),
-                "methods": ["github"]
-            }));
-    });
     server.mock(|when, then| {
         when.method(POST)
             .path("/auth/cli/token")
@@ -289,6 +268,37 @@ fn auth_refresh_failure_clears_local_session() {
     auth_required_mock.assert();
 }
 
+#[test]
+fn auth_login_rejects_unix_socket_target() {
+    let context = test_context!();
+    let socket_path = context.temp_dir.join("fabro.sock");
+
+    let output = context
+        .command()
+        .args([
+            "auth",
+            "login",
+            "--no-browser",
+            "--server",
+            socket_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("auth login should execute");
+
+    assert!(
+        !output.status.success(),
+        "auth login should fail for unix-socket targets\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("fabro auth login requires an HTTP(S) server target"),
+        "unix-socket rejection should explain the transport requirement:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn auth_login_refresh_logout_flow_against_real_server_and_twin_github() {
     let context = test_context!();
@@ -303,22 +313,19 @@ async fn auth_login_refresh_logout_flow_against_real_server_and_twin_github() {
         String::from_utf8_lossy(&login_output.stderr)
     );
     assert!(
-        browser_url.starts_with(&format!("{}/auth/cli/start", harness.web_base_url)),
-        "browser flow should open the configured web origin, got: {browser_url}"
+        browser_url.starts_with(&format!("{}/auth/cli/start", harness.api_base_url)),
+        "browser flow should open the server target origin, got: {browser_url}"
     );
-    assert_ne!(harness.api_base_url, harness.web_base_url);
 
     let status = auth_status(&context, &target);
     assert_eq!(status["servers"].as_array().map(Vec::len), Some(1));
     assert_eq!(status["servers"][0]["oauth_state"], "active");
     assert_eq!(status["servers"][0]["login"], "octocat");
     assert_eq!(status["servers"][0]["server"], harness.api_base_url);
-    assert!(harness.api_requests.contains("GET /api/v1/auth/cli/config"));
-    assert!(harness.web_requests.contains("GET /auth/cli/start"));
-    assert!(harness.web_requests.contains("GET /auth/cli/resume"));
-    assert!(harness.web_requests.contains("POST /auth/cli/resume"));
     assert!(harness.api_requests.contains("POST /auth/cli/token"));
-    assert!(!harness.web_requests.contains("POST /auth/cli/token"));
+    assert!(harness.api_requests.contains("GET /auth/cli/start"));
+    assert!(harness.api_requests.contains("GET /auth/cli/resume"));
+    assert!(harness.api_requests.contains("POST /auth/cli/resume"));
 
     harness.api_requests.clear();
     let exec_output = context
@@ -358,7 +365,7 @@ async fn auth_login_refresh_logout_flow_against_real_server_and_twin_github() {
     );
 
     harness.api_requests.clear();
-    expire_saved_access_token(&context, &harness.web_base_url);
+    expire_saved_access_token(&context, &harness.api_base_url);
     let expired_exec_output = context
         .exec_cmd()
         .args([
@@ -464,8 +471,8 @@ async fn auth_login_surfaces_access_denied_from_real_browser_flow() {
 
     let (login_output, browser_url) = complete_login_via_browser(&context, &target).await;
     assert!(
-        browser_url.starts_with(&format!("{}/auth/cli/start", harness.web_base_url)),
-        "browser flow should open the configured web origin, got: {browser_url}"
+        browser_url.starts_with(&format!("{}/auth/cli/start", harness.api_base_url)),
+        "browser flow should open the server target origin, got: {browser_url}"
     );
     assert!(
         !login_output.status.success(),
@@ -491,7 +498,7 @@ async fn auth_cli_start_ignores_dev_token_session_and_redirects_to_github_login(
     let client = no_redirect_browser_client();
 
     let login_response = client
-        .post(format!("{}/auth/login/dev-token", harness.web_base_url))
+        .post(format!("{}/auth/login/dev-token", harness.api_base_url))
         .json(&json!({ "token": TEST_DEV_TOKEN }))
         .send()
         .await
@@ -501,7 +508,7 @@ async fn auth_cli_start_ignores_dev_token_session_and_redirects_to_github_login(
     let response = client
         .get(format!(
             "{}/auth/cli/start?redirect_uri=http://127.0.0.1:4444/callback&state=abcdefghijklmnop&code_challenge=challenge&code_challenge_method=S256",
-            harness.web_base_url
+            harness.api_base_url
         ))
         .send()
         .await

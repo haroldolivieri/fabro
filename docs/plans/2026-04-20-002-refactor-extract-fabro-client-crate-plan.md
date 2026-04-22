@@ -5,6 +5,8 @@ status: active
 date: 2026-04-20
 ---
 
+Historical note (2026-04-21): the follow-up auth-surface tightening removed `LoopbackClassification`, `target.loopback_classification()`, `ensure_refresh_target_transport`, and the plain-HTTP refresh rejection. References to those APIs below describe the planned state at the time, not the current implementation.
+
 # refactor: Extract fabro-client crate and lift domain DTOs to fabro-types
 
 ## Overview

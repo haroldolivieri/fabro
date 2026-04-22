@@ -16,7 +16,9 @@ use serde_json::json;
 use tracing::{debug, error, info, warn};
 
 use crate::auth::GithubEndpoints;
-use crate::jwt_auth::{AuthMode, AuthenticatedSubject, auth_method_name, dev_token_matches};
+use crate::jwt_auth::{
+    AuthMode, AuthenticatedService, AuthenticatedSubject, auth_method_name, dev_token_matches,
+};
 use crate::server::AppState;
 
 pub const SESSION_COOKIE_NAME: &str = "__fabro_session";
@@ -255,11 +257,8 @@ fn callback_error_redirect(
     }
 }
 
-fn resolve_interp(value: &InterpString) -> anyhow::Result<String> {
-    value
-        .resolve(|name| std::env::var(name).ok())
-        .map(|resolved| resolved.value)
-        .map_err(anyhow::Error::from)
+fn resolve_interp(state: &AppState, value: &InterpString) -> anyhow::Result<String> {
+    state.resolve_interp(value)
 }
 
 fn auth_methods_from_mode(auth_mode: &AuthMode) -> Vec<String> {
@@ -386,7 +385,7 @@ async fn login_github(
             json!({"error": "GitHub App client_id is not configured"}),
         );
     };
-    let client_id = match resolve_interp(client_id) {
+    let client_id = match resolve_interp(state.as_ref(), client_id) {
         Ok(client_id) => client_id,
         Err(err) => {
             warn!(error = %err, "OAuth login failed: client_id could not be resolved");
@@ -396,7 +395,7 @@ async fn login_github(
             );
         }
     };
-    let web_url = match resolve_interp(&settings.web.url) {
+    let web_url = match resolve_interp(state.as_ref(), &settings.web.url) {
         Ok(web_url) => web_url,
         Err(err) => {
             warn!(error = %err, "OAuth login failed: server.web.url could not be resolved");
@@ -538,7 +537,7 @@ async fn callback_github(
             json!({"error": "GitHub App client_id is not configured"}),
         );
     };
-    let client_id = match resolve_interp(client_id) {
+    let client_id = match resolve_interp(state.as_ref(), client_id) {
         Ok(client_id) => client_id,
         Err(err) => {
             error!(error = %err, "OAuth callback failed: client_id could not be resolved");
@@ -555,7 +554,7 @@ async fn callback_github(
             json!({"error": "GITHUB_APP_CLIENT_SECRET is not configured"}),
         );
     };
-    let web_url = match resolve_interp(&settings.web.url) {
+    let web_url = match resolve_interp(state.as_ref(), &settings.web.url) {
         Ok(web_url) => web_url,
         Err(err) => {
             error!(error = %err, "OAuth callback failed: server.web.url could not be resolved");
@@ -820,6 +819,7 @@ async fn auth_me(subject: AuthenticatedSubject, headers: HeaderMap) -> Response 
 }
 
 async fn toggle_demo(
+    _auth: AuthenticatedService,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<DemoToggleRequest>,
 ) -> Response {

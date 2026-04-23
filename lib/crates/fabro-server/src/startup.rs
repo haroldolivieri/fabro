@@ -59,7 +59,6 @@ mod tests {
     use fabro_types::settings::ServerSettings as ResolvedServerSettings;
 
     use super::{resolve_startup, validate_startup};
-    use crate::server_secrets::StubEnv;
 
     fn resolved_settings(auth_methods: &[&str]) -> ResolvedServerSettings {
         let settings = parse_settings_layer(&format!(
@@ -82,7 +81,7 @@ methods = [{}]
     #[test]
     fn validate_startup_matches_resolve_startup() {
         let dir = tempfile::tempdir().unwrap();
-        let env = StubEnv(HashMap::from([
+        let env = HashMap::from([
             (
                 "SESSION_SECRET".to_string(),
                 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
@@ -92,7 +91,7 @@ methods = [{}]
                 "fabro_dev_abababababababababababababababababababababababababababababababab"
                     .to_string(),
             ),
-        ]));
+        ]);
         let settings = resolved_settings(&["dev-token"]);
 
         assert!(validate_startup(dir.path().join("server.env").as_path(), &env, &settings).is_ok());
@@ -102,7 +101,7 @@ methods = [{}]
     #[test]
     fn validate_startup_and_resolve_startup_share_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let env = StubEnv::default();
+        let env: HashMap<String, String> = HashMap::new();
         let settings = resolved_settings(&["dev-token"]);
 
         let validate_err =

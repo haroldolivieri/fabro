@@ -80,23 +80,21 @@ impl RealAuthHarness {
             _ => None,
         })
         .expect("auth mode should resolve");
+        let mut secrets = std::collections::HashMap::from([
+            (
+                "SESSION_SECRET".to_string(),
+                TEST_SESSION_SECRET.to_string(),
+            ),
+            (
+                "GITHUB_APP_CLIENT_SECRET".to_string(),
+                github_client_secret.clone(),
+            ),
+        ]);
+        if let Some(token) = dev_token.clone() {
+            secrets.insert("FABRO_DEV_TOKEN".to_string(), token);
+        }
         let state =
-            create_app_state_with_env_lookup_and_server_secret_env(settings, 5, |_| None, {
-                let mut secrets = std::collections::HashMap::from([
-                    (
-                        "SESSION_SECRET".to_string(),
-                        TEST_SESSION_SECRET.to_string(),
-                    ),
-                    (
-                        "GITHUB_APP_CLIENT_SECRET".to_string(),
-                        github_client_secret.clone(),
-                    ),
-                ]);
-                if let Some(token) = dev_token.clone() {
-                    secrets.insert("FABRO_DEV_TOKEN".to_string(), token);
-                }
-                secrets
-            });
+            create_app_state_with_env_lookup_and_server_secret_env(settings, 5, |_| None, &secrets);
         let github_base = github_base_url(&twin.base_url);
         let router = build_router_with_options(
             state,

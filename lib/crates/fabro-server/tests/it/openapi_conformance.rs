@@ -150,7 +150,7 @@ async fn github_webhook_spec_route_is_routable_when_webhook_secret_is_present() 
             test_settings(),
             5,
             |_| None,
-            std::collections::HashMap::from([("GITHUB_APP_WEBHOOK_SECRET".to_string(), secret)]),
+            &std::collections::HashMap::from([("GITHUB_APP_WEBHOOK_SECRET".to_string(), secret)]),
         ),
         AuthMode::Disabled,
     );

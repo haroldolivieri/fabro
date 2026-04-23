@@ -1949,6 +1949,7 @@ async fn wait_for_shutdown(mut shutdown_rx: watch::Receiver<bool>) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::io;
     use std::sync::atomic::AtomicBool;
     use std::sync::{Arc, Mutex};
@@ -1965,7 +1966,6 @@ mod tests {
         classify_object_store_validation_error, detect_canonical_url, install_object_store_lookup,
         lock_unpoisoned, resolve_install_object_store_state, token_is_valid,
     };
-    use crate::server_secrets::StubEnv;
 
     #[test]
     fn token_validation_accepts_any_matching_source() {
@@ -2090,7 +2090,8 @@ AWS_SESSION_TOKEN=ambient-session\n\
 AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/fabro-web-identity-token\n",
         )
         .unwrap();
-        let server_secrets = ServerSecrets::load(env_path.clone(), &StubEnv::default()).unwrap();
+        let server_secrets =
+            ServerSecrets::load(env_path.clone(), &HashMap::<String, String>::new()).unwrap();
         let manual_credentials =
             InstallAwsCredentialPair::new("submitted-access", "submitted-secret");
 

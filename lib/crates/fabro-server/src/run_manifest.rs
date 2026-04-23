@@ -5,7 +5,6 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow, bail};
 use fabro_api::types;
 use fabro_config::project::resolve_working_directory;
-use fabro_config::run::parse_run_config;
 use fabro_config::{WorkflowSettingsBuilder, parse_settings_layer};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
@@ -199,7 +198,8 @@ fn root_workflow_config_layer(
         return Ok(SettingsLayer::default());
     };
 
-    let mut layer = parse_run_config(&config.source)?;
+    let mut layer = parse_settings_layer(&config.source)
+        .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?;
     resolve_manifest_dockerfile(&mut layer, Path::new(&config.path), &workflow.files)?;
     Ok(layer)
 }

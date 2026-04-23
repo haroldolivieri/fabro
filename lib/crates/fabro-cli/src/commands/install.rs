@@ -1464,16 +1464,13 @@ async fn run_install_github_inner(
 
     let existing_config_contents =
         std::fs::read_to_string(&config_path).context("failed to read existing settings.toml")?;
-    let parsed_settings = user_config::apply_storage_dir_override(
-        fabro_config::parse_settings_layer(&existing_config_contents)
-            .context("failed to parse existing settings.toml")?,
-        args.storage_dir.as_deref(),
-    );
-    let storage_dir = local_server::storage_dir(&parsed_settings).unwrap_or_else(|_| {
-        args.storage_dir
-            .clone_path()
-            .unwrap_or_else(default_storage_dir)
-    });
+    let parsed_settings = fabro_config::parse_settings_layer(&existing_config_contents)
+        .context("failed to parse existing settings.toml")?;
+    let storage_dir = args
+        .storage_dir
+        .clone_path()
+        .or_else(|| local_server::storage_dir(&parsed_settings).ok())
+        .unwrap_or_else(default_storage_dir);
     let server_was_running =
         ServerDaemon::load_running(&Storage::new(&storage_dir).runtime_directory())?.is_some();
     let mut doc: toml::Value = toml::from_str(&existing_config_contents)
@@ -1777,11 +1774,8 @@ async fn run_install_inner(args: &InstallArgs, ctx: &CommandContext) -> Result<(
         toml::to_string_pretty(&doc)?
     };
 
-    let install_settings = user_config::apply_storage_dir_override(
-        fabro_config::parse_settings_layer(&settings_toml)
-            .context("failed to parse generated settings.toml")?,
-        args.storage_dir.as_deref(),
-    );
+    let install_settings = fabro_config::parse_settings_layer(&settings_toml)
+        .context("failed to parse generated settings.toml")?;
     fabro_config::ServerSettingsBuilder::from_layer(&install_settings)?;
 
     // Secrets and auth material

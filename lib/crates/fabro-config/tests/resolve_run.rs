@@ -1,10 +1,6 @@
-use fabro_config::{WorkflowSettingsBuilder, parse_settings_layer};
+use fabro_config::WorkflowSettingsBuilder;
 use fabro_types::settings::run::{ApprovalMode, RunGoal, RunMode, WorktreeMode};
 use fabro_types::settings::{InterpString, SettingsLayer};
-
-fn parse(source: &str) -> SettingsLayer {
-    parse_settings_layer(source).expect("fixture should parse")
-}
 
 #[test]
 fn resolves_run_defaults_from_empty_settings() {
@@ -23,7 +19,7 @@ fn resolves_run_defaults_from_empty_settings() {
 
 #[test]
 fn preserves_goal_variants_and_model_sources() {
-    let file = parse(
+    let settings = WorkflowSettingsBuilder::from_toml(
         r#"
 _version = 1
 
@@ -37,11 +33,9 @@ file = "{{ env.GOAL_FILE }}"
 provider = "anthropic"
 name = "sonnet"
 "#,
-    );
-
-    let settings = WorkflowSettingsBuilder::from_layer(&file)
-        .expect("run settings should resolve")
-        .run;
+    )
+    .expect("run settings should resolve")
+    .run;
 
     match settings.goal {
         Some(RunGoal::File(path)) => {

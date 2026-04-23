@@ -161,11 +161,10 @@ fn main() {
     let mut settings = GenerationSettings::default();
     settings.with_interface(InterfaceStyle::Builder);
     let replacements: &[(&str, &str, &[TypeImpl])] = &[
-        ("RunStatus", "fabro_types::status::RunStatus", &[
-            TypeImpl::FromStr,
-            TypeImpl::Display,
-        ]),
-        ("StatusReason", "fabro_types::status::StatusReason", &[]),
+        ("RunStatus", "fabro_types::status::RunStatus", &[]),
+        ("SuccessReason", "fabro_types::status::SuccessReason", &[]),
+        ("FailureReason", "fabro_types::status::FailureReason", &[]),
+        ("TerminalStatus", "fabro_types::status::TerminalStatus", &[]),
         ("BlockedReason", "fabro_types::status::BlockedReason", &[]),
         (
             "RunControlAction",

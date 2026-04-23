@@ -26,7 +26,7 @@ pub mod types {
     };
     pub use fabro_types::settings::{FeaturesNamespace, ServerNamespace};
     pub use fabro_types::status::{
-        BlockedReason, RunControlAction, RunStatus, RunStatusRecord, StatusReason,
+        BlockedReason, FailureReason, RunControlAction, RunStatus, SuccessReason, TerminalStatus,
     };
 
     pub use crate::generated::types::*;

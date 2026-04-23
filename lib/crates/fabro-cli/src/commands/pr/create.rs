@@ -16,7 +16,6 @@ use crate::command_context::CommandContext;
 use crate::commands::rebuild::rebuild_run_store;
 use crate::shared::print_json_pretty;
 use crate::shared::repo::ensure_matching_repo_origin;
-use crate::user_config;
 
 #[allow(
     deprecated,
@@ -98,9 +97,8 @@ pub(super) async fn create_command(args: PrCreateArgs, base_ctx: &CommandContext
         );
     }
 
-    let vault = user_config::storage_dir(ctx.machine_settings())
+    let vault = Vault::load(Storage::new(ctx.storage_dir()).secrets_path())
         .ok()
-        .and_then(|dir| Vault::load(Storage::new(&dir).secrets_path()).ok())
         .map(|vault| Arc::new(AsyncRwLock::new(vault)));
     let configured = configured_providers_from_process_env(vault.as_ref()).await;
     let model = args.model.unwrap_or_else(|| {

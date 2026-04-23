@@ -407,19 +407,18 @@ mod tests {
 
     #[test]
     fn parse_with_project_directory() {
-        let config = crate::parse_settings_layer(
-            r#"
+        assert_eq!(
+            WorkflowSettingsBuilder::from_toml(
+                r#"
 _version = 1
 
 [project]
 directory = "custom/"
 "#,
-        )
-        .unwrap();
-        assert_eq!(
-            WorkflowSettingsBuilder::project_from_layer(&config)
-                .unwrap()
-                .directory,
+            )
+            .unwrap()
+            .project
+            .directory,
             "custom/"
         );
     }

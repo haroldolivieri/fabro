@@ -1,18 +1,17 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
 pub(crate) use fabro_client::ServerTarget;
-use fabro_config::UserSettingsBuilder;
 pub(crate) use fabro_config::user::{active_settings_path, default_storage_dir};
 use fabro_config::user::{default_socket_path, load_settings_config};
+use fabro_types::UserSettings;
 use fabro_types::settings::cli::CliTargetSettings;
 use fabro_types::settings::{CliNamespace, SettingsLayer};
 use fabro_util::version::FABRO_VERSION;
 use tracing::debug;
 
 use crate::args::ServerTargetArgs;
-use crate::local_server;
 
 pub(crate) fn load_settings() -> anyhow::Result<SettingsLayer> {
     load_settings_with_config_and_storage_dir(None, None)
@@ -60,9 +59,8 @@ fn cli_target_from_settings(settings: &CliNamespace) -> Option<String> {
     }
 }
 
-fn configured_server_target(settings: &SettingsLayer) -> Result<Option<ServerTarget>> {
-    let user_settings = UserSettingsBuilder::from_layer(settings)?;
-    let Some(value) = cli_target_from_settings(&user_settings.cli) else {
+fn configured_server_target(settings: &UserSettings) -> Result<Option<ServerTarget>> {
+    let Some(value) = cli_target_from_settings(&settings.cli) else {
         return Ok(None);
     };
     parse_server_target(&value).map(Some)
@@ -70,13 +68,6 @@ fn configured_server_target(settings: &SettingsLayer) -> Result<Option<ServerTar
 
 pub(crate) fn default_server_target() -> ServerTarget {
     ServerTarget::unix_socket_path(default_socket_path()).expect("default socket path is absolute")
-}
-
-#[deprecated(
-    note = "use local_server::storage_dir for lifecycle; PR commands must move to server-side API"
-)]
-pub(crate) fn storage_dir(settings: &SettingsLayer) -> anyhow::Result<PathBuf> {
-    local_server::storage_dir(settings)
 }
 
 fn parse_server_target(value: &str) -> Result<ServerTarget> {
@@ -89,14 +80,14 @@ fn explicit_server_target(args: &ServerTargetArgs) -> Result<Option<ServerTarget
 
 pub(crate) fn resolve_nondefault_server_target(
     args: &ServerTargetArgs,
-    settings: &SettingsLayer,
+    settings: &UserSettings,
 ) -> Result<Option<ServerTarget>> {
     Ok(explicit_server_target(args)?.or(configured_server_target(settings)?))
 }
 
 pub(crate) fn resolve_server_target(
     args: &ServerTargetArgs,
-    settings: &SettingsLayer,
+    settings: &UserSettings,
 ) -> Result<ServerTarget> {
     Ok(resolve_nondefault_server_target(args, settings)?.unwrap_or_else(default_server_target))
 }
@@ -112,16 +103,16 @@ pub(crate) fn cli_http_client_builder() -> fabro_http::HttpClientBuilder {
 }
 
 #[cfg(test)]
-#[allow(
-    deprecated,
-    reason = "the storage_dir tests are exercising the deprecated helper by definition"
-)]
 mod tests {
-    use fabro_config::parse_settings_layer;
+    use std::path::PathBuf;
+
     use fabro_config::user::default_storage_dir;
+    use fabro_config::{UserSettingsBuilder, parse_settings_layer};
+    use fabro_types::UserSettings;
 
     use super::*;
     use crate::args::ServerTargetArgs;
+    use crate::local_server;
 
     fn server_target_args(value: Option<&str>) -> ServerTargetArgs {
         ServerTargetArgs {
@@ -129,7 +120,11 @@ mod tests {
         }
     }
 
-    fn parse_v2(source: &str) -> SettingsLayer {
+    fn parse_user_settings(source: &str) -> UserSettings {
+        UserSettingsBuilder::from_toml(source).expect("fixture should resolve")
+    }
+
+    fn parse_layer(source: &str) -> SettingsLayer {
         parse_settings_layer(source).expect("fixture should parse")
     }
 
@@ -161,7 +156,7 @@ mod tests {
 
     #[test]
     fn resolve_server_target_uses_configured_server_target() {
-        let settings = parse_v2(
+        let settings = parse_user_settings(
             r#"
 _version = 1
 
@@ -178,7 +173,7 @@ url = "https://config.example.com"
 
     #[test]
     fn resolve_server_target_explicit_target_overrides_config_target() {
-        let settings = parse_v2(
+        let settings = parse_user_settings(
             r#"
 _version = 1
 
@@ -199,7 +194,7 @@ url = "https://config.example.com"
 
     #[test]
     fn resolve_server_target_defaults_to_default_unix_socket_target() {
-        let settings = SettingsLayer::default();
+        let settings = UserSettings::default();
         assert_eq!(
             resolve_server_target(&server_target_args(None), &settings).unwrap(),
             ServerTarget::unix_socket_path(dirs::home_dir().unwrap().join(".fabro/fabro.sock"))
@@ -209,7 +204,7 @@ url = "https://config.example.com"
 
     #[test]
     fn explicit_server_target_overrides_config_target() {
-        let settings = parse_v2(
+        let settings = parse_user_settings(
             r#"
 _version = 1
 
@@ -241,12 +236,15 @@ url = "https://config.example.com"
     fn storage_dir_defaults_without_server_auth_methods() {
         let settings = SettingsLayer::default();
 
-        assert_eq!(storage_dir(&settings).unwrap(), default_storage_dir());
+        assert_eq!(
+            local_server::storage_dir(&settings).unwrap(),
+            default_storage_dir()
+        );
     }
 
     #[test]
     fn storage_dir_uses_explicit_server_storage_root() {
-        let settings = parse_v2(
+        let settings = parse_layer(
             r#"
 _version = 1
 
@@ -255,12 +253,15 @@ root = "/srv/fabro"
 "#,
         );
 
-        assert_eq!(storage_dir(&settings).unwrap(), PathBuf::from("/srv/fabro"));
+        assert_eq!(
+            local_server::storage_dir(&settings).unwrap(),
+            PathBuf::from("/srv/fabro")
+        );
     }
 
     #[test]
     fn storage_dir_resolves_env_interpolated_root() {
-        let settings = parse_v2(
+        let settings = parse_layer(
             r#"
 _version = 1
 

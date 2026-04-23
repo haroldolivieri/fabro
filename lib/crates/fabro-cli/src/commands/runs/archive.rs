@@ -3,7 +3,6 @@ use anyhow::{Result, bail};
 use super::short_run_id;
 use crate::args::{RunsArchiveArgs, RunsUnarchiveArgs};
 use crate::command_context::CommandContext;
-use crate::server_client;
 use crate::shared::print_json_pretty;
 
 pub(crate) async fn archive_command(
@@ -11,14 +10,7 @@ pub(crate) async fn archive_command(
     base_ctx: &CommandContext,
 ) -> Result<()> {
     let ctx = base_ctx.with_target(&args.server)?;
-    run_bulk(
-        Action::Archive,
-        &args.runs,
-        ctx.server().await?.as_ref(),
-        ctx.json_output(),
-        ctx.printer(),
-    )
-    .await
+    run_bulk(Action::Archive, &args.runs, &ctx).await
 }
 
 pub(crate) async fn unarchive_command(
@@ -26,14 +18,7 @@ pub(crate) async fn unarchive_command(
     base_ctx: &CommandContext,
 ) -> Result<()> {
     let ctx = base_ctx.with_target(&args.server)?;
-    run_bulk(
-        Action::Unarchive,
-        &args.runs,
-        ctx.server().await?.as_ref(),
-        ctx.json_output(),
-        ctx.printer(),
-    )
-    .await
+    run_bulk(Action::Unarchive, &args.runs, &ctx).await
 }
 
 #[derive(Clone, Copy)]
@@ -55,13 +40,11 @@ impl Action {
     }
 }
 
-async fn run_bulk(
-    action: Action,
-    identifiers: &[String],
-    client: &server_client::Client,
-    json: bool,
-    printer: fabro_util::printer::Printer,
-) -> Result<()> {
+async fn run_bulk(action: Action, identifiers: &[String], ctx: &CommandContext) -> Result<()> {
+    let client = ctx.server().await?;
+    let client = client.as_ref();
+    let json = ctx.json_output();
+    let printer = ctx.printer();
     let mut had_errors = false;
     let mut changed = Vec::new();
     let mut errors = Vec::new();

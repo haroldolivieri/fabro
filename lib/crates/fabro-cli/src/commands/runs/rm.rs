@@ -8,21 +8,14 @@ use crate::shared::print_json_pretty;
 
 pub(crate) async fn remove_command(args: &RunsRemoveArgs, base_ctx: &CommandContext) -> Result<()> {
     let ctx = base_ctx.with_target(&args.server)?;
-    remove_from(
-        args,
-        ctx.server().await?.as_ref(),
-        ctx.json_output(),
-        ctx.printer(),
-    )
-    .await
+    remove_from(args, &ctx).await
 }
 
-async fn remove_from(
-    args: &RunsRemoveArgs,
-    client: &server_client::Client,
-    json: bool,
-    printer: fabro_util::printer::Printer,
-) -> Result<()> {
+async fn remove_from(args: &RunsRemoveArgs, ctx: &CommandContext) -> Result<()> {
+    let client = ctx.server().await?;
+    let client = client.as_ref();
+    let json = ctx.json_output();
+    let printer = ctx.printer();
     let mut had_errors = false;
     let mut removed = Vec::new();
     let mut errors = Vec::new();

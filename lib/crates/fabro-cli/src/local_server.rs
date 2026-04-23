@@ -7,10 +7,16 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use fabro_config::ServerSettingsBuilder;
 use fabro_config::bind::BindRequest;
+use fabro_config::{ServerSettingsBuilder, parse_settings_layer};
 use fabro_types::ServerSettings;
 use fabro_types::settings::{ServerAuthMethod, SettingsLayer};
+
+pub(crate) fn storage_dir_from_toml(source: &str) -> Result<PathBuf> {
+    let settings = parse_settings_layer(source)
+        .map_err(|err| anyhow::anyhow!("failed to parse settings file: {err}"))?;
+    storage_dir(&settings)
+}
 
 pub(crate) fn storage_dir(settings: &SettingsLayer) -> Result<PathBuf> {
     storage_dir_with_lookup(settings, &|name| std::env::var(name).ok())
@@ -59,4 +65,33 @@ pub(crate) fn config_log_level(settings: &SettingsLayer) -> Option<String> {
 
 fn resolved_server_settings(settings: &SettingsLayer) -> Result<ServerSettings> {
     ServerSettingsBuilder::from_layer(settings).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::storage_dir_from_toml;
+
+    #[test]
+    fn storage_dir_from_toml_reads_explicit_root_without_full_server_resolution() {
+        let path = storage_dir_from_toml(
+            r#"
+_version = 1
+
+[server.storage]
+root = "/srv/fabro"
+"#,
+        )
+        .expect("storage root should resolve");
+
+        assert_eq!(path, PathBuf::from("/srv/fabro"));
+    }
+
+    #[test]
+    fn storage_dir_from_toml_defaults_without_auth_methods() {
+        let path = storage_dir_from_toml("_version = 1\n").expect("default storage dir");
+
+        assert_eq!(path, fabro_config::user::default_storage_dir());
+    }
 }

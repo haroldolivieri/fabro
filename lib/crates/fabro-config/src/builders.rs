@@ -2,7 +2,8 @@ use std::fmt;
 use std::path::Path;
 
 use fabro_types::settings::{
-    CliLayer, Combine, ProjectNamespace, RunLayer, RunNamespace, SettingsLayer, WorkflowNamespace,
+    CliLayer, Combine, ProjectNamespace, RunLayer, RunNamespace, ServerLayer, SettingsLayer,
+    WorkflowNamespace,
 };
 use fabro_types::{ServerSettings, UserSettings, WorkflowSettings};
 
@@ -186,6 +187,65 @@ impl RunSettingsBuilder {
             ..SettingsLayer::default()
         })
     }
+}
+
+#[derive(Clone)]
+pub struct ServerRuntimeSettings {
+    pub server_settings:       ServerSettings,
+    pub manifest_run_defaults: RunLayer,
+    pub manifest_run_settings: std::result::Result<RunNamespace, String>,
+}
+
+pub fn load_server_runtime_settings(
+    path: Option<&Path>,
+    run_overrides: Option<RunLayer>,
+    server_overrides: Option<ServerLayer>,
+) -> Result<ServerRuntimeSettings> {
+    let layer = match path {
+        Some(path) => load_settings_path(path)?,
+        None => load_settings_config(None)?,
+    };
+    resolve_server_runtime_settings(layer, run_overrides, server_overrides)
+}
+
+#[cfg(test)]
+pub fn server_runtime_settings_from_toml(
+    source: &str,
+    run_overrides: Option<RunLayer>,
+    server_overrides: Option<ServerLayer>,
+) -> Result<ServerRuntimeSettings> {
+    let layer = parse_settings_layer(source)
+        .map_err(|err| Error::parse("Failed to parse settings file", err))?;
+    resolve_server_runtime_settings(layer, run_overrides, server_overrides)
+}
+
+fn resolve_server_runtime_settings(
+    mut layer: SettingsLayer,
+    run_overrides: Option<RunLayer>,
+    server_overrides: Option<ServerLayer>,
+) -> Result<ServerRuntimeSettings> {
+    if let Some(run) = run_overrides {
+        layer = SettingsLayer {
+            run: Some(run),
+            ..SettingsLayer::default()
+        }
+        .combine(layer);
+    }
+    if let Some(server) = server_overrides {
+        layer = SettingsLayer {
+            server: Some(server),
+            ..SettingsLayer::default()
+        }
+        .combine(layer);
+    }
+
+    let manifest_run_defaults = layer.run.clone().unwrap_or_default();
+    Ok(ServerRuntimeSettings {
+        server_settings: ServerSettingsBuilder::from_layer(&layer)?,
+        manifest_run_settings: RunSettingsBuilder::from_run_layer(&manifest_run_defaults)
+            .map_err(|err| err.to_string()),
+        manifest_run_defaults,
+    })
 }
 
 #[derive(Clone, Debug, Default)]

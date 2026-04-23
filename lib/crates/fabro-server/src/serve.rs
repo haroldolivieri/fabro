@@ -6,15 +6,17 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Args;
 use fabro_config::bind::{self, Bind, BindRequest};
-use fabro_config::user::load_settings_config;
-use fabro_config::{ServerSettingsBuilder, Storage};
+use fabro_config::{Storage, load_config_file, load_server_runtime_settings};
 use fabro_install::{OBJECT_STORE_ACCESS_KEY_ID_ENV, OBJECT_STORE_SECRET_ACCESS_KEY_ENV};
 use fabro_sandbox::SandboxProvider;
 use fabro_types::ServerSettings;
-use fabro_types::settings::server::{GithubIntegrationStrategy, WebhookStrategy};
+#[cfg(test)]
+use fabro_types::settings::SettingsLayer;
+use fabro_types::settings::run::{RunLayer, RunModelLayer, RunSandboxLayer};
+use fabro_types::settings::server::{GithubIntegrationStrategy, ServerWebLayer, WebhookStrategy};
 use fabro_types::settings::{
-    GithubIntegrationSettings, InterpString, ObjectStoreSettings, ServerListenSettings,
-    ServerNamespace, SettingsLayer,
+    GithubIntegrationSettings, InterpString, ObjectStoreSettings, ServerLayer,
+    ServerListenSettings, ServerNamespace,
 };
 use fabro_util::terminal::Styles;
 use object_store::aws::{AmazonS3Builder, AmazonS3ConfigKey};
@@ -31,8 +33,8 @@ use crate::canonical_origin::resolve_canonical_origin;
 use crate::github_webhooks::{TailscaleFunnelManager, WEBHOOK_ROUTE, WEBHOOK_SECRET_ENV};
 use crate::ip_allowlist::{GitHubMetaResolver, IpAllowlistConfig, resolve_ip_allowlist_config};
 use crate::server::{
-    AppState, AppStateConfig, RouterOptions, build_app_state, build_router_with_options,
-    reconcile_incomplete_runs_on_startup, resolve_app_state_settings, shutdown_active_workers,
+    AppState, AppStateConfig, ResolvedAppStateSettings, RouterOptions, build_app_state,
+    build_router_with_options, reconcile_incomplete_runs_on_startup, shutdown_active_workers,
     spawn_scheduler,
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
@@ -158,30 +160,41 @@ pub struct ServeArgs {
     pub watch_web: bool,
 }
 
-fn apply_serve_overrides(base: &SettingsLayer, args: &ServeArgs) -> SettingsLayer {
+fn serve_overrides(args: &ServeArgs) -> (Option<RunLayer>, Option<ServerLayer>) {
     use fabro_types::settings::interp::InterpString;
-    use fabro_types::settings::run::{RunLayer, RunModelLayer, RunSandboxLayer};
-    use fabro_types::settings::server::{ServerLayer, ServerWebLayer};
-    let mut settings = base.clone();
+    let mut run = RunLayer::default();
+    let mut server = ServerLayer::default();
     if args.web || args.no_web {
-        let server = settings.server.get_or_insert_with(ServerLayer::default);
         let web = server.web.get_or_insert_with(ServerWebLayer::default);
         web.enabled = Some(args.web);
     }
     if let Some(ref model) = args.model {
-        let run = settings.run.get_or_insert_with(RunLayer::default);
         let model_layer = run.model.get_or_insert_with(RunModelLayer::default);
         model_layer.name = Some(InterpString::parse(model));
     }
     if let Some(ref provider) = args.provider {
-        let run = settings.run.get_or_insert_with(RunLayer::default);
         let model_layer = run.model.get_or_insert_with(RunModelLayer::default);
         model_layer.provider = Some(InterpString::parse(provider));
     }
     if let Some(sandbox) = args.sandbox {
-        let run = settings.run.get_or_insert_with(RunLayer::default);
         let sandbox_layer = run.sandbox.get_or_insert_with(RunSandboxLayer::default);
         sandbox_layer.provider = Some(sandbox.to_string());
+    }
+    (
+        (run != RunLayer::default()).then_some(run),
+        (server != ServerLayer::default()).then_some(server),
+    )
+}
+
+#[cfg(test)]
+fn apply_serve_overrides(base: &SettingsLayer, args: &ServeArgs) -> SettingsLayer {
+    let (run, server) = serve_overrides(args);
+    let mut settings = base.clone();
+    if let Some(run) = run {
+        settings.run = Some(run);
+    }
+    if let Some(server) = server {
+        settings.server = Some(server);
     }
     settings
 }
@@ -464,9 +477,9 @@ pub fn resolve_runtime_server_settings_for_start(
     args: &ServeArgs,
     data_dir: &Path,
 ) -> anyhow::Result<ServerNamespace> {
-    let disk_settings = load_settings_config(args.config.as_deref())?;
-    let effective_settings = apply_serve_overrides(&disk_settings, args);
-    let mut resolved = resolve_app_state_settings(&effective_settings)?;
+    let (run_overrides, server_overrides) = serve_overrides(args);
+    let mut resolved =
+        load_server_runtime_settings(args.config.as_deref(), run_overrides, server_overrides)?;
     resolved.server_settings = resolved.server_settings.with_storage_override(data_dir);
     Ok(resolved.server_settings.server)
 }
@@ -577,8 +590,14 @@ where
     #[cfg(debug_assertions)]
     let watch_web = args.watch_web;
     let config_path = args.config.clone();
-    let disk_settings = load_settings_config(config_path.as_deref())?;
-    let disk_server_settings = ServerSettingsBuilder::from_layer(&disk_settings)?.server;
+    let disk_document: toml::Table = load_config_file(config_path.as_deref(), "settings.toml")?;
+    let (run_overrides, server_overrides) = serve_overrides(&args);
+    let mut runtime_settings = load_server_runtime_settings(
+        config_path.as_deref(),
+        run_overrides.clone(),
+        server_overrides.clone(),
+    )?;
+    let disk_server_settings = runtime_settings.server_settings.server.clone();
     let data_dir = match storage_dir_override {
         Some(path) => path,
         None => resolve_interp_path(&disk_server_settings.storage.root)?,
@@ -586,12 +605,14 @@ where
     let storage = Storage::new(&data_dir);
     let vault_path = storage.secrets_path();
     let server_env_path = storage.runtime_directory().env_path();
-    // Shared config for live reloading
-    let effective_settings = apply_serve_overrides(&disk_settings, &args);
-    let mut resolved_app_settings = resolve_app_state_settings(&effective_settings)?;
-    resolved_app_settings.server_settings = resolved_app_settings
+    runtime_settings.server_settings = runtime_settings
         .server_settings
         .with_storage_override(&data_dir);
+    let resolved_app_settings = ResolvedAppStateSettings {
+        server_settings:       runtime_settings.server_settings,
+        manifest_run_defaults: runtime_settings.manifest_run_defaults,
+        manifest_run_settings: runtime_settings.manifest_run_settings,
+    };
     let resolved_server_settings = resolved_app_settings.server_settings.server.clone();
     let (auth_mode, server_secrets) = resolve_startup(
         &server_env_path,
@@ -603,7 +624,7 @@ where
         &resolved_app_settings.server_settings,
         args.bind.as_deref(),
     )?;
-    let shared_settings = Arc::new(RwLock::new(effective_settings));
+    let shared_settings = Arc::new(RwLock::new(disk_document));
     std::fs::create_dir_all(&data_dir)
         .with_context(|| format!("creating data directory {}", data_dir.display()))?;
     let max_concurrent_runs = resolved_server_settings.scheduler.max_concurrent_runs;
@@ -708,39 +729,52 @@ where
     let state_for_poll = Arc::clone(&state);
     let shared_settings_for_poll = Arc::clone(&shared_settings);
     let config_path_for_poll = config_path.clone();
-    let args_for_poll = args.clone();
+    let run_overrides_for_poll = run_overrides.clone();
+    let server_overrides_for_poll = server_overrides.clone();
     let data_dir_for_poll = data_dir.clone();
     tokio::spawn(async move {
         let mut interval = interval(Duration::from_secs(5));
         interval.tick().await; // skip first immediate tick
         loop {
             interval.tick().await;
-            match load_settings_config(config_path_for_poll.as_deref()) {
+            match load_config_file::<toml::Table>(config_path_for_poll.as_deref(), "settings.toml")
+            {
                 Ok(new_disk_settings) => {
-                    let effective = apply_serve_overrides(&new_disk_settings, &args_for_poll);
                     let changed = {
                         let cfg = shared_settings_for_poll
                             .read()
                             .expect("config lock poisoned");
-                        *cfg != effective
+                        *cfg != new_disk_settings
                     };
                     if changed {
-                        let resolved =
-                            resolve_app_state_settings(&effective).map(|mut resolved| {
-                                resolved.server_settings = resolved
-                                    .server_settings
-                                    .with_storage_override(&data_dir_for_poll);
-                                resolved
-                            });
-                        match resolved
-                            .and_then(|resolved| state_for_poll.replace_runtime_settings(resolved))
-                        {
-                            Ok(()) => {
-                                *shared_settings_for_poll
-                                    .write()
-                                    .expect("config lock poisoned") = effective;
-                                info!("Server config reloaded");
+                        let resolved = load_server_runtime_settings(
+                            config_path_for_poll.as_deref(),
+                            run_overrides_for_poll.clone(),
+                            server_overrides_for_poll.clone(),
+                        )
+                        .map(|mut resolved| {
+                            resolved.server_settings = resolved
+                                .server_settings
+                                .with_storage_override(&data_dir_for_poll);
+                            ResolvedAppStateSettings {
+                                server_settings:       resolved.server_settings,
+                                manifest_run_defaults: resolved.manifest_run_defaults,
+                                manifest_run_settings: resolved.manifest_run_settings,
                             }
+                        });
+                        match resolved {
+                            Ok(resolved) => match state_for_poll.replace_runtime_settings(resolved)
+                            {
+                                Ok(()) => {
+                                    *shared_settings_for_poll
+                                        .write()
+                                        .expect("config lock poisoned") = new_disk_settings;
+                                    info!("Server config reloaded");
+                                }
+                                Err(err) => {
+                                    warn!(error = %err, "Rejected reloaded server config, keeping previous");
+                                }
+                            },
                             Err(err) => {
                                 warn!(error = %err, "Rejected reloaded server config, keeping previous");
                             }

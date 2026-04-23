@@ -73,21 +73,10 @@ pub(crate) async fn dispatch(cmd: RunCommands, base_ctx: &CommandContext) -> Res
         RunCommands::RunWorker(RunWorkerArgs {
             server,
             storage_dir,
-            artifact_upload_token,
             run_dir,
             run_id,
             mode,
-        }) => {
-            runner::execute(
-                run_id,
-                server,
-                storage_dir,
-                artifact_upload_token,
-                run_dir,
-                mode,
-            )
-            .await
-        }
+        }) => runner::execute(run_id, server, storage_dir, run_dir, mode).await,
         RunCommands::Diff(args) => diff::run(args, base_ctx).await,
         RunCommands::Logs(args) => {
             let styles = Styles::detect_stdout();

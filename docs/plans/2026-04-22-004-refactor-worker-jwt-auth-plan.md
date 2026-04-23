@@ -1,7 +1,7 @@
 ---
 title: "refactor: Server-issued per-run JWT for worker subprocess auth"
 type: refactor
-status: active
+status: completed
 date: 2026-04-22
 deepened: 2026-04-22
 ---
@@ -178,7 +178,7 @@ sequenceDiagram
 
 ## Implementation Units
 
-- [ ] **Unit 1: Worker JWT primitives (claims, keys, mint)**
+- [x] **Unit 1: Worker JWT primitives (claims, keys, mint)**
 
 **Goal:** Server can mint a per-run worker JWT signed with a key derived from `SESSION_SECRET`. No callers yet.
 
@@ -222,7 +222,7 @@ sequenceDiagram
 
 ---
 
-- [ ] **Unit 2: Server `AuthorizeRunScoped` extractor family + client `Credential::Worker` variant**
+- [x] **Unit 2: Server `AuthorizeRunScoped` extractor family + client `Credential::Worker` variant**
 
 **Goal:** Three typed `FromRequestParts` extractors (`AuthorizeRunScoped`, `AuthorizeRunBlob`, `AuthorizeStageArtifact`) accept worker token (run-id-bound) OR fall back to user JWT. Client crate gains a typed worker credential with no `Display` and redacted `Debug`.
 
@@ -277,7 +277,7 @@ sequenceDiagram
 
 ---
 
-- [ ] **Unit 3: Wire worker-touched routes through the `AuthorizeRunScoped` extractor family; replace artifact-upload-token at the spawn**
+- [x] **Unit 3: Wire worker-touched routes through the `AuthorizeRunScoped` extractor family; replace artifact-upload-token at the spawn**
 
 **Goal:** Each of the 7 worker-touched routes accepts the worker token. Server spawn injects `FABRO_WORKER_TOKEN` env var. Old artifact-upload-token machinery deleted atomically. Lifecycle/admin/SSE routes are NOT touched and continue to require user JWT.
 
@@ -375,7 +375,7 @@ sequenceDiagram
 
 ---
 
-- [ ] **Unit 4: Worker (CLI) — use injected worker token from env, stop reading `AuthStore`**
+- [x] **Unit 4: Worker (CLI) — use injected worker token from env, stop reading `AuthStore`**
 
 **Goal:** Worker subprocess reads its credential from `FABRO_WORKER_TOKEN` env at startup, uses it as its sole bearer for every server call, and never constructs `AuthStore::default()`. The artifact uploader holds the same token string in a per-call bearer field (the client's upload methods require a per-call bearer argument today).
 
@@ -434,7 +434,7 @@ The spawn site that runs user-supplied workflow stage commands must NOT see `FAB
 
 ---
 
-- [ ] **Unit 5: Stamp `system:worker` actor on worker-emitted events (worker-side sink wrapper)**
+- [x] **Unit 5: Stamp `system:worker` actor on worker-emitted events (worker-side sink wrapper)**
 
 **Goal:** Events the worker emits without a typed actor get a `system:worker` stamp at the *worker-side sink layer*. User identity stays on the run record (`RunSpec.provenance.subject`), where it already lives.
 
@@ -481,7 +481,7 @@ The spawn site that runs user-supplied workflow stage commands must NOT see `FAB
 
 ---
 
-- [ ] **Unit 6: End-to-end regression — github-only worker run with no `~/.fabro/auth.json`**
+- [x] **Unit 6: End-to-end regression — github-only worker run with no `~/.fabro/auth.json`**
 
 **Goal:** Lock in the bug fix: a github-only deployment can spawn a worker that completes a run, with no user OAuth artifact present on the worker host. Worker authenticates using only `FABRO_WORKER_TOKEN`.
 

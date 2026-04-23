@@ -35,6 +35,16 @@ static HOOK_RESPONSE_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     })
 });
 
+const WORKER_SECRET_ENV_DENYLIST: &[&str] = &[
+    "FABRO_WORKER_TOKEN",
+    "SESSION_SECRET",
+    "FABRO_JWT_PRIVATE_KEY",
+    "FABRO_JWT_PUBLIC_KEY",
+    "GITHUB_APP_PRIVATE_KEY",
+    "GITHUB_APP_CLIENT_SECRET",
+    "GITHUB_APP_WEBHOOK_SECRET",
+];
+
 fn duration_ms(duration: std::time::Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
@@ -77,6 +87,12 @@ where
 pub struct HookExecutorImpl;
 
 impl HookExecutorImpl {
+    fn scrub_worker_secret_env(cmd: &mut TokioCommand) {
+        for key in WORKER_SECRET_ENV_DENYLIST {
+            cmd.env_remove(key);
+        }
+    }
+
     /// Parse a hook decision from JSON stdout and exit code.
     fn parse_decision(exit_code: i32, stdout: &str) -> HookDecision {
         if exit_code == 0 {
@@ -189,6 +205,7 @@ impl HookExecutorImpl {
             if let Some(wd) = work_dir {
                 cmd.current_dir(wd);
             }
+            Self::scrub_worker_secret_env(&mut cmd);
             for (k, v) in &env_vars {
                 cmd.env(k, v);
             }
@@ -838,6 +855,24 @@ mod tests {
         let sandbox = make_sandbox();
         let result = executor.execute(&def, &ctx, sandbox, None).await;
         assert_eq!(result.decision, HookDecision::Proceed);
+    }
+
+    #[test]
+    fn host_command_scrubs_worker_secret_env() {
+        let mut cmd = TokioCommand::new("sh");
+        HookExecutorImpl::scrub_worker_secret_env(&mut cmd);
+
+        let removed = cmd
+            .as_std()
+            .get_envs()
+            .filter_map(|(name, value)| {
+                (value.is_none()).then(|| name.to_string_lossy().into_owned())
+            })
+            .collect::<Vec<_>>();
+
+        for key in WORKER_SECRET_ENV_DENYLIST {
+            assert!(removed.iter().any(|name| name == key));
+        }
     }
 
     #[tokio::test]

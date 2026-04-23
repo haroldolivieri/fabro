@@ -52,9 +52,17 @@ pub(crate) async fn connect_server_target(target: &ServerTarget) -> Result<Clien
     connect_target_api_client_bundle(target).await
 }
 
-pub(crate) async fn connect_server_target_direct(target: &str) -> Result<Client> {
-    let target = target.parse::<ServerTarget>()?;
-    connect_server_target(&target).await
+pub(crate) async fn connect_server_target_with_bearer(
+    target: &ServerTarget,
+    bearer: &str,
+) -> Result<Client> {
+    build_client(
+        target.clone(),
+        Some(Credential::Worker(bearer.to_owned())),
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn connect_server_with_settings(

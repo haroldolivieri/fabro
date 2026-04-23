@@ -101,12 +101,9 @@ fn build_conclusion_from_parts(
     run_duration_ms: u64,
     final_git_commit_sha: Option<String>,
 ) -> Conclusion {
-    // Dedupe by node id: looping workflows push a duplicate into
-    // `completed_nodes` on every revisit, but `node_outcomes`,
-    // `node_retries`, and `stage_durations` are all keyed by node_id with
-    // overwrite semantics, so duplicate rows would carry identical
-    // (latest-visit) values. One row per unique node keeps the table
-    // consistent with the deduped `billing` total below.
+    // Looping workflows revisit nodes; `completed_nodes` accumulates duplicates
+    // while the other checkpoint maps are keyed by node_id. Dedupe to one row
+    // per node so the stages table matches the deduped billing total.
     let (stages, total_retries) = if let Some(cp) = checkpoint {
         let mut stages = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -152,11 +149,8 @@ fn build_conclusion_from_parts(
     }
 }
 
-/// Write a finalize projection snapshot commit to the metadata branch.
-///
-/// `conclusion` is injected into the projection copy: the terminal event
-/// hasn't been emitted yet (FINALIZE emits it after this commit lands), so
-/// the run store's `projection.conclusion` is still `None`.
+/// `conclusion` is injected because the terminal event hasn't been emitted
+/// yet — the run store's `projection.conclusion` is still `None` at this point.
 pub async fn write_finalize_commit(
     run_options: &RunOptions,
     run_store: &RunStoreHandle,
@@ -198,12 +192,8 @@ pub async fn write_finalize_commit(
     .await;
 }
 
-/// Compute the diff between the run's base sha and the workspace head.
-///
-/// Failed and cancelled runs use a shorter timeout: a corrupted workspace
-/// must not stall the terminal event downstream consumers (Slack, SSE, CI
-/// hooks) are waiting for. The diff is still captured for cancelled runs so
-/// partial work stays visible after sandbox cleanup.
+/// Failed and cancelled runs use a shorter diff timeout so a corrupted
+/// workspace can't stall downstream consumers waiting on the terminal event.
 async fn compute_final_patch(
     run_options: &RunOptions,
     sandbox: &dyn fabro_agent::Sandbox,
@@ -230,13 +220,8 @@ async fn compute_final_patch(
     }
 }
 
-/// Billing aggregate for the run. Iterates `node_outcomes.values()` to give
-/// one entry per unique node — `completed_nodes` contains duplicates for
-/// looping workflows and would over-count the last visit's usage.
-///
-/// Used by both `build_conclusion_from_parts` (persisted into
-/// `Conclusion.billing`) and `build_terminal_event` so the metadata snapshot
-/// and the emitted `run.completed`/`run.failed` event can never disagree.
+/// Iterates `node_outcomes.values()` rather than `completed_nodes` to avoid
+/// over-counting the last visit's usage on looping workflows.
 pub(crate) fn billing_from_checkpoint(cp: &Checkpoint) -> Option<BilledTokenCounts> {
     let usage: Vec<_> = cp
         .node_outcomes
@@ -285,9 +270,6 @@ pub(crate) fn build_terminal_event(
         };
     }
 
-    // Err(Cancelled) was handled above, so Err here is a real failure: surface
-    // it directly without re-wrapping in Error::engine, which would double the
-    // "Engine error: " prefix.
     let error = match outcome {
         Err(err) => err.clone(),
         Ok(o) => Error::engine(
@@ -338,11 +320,8 @@ async fn cleanup_sandbox(
 /// FINALIZE phase: build conclusion, write the meta branch, emit the terminal
 /// `WorkflowRunCompleted`/`WorkflowRunFailed` event.
 ///
-/// The terminal event MUST be emitted from here, not from the executor's
-/// `on_run_end` lifecycle hook. Observers (CLI attach, daemon SSE) treat the
-/// event as the run's "done" signal — emitting it earlier means they can
-/// observe terminal state and act on it (e.g. delete the meta branch in
-/// recovery tests) before this function's writes are flushed.
+/// The terminal event is emitted here (not from `on_run_end`) so observers
+/// can't act on "done" before the meta branch writes are flushed.
 ///
 /// # Errors
 ///
@@ -361,27 +340,32 @@ pub async fn finalize(retroed: Retroed, options: &FinalizeOptions) -> Result<Con
     } = retroed;
 
     let (final_status, failure_reason, _run_status) = classify_engine_result(&outcome);
-    let conclusion = build_conclusion_from_store(
-        &options.run_store,
+
+    let events = options.run_store.list_events().await.unwrap_or_default();
+    let stage_durations = crate::extract_stage_durations_from_events(&events);
+    let artifact_count = events
+        .iter()
+        .filter(|envelope| matches!(envelope.event.body, EventBody::ArtifactCaptured(_)))
+        .count();
+    let checkpoint = options
+        .run_store
+        .state()
+        .await
+        .ok()
+        .and_then(|state| state.checkpoint);
+    let conclusion = build_conclusion_from_parts(
+        checkpoint.as_ref(),
+        &stage_durations,
         final_status.clone(),
         failure_reason,
         duration_ms,
         options.last_git_sha.clone(),
-    )
-    .await;
+    );
 
     let final_patch = compute_final_patch(&run_options, &*sandbox, final_status, &emitter).await;
 
     write_finalize_commit(&run_options, &options.run_store, &conclusion).await;
 
-    let artifact_count = options
-        .run_store
-        .list_events()
-        .await
-        .unwrap_or_default()
-        .iter()
-        .filter(|envelope| matches!(envelope.event.body, EventBody::ArtifactCaptured(_)))
-        .count();
     let terminal_event = build_terminal_event(
         &outcome,
         duration_ms,

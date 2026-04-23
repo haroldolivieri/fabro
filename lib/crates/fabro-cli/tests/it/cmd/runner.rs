@@ -917,7 +917,7 @@ retros = true
         .expect("retro.completed should be present");
     assert!(
         retro_completed_index < run_completed_index,
-        "retro.completed must precede run.completed: run.completed is the terminal event and retro runs before FINALIZE"
+        "retro.completed must precede run.completed"
     );
 }
 

@@ -788,8 +788,6 @@ async fn execute_cancelled_mid_run_persists_cancelled_status() {
 
     let executed = execute_test_run_with_options(run_options, g, Some(Arc::new(registry))).await;
 
-    // The status update is driven by the terminal event, which FINALIZE emits.
-    // This test only runs EXECUTE, so we assert on the cancellation outcome.
     assert!(matches!(executed.outcome, Err(Error::Cancelled)));
 }
 

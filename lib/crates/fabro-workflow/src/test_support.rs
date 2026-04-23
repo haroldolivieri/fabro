@@ -20,16 +20,17 @@ use crate::pipeline::{billing_from_checkpoint, build_terminal_event};
 use crate::records::Checkpoint;
 use crate::run_options::RunOptions;
 
-/// FINALIZE emits the terminal event in production. These helpers stop at
-/// EXECUTE, so they emit it here to keep test consumers seeing the same
-/// end-of-run signal — including billing derived from recorded node usage.
+/// These helpers stop at EXECUTE, so they emit the terminal event here to
+/// keep test consumers seeing the same end-of-run signal as production
+/// (FINALIZE).
 ///
-/// Flushes `store_logger` first: `StoreProgressLogger` forwards events
-/// through an mpsc channel, so the projection returned by `run_store.state()`
-/// can still be missing `StageCompleted` entries when EXECUTE's `await`
-/// returns. Without this, billing reads from a stale checkpoint.
-async fn emit_test_terminal_event(executed: &Executed, store_logger: &StoreProgressLogger) {
-    store_logger.flush().await;
+/// The first flush is needed because `StoreProgressLogger` forwards events
+/// through an mpsc channel — without it, billing would read from a stale
+/// checkpoint. The second flush ensures the just-emitted terminal event is
+/// persisted before tests reopen the run store.
+async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
+    let executed = Box::pin(pipeline::execute(initialized.initialized)).await;
+    initialized.store_logger.flush().await;
     let state = executed.run_store.state().await.ok();
     let billing = state
         .as_ref()
@@ -44,6 +45,8 @@ async fn emit_test_terminal_event(executed: &Executed, store_logger: &StoreProgr
         billing,
     );
     executed.emitter.emit(&event);
+    initialized.store_logger.flush().await;
+    executed
 }
 
 pub fn test_store_dir(run_dir: &std::path::Path) -> PathBuf {
@@ -191,11 +194,7 @@ pub async fn run_graph(
         },
     )
     .await;
-    let executed = pipeline::execute(initialized.initialized).await;
-    emit_test_terminal_event(&executed, &initialized.store_logger).await;
-    // Tests often reopen the run store immediately after `run()` returns.
-    // Flush the async store logger first so they don't observe partial state.
-    initialized.store_logger.flush().await;
+    let executed = execute_and_emit_terminal(initialized).await;
     executed.outcome
 }
 
@@ -219,9 +218,7 @@ pub async fn run_graph_with_state(
         },
     )
     .await;
-    let executed = pipeline::execute(initialized.initialized).await;
-    emit_test_terminal_event(&executed, &initialized.store_logger).await;
-    initialized.store_logger.flush().await;
+    let executed = execute_and_emit_terminal(initialized).await;
     let outcome = executed.outcome?;
     let state = executed
         .run_store
@@ -253,9 +250,7 @@ pub async fn run_graph_with_hooks(
         },
     )
     .await;
-    let executed = pipeline::execute(initialized.initialized).await;
-    emit_test_terminal_event(&executed, &initialized.store_logger).await;
-    initialized.store_logger.flush().await;
+    let executed = execute_and_emit_terminal(initialized).await;
     executed.outcome
 }
 
@@ -281,9 +276,7 @@ pub async fn run_graph_with_hooks_and_state(
         },
     )
     .await;
-    let executed = pipeline::execute(initialized.initialized).await;
-    emit_test_terminal_event(&executed, &initialized.store_logger).await;
-    initialized.store_logger.flush().await;
+    let executed = execute_and_emit_terminal(initialized).await;
     let outcome = executed.outcome?;
     let state = executed
         .run_store
@@ -314,9 +307,7 @@ pub async fn run_graph_from_checkpoint(
         },
     )
     .await;
-    let executed = pipeline::execute(initialized.initialized).await;
-    emit_test_terminal_event(&executed, &initialized.store_logger).await;
-    initialized.store_logger.flush().await;
+    let executed = execute_and_emit_terminal(initialized).await;
     executed.outcome
 }
 
@@ -341,9 +332,7 @@ pub async fn run_graph_from_checkpoint_with_state(
         },
     )
     .await;
-    let executed = pipeline::execute(initialized.initialized).await;
-    emit_test_terminal_event(&executed, &initialized.store_logger).await;
-    initialized.store_logger.flush().await;
+    let executed = execute_and_emit_terminal(initialized).await;
     let outcome = executed.outcome?;
     let state = executed
         .run_store

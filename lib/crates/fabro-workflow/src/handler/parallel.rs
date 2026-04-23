@@ -19,6 +19,7 @@ use crate::millis_u64;
 use crate::outcome::{FailureCategory, FailureDetail, Outcome, OutcomeExt, StageStatus};
 use crate::run_dir::visit_from_context;
 use crate::sandbox_git::{GIT_REMOTE, git_checkpoint, git_merge_ff_only, git_remove_worktree};
+use crate::services::RunServices;
 
 /// Fans out execution to multiple branches concurrently.
 /// Each branch gets an isolated context clone and runs independently.
@@ -152,7 +153,7 @@ impl Handler for ParallelHandler {
         let parallel_stage_scope = StageScope::for_handler(context, &node.id);
         let parallel_group_id = StageId::new(node.id.clone(), parallel_stage_scope.visit);
 
-        services.emitter.emit_scoped(
+        services.run.emitter.emit_scoped(
             &Event::ParallelStarted {
                 node_id:      node.id.clone(),
                 visit:        parallel_stage_scope.visit,
@@ -169,7 +170,7 @@ impl Handler for ParallelHandler {
             let mut hook_ctx =
                 HookContext::new(HookEvent::ParallelStart, run_id, graph.name.clone());
             set_hook_node(&mut hook_ctx, node);
-            let _ = services.run_hooks(&hook_ctx).await;
+            let _ = services.run.run_hooks(&hook_ctx).await;
         }
         let max_parallel = node
             .attrs
@@ -184,7 +185,7 @@ impl Handler for ParallelHandler {
         // --- Git isolation: checkpoint "parallel base" before fan-out ---
         let base_sha: Option<String> = if let Some(ref gs) = git_state {
             let result = git_checkpoint(
-                &*services.sandbox,
+                &*services.run.sandbox,
                 &gs.run_id.to_string(),
                 &node.id,
                 "parallel_base",
@@ -239,7 +240,7 @@ impl Handler for ParallelHandler {
                 );
 
                 // Compute worktree path (each sandbox type knows its own path scheme)
-                let wt_path_str = services.sandbox.parallel_worktree_path(
+                let wt_path_str = services.run.sandbox.parallel_worktree_path(
                     run_dir,
                     &gs.run_id.to_string(),
                     &node.id,
@@ -254,8 +255,8 @@ impl Handler for ParallelHandler {
                     worktree_path:        wt_path_str.clone(),
                     skip_branch_creation: false,
                 };
-                let mut wt_sandbox = WorktreeSandbox::new(Arc::clone(&services.sandbox), wt_config);
-                wt_sandbox.set_event_callback(Arc::clone(&services.emitter).worktree_callback());
+                let mut wt_sandbox = WorktreeSandbox::new(Arc::clone(&services.run.sandbox), wt_config);
+                wt_sandbox.set_event_callback(Arc::clone(&services.run.emitter).worktree_callback());
                 wt_sandbox
                     .initialize()
                     .await
@@ -267,7 +268,7 @@ impl Handler for ParallelHandler {
                 let env: Arc<dyn Sandbox> = Arc::new(wt_sandbox);
                 (env, Some(wt_path))
             } else {
-                (Arc::clone(&services.sandbox), None)
+                (Arc::clone(&services.run.sandbox), None)
             };
 
             branch_setups.push(BranchSetup {
@@ -284,14 +285,15 @@ impl Handler for ParallelHandler {
         let mut handles = Vec::new();
         for setup in branch_setups {
             let registry = Arc::clone(&services.registry);
-            let emitter = Arc::clone(&services.emitter);
-            let hook_runner = services.hook_runner.clone();
-            let run_store = services.run_store.clone();
+            let emitter = Arc::clone(&services.run.emitter);
+            let hook_runner = services.run.hook_runner.clone();
+            let run_store = services.run.run_store.clone();
             let env = services.env.clone();
             let inputs = services.inputs.clone();
             let dry_run = services.dry_run;
-            let cancel_requested = services.cancel_requested.clone();
-            let provider = services.provider;
+            let cancel_requested = services.run.cancel_requested.clone();
+            let provider = services.run.provider;
+            let llm_source = Arc::clone(&services.run.llm_source);
             let workflow_path = services.workflow_path.clone();
             let workflow_bundle = services.workflow_bundle.clone();
             let graph = graph.clone();
@@ -354,17 +356,20 @@ impl Handler for ParallelHandler {
                 };
 
                 let branch_services = EngineServices {
+                    run: RunServices::new(
+                        run_store.clone(),
+                        Arc::clone(&emitter),
+                        Arc::clone(&setup.sandbox),
+                        hook_runner.clone(),
+                        cancel_requested,
+                        provider,
+                        llm_source,
+                    ),
                     registry: Arc::clone(&registry),
-                    emitter: Arc::clone(&emitter),
-                    sandbox: Arc::clone(&setup.sandbox),
-                    run_store: run_store.clone(),
                     git_state: std::sync::RwLock::new(None),
-                    hook_runner: hook_runner.clone(),
                     env: env.clone(),
                     inputs: inputs.clone(),
                     dry_run,
-                    cancel_requested,
-                    provider,
                     workflow_path,
                     workflow_bundle,
                 };
@@ -484,8 +489,9 @@ impl Handler for ParallelHandler {
             for result in &results {
                 if let Some(ref wt_path) = result.worktree_path {
                     let wt_str = wt_path.to_string_lossy().into_owned();
-                    git_remove_worktree(&*services.sandbox, &wt_str).await;
+                    git_remove_worktree(&*services.run.sandbox, &wt_str).await;
                     services
+                        .run
                         .emitter
                         .emit(&Event::GitWorktreeRemove { path: wt_str });
                 }
@@ -502,7 +508,7 @@ impl Handler for ParallelHandler {
             successful.sort_by(|a, b| a.id.cmp(&b.id));
             if let Some(winner) = successful.first() {
                 if let Some(sha) = winner.head_sha.as_ref() {
-                    git_merge_ff_only(&*services.sandbox, sha).await;
+                    git_merge_ff_only(&*services.run.sandbox, sha).await;
                 }
             }
         }
@@ -535,7 +541,7 @@ impl Handler for ParallelHandler {
         context.set(keys::PARALLEL_RESULTS, serde_json::json!(results_json));
         context.set(keys::PARALLEL_BRANCH_COUNT, serde_json::json!(total));
 
-        services.emitter.emit_scoped(
+        services.run.emitter.emit_scoped(
             &Event::ParallelCompleted {
                 node_id: node.id.clone(),
                 visit: parallel_stage_scope.visit,
@@ -554,7 +560,7 @@ impl Handler for ParallelHandler {
             let mut hook_ctx =
                 HookContext::new(HookEvent::ParallelComplete, run_id, graph.name.clone());
             set_hook_node(&mut hook_ctx, node);
-            let _ = services.run_hooks(&hook_ctx).await;
+            let _ = services.run.run_hooks(&hook_ctx).await;
         }
 
         // Evaluate join policy
@@ -689,13 +695,13 @@ mod tests {
     async fn parallel_handler_with_branches() {
         let store = test_store();
         let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-        let services = EngineServices {
-            emitter: Arc::new(crate::event::Emitter::new(fixtures::RUN_1)),
-            run_store: run_store.clone().into(),
-            ..EngineServices::test_default()
-        };
+        let mut services = EngineServices::test_default();
+        services.run = services
+            .run
+            .with_emitter(Arc::new(crate::event::Emitter::new(fixtures::RUN_1)))
+            .with_run_store(run_store.clone().into());
         let logger = crate::event::StoreProgressLogger::new(run_store.clone());
-        logger.register(services.emitter.as_ref());
+        logger.register(services.run.emitter.as_ref());
         let mut node = Node::new("par");
         node.attrs.insert(
             "shape".to_string(),
@@ -741,13 +747,13 @@ mod tests {
     async fn parallel_handler_stores_results_in_run_store() {
         let store = test_store();
         let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-        let services = EngineServices {
-            emitter: Arc::new(crate::event::Emitter::new(fixtures::RUN_1)),
-            run_store: run_store.clone().into(),
-            ..EngineServices::test_default()
-        };
+        let mut services = EngineServices::test_default();
+        services.run = services
+            .run
+            .with_emitter(Arc::new(crate::event::Emitter::new(fixtures::RUN_1)))
+            .with_run_store(run_store.clone().into());
         let logger = crate::event::StoreProgressLogger::new(run_store.clone());
-        logger.register(services.emitter.as_ref());
+        logger.register(services.run.emitter.as_ref());
         let mut node = Node::new("par");
         node.attrs.insert(
             "shape".to_string(),

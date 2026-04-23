@@ -10,6 +10,7 @@ use fabro_config::run::parse_run_config;
 use fabro_config::{effective_settings, parse_settings_layer};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
+use fabro_auth::auth_issue_message;
 use fabro_llm::Provider;
 use fabro_model::Catalog;
 use fabro_sandbox::config::{
@@ -35,7 +36,6 @@ use fabro_workflow::run_materialization::materialize_run;
 use fabro_workflow::workflow_bundle::{BundledWorkflow, WorkflowBundle};
 
 use crate::server::AppState;
-use crate::server_secrets::auth_issue_message;
 
 #[derive(Clone)]
 pub(crate) struct PreparedManifest {
@@ -352,7 +352,7 @@ async fn build_preflight_report(
     }
 
     let settings = &prepared.settings;
-    let configured_providers = state.provider_credentials.configured_providers().await;
+    let configured_providers = state.llm_source.configured_providers().await;
     let materialized = materialize_run(
         settings.clone(),
         graph,
@@ -566,7 +566,7 @@ async fn run_llm_check(
     let (model, provider) = resolve_model_provider(settings, graph, configured_providers);
     let default_provider = provider.as_deref().unwrap_or("anthropic");
 
-    match state.build_llm_client().await {
+    match state.resolve_llm_client().await {
         Ok(result) => {
             let configured = result
                 .client

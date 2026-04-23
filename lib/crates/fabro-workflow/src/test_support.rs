@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_agent::Sandbox;
+use fabro_auth::EnvCredentialSource;
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_store::{ArtifactStore, Database, RunProjection};
 use object_store::local::LocalFileSystem;
@@ -18,6 +19,7 @@ use crate::pipeline;
 use crate::pipeline::types::Initialized;
 use crate::records::Checkpoint;
 use crate::run_options::RunOptions;
+use crate::services::{EngineServices, RunServices};
 
 pub fn test_store_dir(run_dir: &std::path::Path) -> PathBuf {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -115,30 +117,36 @@ async fn initialized(
         initialized: Initialized {
             graph: graph.clone(),
             source: String::new(),
-            inputs: run_options
-                .settings
-                .run
-                .as_ref()
-                .and_then(|run| run.inputs.clone())
-                .unwrap_or_default(),
             run_options: run_options.clone(),
-            workflow_path: None,
-            workflow_bundle: None,
-            run_store: run_store.into(),
             checkpoint: options.checkpoint,
             seed_context: None,
-            emitter,
-            sandbox,
-            registry: Arc::new(registry),
             on_node: None,
             artifact_sink: Some(ArtifactSink::Store(artifact_store)),
             run_control: None,
-            hook_runner: options.hook_runner,
-            env: options.env,
-            dry_run: run_options.dry_run_enabled(),
-            llm_client: None,
+            engine: Arc::new(EngineServices {
+                run: RunServices::new(
+                    run_store.into(),
+                    emitter,
+                    sandbox,
+                    options.hook_runner,
+                    run_options.cancel_token.clone(),
+                    fabro_llm::Provider::Anthropic,
+                    Arc::new(EnvCredentialSource::new()),
+                ),
+                registry: Arc::new(registry),
+                git_state: std::sync::RwLock::new(None),
+                env: options.env,
+                inputs: run_options
+                    .settings
+                    .run
+                    .as_ref()
+                    .and_then(|run| run.inputs.clone())
+                    .unwrap_or_default(),
+                dry_run: run_options.dry_run_enabled(),
+                workflow_path: None,
+                workflow_bundle: None,
+            }),
             model: String::new(),
-            provider: fabro_llm::Provider::Anthropic,
         },
         store_logger,
     }
@@ -195,6 +203,8 @@ pub async fn run_graph_with_state(
     initialized.store_logger.flush().await;
     let outcome = executed.outcome?;
     let state = executed
+        .engine
+        .run
         .run_store
         .state()
         .await
@@ -255,6 +265,8 @@ pub async fn run_graph_with_hooks_and_state(
     initialized.store_logger.flush().await;
     let outcome = executed.outcome?;
     let state = executed
+        .engine
+        .run
         .run_store
         .state()
         .await
@@ -313,6 +325,8 @@ pub async fn run_graph_from_checkpoint_with_state(
     initialized.store_logger.flush().await;
     let outcome = executed.outcome?;
     let state = executed
+        .engine
+        .run
         .run_store
         .state()
         .await

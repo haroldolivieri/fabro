@@ -1,11 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use fabro_auth::EnvCredentialSource;
 use fabro_model::Model;
 use strum::{EnumString, IntoStaticStr};
 use tokio::time;
 
 use crate::client::Client;
+use crate::error::Error;
 use crate::generate::{self, GenerateParams};
 use crate::tools::Tool;
 use crate::types::{GenerateResult, ReasoningEffort};
@@ -95,13 +97,15 @@ async fn run_model_test_inner(
 }
 
 async fn run_basic_test(info: &Model, client: Option<Arc<Client>>) -> ModelTestOutcome {
-    let mut params = GenerateParams::new(&info.id)
+    let client = match resolve_client(client).await {
+        Ok(client) => client,
+        Err(err) => return ModelTestOutcome::error(err.to_string()),
+    };
+
+    let params = GenerateParams::new(&info.id, client)
         .provider(info.provider.as_str())
         .prompt("Say OK")
         .max_tokens(16);
-    if let Some(client) = client {
-        params = params.client(client);
-    }
 
     let result = time::timeout(
         Duration::from_secs(ModelTestMode::Basic.timeout_secs()),
@@ -117,6 +121,10 @@ async fn run_basic_test(info: &Model, client: Option<Arc<Client>>) -> ModelTestO
 }
 
 async fn run_deep_test(info: &Model, client: Option<Arc<Client>>) -> ModelTestOutcome {
+    let client = match resolve_client(client).await {
+        Ok(client) => client,
+        Err(err) => return ModelTestOutcome::error(err.to_string()),
+    };
     let Some(params) = build_deep_test_params(info, client) else {
         return ModelTestOutcome::error("model does not support tools");
     };
@@ -137,7 +145,7 @@ async fn run_deep_test(info: &Model, client: Option<Arc<Client>>) -> ModelTestOu
     }
 }
 
-fn build_deep_test_params(info: &Model, client: Option<Arc<Client>>) -> Option<GenerateParams> {
+fn build_deep_test_params(info: &Model, client: Arc<Client>) -> Option<GenerateParams> {
     if !info.features.tools {
         return None;
     }
@@ -166,7 +174,7 @@ fn build_deep_test_params(info: &Model, client: Option<Arc<Client>>) -> Option<G
         },
     );
 
-    let mut params = GenerateParams::new(&info.id)
+    let mut params = GenerateParams::new(&info.id, client)
         .provider(info.provider.as_str())
         .prompt(
             "Use the add tool twice: first add 15 and 27, then add that result to 42. \
@@ -180,11 +188,16 @@ fn build_deep_test_params(info: &Model, client: Option<Arc<Client>>) -> Option<G
         params = params.reasoning_effort(ReasoningEffort::High);
     }
 
+    Some(params)
+}
+
+async fn resolve_client(client: Option<Arc<Client>>) -> Result<Arc<Client>, Error> {
     if let Some(client) = client {
-        params = params.client(client);
+        return Ok(client);
     }
 
-    Some(params)
+    let source = EnvCredentialSource::new();
+    Client::from_source(&source).await
 }
 
 fn validate_deep_result(result: &GenerateResult) -> Result<(), String> {

@@ -4,11 +4,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use fabro_agent::Sandbox;
-use fabro_auth::CredentialResolver;
+use fabro_auth::{
+    CredentialResolver, CredentialSource, EnvCredentialSource, VaultCredentialSource,
+    auth_issue_message,
+};
 use fabro_config::RunScratch;
 use fabro_graphviz::graph;
 use fabro_hooks::{HookContext, HookDecision, HookEvent, HookRunner};
-use fabro_llm::client::Client;
 use fabro_sandbox::{
     ReadBeforeWriteSandbox, SandboxEventCallback, SandboxSpec, WorkdirStrategy, WorktreeOptions,
     WorktreeSandbox,
@@ -26,10 +28,10 @@ use crate::devcontainer_bridge::{devcontainer_to_snapshot_config, run_devcontain
 use crate::error::Error;
 use crate::event::{Emitter, Event, RunNoticeLevel};
 use crate::git::{self, GitSyncStatus, MetadataStore};
-use crate::handler::llm::api::{auth_issue_message, build_llm_client};
 use crate::handler::llm::{AgentApiBackend, AgentCliBackend, BackendRouter};
 use crate::handler::{HandlerRegistry, default_registry, sandbox_cancel_token};
 use crate::run_options::GitCheckpointOptions;
+use crate::services::{EngineServices, RunServices};
 
 struct WorktreePlan {
     branch_name:          String,
@@ -283,12 +285,13 @@ async fn build_registry(
     interviewer: Arc<dyn fabro_interview::Interviewer>,
     sandbox_env: &HashMap<String, String>,
     graph: &graph::Graph,
-    vault: Option<Arc<AsyncRwLock<Vault>>>,
-) -> Result<(Arc<HandlerRegistry>, Option<Client>, bool), Error> {
+    llm_source: Arc<dyn CredentialSource>,
+    cli_resolver: Option<CredentialResolver>,
+) -> Result<(Arc<HandlerRegistry>, bool), Error> {
     let build_no_backend = || Arc::new(default_registry(Arc::clone(&interviewer), || None));
 
     if spec.dry_run {
-        return Ok((build_no_backend(), None, true));
+        return Ok((build_no_backend(), true));
     }
 
     let graph_needs_llm = graph
@@ -296,10 +299,8 @@ async fn build_registry(
         .values()
         .any(|n| graph::is_llm_handler_type(n.handler_type()));
 
-    let resolver = vault.map(CredentialResolver::new);
-
-    match build_llm_client(resolver.as_ref()).await {
-        Ok(result) if result.client.provider_names().is_empty() => {
+    match llm_source.resolve().await {
+        Ok(result) if result.credentials.is_empty() => {
             if graph_needs_llm {
                 let detail = (!result.auth_issues.is_empty()).then(|| {
                     result
@@ -317,38 +318,25 @@ async fn build_registry(
                     "{prefix}. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, or pass --dry-run to simulate."
                 )));
             }
-            Ok((build_no_backend(), None, false))
+            Ok((build_no_backend(), false))
         }
-        Ok(result) => {
+        Ok(_result) => {
             let env = sandbox_env.clone();
             let model = spec.model.clone();
             let provider = spec.provider;
             let fallback_chain = spec.fallback_chain.clone();
             let mcp_servers = spec.mcp_servers.clone();
-            let client = result.client;
+            let llm_source_for_api = Arc::clone(&llm_source);
             let registry = Arc::new(default_registry(interviewer, move || {
-                let api = resolver
-                    .clone()
-                    .map_or_else(
-                        || {
-                            AgentApiBackend::new_from_env(
-                                model.clone(),
-                                provider,
-                                fallback_chain.clone(),
-                            )
-                        },
-                        |resolver| {
-                            AgentApiBackend::new(
-                                model.clone(),
-                                provider,
-                                fallback_chain.clone(),
-                                resolver,
-                            )
-                        },
-                    )
+                let api = AgentApiBackend::new(
+                    model.clone(),
+                    provider,
+                    fallback_chain.clone(),
+                    Arc::clone(&llm_source_for_api),
+                )
                     .with_env(env.clone())
                     .with_mcp_servers(mcp_servers.clone());
-                let cli = resolver
+                let cli = cli_resolver
                     .clone()
                     .map_or_else(
                         || AgentCliBackend::new_from_env(model.clone(), provider),
@@ -357,7 +345,7 @@ async fn build_registry(
                     .with_env(env.clone());
                 Some(Box::new(BackendRouter::new(Box::new(api), cli)))
             }));
-            Ok((registry, Some(client), false))
+            Ok((registry, false))
         }
         Err(e) => {
             if graph_needs_llm {
@@ -365,8 +353,15 @@ async fn build_registry(
                     "Failed to initialize LLM client: {e}. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, or pass --dry-run to simulate.",
                 )));
             }
-            Ok((build_no_backend(), None, false))
+            Ok((build_no_backend(), false))
         }
+    }
+}
+
+fn build_llm_source(vault: Option<Arc<AsyncRwLock<Vault>>>) -> Arc<dyn CredentialSource> {
+    match vault {
+        Some(vault) => Arc::new(VaultCredentialSource::new(vault)),
+        None => Arc::new(EnvCredentialSource::new()),
     }
 }
 
@@ -469,10 +464,16 @@ pub async fn initialize(
     options.run_options.run_dir = run_dir.clone();
     options.run_options.git = options.git.clone();
 
+    let llm_source = build_llm_source(options.vault.clone());
+    let cli_resolver = options.vault.clone().map(CredentialResolver::new);
+
     let hook_runner = if options.hooks.hooks.is_empty() {
         None
     } else {
-        Some(Arc::new(HookRunner::new(options.hooks.clone())))
+        Some(Arc::new(HookRunner::new(
+            options.hooks.clone(),
+            Arc::clone(&llm_source),
+        )))
     };
 
     resolve_devcontainer(&mut options).await?;
@@ -584,17 +585,18 @@ pub async fn initialize(
         &options.emitter,
     )
     .await?;
-    let (registry, llm_client, effective_dry_run) =
+    let (registry, effective_dry_run) =
         if let Some(registry) = options.registry_override.clone() {
             // A caller-supplied registry owns execution behavior for its handlers.
-            (registry, None, options.dry_run)
+            (registry, options.dry_run)
         } else {
             build_registry(
                 &options.llm,
                 Arc::clone(&options.interviewer),
                 &env,
                 &graph,
-                options.vault.clone(),
+                Arc::clone(&llm_source),
+                cli_resolver,
             )
             .await?
         };
@@ -716,36 +718,45 @@ pub async fn initialize(
         .await?;
     }
 
-    scopeguard::ScopeGuard::into_inner(cleanup_guard);
-
-    Ok(Initialized {
-        graph,
-        source,
-        inputs: options
+    let run_services = RunServices::new(
+        options.run_store.clone(),
+        Arc::clone(&options.emitter),
+        Arc::clone(&sandbox),
+        hook_runner.clone(),
+        options.run_options.cancel_token.clone(),
+        options.llm.provider,
+        Arc::clone(&llm_source),
+    );
+    let engine = Arc::new(EngineServices {
+        run:             Arc::clone(&run_services),
+        registry,
+        git_state:       std::sync::RwLock::new(None),
+        env,
+        inputs:          options
             .run_options
             .settings
             .run
             .as_ref()
             .and_then(|run| run.inputs.clone())
             .unwrap_or_default(),
+        dry_run:         options.dry_run,
+        workflow_path:   options.workflow_path.clone(),
+        workflow_bundle: options.workflow_bundle.clone(),
+    });
+
+    scopeguard::ScopeGuard::into_inner(cleanup_guard);
+
+    Ok(Initialized {
+        graph,
+        source,
         run_options: options.run_options,
-        workflow_path: options.workflow_path,
-        workflow_bundle: options.workflow_bundle,
-        run_store: options.run_store,
         checkpoint: options.checkpoint,
         seed_context: options.seed_context,
-        emitter: options.emitter,
-        sandbox,
-        registry,
         on_node: None,
         artifact_sink: options.artifact_sink,
         run_control: options.run_control,
-        hook_runner,
-        env,
-        dry_run: options.dry_run,
-        llm_client,
+        engine,
         model: options.llm.model,
-        provider: options.llm.provider,
     })
 }
 
@@ -940,15 +951,25 @@ mod tests {
 
         assert_eq!(initialized.run_options.run_dir, run_dir);
         assert_eq!(initialized.source, source);
-        assert!(initialized.hook_runner.is_none());
+        assert!(initialized.engine.run.hook_runner.is_none());
         assert_eq!(
-            initialized.env.get("TEST_KEY").map(String::as_str),
+            initialized.engine.env.get("TEST_KEY").map(String::as_str),
             Some("value")
         );
-        assert!(initialized.dry_run);
+        assert!(initialized.engine.dry_run);
         assert_eq!(initialized.model, "test-model");
-        assert_eq!(initialized.provider, fabro_llm::Provider::Anthropic);
-        assert!(initialized.llm_client.is_none());
+        assert_eq!(initialized.engine.run.provider, fabro_llm::Provider::Anthropic);
+        assert!(
+            initialized
+                .engine
+                .run
+                .llm_source
+                .resolve()
+                .await
+                .unwrap()
+                .credentials
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -967,11 +988,12 @@ mod tests {
                 .unwrap(),
                 SecretType::Credential,
                 None,
-            )
+        )
             .unwrap();
         let (graph, _) = llm_graph();
+        let vault = Arc::new(AsyncRwLock::new(vault));
 
-        let (_, llm_client, effective_dry_run) = build_registry(
+        let (_registry, effective_dry_run) = build_registry(
             &LlmSpec {
                 model:          "claude-opus-4-6".to_string(),
                 provider:       fabro_llm::Provider::Anthropic,
@@ -982,13 +1004,13 @@ mod tests {
             Arc::new(AutoApproveInterviewer),
             &HashMap::new(),
             &graph,
-            Some(Arc::new(AsyncRwLock::new(vault))),
+            Arc::new(VaultCredentialSource::new(Arc::clone(&vault))),
+            Some(CredentialResolver::new(vault)),
         )
         .await
         .unwrap();
 
         assert!(!effective_dry_run);
-        assert!(llm_client.unwrap().provider_names().contains(&"anthropic"));
     }
 
     #[tokio::test]

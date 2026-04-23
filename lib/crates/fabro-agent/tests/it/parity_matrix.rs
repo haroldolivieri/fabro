@@ -9,6 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use fabro_agent::subagent::SessionFactory;
+use fabro_auth::EnvCredentialSource;
 use fabro_agent::{
     AgentProfile, AnthropicProfile, GeminiProfile, LocalSandbox, OpenAiProfile, Session,
     SessionOptions, SubAgentManager, WebFetchSummarizer,
@@ -148,7 +149,11 @@ async fn make_client(provider: Provider, twin: Option<&OpenAiTwinOptions>) -> Cl
         return make_twin_client(twin.expect("openai twin config should be provided"));
     }
 
-    Client::from_env().await.expect("Client::from_env failed")
+    let source = EnvCredentialSource::new();
+    (*Client::from_source(&source)
+        .await
+        .expect("Client::from_source failed"))
+    .clone()
 }
 
 fn make_twin_client(twin: &OpenAiTwinOptions) -> Client {

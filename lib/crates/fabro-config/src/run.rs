@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 
 use fabro_types::settings::run::{
-    ResolvedGoalSource, ResolvedRunGoal, RunGoal, RunGoalLayer, RunNamespace,
+    ResolvedGoalSource, ResolvedRunGoal, RunGoal, RunGoalLayer, RunLayer, RunNamespace,
 };
 use fabro_types::settings::{InterpString, SettingsLayer};
 
@@ -75,6 +75,17 @@ pub fn resolve_run_goal(
     base_dir: &Path,
 ) -> std::result::Result<Option<ResolvedRunGoal>, ResolveRunGoalError> {
     let Some(goal) = settings.run.as_ref().and_then(|run| run.goal.as_ref()) else {
+        return Ok(None);
+    };
+
+    resolve_layer_goal(goal, base_dir).map(Some)
+}
+
+pub fn resolve_run_goal_from_layer(
+    run: &RunLayer,
+    base_dir: &Path,
+) -> std::result::Result<Option<ResolvedRunGoal>, ResolveRunGoalError> {
+    let Some(goal) = run.goal.as_ref() else {
         return Ok(None);
     };
 

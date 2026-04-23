@@ -18,8 +18,6 @@ use fabro_sandbox::config::{
 use fabro_sandbox::daytona::DaytonaConfig;
 use fabro_sandbox::{DockerSandboxOptions, Sandbox, SandboxProvider, SandboxSpec};
 use fabro_types::settings::ServerNamespace;
-#[cfg(test)]
-use fabro_types::settings::SettingsLayer;
 use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{
@@ -973,20 +971,23 @@ mod tests {
         }
     }
 
-    fn server_settings_fixture(source: &str) -> SettingsLayer {
-        let mut layer =
-            fabro_config::parse_settings_layer(source).expect("v2 fixture should parse");
-        layer.ensure_test_auth_methods();
-        layer
+    fn server_settings_fixture(source: &str) -> RunLayer {
+        let mut document: toml::Table = source.parse().expect("v2 fixture should parse");
+        document
+            .remove("run")
+            .map(|value| value.try_into::<RunLayer>())
+            .transpose()
+            .expect("run settings should parse")
+            .unwrap_or_default()
     }
 
-    fn default_settings_fixture() -> SettingsLayer {
-        SettingsLayer::test_default()
+    fn default_settings_fixture() -> RunLayer {
+        RunLayer::default()
     }
 
     #[test]
     fn prepare_manifest_preserves_explicit_manifest_dry_run() {
-        let server_settings = manifest_run_defaults(&server_settings_fixture(
+        let server_settings = manifest_run_defaults(Some(&server_settings_fixture(
             r#"
 _version = 1
 
@@ -996,7 +997,7 @@ mode = "dry_run"
 [server.storage]
 root = "/srv/fabro"
 "#,
-        ));
+        )));
         let mut manifest = minimal_manifest();
         manifest.args = Some(types::ManifestArgs {
             auto_approve:     None,
@@ -1020,7 +1021,7 @@ root = "/srv/fabro"
 
     #[test]
     fn prepare_manifest_prefers_bundled_settings_without_duplication() {
-        let server_settings = manifest_run_defaults(&server_settings_fixture(
+        let server_settings = manifest_run_defaults(Some(&server_settings_fixture(
             r#"
 _version = 1
 
@@ -1033,7 +1034,7 @@ script = "cli-setup"
 [server.integrations.github]
 app_id = "snapshotted-app-id"
 "#,
-        ));
+        )));
 
         let mut manifest = minimal_manifest();
         manifest.workflows.get_mut("workflow.fabro").unwrap().config =
@@ -1082,7 +1083,7 @@ app_id = "snapshotted-app-id"
     async fn invalid_preflight_returns_diagnostics_without_runtime_checks() {
         let state = crate::server::create_app_state();
         let prepared = prepare_manifest(
-            &manifest_run_defaults(&default_settings_fixture()),
+            &manifest_run_defaults(Some(&default_settings_fixture())),
             &invalid_manifest(),
         )
         .unwrap();
@@ -1121,7 +1122,7 @@ enabled = true
         });
 
         let prepared = prepare_manifest(
-            &manifest_run_defaults(&default_settings_fixture()),
+            &manifest_run_defaults(Some(&default_settings_fixture())),
             &manifest,
         )
         .unwrap();
@@ -1162,7 +1163,7 @@ provider = "daytona"
         });
 
         let prepared = prepare_manifest(
-            &manifest_run_defaults(&default_settings_fixture()),
+            &manifest_run_defaults(Some(&default_settings_fixture())),
             &manifest,
         )
         .unwrap();

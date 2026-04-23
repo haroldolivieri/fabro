@@ -2,17 +2,21 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result, bail};
+use fabro_auth::{CredentialSource, EnvCredentialSource, VaultCredentialSource};
+use fabro_config::Storage;
 use fabro_config::UserSettings;
+use fabro_vault::Vault;
 use fabro_types::settings::cli::{CliLayer, OutputFormat, OutputVerbosity};
 use fabro_types::settings::{Combine, SettingsLayer};
 use fabro_util::printer::Printer;
 use tokio::sync::OnceCell;
+use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::args::{
     ServerConnectionArgs, ServerTargetArgs, printer_from_verbosity, require_no_json_override,
 };
 use crate::server_client::Client;
-use crate::{server_client, user_config};
+use crate::{local_server, server_client, user_config};
 
 #[derive(Clone, Debug)]
 pub(crate) enum ServerMode {
@@ -36,6 +40,7 @@ pub(crate) struct CommandContext {
     user_settings:      UserSettings,
     server_mode:        ServerMode,
     server:             OnceCell<Arc<Client>>,
+    llm_source:         OnceCell<Arc<dyn CredentialSource>>,
 }
 
 impl CommandContext {
@@ -55,6 +60,7 @@ impl CommandContext {
             user_settings,
             server_mode: ServerMode::None,
             server: OnceCell::new(),
+            llm_source: OnceCell::new(),
         })
     }
 
@@ -133,6 +139,28 @@ impl CommandContext {
         Ok(Arc::clone(client))
     }
 
+    pub(crate) async fn llm_source(&self) -> Result<Arc<dyn CredentialSource>> {
+        let machine_settings = self.machine_settings.clone();
+
+        let source = self
+            .llm_source
+            .get_or_try_init(|| async move {
+                let source: Arc<dyn CredentialSource> =
+                    match local_server::storage_dir(&machine_settings) {
+                        Ok(storage_dir) => {
+                            let vault = Vault::load(Storage::new(&storage_dir).secrets_path())
+                                .context("Failed to load vault for LLM credentials")?;
+                            Arc::new(VaultCredentialSource::new(Arc::new(AsyncRwLock::new(vault))))
+                        }
+                        Err(_) => Arc::new(EnvCredentialSource::new()),
+                    };
+                Ok::<Arc<dyn CredentialSource>, anyhow::Error>(source)
+            })
+            .await?;
+
+        Ok(Arc::clone(source))
+    }
+
     fn with_server_mode(&self, server_mode: ServerMode) -> Result<Self> {
         // Always reload settings for the requested derivation mode so the result
         // depends only on the requested mode, not on whichever derived context
@@ -150,6 +178,7 @@ impl CommandContext {
             user_settings,
             server_mode,
             server: OnceCell::new(),
+            llm_source: OnceCell::new(),
         })
     }
 }
@@ -219,6 +248,7 @@ mod tests {
             user_settings,
             server_mode: ServerMode::None,
             server: OnceCell::new(),
+            llm_source: OnceCell::new(),
         }
     }
 

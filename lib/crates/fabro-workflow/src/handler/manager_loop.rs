@@ -23,6 +23,7 @@ use crate::pipeline;
 use crate::pipeline::types::Initialized;
 use crate::run_dir::visit_from_context;
 use crate::run_options::RunOptions;
+use crate::services::RunServices;
 
 /// Orchestrates a child workflow engine, polling for completion or stop
 /// conditions.
@@ -206,7 +207,7 @@ impl Handler for SubWorkflowHandler {
             run_dir:          child_logs,
             cancel_token:     Some(cancel_token),
             // Child workflows are part of the parent run's event stream.
-            run_id:           services.emitter.run_id(),
+            run_id:           services.run.emitter.run_id(),
             labels:           HashMap::new(),
             workflow_slug:    None,
             github_app:       None,
@@ -227,10 +228,10 @@ impl Handler for SubWorkflowHandler {
         }
         let before_snapshot = context.snapshot();
 
-        let emitter = Arc::clone(&services.emitter);
-        let sandbox = Arc::clone(&services.sandbox);
+        let emitter = Arc::clone(&services.run.emitter);
+        let sandbox = Arc::clone(&services.run.sandbox);
         let registry = Arc::clone(&services.registry);
-        let hook_runner = services.hook_runner.clone();
+        let hook_runner = services.run.hook_runner.clone();
         let env = services.env.clone();
         let inputs = services.inputs.clone();
         let dry_run = services.dry_run;
@@ -251,28 +252,34 @@ impl Handler for SubWorkflowHandler {
         // Spawn child engine
         let mut child_handle = tokio::spawn(async move {
             let initialized = Initialized {
-                graph: child_graph,
-                source: String::new(),
+            graph: child_graph,
+            source: String::new(),
+            run_options: child_run_options,
+            checkpoint: None,
+            seed_context: Some(child_context),
+            on_node: None,
+            artifact_sink: Some(ArtifactSink::Store(artifact_store)),
+            run_control: None,
+            engine: Arc::new(EngineServices {
+                run: RunServices::new(
+                    run_store.into(),
+                    emitter,
+                    sandbox,
+                    hook_runner,
+                    None,
+                    fabro_llm::Provider::Anthropic,
+                    Arc::new(fabro_auth::EnvCredentialSource::new()),
+                ),
+                registry,
+                git_state: std::sync::RwLock::new(None),
+                env,
                 inputs,
-                run_options: child_run_options,
+                dry_run,
                 workflow_path: child_workflow_path,
                 workflow_bundle,
-                run_store: run_store.into(),
-                checkpoint: None,
-                seed_context: Some(child_context),
-                emitter,
-                sandbox,
-                registry,
-                on_node: None,
-                artifact_sink: Some(ArtifactSink::Store(artifact_store)),
-                run_control: None,
-                hook_runner,
-                env,
-                dry_run,
-                llm_client: None,
-                model: String::new(),
-                provider: fabro_llm::Provider::Anthropic,
-            };
+            }),
+            model: String::new(),
+        };
             let executed = pipeline::execute(initialized).await;
             Ok::<_, Error>((executed.outcome?, executed.final_context))
         });

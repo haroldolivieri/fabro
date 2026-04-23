@@ -537,6 +537,8 @@ async fn execute_saves_checkpoint() {
     let executed = execute_test_run(dir.path(), simple_graph(), "test-run").await;
     assert!(
         executed
+            .engine
+            .run
             .run_store
             .state()
             .await
@@ -588,6 +590,8 @@ async fn execute_mirrors_graph_goal_to_context() {
     let dir = tempfile::tempdir().unwrap();
     let executed = execute_test_run(dir.path(), simple_graph(), "test-run").await;
     let cp = executed
+        .engine
+        .run
         .run_store
         .state()
         .await
@@ -634,6 +638,8 @@ async fn execute_conditional_routing_uses_unconditional_success_path() {
 
     let executed = execute_test_run(dir.path(), g, "test-run").await;
     let cp = executed
+        .engine
+        .run
         .run_store
         .state()
         .await
@@ -655,7 +661,7 @@ async fn execute_persists_start_record_and_node_status() {
     });
 
     let executed = execute_test_run_with_options(run_options, simple_graph(), None).await;
-    let state = executed.run_store.state().await.unwrap();
+    let state = executed.engine.run.run_store.state().await.unwrap();
     let start = state.start.as_ref().unwrap();
     assert_eq!(start.run_id, test_run_id("test-run"));
     assert_eq!(
@@ -714,7 +720,7 @@ async fn timeout_causes_fail_status_record() {
         Some(Arc::new(registry)),
     )
     .await;
-    let state = executed.run_store.state().await.unwrap();
+    let state = executed.engine.run.run_store.state().await.unwrap();
     let status = state
         .node(&fabro_store::StageId::new("work", 1))
         .unwrap()
@@ -790,7 +796,7 @@ async fn execute_cancelled_mid_run_persists_cancelled_status() {
     let executed = execute_test_run_with_options(run_options, g, Some(Arc::new(registry))).await;
 
     assert!(matches!(executed.outcome, Err(Error::Cancelled)));
-    let status = executed.run_store.state().await.unwrap().status.unwrap();
+    let status = executed.engine.run.run_store.state().await.unwrap().status.unwrap();
     assert_eq!(status, RunStatus::Failed {
         reason: FailureReason::Cancelled,
     });

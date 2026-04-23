@@ -6143,11 +6143,12 @@ mod real_llm {
         }
 
         fabro_test::require_env("ANTHROPIC_API_KEY")?;
-        Some(Arc::new(
-            Client::from_env()
+        let source = fabro_auth::EnvCredentialSource::new();
+        Some(
+            Client::from_source(&source)
                 .await
-                .expect("unified-llm client should initialize from env"),
-        ))
+                .expect("unified-llm client should initialize from env source"),
+        )
     }
 
     fn make_llm_backend(client: Arc<Client>) -> Box<LlmCodergenBackend> {
@@ -7378,9 +7379,10 @@ fn subgraph_without_label_no_class_derived() {
 // ---------------------------------------------------------------------------
 
 fn hook_runner_from_defs(hooks: Vec<fabro_hooks::HookDefinition>) -> Arc<fabro_hooks::HookRunner> {
-    Arc::new(fabro_hooks::HookRunner::new(fabro_hooks::HookSettings {
-        hooks,
-    }))
+    Arc::new(fabro_hooks::HookRunner::new(
+        fabro_hooks::HookSettings { hooks },
+        Arc::new(fabro_auth::EnvCredentialSource::new()),
+    ))
 }
 
 struct HookTestRunner {
@@ -10177,9 +10179,10 @@ impl Handler for FileWriterHandler {
         _run_dir: &Path,
         services: &fabro_workflow::handler::EngineServices,
     ) -> Result<Outcome, Error> {
-        let work_dir = services.sandbox.working_directory().to_string();
+        let work_dir = services.run.sandbox.working_directory().to_string();
         let file_path = format!("{}/{}.txt", work_dir, node.id);
         services
+            .run
             .sandbox
             .write_file(&file_path, &format!("written by {}", node.id))
             .await
@@ -12256,7 +12259,7 @@ impl Handler for KeepaliveHandler {
         let start = std::time::Instant::now();
         while start.elapsed() < std::time::Duration::from_millis(self.total_ms) {
             tokio::time::sleep(std::time::Duration::from_millis(self.interval_ms)).await;
-            services.emitter.emit(&Event::Prompt {
+            services.run.emitter.emit(&Event::Prompt {
                 stage:    node.id.clone(),
                 visit:    1,
                 text:     "keepalive".to_string(),
@@ -12532,6 +12535,7 @@ impl Handler for AssetCreatorHandler {
             "echo 'test output' > test-results/output.txt"
         );
         services
+            .run
             .sandbox
             .exec_command(script, 30_000, None, None, None)
             .await

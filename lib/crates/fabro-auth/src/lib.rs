@@ -1,17 +1,22 @@
+mod credential_source;
 mod context;
 mod credential;
+mod env_source;
 mod refresh;
 mod resolve;
 mod strategy;
+mod vault_source;
 mod vault_ext;
 
 pub mod strategies;
 
 pub use context::{AuthContextRequest, AuthContextResponse};
+pub use credential_source::{CredentialSource, ResolvedCredentials, auth_issue_message};
 pub use credential::{
     ApiKeyHeader, AuthCredential, AuthDetails, OAuthConfig, OAuthTokens, credential_id_for,
     parse_credential_secret,
 };
+pub use env_source::EnvCredentialSource;
 pub use refresh::refresh_oauth_credential;
 pub use resolve::{
     ApiCredential, CliAgentKind, CliCredential, CredentialResolver, CredentialUsage, EnvLookup,
@@ -21,4 +26,5 @@ pub use strategy::{
     AuthMethod, AuthStrategy, CODEX_AUTH_URL, CODEX_CLIENT_ID, CODEX_TOKEN_URL, codex_oauth_config,
     strategy_for,
 };
+pub use vault_source::VaultCredentialSource;
 pub use vault_ext::{vault_credentials_for_provider, vault_get_credential, vault_set_credential};

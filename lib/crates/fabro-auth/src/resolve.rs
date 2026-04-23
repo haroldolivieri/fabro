@@ -816,4 +816,22 @@ mod tests {
             ResolveError::RefreshTokenMissing(Provider::OpenAi)
         ));
     }
+
+    #[test]
+    fn api_credential_debug_redacts_secret_material() {
+        let credential = ApiCredential {
+            provider:      Provider::OpenAi,
+            auth_header:   ApiKeyHeader::Bearer("sk-test".to_string()),
+            extra_headers: HashMap::new(),
+            base_url:      None,
+            codex_mode:    false,
+            org_id:        None,
+            project_id:    None,
+        };
+
+        let debug = format!("{credential:?}");
+
+        assert!(!debug.contains("sk-test"));
+        assert!(debug.contains("REDACTED"));
+    }
 }

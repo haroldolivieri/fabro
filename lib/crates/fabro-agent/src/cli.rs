@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use clap::{Args, Parser};
+use fabro_auth::EnvCredentialSource;
 use fabro_llm::Error as LlmError;
 use fabro_llm::client::Client;
 use fabro_llm::middleware::{Middleware, NextFn, NextStreamFn};
@@ -433,8 +434,10 @@ pub async fn run_with_args_and_client(
         if !provider.has_api_key() {
             anyhow::bail!("API key not set for provider '{provider}'");
         }
-        Client::from_env()
+        let source = EnvCredentialSource::new();
+        Client::from_source(&source)
             .await
+            .map(|client| (*client).clone())
             .map_err(|e| anyhow::anyhow!("Failed to create LLM client: {e}"))?
     };
 

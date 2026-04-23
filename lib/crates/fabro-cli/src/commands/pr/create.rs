@@ -1,14 +1,9 @@
-use std::sync::Arc;
-
 use anyhow::{Context, Result, bail};
-use fabro_auth::configured_providers_from_process_env;
-use fabro_config::Storage;
 use fabro_model::Catalog;
 use fabro_sandbox::daytona::detect_repo_info;
-use fabro_vault::Vault;
-use fabro_workflow::outcome::StageStatus;
 use fabro_workflow::pull_request::maybe_open_pull_request;
-use tokio::sync::RwLock as AsyncRwLock;
+use fabro_workflow::services::RunServices;
+use fabro_workflow::outcome::StageStatus;
 use tracing::info;
 
 use crate::args::PrCreateArgs;
@@ -16,8 +11,6 @@ use crate::command_context::CommandContext;
 use crate::commands::rebuild::rebuild_run_store;
 use crate::shared::print_json_pretty;
 use crate::shared::repo::ensure_matching_repo_origin;
-use crate::user_config;
-
 #[allow(
     deprecated,
     reason = "boundary-exempt(pr-api): remove with follow-up #1 when PR ops move server-side"
@@ -98,17 +91,15 @@ pub(super) async fn create_command(args: PrCreateArgs, base_ctx: &CommandContext
         );
     }
 
-    let vault = user_config::storage_dir(ctx.machine_settings())
-        .ok()
-        .and_then(|dir| Vault::load(Storage::new(&dir).secrets_path()).ok())
-        .map(|vault| Arc::new(AsyncRwLock::new(vault)));
-    let configured = configured_providers_from_process_env(vault.as_ref()).await;
+    let llm_source = ctx.llm_source().await?;
+    let configured = llm_source.configured_providers().await;
     let model = args.model.unwrap_or_else(|| {
         Catalog::builtin()
             .default_for_configured(&configured)
             .id
             .clone()
     });
+    let pr_services = RunServices::for_cli(run_store.clone().into(), llm_source);
 
     let pull_request = maybe_open_pull_request(
         &creds,
@@ -120,8 +111,7 @@ pub(super) async fn create_command(args: PrCreateArgs, base_ctx: &CommandContext
         &model,
         true,
         None,
-        &run_store.clone().into(),
-        None,
+        pr_services.as_ref(),
         None,
     )
     .await

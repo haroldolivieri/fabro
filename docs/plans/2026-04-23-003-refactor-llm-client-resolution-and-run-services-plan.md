@@ -1,7 +1,7 @@
 ---
 title: "refactor: Source-based LLM client resolution + RunServices split"
 type: refactor
-status: active
+status: completed
 date: 2026-04-23
 deepened: 2026-04-23
 ---
@@ -284,7 +284,7 @@ Phase data flow:
 
 ### Phase 1 — Source-based client resolution
 
-- [ ] **Unit 1.1: Add `CredentialSource` trait + `VaultCredentialSource` + `EnvCredentialSource` + `Client::from_source`**
+- [x] **Unit 1.1: Add `CredentialSource` trait + `VaultCredentialSource` + `EnvCredentialSource` + `Client::from_source`**
 
   **Goal:** Pure addition of the new abstractions. No consumer changes. Existing code compiles and runs unchanged.
 
@@ -332,7 +332,7 @@ Phase data flow:
   - `cargo nextest run -p fabro-auth -p fabro-llm` passes.
   - `cargo +nightly-2026-04-14 clippy -p fabro-auth -p fabro-llm --all-targets -- -D warnings` clean.
 
-- [ ] **Unit 1.2: Migrate every LLM consumer to hold/pass sources and build clients explicitly**
+- [x] **Unit 1.2: Migrate every LLM consumer to hold/pass sources and build clients explicitly**
 
   **Goal:** Every `generate()`/`generate_object()`/`stream_generate()` call site constructs its `Arc<Client>` explicitly (via `Client::from_source`). Every long-lived backend/executor/context holds `Arc<dyn CredentialSource>`. `DEFAULT_CLIENT` and the default-client code path remain temporarily so each migration step compiles/tests cleanly.
 
@@ -390,7 +390,7 @@ Phase data flow:
   - `rg 'Client::from_env' lib/crates/` — only `client.rs` (constructor definition), `EnvCredentialSource` (if it reuses the body), and test files.
   - `rg 'build_llm_client' lib/crates/` — zero hits.
 
-- [ ] **Unit 1.3: Delete the default-client machinery and `Client::from_env`; require `GenerateParams.client`**
+- [x] **Unit 1.3: Delete the default-client machinery and `Client::from_env`; require `GenerateParams.client`**
 
   **Goal:** Atomic cleanup. Every consumer already passes an explicit client (Unit 1.2). Now remove the fallback paths.
 
@@ -425,7 +425,7 @@ Phase data flow:
 
 **Prerequisite:** PR #168 must have merged to main.
 
-- [ ] **Unit 2.1: Introduce `RunServices` + `EngineServices` split**
+- [x] **Unit 2.1: Introduce `RunServices` + `EngineServices` split**
 
   **Goal:** Today's `EngineServices` (13 fields, mixed lifetimes) partitions into cross-phase `RunServices` + execute-only `EngineServices`. Handlers read cross-phase state as `services.run.xxx`.
 
@@ -480,7 +480,7 @@ Phase data flow:
   - `cargo clippy -p fabro-workflow --all-targets -- -D warnings` clean.
   - `rg 'services\.run_store' lib/crates/fabro-workflow/src/handler/` — zero hits (all now `services.run.run_store`).
 
-- [ ] **Unit 2.2: Shrink phase structs; unwind PR #168 `Option<Client>`**
+- [x] **Unit 2.2: Shrink phase structs; unwind PR #168 `Option<Client>`**
 
   **Goal:** `Initialized`/`Executed` carry `Arc<EngineServices>`; `Retroed`/`Concluded` carry `Arc<RunServices>`. Delete `Option<Client>` threading introduced by PR #168.
 

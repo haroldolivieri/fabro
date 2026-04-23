@@ -103,11 +103,10 @@ pub(crate) async fn validate_api_key(provider: Provider, api_key: &str) -> Resul
         |model| model.id.clone(),
     );
 
-    let params = GenerateParams::new(probe_model)
+    let params = GenerateParams::new(probe_model, Arc::new(client))
         .provider(provider.as_str())
         .prompt("Say OK")
-        .max_tokens(16)
-        .client(Arc::new(client));
+        .max_tokens(16);
 
     timeout(std::time::Duration::from_secs(30), generate(params))
         .await

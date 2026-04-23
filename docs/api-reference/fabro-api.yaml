@@ -185,6 +185,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /install/object-store/test:
+    post:
+      operationId: testInstallObjectStore
+      tags: [Install]
+      summary: Validate install object-store configuration
+      description: Validates the browser-install object-store selection without persisting it. Requires the one-time install token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstallObjectStoreInput"
+      responses:
+        "200":
+          description: Object-store configuration validated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstallObjectStoreValidationResponse"
+        "401":
+          description: Invalid or missing install token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Object-store validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /install/object-store:
+    put:
+      operationId: putInstallObjectStore
+      tags: [Install]
+      summary: Save install object-store configuration
+      description: Records the object-store mode selected during browser install. Requires the one-time install token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstallObjectStoreInput"
+      responses:
+        "204":
+          description: Object-store configuration recorded
+        "401":
+          description: Invalid or missing install token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Invalid install input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /install/github/token/test:
     post:
       operationId: testInstallGithubToken
@@ -2164,6 +2226,10 @@ components:
           oneOf:
             - $ref: "#/components/schemas/InstallServerConfigInput"
             - type: "null"
+        object_store:
+          oneOf:
+            - $ref: "#/components/schemas/InstallObjectStoreSummary"
+            - type: "null"
         github:
           oneOf:
             - $ref: "#/components/schemas/InstallGithubSummary"
@@ -2255,6 +2321,56 @@ components:
         canonical_url:
           type: string
           format: uri
+
+    InstallObjectStoreValidationResponse:
+      description: Successful response from install-time object-store validation.
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    InstallObjectStoreInput:
+      description: Object-store mode selected during browser install.
+      type: object
+      required:
+        - provider
+      properties:
+        provider:
+          type: string
+          enum: [local, s3]
+        bucket:
+          type: string
+        region:
+          type: string
+        credential_mode:
+          type: string
+          enum: [runtime, access_key]
+        access_key_id:
+          type: string
+        secret_access_key:
+          type: string
+
+    InstallObjectStoreSummary:
+      description: Redacted summary of the object-store mode selected during browser install.
+      type: object
+      required:
+        - provider
+      properties:
+        provider:
+          type: string
+          enum: [local, s3]
+        bucket:
+          type: string
+        region:
+          type: string
+        credential_mode:
+          type: string
+          enum: [runtime, access_key]
+        manual_credentials_saved:
+          type: boolean
 
     InstallGithubTokenTestInput:
       description: Input for install-time GitHub token validation.
@@ -2793,19 +2909,192 @@ components:
         an explicit user action on a previously terminal (`succeeded`, `failed`,
         or `dead`) run; archived runs are hidden from default listings and are
         read-only until unarchived.
+      oneOf:
+        - $ref: "#/components/schemas/RunStatusSubmitted"
+        - $ref: "#/components/schemas/RunStatusQueued"
+        - $ref: "#/components/schemas/RunStatusStarting"
+        - $ref: "#/components/schemas/RunStatusRunning"
+        - $ref: "#/components/schemas/RunStatusBlocked"
+        - $ref: "#/components/schemas/RunStatusPaused"
+        - $ref: "#/components/schemas/RunStatusRemoving"
+        - $ref: "#/components/schemas/RunStatusSucceeded"
+        - $ref: "#/components/schemas/RunStatusFailed"
+        - $ref: "#/components/schemas/RunStatusDead"
+        - $ref: "#/components/schemas/RunStatusArchived"
+      discriminator:
+        propertyName: kind
+        mapping:
+          submitted: "#/components/schemas/RunStatusSubmitted"
+          queued: "#/components/schemas/RunStatusQueued"
+          starting: "#/components/schemas/RunStatusStarting"
+          running: "#/components/schemas/RunStatusRunning"
+          blocked: "#/components/schemas/RunStatusBlocked"
+          paused: "#/components/schemas/RunStatusPaused"
+          removing: "#/components/schemas/RunStatusRemoving"
+          succeeded: "#/components/schemas/RunStatusSucceeded"
+          failed: "#/components/schemas/RunStatusFailed"
+          dead: "#/components/schemas/RunStatusDead"
+          archived: "#/components/schemas/RunStatusArchived"
+
+    RunStatusSubmitted:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - submitted
+
+    RunStatusQueued:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - queued
+
+    RunStatusStarting:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - starting
+
+    RunStatusRunning:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - running
+
+    RunStatusBlocked:
+      type: object
+      required:
+        - kind
+        - blocked_reason
+      properties:
+        kind:
+          type: string
+          enum:
+            - blocked
+        blocked_reason:
+          $ref: "#/components/schemas/BlockedReason"
+
+    RunStatusPaused:
+      type: object
+      required:
+        - kind
+        - prior_block
+      properties:
+        kind:
+          type: string
+          enum:
+            - paused
+        prior_block:
+          oneOf:
+            - $ref: "#/components/schemas/BlockedReason"
+            - type: "null"
+
+    RunStatusRemoving:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - removing
+
+    RunStatusSucceeded:
+      type: object
+      required:
+        - kind
+        - reason
+      properties:
+        kind:
+          type: string
+          enum:
+            - succeeded
+        reason:
+          $ref: "#/components/schemas/SuccessReason"
+
+    RunStatusFailed:
+      type: object
+      required:
+        - kind
+        - reason
+      properties:
+        kind:
+          type: string
+          enum:
+            - failed
+        reason:
+          $ref: "#/components/schemas/FailureReason"
+
+    RunStatusDead:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - dead
+
+    RunStatusArchived:
+      type: object
+      required:
+        - kind
+        - prior
+      properties:
+        kind:
+          type: string
+          enum:
+            - archived
+        prior:
+          $ref: "#/components/schemas/TerminalStatus"
+
+    TerminalStatus:
+      description: Terminal run status captured inside an archived run.
+      oneOf:
+        - $ref: "#/components/schemas/RunStatusSucceeded"
+        - $ref: "#/components/schemas/RunStatusFailed"
+        - $ref: "#/components/schemas/RunStatusDead"
+      discriminator:
+        propertyName: kind
+        mapping:
+          succeeded: "#/components/schemas/RunStatusSucceeded"
+          failed: "#/components/schemas/RunStatusFailed"
+          dead: "#/components/schemas/RunStatusDead"
+
+    SuccessReason:
+      description: Reason attached to a successful terminal run status.
       type: string
       enum:
-        - submitted
-        - queued
-        - starting
-        - running
-        - blocked
-        - paused
-        - removing
-        - succeeded
-        - failed
-        - dead
-        - archived
+        - completed
+        - partial_success
+
+    FailureReason:
+      description: Reason attached to a failed terminal run status.
+      type: string
+      enum:
+        - workflow_error
+        - cancelled
+        - terminated
+        - transient_infra
+        - budget_exhausted
+        - launch_failed
+        - bootstrap_failed
+        - sandbox_init_failed
 
     RunManifest:
       description: Self-contained workflow run manifest.
@@ -3178,16 +3467,8 @@ components:
           $ref: "#/components/schemas/RunError"
         queue_position:
           type: integer
-          description: Position in the queue (1-based). Only present when status is `queued`.
+          description: Position in the queue (1-based). Only present when the status kind is `queued`.
           example: 3
-        status_reason:
-          oneOf:
-            - $ref: "#/components/schemas/StatusReason"
-            - type: "null"
-        blocked_reason:
-          oneOf:
-            - $ref: "#/components/schemas/BlockedReason"
-            - type: "null"
         pending_control:
           oneOf:
             - $ref: "#/components/schemas/RunControlAction"
@@ -3325,6 +3606,22 @@ components:
           description: List of error entries.
           items:
             $ref: "#/components/schemas/ErrorResponseEntry"
+        leftover_env_keys:
+          type: array
+          description: >-
+            Optional list of runtime env keys that were written before an install
+            failure. Currently populated by `POST /install/finish` failure
+            responses only.
+          items:
+            type: string
+        removed_env_keys:
+          type: array
+          description: >-
+            Optional list of runtime env keys that were actually removed before
+            an install failure. Currently populated by `POST /install/finish`
+            failure responses only.
+          items:
+            type: string
 
     ActorKind:
       description: High-level category of an event actor.
@@ -3569,22 +3866,6 @@ components:
           items:
             $ref: "#/components/schemas/RunArtifactEntry"
 
-    StatusReason:
-      description: Optional reason attached to a run status transition.
-      type: string
-      enum:
-        - completed
-        - partial_success
-        - workflow_error
-        - cancelled
-        - terminated
-        - transient_infra
-        - budget_exhausted
-        - launch_failed
-        - bootstrap_failed
-        - sandbox_init_failed
-        - sandbox_initializing
-
     BlockedReason:
       description: Specific reason a run is blocked on external intervention.
       type: string
@@ -3598,27 +3879,6 @@ components:
         - cancel
         - pause
         - unpause
-
-    RunStatusRecord:
-      description: Internal run status record from the event projection.
-      type: object
-      required:
-        - status
-        - updated_at
-      properties:
-        status:
-          $ref: "#/components/schemas/RunStatus"
-        status_reason:
-          oneOf:
-            - $ref: "#/components/schemas/StatusReason"
-            - type: "null"
-        blocked_reason:
-          oneOf:
-            - $ref: "#/components/schemas/BlockedReason"
-            - type: "null"
-        updated_at:
-          type: string
-          format: date-time
 
     InternalStageStatus:
       description: Internal stage status from outcomes and node status records.
@@ -3696,7 +3956,12 @@ components:
           additionalProperties: true
         status:
           oneOf:
-            - $ref: "#/components/schemas/RunStatusRecord"
+            - $ref: "#/components/schemas/RunStatus"
+            - type: "null"
+        status_updated_at:
+          oneOf:
+            - type: string
+              format: date-time
             - type: "null"
         checkpoint:
           oneOf:
@@ -3779,14 +4044,6 @@ components:
           format: date-time
         status:
           $ref: "#/components/schemas/RunStatus"
-        status_reason:
-          oneOf:
-            - $ref: "#/components/schemas/StatusReason"
-            - type: "null"
-        blocked_reason:
-          oneOf:
-            - $ref: "#/components/schemas/BlockedReason"
-            - type: "null"
         pending_control:
           oneOf:
             - $ref: "#/components/schemas/RunControlAction"
@@ -4146,7 +4403,7 @@ components:
           description: Human-readable title describing the run's goal.
           example: Add rate limiting to auth endpoints
         status:
-          type: string
+          $ref: "#/components/schemas/RunStatus"
         labels:
           type: object
           additionalProperties:
@@ -4156,10 +4413,6 @@ components:
         start_time:
           type: ["string", "null"]
           format: date-time
-        status_reason:
-          oneOf:
-            - $ref: "#/components/schemas/StatusReason"
-            - type: "null"
         pending_control:
           oneOf:
             - $ref: "#/components/schemas/RunControlAction"

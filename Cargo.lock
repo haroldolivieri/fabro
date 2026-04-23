@@ -2057,6 +2057,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "strum",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -2072,6 +2073,7 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
+ "zeroize",
 ]
 
 [[package]]

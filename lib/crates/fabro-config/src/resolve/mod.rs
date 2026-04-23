@@ -100,6 +100,17 @@ pub fn resolve_workflow_from_file(
     }
 }
 
+/// Render a list of [`ResolveError`]s as a single semicolon-separated message
+/// suitable for surfacing through `anyhow!` / `Error::Precondition` / similar
+/// human-facing error envelopes.
+pub fn render_resolve_errors(errors: &[ResolveError]) -> String {
+    errors
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 pub(crate) fn require_interp(
     value: Option<&InterpString>,
     path: &str,

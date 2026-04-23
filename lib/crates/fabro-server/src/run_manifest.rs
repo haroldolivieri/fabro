@@ -361,7 +361,7 @@ async fn build_preflight_report(
         &configured_providers,
     );
     let resolved_run = fabro_config::resolve_run_from_file(&materialized)
-        .map_err(|errors| anyhow!(render_resolve_errors(&errors)))?;
+        .map_err(|errors| anyhow!(fabro_config::render_resolve_errors(&errors)))?;
     let server_settings = state.server_settings();
     let github_integration = &server_settings.server.integrations.github;
     let sandbox_provider = resolve_sandbox_provider(&resolved_run)?;
@@ -699,14 +699,6 @@ fn resolve_model_provider(
         ),
         None => (model, provider),
     }
-}
-
-fn render_resolve_errors(errors: &[fabro_config::ResolveError]) -> String {
-    errors
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("; ")
 }
 
 fn runtime_daytona_config(settings: &DaytonaSettings) -> DaytonaConfig {

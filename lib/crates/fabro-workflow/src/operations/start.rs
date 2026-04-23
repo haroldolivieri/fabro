@@ -310,7 +310,7 @@ impl RunSession {
             .map_or((None, None), |(url, branch)| (Some(url), branch));
 
         let resolved = fabro_config::resolve_run_from_file(settings)
-            .map_err(|errors| Error::Precondition(render_resolve_errors(&errors)))?;
+            .map_err(|errors| Error::Precondition(fabro_config::render_resolve_errors(&errors)))?;
 
         let sandbox_provider = resolve_sandbox_provider(&resolved)?;
         let sandbox_provider =
@@ -516,14 +516,6 @@ fn resolve_fallback_chain(
             .push(model_ref.to_string());
     }
     Catalog::builtin().build_fallback_chain(provider, model, &by_provider)
-}
-
-fn render_resolve_errors(errors: &[fabro_config::ResolveError]) -> String {
-    errors
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("; ")
 }
 
 fn runtime_mcp_server(settings: &ResolvedMcpServerSettings) -> McpServerSettings {

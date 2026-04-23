@@ -284,23 +284,15 @@ fn store_error(err: impl std::fmt::Display) -> Error {
     Error::engine(err.to_string())
 }
 
-fn render_resolve_errors(errors: &[fabro_config::ResolveError]) -> String {
-    errors
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("; ")
-}
-
 fn resolve_settings_tree(settings: &SettingsLayer) -> Result<ResolvedSettingsTree, Error> {
     Ok(ResolvedSettingsTree {
         server_storage_root: fabro_config::resolve_storage_root(settings),
         project:             fabro_config::resolve_project_from_file(settings)
-            .map_err(|errors| Error::Precondition(render_resolve_errors(&errors)))?,
+            .map_err(|errors| Error::Precondition(fabro_config::render_resolve_errors(&errors)))?,
         workflow:            fabro_config::resolve_workflow_from_file(settings)
-            .map_err(|errors| Error::Precondition(render_resolve_errors(&errors)))?,
+            .map_err(|errors| Error::Precondition(fabro_config::render_resolve_errors(&errors)))?,
         run:                 fabro_config::resolve_run_from_file(settings)
-            .map_err(|errors| Error::Precondition(render_resolve_errors(&errors)))?,
+            .map_err(|errors| Error::Precondition(fabro_config::render_resolve_errors(&errors)))?,
     })
 }
 
@@ -313,7 +305,7 @@ fn combined_labels(settings: &ResolvedSettingsTree) -> HashMap<String, String> {
 
 fn validate_sandbox_provider(settings: &SettingsLayer) -> Result<(), Error> {
     let resolved = fabro_config::resolve_run_from_file(settings)
-        .map_err(|errors| Error::Precondition(render_resolve_errors(&errors)))?;
+        .map_err(|errors| Error::Precondition(fabro_config::render_resolve_errors(&errors)))?;
     resolved
         .sandbox
         .provider

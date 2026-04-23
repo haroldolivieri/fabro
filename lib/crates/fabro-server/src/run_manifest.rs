@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow, bail};
 use fabro_api::types;
-use fabro_config::project::resolve_working_directory;
 use fabro_config::{WorkflowSettingsBuilder, parse_settings_layer};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
@@ -15,7 +14,6 @@ use fabro_sandbox::config::{
 };
 use fabro_sandbox::daytona::DaytonaConfig;
 use fabro_sandbox::{DockerSandboxOptions, Sandbox, SandboxProvider, SandboxSpec};
-use fabro_types::RunId;
 use fabro_types::settings::cli::{CliLayer, CliOutputLayer, OutputVerbosity};
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{
@@ -24,6 +22,7 @@ use fabro_types::settings::run::{
     RunSandboxLayer,
 };
 use fabro_types::settings::{Combine, ReplaceMap, ServerNamespace, SettingsLayer};
+use fabro_types::{RunId, WorkflowSettings};
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_validate::Severity;
 use fabro_workflow::Error as WorkflowError;
@@ -41,7 +40,8 @@ pub(crate) struct PreparedManifest {
     pub git:               Option<types::ManifestGit>,
     pub root_source:       String,
     pub run_id:            Option<RunId>,
-    pub settings:          SettingsLayer,
+    pub settings:          WorkflowSettings,
+    pub settings_layer:    SettingsLayer,
     pub target_path:       PathBuf,
     pub workflow_bundle:   WorkflowBundle,
     pub workflow_input:    BundledWorkflow,
@@ -81,7 +81,7 @@ pub(crate) fn prepare_manifest(
         .try_fold(SettingsLayer::default(), |layer, config| {
             Ok::<_, anyhow::Error>(parse_manifest_config(config)?.combine(layer))
         })?;
-    let mut settings = WorkflowSettingsBuilder::new()
+    let mut settings_layer = WorkflowSettingsBuilder::new()
         .args_layer(args_layer)
         .workflow_layer(workflow_layer)
         .project_layer(project_layer)
@@ -89,9 +89,11 @@ pub(crate) fn prepare_manifest(
         .server_layer(server_settings.clone())
         .build_layer();
     if let Some(goal) = manifest.goal.as_ref() {
-        let run = settings.run.get_or_insert_with(RunLayer::default);
+        let run = settings_layer.run.get_or_insert_with(RunLayer::default);
         run.goal = Some(RunGoalLayer::Inline(InterpString::parse(&goal.text)));
     }
+    let settings = WorkflowSettingsBuilder::from_layer(&settings_layer)
+        .map_err(|errors| anyhow!("failed to resolve manifest settings: {errors}"))?;
 
     Ok(PreparedManifest {
         cwd: cwd.clone(),
@@ -104,6 +106,7 @@ pub(crate) fn prepare_manifest(
             .transpose()
             .map_err(|err| anyhow!("invalid run ID: {err}"))?,
         settings: settings.clone(),
+        settings_layer: settings_layer.clone(),
         target_path,
         workflow_bundle,
         workflow_input,
@@ -116,7 +119,7 @@ pub(crate) fn validate_prepared_manifest(
 ) -> Result<Validated, WorkflowError> {
     validate(ValidateInput {
         workflow:          WorkflowInput::Bundled(prepared.workflow_input.clone()),
-        settings:          prepared.settings.clone(),
+        settings:          prepared.settings_layer.clone(),
         cwd:               prepared.cwd.clone(),
         custom_transforms: Vec::new(),
     })
@@ -128,7 +131,7 @@ pub(crate) fn create_run_input(
 ) -> CreateRunInput {
     CreateRunInput {
         workflow: WorkflowInput::Bundled(prepared.workflow_input),
-        settings: prepared.settings,
+        settings: prepared.settings_layer,
         cwd: prepared.cwd,
         workflow_slug: None,
         workflow_path: Some(prepared.target_path),
@@ -281,6 +284,23 @@ fn parse_labels(labels: &[String]) -> HashMap<String, String> {
         .collect()
 }
 
+fn resolve_working_directory(settings: &WorkflowSettings, caller_cwd: &Path) -> PathBuf {
+    let Some(work_dir) = settings
+        .run
+        .working_dir
+        .as_ref()
+        .map(InterpString::as_source)
+    else {
+        return caller_cwd.to_path_buf();
+    };
+    let path = PathBuf::from(&work_dir);
+    if path.is_absolute() {
+        path
+    } else {
+        caller_cwd.join(path)
+    }
+}
+
 fn resolve_manifest_dockerfile(
     layer: &mut SettingsLayer,
     config_path: &Path,
@@ -353,10 +373,9 @@ async fn build_preflight_report(
         ));
     }
 
-    let settings = &prepared.settings;
     let configured_providers = state.provider_credentials.configured_providers().await;
     let materialized = materialize_run(
-        settings.clone(),
+        prepared.settings_layer.clone(),
         graph,
         Catalog::builtin(),
         &configured_providers,
@@ -417,9 +436,7 @@ async fn build_preflight_report(
 }
 
 fn base_preflight_checks(prepared: &PreparedManifest, graph: &Graph) -> Vec<CheckResult> {
-    let setup_command_count = WorkflowSettingsBuilder::from_layer(&prepared.settings)
-        .map(|settings| settings.run.prepare.commands.len())
-        .unwrap_or_default();
+    let setup_command_count = prepared.settings.run.prepare.commands.len();
     let repo_summary = prepared.git.as_ref().map_or_else(
         || "unknown".to_string(),
         |git| {
@@ -980,11 +997,7 @@ root = "/srv/fabro"
         let prepared = prepare_manifest(&server_settings, &manifest).unwrap();
 
         assert_eq!(
-            WorkflowSettingsBuilder::from_layer(&prepared.settings)
-                .unwrap()
-                .run
-                .execution
-                .mode,
+            prepared.settings.run.execution.mode,
             fabro_types::settings::run::RunMode::DryRun
         );
     }
@@ -1039,12 +1052,11 @@ app_id = "snapshotted-app-id"
         });
 
         let prepared = prepare_manifest(&server_settings, &manifest).unwrap();
-        let resolved_run = WorkflowSettingsBuilder::from_layer(&prepared.settings).unwrap();
         let settings_json = serde_json::to_value(&prepared.settings).unwrap();
 
         // v2 merge matrix: run.prepare.steps replaces the whole list across
         // layers, so the higher-precedence workflow layer wins over cli.
-        assert_eq!(resolved_run.run.prepare.commands, vec![
+        assert_eq!(prepared.settings.run.prepare.commands, vec![
             "workflow-setup".to_string()
         ]);
         assert!(settings_json.pointer("/server").is_none());

@@ -42,16 +42,6 @@ export function persistInstallToken(token: string | null): void {
   }
 }
 
-async function installFetch(path: string, token: string, init?: RequestInit): Promise<Response> {
-  return fetch(path, {
-    ...init,
-    headers: {
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
-  });
-}
-
 export async function readInstallError(
   response: Response,
   fallback: string,
@@ -68,100 +58,115 @@ export async function readInstallError(
   return `${fallback} (${response.status})`;
 }
 
-export async function getInstallSession(token: string): Promise<InstallSessionResponse> {
-  const response = await installFetch("/install/session", token);
-  if (!response.ok) {
-    throw new Error(await readInstallError(response, "install session request failed"));
+type InstallRequestOptions = {
+  path:          string;
+  method:        "GET" | "POST" | "PUT";
+  body?:         unknown;
+  errorFallback: string;
+};
+
+async function installRequest(
+  token: string,
+  opts: InstallRequestOptions,
+): Promise<Response> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  if (opts.body !== undefined) {
+    headers["Content-Type"] = "application/json";
   }
-  return response.json() as Promise<InstallSessionResponse>;
+  const response = await fetch(opts.path, {
+    method: opts.method,
+    headers,
+    body:   opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(await readInstallError(response, opts.errorFallback));
+  }
+  return response;
+}
+
+async function installJsonRequest<T>(
+  token: string,
+  opts: InstallRequestOptions,
+): Promise<T> {
+  const response = await installRequest(token, opts);
+  return response.json() as Promise<T>;
+}
+
+export async function getInstallSession(token: string): Promise<InstallSessionResponse> {
+  return installJsonRequest<InstallSessionResponse>(token, {
+    path:          "/install/session",
+    method:        "GET",
+    errorFallback: "install session request failed",
+  });
 }
 
 export async function testInstallLlm(
   token: string,
   provider: InstallLlmProviderInput,
 ): Promise<void> {
-  const response = await installFetch("/install/llm/test", token, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(provider),
+  await installRequest(token, {
+    path:          "/install/llm/test",
+    method:        "POST",
+    body:          provider,
+    errorFallback: "install llm validation failed",
   });
-  if (!response.ok) {
-    throw new Error(await readInstallError(response, "install llm validation failed"));
-  }
 }
 
 export async function putInstallLlm(
   token: string,
   providers: InstallLlmProviderInput[],
 ): Promise<void> {
-  const response = await installFetch("/install/llm", token, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ providers }),
+  await installRequest(token, {
+    path:          "/install/llm",
+    method:        "PUT",
+    body:          { providers },
+    errorFallback: "install llm request failed",
   });
-  if (!response.ok) {
-    throw new Error(await readInstallError(response, "install llm request failed"));
-  }
 }
 
 export async function putInstallServer(token: string, canonicalUrl: string): Promise<void> {
-  const response = await installFetch("/install/server", token, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ canonical_url: canonicalUrl }),
+  await installRequest(token, {
+    path:          "/install/server",
+    method:        "PUT",
+    body:          { canonical_url: canonicalUrl },
+    errorFallback: "install server request failed",
   });
-  if (!response.ok) {
-    throw new Error(await readInstallError(response, "install server request failed"));
-  }
 }
 
 export async function testInstallObjectStore(
   token: string,
   input: InstallObjectStoreInput,
 ): Promise<void> {
-  const response = await installFetch("/install/object-store/test", token, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+  await installRequest(token, {
+    path:          "/install/object-store/test",
+    method:        "POST",
+    body:          input,
+    errorFallback: "install object store validation failed",
   });
-  if (!response.ok) {
-    throw new Error(
-      await readInstallError(response, "install object store validation failed"),
-    );
-  }
 }
 
 export async function putInstallObjectStore(
   token: string,
   input: InstallObjectStoreInput,
 ): Promise<void> {
-  const response = await installFetch("/install/object-store", token, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+  await installRequest(token, {
+    path:          "/install/object-store",
+    method:        "PUT",
+    body:          input,
+    errorFallback: "install object store request failed",
   });
-  if (!response.ok) {
-    throw new Error(
-      await readInstallError(response, "install object store request failed"),
-    );
-  }
 }
 
 export async function testInstallGithubToken(
   token: string,
   githubToken: string,
 ): Promise<string> {
-  const response = await installFetch("/install/github/token/test", token, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: githubToken }),
+  const body = await installJsonRequest<{ username: string }>(token, {
+    path:          "/install/github/token/test",
+    method:        "POST",
+    body:          { token: githubToken },
+    errorFallback: "install github token validation failed",
   });
-  if (!response.ok) {
-    throw new Error(
-      await readInstallError(response, "install github token validation failed"),
-    );
-  }
-  const body = (await response.json()) as { username: string };
   return body.username;
 }
 
@@ -170,39 +175,30 @@ export async function putInstallGithubToken(
   githubToken: string,
   username: string,
 ): Promise<void> {
-  const response = await installFetch("/install/github/token", token, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: githubToken, username }),
+  await installRequest(token, {
+    path:          "/install/github/token",
+    method:        "PUT",
+    body:          { token: githubToken, username },
+    errorFallback: "install github token request failed",
   });
-  if (!response.ok) {
-    throw new Error(await readInstallError(response, "install github token request failed"));
-  }
 }
 
 export async function createInstallGithubAppManifest(
   token: string,
   input: InstallGithubAppManifestInput,
 ): Promise<InstallGithubAppManifestResponse> {
-  const response = await installFetch("/install/github/app/manifest", token, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+  return installJsonRequest<InstallGithubAppManifestResponse>(token, {
+    path:          "/install/github/app/manifest",
+    method:        "POST",
+    body:          input,
+    errorFallback: "install github app manifest request failed",
   });
-  if (!response.ok) {
-    throw new Error(
-      await readInstallError(response, "install github app manifest request failed"),
-    );
-  }
-  return response.json() as Promise<InstallGithubAppManifestResponse>;
 }
 
 export async function finishInstall(token: string): Promise<InstallFinishResponse> {
-  const response = await installFetch("/install/finish", token, {
-    method: "POST",
+  return installJsonRequest<InstallFinishResponse>(token, {
+    path:          "/install/finish",
+    method:        "POST",
+    errorFallback: "install finish request failed",
   });
-  if (!response.ok) {
-    throw new Error(await readInstallError(response, "install finish request failed"));
-  }
-  return response.json() as Promise<InstallFinishResponse>;
 }

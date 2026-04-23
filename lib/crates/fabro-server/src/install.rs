@@ -194,15 +194,17 @@ struct ServerConfigInput {
     canonical_url: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 enum InstallObjectStoreProvider {
     Local,
     S3,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 enum InstallObjectStoreCredentialMode {
     Runtime,
     AccessKey,
@@ -302,10 +304,7 @@ impl InstallObjectStoreState {
                 "provider": "s3",
                 "bucket": bucket,
                 "region": region,
-                "credential_mode": match credential_mode {
-                    InstallObjectStoreCredentialMode::Runtime => "runtime",
-                    InstallObjectStoreCredentialMode::AccessKey => "access_key",
-                },
+                "credential_mode": <&'static str>::from(*credential_mode),
                 "manual_credentials_saved": matches!(
                     credential_mode,
                     InstallObjectStoreCredentialMode::AccessKey
@@ -816,7 +815,6 @@ fn resolve_install_object_store_state(
                         .to_string(),
                 );
             }
-
             Ok(InstallObjectStoreState::Local)
         }
         InstallObjectStoreProvider::S3 => {
@@ -826,7 +824,6 @@ fn resolve_install_object_store_state(
             let credential_mode = input
                 .credential_mode
                 .ok_or_else(|| "Choose how Fabro should authenticate to AWS.".to_string())?;
-
             let manual_credentials = match credential_mode {
                 InstallObjectStoreCredentialMode::Runtime => {
                     if access_key_id.is_some() || secret_access_key.is_some() {
@@ -837,41 +834,12 @@ fn resolve_install_object_store_state(
                     }
                     None
                 }
-                InstallObjectStoreCredentialMode::AccessKey => {
-                    match (access_key_id, secret_access_key) {
-                        (Some(access_key_id), Some(secret_access_key)) => Some(
-                            InstallAwsCredentialPair::new(access_key_id, secret_access_key),
-                        ),
-                        (None, None) => current.and_then(|state| match state {
-                            InstallObjectStoreState::S3 {
-                                credential_mode: InstallObjectStoreCredentialMode::AccessKey,
-                                manual_credentials,
-                                ..
-                            } => manual_credentials.clone(),
-                            InstallObjectStoreState::Local
-                            | InstallObjectStoreState::S3 {
-                                credential_mode: InstallObjectStoreCredentialMode::Runtime,
-                                ..
-                            } => None,
-                        }),
-                        (Some(_), None) | (None, Some(_)) => {
-                            return Err(
-                            "Enter both AWS access key fields or switch to runtime credentials."
-                                .to_string(),
-                        );
-                        }
-                    }
-                }
+                InstallObjectStoreCredentialMode::AccessKey => Some(resolve_s3_manual_credentials(
+                    access_key_id,
+                    secret_access_key,
+                    current,
+                )?),
             };
-
-            if matches!(credential_mode, InstallObjectStoreCredentialMode::AccessKey)
-                && manual_credentials.is_none()
-            {
-                return Err(
-                    "Enter both AWS access key fields or switch to runtime credentials."
-                        .to_string(),
-                );
-            }
 
             Ok(InstallObjectStoreState::S3 {
                 bucket,
@@ -879,6 +847,34 @@ fn resolve_install_object_store_state(
                 credential_mode,
                 manual_credentials,
             })
+        }
+    }
+}
+
+fn resolve_s3_manual_credentials(
+    access_key_id: Option<String>,
+    secret_access_key: Option<String>,
+    current: Option<&InstallObjectStoreState>,
+) -> Result<InstallAwsCredentialPair, String> {
+    match (access_key_id, secret_access_key) {
+        (Some(access_key_id), Some(secret_access_key)) => Ok(InstallAwsCredentialPair::new(
+            access_key_id,
+            secret_access_key,
+        )),
+        (None, None) => current
+            .and_then(|state| match state {
+                InstallObjectStoreState::S3 {
+                    credential_mode: InstallObjectStoreCredentialMode::AccessKey,
+                    manual_credentials,
+                    ..
+                } => manual_credentials.clone(),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                "Enter both AWS access key fields or switch to runtime credentials.".to_string()
+            }),
+        (Some(_), None) | (None, Some(_)) => {
+            Err("Enter both AWS access key fields or switch to runtime credentials.".to_string())
         }
     }
 }

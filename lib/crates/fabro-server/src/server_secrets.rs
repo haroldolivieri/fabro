@@ -23,12 +23,9 @@ impl EnvSource for ProcessEnv {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub(crate) struct StubEnv(pub(crate) HashMap<String, String>);
-
-impl EnvSource for StubEnv {
+impl EnvSource for HashMap<String, String> {
     fn snapshot(&self) -> HashMap<String, String> {
-        self.0.clone()
+        self.clone()
     }
 }
 
@@ -172,7 +169,7 @@ mod tests {
     use fabro_vault::{SecretType, Vault};
     use tokio::sync::RwLock as AsyncRwLock;
 
-    use super::{ProviderCredentials, ServerSecrets, StubEnv};
+    use super::{ProviderCredentials, ServerSecrets};
     use crate::server_secrets::Provider;
 
     #[tokio::test]
@@ -234,10 +231,7 @@ mod tests {
 
         let secrets = ServerSecrets::load(
             env_path,
-            &StubEnv(HashMap::from([(
-                "SESSION_SECRET".to_string(),
-                "env-value".to_string(),
-            )])),
+            &HashMap::from([("SESSION_SECRET".to_string(), "env-value".to_string())]),
         )
         .unwrap();
 
@@ -254,7 +248,7 @@ mod tests {
         let env_path = dir.path().join("server.env");
         let mut env = HashMap::from([("SESSION_SECRET".to_string(), "before".to_string())]);
 
-        let secrets = ServerSecrets::load(env_path, &StubEnv(env.clone())).unwrap();
+        let secrets = ServerSecrets::load(env_path, &env.clone()).unwrap();
         env.insert("SESSION_SECRET".to_string(), "after".to_string());
 
         assert_eq!(secrets.get("SESSION_SECRET").as_deref(), Some("before"));

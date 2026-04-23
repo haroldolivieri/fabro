@@ -4,7 +4,7 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use base64::Engine;
-use fabro_config::{parse_settings_layer, resolve_server_from_file};
+use fabro_config::{ServerSettingsBuilder, parse_settings_layer};
 use fabro_server::ip_allowlist::IpAllowlistConfig;
 use fabro_server::jwt_auth::resolve_auth_mode_with_lookup;
 use fabro_server::server::{RouterOptions, build_router_with_options, create_app_state_with_store};
@@ -29,7 +29,9 @@ fn test_app(settings: fabro_types::settings::SettingsLayer) -> (axum::Router, Ar
         None,
     ));
     let artifact_store = ArtifactStore::new(object_store, "artifacts");
-    let resolved = resolve_server_from_file(&settings).expect("settings should resolve");
+    let resolved = ServerSettingsBuilder::from_layer(&settings)
+        .expect("settings should resolve")
+        .server;
     let auth_mode = resolve_auth_mode_with_lookup(&resolved, |name| match name {
         "SESSION_SECRET" => Some("0123456789abcdef0123456789abcdef".to_string()),
         "GITHUB_APP_CLIENT_SECRET" => Some("test-client-secret".to_string()),

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Method, Request, StatusCode};
-use fabro_config::{parse_settings_layer, resolve_server_from_file};
+use fabro_config::{ServerSettingsBuilder, parse_settings_layer};
 use fabro_server::ip_allowlist::{IpAllowlist, IpAllowlistConfig};
 use fabro_server::jwt_auth::{AuthMode, resolve_auth_mode_with_lookup};
 use fabro_server::server::{
@@ -30,7 +30,9 @@ methods = ["dev-token"]
 "#,
     )
     .expect("settings fixture should parse");
-    let resolved = resolve_server_from_file(&settings).expect("settings should resolve");
+    let resolved = ServerSettingsBuilder::from_layer(&settings)
+        .expect("settings should resolve")
+        .server;
     resolve_auth_mode_with_lookup(&resolved, |name| match name {
         "SESSION_SECRET" => Some(SESSION_SECRET.to_string()),
         "FABRO_DEV_TOKEN" => Some(DEV_TOKEN.to_string()),

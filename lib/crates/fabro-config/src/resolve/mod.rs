@@ -9,8 +9,8 @@ mod workflow;
 pub use cli::resolve_cli;
 pub use error::ResolveError;
 use fabro_types::settings::{
-    CliNamespace, FeaturesNamespace, InterpString, ProjectNamespace, RunNamespace,
-    ServerNamespace, SettingsLayer, WorkflowNamespace,
+    CliNamespace, FeaturesNamespace, InterpString, ProjectNamespace, RunNamespace, ServerNamespace,
+    SettingsLayer, WorkflowNamespace,
 };
 pub use features::resolve_features;
 pub use project::resolve_project;

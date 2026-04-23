@@ -1,3 +1,4 @@
+use fabro_config::WorkflowSettingsBuilder;
 use fabro_graphviz::graph::Graph;
 use fabro_graphviz::parser;
 use fabro_model::{Catalog, Provider};
@@ -34,7 +35,9 @@ fn materialize_run_applies_graph_and_catalog_defaults() {
     };
 
     let materialized = materialize_run(settings, &graph(source), Catalog::builtin(), &[]);
-    let resolved = fabro_config::resolve_run_from_file(&materialized).unwrap();
+    let resolved = WorkflowSettingsBuilder::from_layer(&materialized)
+        .unwrap()
+        .run;
 
     assert_eq!(
         resolved
@@ -76,7 +79,9 @@ fn materialize_run_uses_configured_provider_defaults() {
         Catalog::builtin(),
         &[Provider::OpenAi],
     );
-    let resolved = fabro_config::resolve_run_from_file(&materialized).unwrap();
+    let resolved = WorkflowSettingsBuilder::from_layer(&materialized)
+        .unwrap()
+        .run;
 
     assert_eq!(
         resolved

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use fabro_types::{RunId, WorkflowSettings};
 use fabro_types::settings::run::RunMode;
+use fabro_types::{RunId, WorkflowSettings};
 
 use crate::git::{GitAuthor, git_author_from_settings};
 

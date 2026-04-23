@@ -40,7 +40,7 @@ pub use fabro_api::types::{
 };
 use fabro_auth::parse_credential_secret;
 use fabro_config::daemon::ServerDaemon;
-use fabro_config::{ServerSettingsBuilder, Storage};
+use fabro_config::{ServerSettingsBuilder, Storage, WorkflowSettingsBuilder};
 use fabro_interview::{
     Answer, ControlInterviewer, Interviewer, Question, QuestionType, WorkerControlEnvelope,
 };
@@ -1362,8 +1362,9 @@ async fn get_system_info(
 
 fn system_features(settings: &SettingsLayer) -> SystemFeatures {
     let session_sandboxes =
-        fabro_config::resolve_features_from_file(settings).is_ok_and(|s| s.session_sandboxes);
-    let retros = fabro_config::resolve_run_from_file(settings).is_ok_and(|s| s.execution.retros);
+        ServerSettingsBuilder::from_layer(settings).is_ok_and(|s| s.features.session_sandboxes);
+    let retros =
+        WorkflowSettingsBuilder::from_layer(settings).is_ok_and(|s| s.run.execution.retros);
     SystemFeatures {
         session_sandboxes: Some(session_sandboxes),
         retros:            Some(retros),
@@ -1656,9 +1657,9 @@ fn build_prune_plan(
 }
 
 fn system_sandbox_provider(settings: &SettingsLayer) -> String {
-    fabro_config::resolve_run_from_file(settings).map_or_else(
+    WorkflowSettingsBuilder::from_layer(settings).map_or_else(
         |_| SandboxProvider::default().to_string(),
-        |settings| settings.sandbox.provider,
+        |settings| settings.run.sandbox.provider,
     )
 }
 

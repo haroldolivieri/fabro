@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use axum::http::StatusCode;
 use fabro_config::bind::Bind;
-use fabro_config::{RuntimeDirectory, parse_settings_layer, resolve_server_from_file};
+use fabro_config::{RuntimeDirectory, ServerSettingsBuilder, parse_settings_layer};
 use fabro_server::ip_allowlist::{IpAllowlist, IpAllowlistConfig};
 use fabro_server::jwt_auth::{AuthMode, resolve_auth_mode_with_lookup};
 use fabro_server::serve::{ServeArgs, serve_command};
@@ -168,7 +168,9 @@ methods = ["dev-token"]
 "#,
     )
     .expect("test settings should parse");
-    let resolved = resolve_server_from_file(&settings).expect("test settings should resolve");
+    let resolved = ServerSettingsBuilder::from_layer(&settings)
+        .expect("test settings should resolve")
+        .server;
     let auth_mode = resolve_auth_mode_with_lookup(&resolved, |name| match name {
         "SESSION_SECRET" => Some(TEST_SESSION_SECRET.to_string()),
         "FABRO_DEV_TOKEN" => Some(TEST_DEV_TOKEN.to_string()),

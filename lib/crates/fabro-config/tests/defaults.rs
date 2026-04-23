@@ -2,10 +2,10 @@ use fabro_config::{
     parse_settings_layer, resolve_run_from_file, resolve_server_from_file,
     resolve_workflow_from_file,
 };
-use fabro_types::settings::{Combine, SettingsLayer};
 use fabro_types::settings::cli::OutputFormat;
 use fabro_types::settings::run::{ApprovalMode, RunMode, WorktreeMode};
 use fabro_types::settings::server::ObjectStoreProvider;
+use fabro_types::settings::{Combine, SettingsLayer};
 
 fn parse(source: &str) -> SettingsLayer {
     parse_settings_layer(source).expect("fixture should parse")

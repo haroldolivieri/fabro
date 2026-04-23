@@ -7,10 +7,10 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use fabro_config::bind::BindRequest;
 use fabro_config::ServerSettingsBuilder;
-use fabro_types::settings::{ServerAuthMethod, SettingsLayer};
+use fabro_config::bind::BindRequest;
 use fabro_types::ServerSettings;
+use fabro_types::settings::{ServerAuthMethod, SettingsLayer};
 
 pub(crate) fn storage_dir(settings: &SettingsLayer) -> Result<PathBuf> {
     storage_dir_with_lookup(settings, &|name| std::env::var(name).ok())
@@ -50,9 +50,11 @@ pub(crate) fn auth_methods(settings: &SettingsLayer) -> Vec<ServerAuthMethod> {
 }
 
 pub(crate) fn config_log_level(settings: &SettingsLayer) -> Option<String> {
-    resolved_server_settings(settings)
-        .ok()
-        .and_then(|settings| settings.server.logging.level)
+    settings
+        .server
+        .as_ref()
+        .and_then(|server| server.logging.as_ref())
+        .and_then(|logging| logging.level.clone())
 }
 
 fn resolved_server_settings(settings: &SettingsLayer) -> Result<ServerSettings> {

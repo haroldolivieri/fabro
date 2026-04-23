@@ -4,8 +4,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::settings::{
-    CliNamespace, FeaturesNamespace, InterpString, ProjectNamespace, RunNamespace,
-    ServerNamespace, WorkflowNamespace,
+    CliNamespace, FeaturesNamespace, InterpString, ProjectNamespace, RunNamespace, ServerNamespace,
+    WorkflowNamespace,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

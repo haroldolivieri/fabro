@@ -468,7 +468,7 @@ pub fn persist_install_outputs_direct(
 
 #[cfg(test)]
 mod tests {
-    use fabro_config::{Storage, envfile};
+    use fabro_config::{ServerSettingsBuilder, Storage, envfile};
     use fabro_vault::{SecretType as VaultSecretType, Vault};
 
     use super::{
@@ -661,8 +661,9 @@ name = "custom"
             &toml::to_string_pretty(&doc).expect("settings should serialize"),
         )
         .expect("settings should parse");
-        let resolved =
-            fabro_config::resolve_server_from_file(&settings).expect("settings should resolve");
+        let resolved = ServerSettingsBuilder::from_layer(&settings)
+            .expect("settings should resolve")
+            .server;
         match resolved.listen {
             ServerListenSettings::Tcp { address, .. } => {
                 assert_eq!(address.to_string(), "0.0.0.0:32276");

@@ -755,11 +755,11 @@ mod runs {
 
     use fabro_api::types::*;
     use fabro_types::WorkflowSettings;
-    use fabro_types::settings::{InterpString, ProjectNamespace, WorkflowNamespace};
     use fabro_types::settings::run::{
-        DaytonaSettings, DaytonaSnapshotSettings, LocalSandboxSettings, RunGoal,
-        RunModelSettings, RunNamespace, RunPrepareSettings, RunSandboxSettings,
+        DaytonaSettings, DaytonaSnapshotSettings, LocalSandboxSettings, RunGoal, RunModelSettings,
+        RunNamespace, RunPrepareSettings, RunSandboxSettings,
     };
+    use fabro_types::settings::{InterpString, ProjectNamespace, WorkflowNamespace};
 
     use super::ts;
     use crate::server::truncate_goal;
@@ -1354,20 +1354,20 @@ mod runs {
                 ..WorkflowNamespace::default()
             },
             run:      RunNamespace {
-                goal:        Some(RunGoal::Inline(InterpString::parse(
+                goal: Some(RunGoal::Inline(InterpString::parse(
                     "Add rate limiting to auth endpoints",
                 ))),
                 working_dir: Some(InterpString::parse("/workspace/api-server")),
-                model:       RunModelSettings {
+                model: RunModelSettings {
                     provider: Some(InterpString::parse("anthropic")),
-                    name:     Some(InterpString::parse("claude-opus-4-6")),
+                    name: Some(InterpString::parse("claude-opus-4-6")),
                     ..RunModelSettings::default()
                 },
-                prepare:     RunPrepareSettings {
+                prepare: RunPrepareSettings {
                     commands:   vec!["bun install".into(), "bun run typecheck".into()],
                     timeout_ms: 120_000,
                 },
-                sandbox:     RunSandboxSettings {
+                sandbox: RunSandboxSettings {
                     provider:     "daytona".into(),
                     preserve:     false,
                     devcontainer: false,

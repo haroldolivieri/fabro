@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result, bail};
 use fabro_config::UserSettingsBuilder;
+use fabro_types::UserSettings;
 use fabro_types::settings::cli::{CliLayer, OutputFormat, OutputVerbosity};
 use fabro_types::settings::{Combine, SettingsLayer};
-use fabro_types::UserSettings;
 use fabro_util::printer::Printer;
 use tokio::sync::OnceCell;
 

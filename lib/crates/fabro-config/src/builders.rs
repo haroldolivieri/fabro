@@ -187,7 +187,7 @@ impl WorkflowSettingsBuilder {
     pub fn build_layer(self) -> SettingsLayer {
         let server_defaults = SettingsLayer {
             version: self.server.version,
-            run:     self.server.run,
+            run: self.server.run,
             ..SettingsLayer::default()
         };
         let mut layer = self
@@ -207,7 +207,9 @@ impl WorkflowSettingsBuilder {
         Self::from_layer(&self.build_layer())
     }
 
-    pub fn from_layer(layer: &SettingsLayer) -> std::result::Result<WorkflowSettings, ResolveErrors> {
+    pub fn from_layer(
+        layer: &SettingsLayer,
+    ) -> std::result::Result<WorkflowSettings, ResolveErrors> {
         let layer = apply_builtin_defaults(layer.clone());
         let mut errors = Vec::new();
         let project = resolve_project(&layer.project.clone().unwrap_or_default(), &mut errors);

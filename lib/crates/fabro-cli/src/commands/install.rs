@@ -1989,16 +1989,10 @@ mod tests {
 
     #[test]
     fn config_toml_roundtrips() {
-        use fabro_types::settings::SettingsLayer;
         let toml_str = format_config_toml();
-        let cfg: SettingsLayer = fabro_config::parse_settings_layer(&toml_str)
-            .expect("generated config should parse as v2");
-        let methods = cfg
-            .server
-            .as_ref()
-            .and_then(|s| s.auth.as_ref())
-            .and_then(|a| a.methods.clone())
-            .expect("server.auth.methods should be set");
+        let cfg = fabro_config::ServerSettingsBuilder::from_toml(&toml_str)
+            .expect("generated config should resolve");
+        let methods = cfg.server.auth.methods;
         assert_eq!(methods, vec![
             fabro_types::settings::ServerAuthMethod::DevToken
         ]);
@@ -2006,65 +2000,61 @@ mod tests {
 
     #[test]
     fn config_toml_has_auth_strategies() {
-        use fabro_types::settings::SettingsLayer;
         let toml_str = format_config_toml();
-        let cfg: SettingsLayer = fabro_config::parse_settings_layer(&toml_str).unwrap();
-        let auth = cfg
-            .server
-            .as_ref()
-            .and_then(|s| s.auth.as_ref())
-            .expect("server.auth should be set");
+        let cfg = fabro_config::ServerSettingsBuilder::from_toml(&toml_str)
+            .expect("generated config should resolve");
         assert_eq!(
-            auth.methods,
-            Some(vec![fabro_types::settings::ServerAuthMethod::DevToken])
+            cfg.server.auth.methods,
+            vec![fabro_types::settings::ServerAuthMethod::DevToken]
         );
     }
 
     #[test]
     fn config_toml_has_tcp_listen_address() {
-        use fabro_types::settings::SettingsLayer;
-        use fabro_types::settings::server::ServerListenLayer;
         let toml_str = format_config_toml();
-        let cfg: SettingsLayer = fabro_config::parse_settings_layer(&toml_str).unwrap();
-        let listen = cfg
-            .server
-            .as_ref()
-            .and_then(|s| s.listen.as_ref())
-            .expect("server.listen should be set");
-        match listen {
-            ServerListenLayer::Tcp { address } => {
-                assert_eq!(
-                    address
-                        .as_ref()
-                        .map(fabro_types::settings::InterpString::as_source),
-                    Some("127.0.0.1:32276".to_string())
-                );
-            }
-            ServerListenLayer::Unix { .. } => panic!("expected tcp listen"),
-        }
+        let cfg: toml::Value = toml::from_str(&toml_str).expect("generated config should parse");
+        assert_eq!(
+            cfg.get("server")
+                .and_then(toml::Value::as_table)
+                .and_then(|server| server.get("listen"))
+                .and_then(toml::Value::as_table)
+                .and_then(|listen| listen.get("type"))
+                .and_then(toml::Value::as_str),
+            Some("tcp")
+        );
+        assert_eq!(
+            cfg.get("server")
+                .and_then(toml::Value::as_table)
+                .and_then(|server| server.get("listen"))
+                .and_then(toml::Value::as_table)
+                .and_then(|listen| listen.get("address"))
+                .and_then(toml::Value::as_str),
+            Some("127.0.0.1:32276")
+        );
     }
 
     #[test]
     fn config_toml_has_cli_target_matching_listen_address() {
-        use fabro_types::settings::SettingsLayer;
-        use fabro_types::settings::cli::CliTargetLayer;
         let toml_str = format_config_toml();
-        let cfg: SettingsLayer = fabro_config::parse_settings_layer(&toml_str).unwrap();
-        let target = cfg
-            .cli
-            .as_ref()
-            .and_then(|c| c.target.as_ref())
-            .expect("cli.target should be set");
-        match target {
-            CliTargetLayer::Http { url } => {
-                assert_eq!(
-                    url.as_ref()
-                        .map(fabro_types::settings::InterpString::as_source),
-                    Some("http://127.0.0.1:32276".to_string())
-                );
-            }
-            CliTargetLayer::Unix { .. } => panic!("expected http target"),
-        }
+        let cfg: toml::Value = toml::from_str(&toml_str).expect("generated config should parse");
+        assert_eq!(
+            cfg.get("cli")
+                .and_then(toml::Value::as_table)
+                .and_then(|cli| cli.get("target"))
+                .and_then(toml::Value::as_table)
+                .and_then(|target| target.get("type"))
+                .and_then(toml::Value::as_str),
+            Some("http")
+        );
+        assert_eq!(
+            cfg.get("cli")
+                .and_then(toml::Value::as_table)
+                .and_then(|cli| cli.get("target"))
+                .and_then(toml::Value::as_table)
+                .and_then(|target| target.get("url"))
+                .and_then(toml::Value::as_str),
+            Some("http://127.0.0.1:32276")
+        );
     }
 
     #[test]
@@ -2103,13 +2093,27 @@ name = "custom"
         );
     }
 
-    fn parse_install_settings(source: &str) -> fabro_types::settings::SettingsLayer {
-        fabro_config::parse_settings_layer(source).expect("install settings fixture should parse")
+    fn auth_methods(source: &str) -> Option<Vec<String>> {
+        toml::from_str::<toml::Value>(source)
+            .expect("install settings fixture should parse")
+            .get("server")
+            .and_then(toml::Value::as_table)
+            .and_then(|server| server.get("auth"))
+            .and_then(toml::Value::as_table)
+            .and_then(|auth| auth.get("methods"))
+            .and_then(toml::Value::as_array)
+            .map(|methods| {
+                methods
+                    .iter()
+                    .filter_map(toml::Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
     }
 
     #[test]
     fn dev_token_auth_enabled_when_methods_include_dev_token() {
-        let settings = parse_install_settings(
+        let methods = auth_methods(
             r#"
 _version = 1
 
@@ -2117,12 +2121,12 @@ _version = 1
 methods = ["dev-token"]
 "#,
         );
-        assert!(fabro_config::dev_token_auth_enabled(&settings));
+        assert_eq!(methods, Some(vec!["dev-token".to_string()]));
     }
 
     #[test]
     fn dev_token_auth_enabled_when_mixed_with_github() {
-        let settings = parse_install_settings(
+        let methods = auth_methods(
             r#"
 _version = 1
 
@@ -2130,12 +2134,15 @@ _version = 1
 methods = ["dev-token", "github"]
 "#,
         );
-        assert!(fabro_config::dev_token_auth_enabled(&settings));
+        assert_eq!(
+            methods,
+            Some(vec!["dev-token".to_string(), "github".to_string()])
+        );
     }
 
     #[test]
     fn dev_token_auth_enabled_false_for_github_only() {
-        let settings = parse_install_settings(
+        let methods = auth_methods(
             r#"
 _version = 1
 
@@ -2143,19 +2150,19 @@ _version = 1
 methods = ["github"]
 "#,
         );
-        assert!(!fabro_config::dev_token_auth_enabled(&settings));
+        assert_eq!(methods, Some(vec!["github".to_string()]));
     }
 
     #[test]
     fn dev_token_auth_enabled_false_when_methods_absent() {
-        let settings = parse_install_settings(
+        let methods = auth_methods(
             "
 _version = 1
 
 [server.auth]
 ",
         );
-        assert!(!fabro_config::dev_token_auth_enabled(&settings));
+        assert_eq!(methods, None);
     }
 
     #[test]

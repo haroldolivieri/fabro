@@ -492,16 +492,12 @@ mod tests {
 
     #[test]
     fn config_toml_has_auth_strategies() {
-        use fabro_types::settings::{ServerAuthMethod, SettingsLayer};
+        use fabro_types::settings::ServerAuthMethod;
 
         let toml_str = format_config_toml();
-        let cfg: SettingsLayer = fabro_config::parse_settings_layer(&toml_str).unwrap();
-        let auth = cfg
-            .server
-            .as_ref()
-            .and_then(|s| s.auth.as_ref())
-            .expect("server.auth should be set");
-        assert_eq!(auth.methods, Some(vec![ServerAuthMethod::DevToken]));
+        let cfg =
+            ServerSettingsBuilder::from_toml(&toml_str).expect("generated config should resolve");
+        assert_eq!(cfg.server.auth.methods, vec![ServerAuthMethod::DevToken]);
     }
 
     #[test]

@@ -215,7 +215,8 @@ fn resolve_command_settings(loaded_settings: LoadedSettings) -> Result<ResolvedC
 mod tests {
     use std::path::PathBuf;
 
-    use fabro_types::settings::cli::{CliLayer, CliOutputLayer, OutputFormat, OutputVerbosity};
+    use fabro_config::{CliLayer, CliOutputLayer};
+    use fabro_types::settings::cli::{OutputFormat, OutputVerbosity};
     use fabro_util::printer::Printer;
     use tokio::sync::OnceCell;
 

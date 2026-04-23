@@ -5,9 +5,7 @@
 
 use std::path::PathBuf;
 
-use fabro_config::parse_settings_layer;
 use fabro_test::{fabro_snapshot, test_context};
-use fabro_types::settings::SettingsLayer;
 use httpmock::MockServer;
 use predicates::prelude::*;
 
@@ -50,9 +48,8 @@ fn server_storage_root(settings: &serde_json::Value) -> &str {
         .expect("server.storage.root")
 }
 
-fn server_settings_layer_fixture() -> SettingsLayer {
-    parse_settings_layer(
-        r#"
+fn server_settings_toml_fixture() -> &'static str {
+    r#"
 _version = 1
 
 [server.auth]
@@ -68,15 +65,12 @@ provider = "openai"
 [run.inputs]
 server_only = "1"
 shared = "server"
-"#,
-    )
-    .expect("server settings fixture should parse")
+"#
 }
 
 fn resolved_server_settings_fixture() -> serde_json::Value {
-    let settings =
-        fabro_config::ServerSettingsBuilder::from_layer(&server_settings_layer_fixture())
-            .expect("server settings fixture should resolve");
+    let settings = fabro_config::ServerSettingsBuilder::from_toml(server_settings_toml_fixture())
+        .expect("server settings fixture should resolve");
     serde_json::to_value(settings).expect("resolved settings payload should serialize")
 }
 

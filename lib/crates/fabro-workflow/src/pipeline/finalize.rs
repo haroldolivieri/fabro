@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use fabro_hooks::{HookContext, HookEvent, HookRunner};
-use fabro_types::BilledTokenCounts;
+use fabro_types::{BilledTokenCounts, EventBody};
 
 use super::types::{Concluded, FinalizeOptions, Retroed};
 use crate::error::Error;
@@ -13,7 +13,7 @@ use crate::run_dump::RunDump;
 use crate::run_options::RunOptions;
 use crate::run_status::{FailureReason, RunStatus, SuccessReason};
 use crate::runtime_store::RunStoreHandle;
-use crate::sandbox_git::git_push_host;
+use crate::sandbox_git::{git_diff_with_timeout, git_push_host};
 
 fn emit_run_notice(
     emitter: &Emitter,
@@ -153,9 +153,14 @@ fn build_conclusion_from_parts(
 
 /// Write a finalize projection snapshot commit to the metadata branch.
 ///
-/// This captures the final `run.json` projection state, including conclusion
-/// and retro data. Best-effort: errors are logged as warnings.
-pub async fn write_finalize_commit(run_options: &RunOptions, run_store: &RunStoreHandle) {
+/// `conclusion` is injected into the projection copy: the terminal event
+/// hasn't been emitted yet (FINALIZE emits it after this commit lands), so
+/// the run store's `projection.conclusion` is still `None`.
+pub async fn write_finalize_commit(
+    run_options: &RunOptions,
+    run_store: &RunStoreHandle,
+    conclusion: &Conclusion,
+) {
     let (Some(meta_branch), Some(repo_path)) = (
         run_options
             .git
@@ -168,9 +173,12 @@ pub async fn write_finalize_commit(run_options: &RunOptions, run_store: &RunStor
 
     let git_author = run_options.git_author();
     let store = MetadataStore::new(repo_path, &git_author);
-    let Ok(store_state) = run_store.state().await else {
+    let Ok(mut store_state) = run_store.state().await else {
         return;
     };
+    if store_state.conclusion.is_none() {
+        store_state.conclusion = Some(conclusion.clone());
+    }
     let dump = RunDump::from_projection(&store_state);
     if let Err(e) =
         dump.write_to_metadata_store(&store, &run_options.run_id.to_string(), "finalize run")
@@ -187,6 +195,123 @@ pub async fn write_finalize_commit(run_options: &RunOptions, run_store: &RunStor
         "finalize metadata",
     )
     .await;
+}
+
+/// Compute the diff between the run's base sha and the workspace head.
+///
+/// Failed runs use a shorter timeout: a corrupted workspace must not stall
+/// the terminal event downstream consumers (Slack, SSE, CI hooks) are waiting
+/// for.
+async fn compute_final_patch(
+    run_options: &RunOptions,
+    sandbox: &dyn fabro_agent::Sandbox,
+    status: StageStatus,
+    emitter: &Emitter,
+) -> Option<String> {
+    let base_sha = run_options.git.as_ref().and_then(|g| g.base_sha.clone())?;
+    let timeout_ms = match status {
+        StageStatus::Success | StageStatus::PartialSuccess => 30_000,
+        _ => 10_000,
+    };
+    match git_diff_with_timeout(sandbox, &base_sha, timeout_ms).await {
+        Ok(patch) if !patch.is_empty() => Some(patch),
+        Ok(_) => None,
+        Err(err) => {
+            emit_run_notice(
+                emitter,
+                RunNoticeLevel::Warn,
+                "git_diff_failed",
+                format!("final diff failed: {err}"),
+            );
+            None
+        }
+    }
+}
+
+/// Build the terminal `WorkflowRunCompleted`/`WorkflowRunFailed` event.
+pub(crate) fn build_terminal_event(
+    outcome: &Result<Outcome, Error>,
+    duration_ms: u64,
+    artifact_count: usize,
+    final_git_commit_sha: Option<String>,
+    final_patch: Option<String>,
+    state: Option<&fabro_store::RunProjection>,
+) -> Event {
+    let cancelled = matches!(outcome, Err(Error::Cancelled));
+    let outcome_status = outcome
+        .as_ref()
+        .map_or(StageStatus::Fail, |o| o.status.clone());
+
+    let billed_usage: Vec<_> = state
+        .and_then(|s| s.checkpoint.as_ref())
+        .map(|cp| {
+            cp.node_outcomes
+                .values()
+                .filter_map(|o| o.usage.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    let billing =
+        (!billed_usage.is_empty()).then(|| BilledTokenCounts::from_billed_usage(&billed_usage));
+    let total_usd_micros = billing
+        .as_ref()
+        .and_then(|b| b.total_usd_micros)
+        .or_else(|| {
+            let mut total = 0_i64;
+            let mut has_total = false;
+            for usage in &billed_usage {
+                if let Some(value) = usage.total_usd_micros {
+                    total += value;
+                    has_total = true;
+                }
+            }
+            has_total.then_some(total)
+        });
+
+    if cancelled {
+        return Event::WorkflowRunFailed {
+            error: Error::Cancelled,
+            duration_ms,
+            reason: FailureReason::Cancelled,
+            git_commit_sha: final_git_commit_sha,
+            final_patch,
+        };
+    }
+
+    if outcome_status == StageStatus::Success || outcome_status == StageStatus::PartialSuccess {
+        Event::WorkflowRunCompleted {
+            duration_ms,
+            artifact_count,
+            status: outcome_status.to_string(),
+            reason: match outcome_status {
+                StageStatus::PartialSuccess => SuccessReason::PartialSuccess,
+                _ => SuccessReason::Completed,
+            },
+            total_usd_micros,
+            final_git_commit_sha,
+            final_patch,
+            billing,
+        }
+    } else {
+        let error_msg = outcome
+            .as_ref()
+            .err()
+            .map(ToString::to_string)
+            .or_else(|| {
+                outcome
+                    .as_ref()
+                    .ok()
+                    .and_then(|o| o.failure.as_ref().map(|f| f.message.clone()))
+            })
+            .unwrap_or_else(|| "run failed".to_string());
+        Event::WorkflowRunFailed {
+            error: Error::engine(error_msg),
+            duration_ms,
+            reason: FailureReason::WorkflowError,
+            git_commit_sha: final_git_commit_sha,
+            final_patch,
+        }
+    }
 }
 
 async fn run_hooks(
@@ -219,7 +344,14 @@ async fn cleanup_sandbox(
     Ok(())
 }
 
-/// FINALIZE phase: classify outcome, build conclusion, persist terminal state.
+/// FINALIZE phase: build conclusion, write the meta branch, emit the terminal
+/// `WorkflowRunCompleted`/`WorkflowRunFailed` event.
+///
+/// The terminal event MUST be emitted from here, not from the executor's
+/// `on_run_end` lifecycle hook. Observers (CLI attach, daemon SSE) treat the
+/// event as the run's "done" signal — emitting it earlier means they can
+/// observe terminal state and act on it (e.g. delete the meta branch in
+/// recovery tests) before this function's writes are flushed.
 ///
 /// # Errors
 ///
@@ -240,14 +372,33 @@ pub async fn finalize(retroed: Retroed, options: &FinalizeOptions) -> Result<Con
     let (final_status, failure_reason, _run_status) = classify_engine_result(&outcome);
     let conclusion = build_conclusion_from_store(
         &options.run_store,
-        final_status,
+        final_status.clone(),
         failure_reason,
         duration_ms,
         options.last_git_sha.clone(),
     )
     .await;
 
-    write_finalize_commit(&run_options, &options.run_store).await;
+    let final_patch = compute_final_patch(&run_options, &*sandbox, final_status, &emitter).await;
+
+    write_finalize_commit(&run_options, &options.run_store, &conclusion).await;
+
+    let events = options.run_store.list_events().await.unwrap_or_default();
+    let artifact_count = events
+        .iter()
+        .filter(|envelope| matches!(envelope.event.body, EventBody::ArtifactCaptured(_)))
+        .count();
+    let state_for_event = options.run_store.state().await.ok();
+
+    let terminal_event = build_terminal_event(
+        &outcome,
+        duration_ms,
+        artifact_count,
+        options.last_git_sha.clone(),
+        final_patch,
+        state_for_event.as_ref(),
+    );
+    emitter.emit(&terminal_event);
 
     if options.preserve_sandbox {
         let info = sandbox.sandbox_info();

@@ -15,9 +15,26 @@ use crate::event::{Emitter, Event, StoreProgressLogger, append_event};
 use crate::handler::HandlerRegistry;
 use crate::outcome::Outcome;
 use crate::pipeline;
-use crate::pipeline::types::Initialized;
+use crate::pipeline::build_terminal_event;
+use crate::pipeline::types::{Executed, Initialized};
 use crate::records::Checkpoint;
 use crate::run_options::RunOptions;
+
+/// FINALIZE emits the terminal event in production. These helpers stop at
+/// EXECUTE, so they emit it here to keep test consumers seeing the same
+/// end-of-run signal.
+async fn emit_test_terminal_event(executed: &Executed) {
+    let state = executed.run_store.state().await.ok();
+    let event = build_terminal_event(
+        &executed.outcome,
+        executed.duration_ms,
+        0,
+        None,
+        None,
+        state.as_ref(),
+    );
+    executed.emitter.emit(&event);
+}
 
 pub fn test_store_dir(run_dir: &std::path::Path) -> PathBuf {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -165,6 +182,7 @@ pub async fn run_graph(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    emit_test_terminal_event(&executed).await;
     // Tests often reopen the run store immediately after `run()` returns.
     // Flush the async store logger first so they don't observe partial state.
     initialized.store_logger.flush().await;
@@ -192,6 +210,7 @@ pub async fn run_graph_with_state(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    emit_test_terminal_event(&executed).await;
     initialized.store_logger.flush().await;
     let outcome = executed.outcome?;
     let state = executed
@@ -225,6 +244,7 @@ pub async fn run_graph_with_hooks(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    emit_test_terminal_event(&executed).await;
     initialized.store_logger.flush().await;
     executed.outcome
 }
@@ -252,6 +272,7 @@ pub async fn run_graph_with_hooks_and_state(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    emit_test_terminal_event(&executed).await;
     initialized.store_logger.flush().await;
     let outcome = executed.outcome?;
     let state = executed
@@ -284,6 +305,7 @@ pub async fn run_graph_from_checkpoint(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    emit_test_terminal_event(&executed).await;
     initialized.store_logger.flush().await;
     executed.outcome
 }
@@ -310,6 +332,7 @@ pub async fn run_graph_from_checkpoint_with_state(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
+    emit_test_terminal_event(&executed).await;
     initialized.store_logger.flush().await;
     let outcome = executed.outcome?;
     let state = executed

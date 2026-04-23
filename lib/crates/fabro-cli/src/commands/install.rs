@@ -32,7 +32,7 @@ use fabro_install::{
 use fabro_model::Provider;
 use fabro_server::serve;
 use fabro_store::ArtifactStore;
-use fabro_types::settings::SettingsLayer;
+use fabro_types::ServerSettings;
 use fabro_types::settings::server::ServerAuthMethod;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
@@ -1263,11 +1263,10 @@ fn persist_github_install_changes(
 }
 
 async fn write_artifact_store_metadata(
-    settings: &SettingsLayer,
+    settings: &ServerSettings,
     fabro_version: &str,
 ) -> Result<()> {
-    let resolved = fabro_config::ServerSettingsBuilder::from_layer(settings)?;
-    let (object_store, prefix) = serve::build_artifact_object_store(&resolved.server)?;
+    let (object_store, prefix) = serve::build_artifact_object_store(&settings.server)?;
     let artifact_store = ArtifactStore::new(object_store, prefix);
     artifact_store.write_metadata(fabro_version).await?;
     Ok(())
@@ -1774,9 +1773,7 @@ async fn run_install_inner(args: &InstallArgs, ctx: &CommandContext) -> Result<(
         toml::to_string_pretty(&doc)?
     };
 
-    let install_settings = fabro_config::parse_settings_layer(&settings_toml)
-        .context("failed to parse generated settings.toml")?;
-    fabro_config::ServerSettingsBuilder::from_layer(&install_settings)?;
+    let install_server_settings = fabro_config::ServerSettingsBuilder::from_toml(&settings_toml)?;
 
     // Secrets and auth material
     {
@@ -1787,7 +1784,12 @@ async fn run_install_inner(args: &InstallArgs, ctx: &CommandContext) -> Result<(
             s.green.apply_to("✔")
         );
 
-        let dev_token = if fabro_config::dev_token_auth_enabled(&install_settings) {
+        let dev_token = if install_server_settings
+            .server
+            .auth
+            .methods
+            .contains(&ServerAuthMethod::DevToken)
+        {
             let token = dev_token::read_or_mint_dev_token_for_install(
                 &fabro_util::Home::from_env().dev_token_path(),
             )?;
@@ -1826,7 +1828,7 @@ async fn run_install_inner(args: &InstallArgs, ctx: &CommandContext) -> Result<(
         server_was_running,
     )
     .await?;
-    if let Err(err) = write_artifact_store_metadata(&install_settings, FABRO_VERSION).await {
+    if let Err(err) = write_artifact_store_metadata(&install_server_settings, FABRO_VERSION).await {
         fabro_util::printerr!(
             printer,
             "  {} failed to write artifact store metadata: {err}",
@@ -1862,13 +1864,7 @@ async fn run_install_inner(args: &InstallArgs, ctx: &CommandContext) -> Result<(
                 s.green.apply_to("✔"),
                 bind
             );
-            let methods = install_settings
-                .server
-                .as_ref()
-                .and_then(|srv| srv.auth.as_ref())
-                .and_then(|auth| auth.methods.as_ref())
-                .map(Vec::as_slice)
-                .unwrap_or_default();
+            let methods = install_server_settings.server.auth.methods.as_slice();
             let token = methods
                 .contains(&ServerAuthMethod::DevToken)
                 .then(|| {
@@ -2110,7 +2106,7 @@ name = "custom"
         );
     }
 
-    fn parse_install_settings(source: &str) -> SettingsLayer {
+    fn parse_install_settings(source: &str) -> fabro_types::settings::SettingsLayer {
         fabro_config::parse_settings_layer(source).expect("install settings fixture should parse")
     }
 
@@ -2941,7 +2937,7 @@ client_id = "client-id"
     #[tokio::test]
     async fn write_artifact_store_metadata_creates_marker_in_resolved_store() {
         let dir = tempfile::tempdir().unwrap();
-        let settings = fabro_config::parse_settings_layer(&format!(
+        let settings = fabro_config::ServerSettingsBuilder::from_toml(&format!(
             r#"
 _version = 1
 

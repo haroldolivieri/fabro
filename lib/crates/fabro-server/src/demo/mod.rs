@@ -1584,8 +1584,9 @@ mod settings {
         static CACHED: OnceLock<serde_json::Value> = OnceLock::new();
         CACHED
             .get_or_init(|| {
-                let settings = fabro_config::parse_settings_layer(
-                    r#"
+                serde_json::to_value(
+                    fabro_config::ServerSettingsBuilder::from_toml(
+                        r#"
 _version = 1
 
 [server.listen]
@@ -1621,12 +1622,8 @@ slug = "fabro-dev"
 [features]
 session_sandboxes = false
 "#,
-                )
-                .expect("demo settings fixture should parse");
-
-                serde_json::to_value(
-                    fabro_config::ServerSettingsBuilder::from_layer(&settings)
-                        .expect("demo settings fixture should resolve"),
+                    )
+                    .expect("demo settings fixture should resolve"),
                 )
                 .expect("demo settings should serialize")
             })

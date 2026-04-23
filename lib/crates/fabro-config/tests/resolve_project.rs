@@ -1,4 +1,4 @@
-use fabro_config::{WorkflowSettingsBuilder, parse_settings_layer};
+use fabro_config::WorkflowSettingsBuilder;
 use fabro_types::settings::SettingsLayer;
 
 #[test]
@@ -17,7 +17,7 @@ fn resolves_project_defaults_from_empty_settings() {
 
 #[test]
 fn resolves_project_directory_and_metadata() {
-    let settings: SettingsLayer = parse_settings_layer(
+    let project = WorkflowSettingsBuilder::from_toml(
         r#"
 _version = 1
 
@@ -30,11 +30,8 @@ directory = ".fabro"
 team = "platform"
 "#,
     )
-    .expect("fixture should parse");
-
-    let project = WorkflowSettingsBuilder::from_layer(&settings)
-        .expect("project settings should resolve")
-        .project;
+    .expect("project settings should resolve")
+    .project;
 
     assert_eq!(project.name.as_deref(), Some("Acme"));
     assert_eq!(project.description.as_deref(), Some("Automation"));

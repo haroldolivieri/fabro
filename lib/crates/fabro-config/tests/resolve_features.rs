@@ -1,4 +1,4 @@
-use fabro_config::{UserSettingsBuilder, parse_settings_layer};
+use fabro_config::UserSettingsBuilder;
 use fabro_types::settings::SettingsLayer;
 
 #[test]
@@ -14,7 +14,7 @@ fn resolves_features_defaults_from_empty_settings() {
 
 #[test]
 fn resolves_session_sandboxes_flag() {
-    let settings: SettingsLayer = parse_settings_layer(
+    let features = UserSettingsBuilder::from_toml(
         r"
 _version = 1
 
@@ -22,11 +22,8 @@ _version = 1
 session_sandboxes = true
 ",
     )
-    .expect("fixture should parse");
-
-    let features = UserSettingsBuilder::from_layer(&settings)
-        .expect("features should resolve")
-        .features;
+    .expect("features should resolve")
+    .features;
 
     assert!(features.session_sandboxes);
 }

@@ -3,7 +3,7 @@ use fabro_types::RunId;
 use fabro_util::terminal::Styles;
 
 use super::output::{api_diagnostics_to_local, print_preflight_workflow_summary};
-use super::overrides::run_args_layer;
+use super::overrides::run_args_overrides;
 use crate::args::RunArgs;
 use crate::command_context::CommandContext;
 use crate::manifest_builder::{ManifestBuildInput, build_run_manifest, run_manifest_args};
@@ -26,7 +26,7 @@ pub(crate) async fn create_run(
         .workflow
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("--workflow is required"))?;
-    let cli_args_config = run_args_layer(args)?;
+    let cli_args_config = run_args_overrides(args)?;
     let cwd = ctx.cwd().to_path_buf();
     let run_id = args
         .run_id
@@ -38,7 +38,8 @@ pub(crate) async fn create_run(
     let built = build_run_manifest(ManifestBuildInput {
         workflow: workflow_path.clone(),
         cwd,
-        args_layer: cli_args_config,
+        run_overrides: cli_args_config.run,
+        cli_overrides: cli_args_config.cli,
         args: run_manifest_args(args),
         run_id,
         user_settings_path: Some(active_settings_path(None)),

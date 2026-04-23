@@ -13,8 +13,6 @@ use fabro_config::{
 use fabro_install::{OBJECT_STORE_ACCESS_KEY_ID_ENV, OBJECT_STORE_SECRET_ACCESS_KEY_ENV};
 use fabro_sandbox::SandboxProvider;
 use fabro_types::ServerSettings;
-#[cfg(test)]
-use fabro_types::settings::SettingsLayer;
 use fabro_types::settings::server::{GithubIntegrationStrategy, WebhookStrategy};
 use fabro_types::settings::{
     GithubIntegrationSettings, InterpString, ObjectStoreSettings, ServerListenSettings,
@@ -186,19 +184,6 @@ fn serve_overrides(args: &ServeArgs) -> (Option<RunLayer>, Option<ServerLayer>) 
         (run != RunLayer::default()).then_some(run),
         (server != ServerLayer::default()).then_some(server),
     )
-}
-
-#[cfg(test)]
-fn apply_serve_overrides(base: &SettingsLayer, args: &ServeArgs) -> SettingsLayer {
-    let (run, server) = serve_overrides(args);
-    let mut settings = base.clone();
-    if let Some(run) = run {
-        settings.run = Some(run);
-    }
-    if let Some(server) = server {
-        settings.server = Some(server);
-    }
-    settings
 }
 
 async fn resolve_github_webhook_ip_allowlist(
@@ -1063,52 +1048,65 @@ mod tests {
     use std::time::Duration;
 
     use fabro_config::bind::{Bind, BindRequest};
-    use fabro_config::{ServerSettingsBuilder, parse_settings_layer};
-    use fabro_types::settings::SettingsLayer;
+    use fabro_config::{RunSettingsBuilder, ServerSettingsBuilder};
+    use fabro_types::ServerSettings;
     use fabro_types::settings::interp::InterpString;
-    use fabro_types::settings::run::RunLayer;
     use fabro_types::settings::server::ObjectStoreSettings;
     use fabro_util::Home;
 
     use super::{
-        GitHubMetaResolver, ServeArgs, ServerTitlePhase, apply_serve_overrides,
-        bind_tcp_host_with_fallback, build_local_object_store_with_preference,
-        build_object_store_from_settings_with_lookup, build_slatedb_store,
-        resolve_bind_request_from_server_settings, resolve_github_webhook_ip_allowlist,
-        resolve_startup_github_webhook_ip_allowlist, server_bind_title, server_title,
+        GitHubMetaResolver, ServeArgs, ServerTitlePhase, bind_tcp_host_with_fallback,
+        build_local_object_store_with_preference, build_object_store_from_settings_with_lookup,
+        build_slatedb_store, resolve_bind_request_from_server_settings,
+        resolve_github_webhook_ip_allowlist, resolve_startup_github_webhook_ip_allowlist,
+        serve_overrides, server_bind_title, server_title,
     };
-    use crate::server::resolve_app_state_settings;
+    use crate::server::ResolvedAppStateSettings;
 
-    fn parse_settings(source: &str) -> SettingsLayer {
-        let mut layer = parse_settings_layer(source).expect("v2 fixture should parse");
-        layer.ensure_test_auth_methods();
-        layer
+    fn manifest_run_defaults(source: &str) -> fabro_config::RunLayer {
+        let mut document: toml::Table = source.parse().expect("v2 fixture should parse");
+        document
+            .remove("run")
+            .map(|value| value.try_into::<fabro_config::RunLayer>())
+            .transpose()
+            .expect("run settings should parse")
+            .unwrap_or_default()
     }
 
-    fn resolved_server_settings(layer: &SettingsLayer) -> fabro_types::settings::ServerNamespace {
-        ServerSettingsBuilder::from_layer(layer)
-            .expect("settings should resolve")
-            .server
+    fn server_settings(source: &str) -> ServerSettings {
+        let mut document: toml::Table = source.parse().expect("v2 fixture should parse");
+        let server = document
+            .entry("server")
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+            .as_table_mut()
+            .expect("[server] should stay a table in test fixtures");
+        let auth = server
+            .entry("auth")
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+            .as_table_mut()
+            .expect("[server.auth] should stay a table in test fixtures");
+        auth.entry("methods").or_insert_with(|| {
+            toml::Value::Array(vec![toml::Value::String("dev-token".to_string())])
+        });
+        ServerSettingsBuilder::from_toml(
+            &toml::to_string(&document).expect("fixture should serialize"),
+        )
+        .expect("settings should resolve")
+    }
+
+    fn resolved_runtime_settings(source: &str) -> ResolvedAppStateSettings {
+        let manifest_run_defaults = manifest_run_defaults(source);
+        ResolvedAppStateSettings {
+            manifest_run_settings: RunSettingsBuilder::from_run_layer(&manifest_run_defaults)
+                .map_err(|err| err.to_string()),
+            manifest_run_defaults,
+            server_settings: server_settings(source),
+        }
     }
 
     #[test]
     fn runtime_server_settings_preserve_storage_dir_override() {
-        let base = parse_settings("_version = 1\n");
-        let args = ServeArgs {
-            bind: None,
-            model: None,
-            provider: None,
-            sandbox: None,
-            web: false,
-            no_web: false,
-            max_concurrent_runs: None,
-            config: None,
-            #[cfg(debug_assertions)]
-            watch_web: false,
-        };
-
-        let mut resolved =
-            resolve_app_state_settings(&apply_serve_overrides(&base, &args)).expect("settings");
+        let mut resolved = resolved_runtime_settings("_version = 1\n");
         resolved.server_settings = resolved
             .server_settings
             .with_storage_override(&PathBuf::from("/srv/fabro-storage"));
@@ -1117,11 +1115,23 @@ mod tests {
             resolved.server_settings.server.storage.root.as_source(),
             "/srv/fabro-storage"
         );
+        let fabro_types::settings::ObjectStoreSettings::Local { root } =
+            &resolved.server_settings.server.artifacts.store
+        else {
+            panic!("artifacts store should stay local");
+        };
+        assert_eq!(root.as_source(), "/srv/fabro-storage/objects/artifacts");
+        let fabro_types::settings::ObjectStoreSettings::Local { root } =
+            &resolved.server_settings.server.slatedb.store
+        else {
+            panic!("slatedb store should stay local");
+        };
+        assert_eq!(root.as_source(), "/srv/fabro-storage/objects/slatedb");
     }
 
     #[test]
     fn runtime_server_settings_keep_disk_defaults_out_of_manifest_defaults() {
-        let base = parse_settings(
+        let mut resolved = resolved_runtime_settings(
             r#"
 _version = 1
 
@@ -1129,21 +1139,6 @@ _version = 1
 root = "/srv/from-disk"
 "#,
         );
-        let args = ServeArgs {
-            bind: None,
-            model: None,
-            provider: None,
-            sandbox: None,
-            web: false,
-            no_web: false,
-            max_concurrent_runs: None,
-            config: None,
-            #[cfg(debug_assertions)]
-            watch_web: false,
-        };
-
-        let mut resolved =
-            resolve_app_state_settings(&apply_serve_overrides(&base, &args)).expect("settings");
         resolved.server_settings = resolved
             .server_settings
             .with_storage_override(&PathBuf::from("/srv/from-runtime"));
@@ -1154,21 +1149,13 @@ root = "/srv/from-disk"
         );
         assert_eq!(
             resolved.manifest_run_defaults,
-            RunLayer::default(),
+            fabro_config::RunLayer::default(),
             "manifest defaults should stay free of server-only overrides"
         );
     }
 
     #[test]
     fn apply_runtime_settings_enables_web_from_cli_flag() {
-        let base = parse_settings(
-            r"
-_version = 1
-
-[server.web]
-enabled = false
-",
-        );
         let args = ServeArgs {
             bind: None,
             model: None,
@@ -1182,11 +1169,10 @@ enabled = false
             watch_web: false,
         };
 
-        let resolved = apply_serve_overrides(&base, &args);
+        let (_, server) = serve_overrides(&args);
 
         assert_eq!(
-            resolved
-                .server
+            server
                 .as_ref()
                 .and_then(|server| server.web.as_ref())
                 .and_then(|web| web.enabled),
@@ -1196,7 +1182,6 @@ enabled = false
 
     #[test]
     fn apply_runtime_settings_disables_web_from_cli_flag() {
-        let base = SettingsLayer::default();
         let args = ServeArgs {
             bind: None,
             model: None,
@@ -1210,11 +1195,10 @@ enabled = false
             watch_web: false,
         };
 
-        let resolved = apply_serve_overrides(&base, &args);
+        let (_, server) = serve_overrides(&args);
 
         assert_eq!(
-            resolved
-                .server
+            server
                 .as_ref()
                 .and_then(|server| server.web.as_ref())
                 .and_then(|web| web.enabled),
@@ -1224,12 +1208,9 @@ enabled = false
 
     #[test]
     fn resolve_bind_request_from_server_settings_defaults_to_socket_when_listen_is_absent() {
-        let bind = resolve_bind_request_from_server_settings(
-            &ServerSettingsBuilder::from_layer(&SettingsLayer::test_default())
-                .expect("settings should resolve"),
-            None,
-        )
-        .expect("bind");
+        let bind =
+            resolve_bind_request_from_server_settings(&server_settings("_version = 1\n"), None)
+                .expect("bind");
 
         assert_eq!(bind, BindRequest::Unix(Home::from_env().socket_path()));
     }
@@ -1237,7 +1218,7 @@ enabled = false
     #[test]
     fn resolve_bind_request_from_server_settings_uses_configured_tcp_when_no_explicit_bind_is_given()
      {
-        let settings = parse_settings(
+        let settings = server_settings(
             r#"
 _version = 1
 
@@ -1247,18 +1228,14 @@ address = "127.0.0.1:0"
 "#,
         );
 
-        let bind = resolve_bind_request_from_server_settings(
-            &ServerSettingsBuilder::from_layer(&settings).expect("settings should resolve"),
-            None,
-        )
-        .expect("bind");
+        let bind = resolve_bind_request_from_server_settings(&settings, None).expect("bind");
 
         assert_eq!(bind, BindRequest::Tcp("127.0.0.1:0".parse().unwrap()));
     }
 
     #[test]
     fn resolve_bind_request_from_server_settings_prefers_explicit_bind_over_config() {
-        let settings = parse_settings(
+        let settings = server_settings(
             r#"
 _version = 1
 
@@ -1268,19 +1245,15 @@ address = "127.0.0.1:32276"
 "#,
         );
 
-        let bind = resolve_bind_request_from_server_settings(
-            &ServerSettingsBuilder::from_layer(&settings).expect("settings should resolve"),
-            Some("/tmp/fabro.sock"),
-        )
-        .expect("bind");
+        let bind = resolve_bind_request_from_server_settings(&settings, Some("/tmp/fabro.sock"))
+            .expect("bind");
 
         assert_eq!(bind, BindRequest::Unix(PathBuf::from("/tmp/fabro.sock")));
     }
 
     #[test]
     fn resolve_bind_request_from_server_settings_preserves_host_only_cli_bind() {
-        let settings =
-            ServerSettingsBuilder::from_layer(&SettingsLayer::test_default()).expect("settings");
+        let settings = server_settings("_version = 1\n");
 
         let bind =
             resolve_bind_request_from_server_settings(&settings, Some("127.0.0.1")).expect("bind");
@@ -1290,7 +1263,7 @@ address = "127.0.0.1:32276"
 
     #[test]
     fn web_enabled_stays_enabled_without_github_app_mode() {
-        let base = parse_settings(
+        let base = server_settings(
             r#"
 _version = 1
 
@@ -1302,7 +1275,7 @@ strategy = "token"
 "#,
         );
 
-        let resolved = resolved_server_settings(&base);
+        let resolved = base.server;
 
         assert!(resolved.web.enabled);
     }
@@ -1356,7 +1329,7 @@ strategy = "token"
     fn build_slatedb_store_uses_configured_local_root() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("custom-slatedb");
-        let settings = parse_settings(&format!(
+        let resolved = server_settings(&format!(
             r#"
 _version = 1
 
@@ -1364,9 +1337,8 @@ _version = 1
 root = "{}"
 "#,
             root.display()
-        ));
-
-        let resolved = resolved_server_settings(&settings);
+        ))
+        .server;
         let (_object_store, prefix, flush_interval, disk_cache) =
             build_slatedb_store(&resolved).expect("slatedb store should build");
 
@@ -1378,16 +1350,15 @@ root = "{}"
 
     #[test]
     fn build_slatedb_store_returns_disk_cache_when_enabled() {
-        let settings = parse_settings(
+        let resolved = server_settings(
             r"
 _version = 1
 
 [server.slatedb]
 disk_cache = true
 ",
-        );
-
-        let resolved = resolved_server_settings(&settings);
+        )
+        .server;
         let (_object_store, _prefix, _flush_interval, disk_cache) =
             build_slatedb_store(&resolved).expect("slatedb store should build");
 
@@ -1511,7 +1482,7 @@ disk_cache = true
 
     #[tokio::test]
     async fn resolve_github_webhook_ip_allowlist_propagates_resolution_errors() {
-        let settings = resolved_server_settings(&parse_settings(
+        let settings = server_settings(
             r#"
 _version = 1
 
@@ -1526,7 +1497,8 @@ app_id = "123"
 [server.integrations.github.webhooks.ip_allowlist]
 entries = ["github_meta_hooks"]
 "#,
-        ));
+        )
+        .server;
 
         let cache_dir = tempfile::tempdir().unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1547,7 +1519,7 @@ entries = ["github_meta_hooks"]
 
     #[tokio::test]
     async fn resolve_startup_github_webhook_ip_allowlist_skips_resolution_without_webhook_secret() {
-        let settings = resolved_server_settings(&parse_settings(
+        let settings = server_settings(
             r#"
 _version = 1
 
@@ -1562,7 +1534,8 @@ app_id = "123"
 [server.integrations.github.webhooks.ip_allowlist]
 entries = ["github_meta_hooks"]
 "#,
-        ));
+        )
+        .server;
 
         let cache_dir = tempfile::tempdir().unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

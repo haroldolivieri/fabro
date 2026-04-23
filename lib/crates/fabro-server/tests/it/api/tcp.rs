@@ -106,7 +106,15 @@ async fn spawn_served_listener(
         .await
     });
 
-    let bind = rx.await.expect("server should report its bind address");
+    let bind = match rx.await {
+        Ok(bind) => bind,
+        Err(_) => {
+            let result = handle
+                .await
+                .expect("server task should not panic before reporting readiness");
+            panic!("server should report its bind address: {result:?}");
+        }
+    };
     (handle, bind, tempdir)
 }
 

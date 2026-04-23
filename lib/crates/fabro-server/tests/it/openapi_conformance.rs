@@ -12,7 +12,9 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use fabro_server::install::{InstallAppState, build_install_router};
 use fabro_server::jwt_auth::AuthMode;
-use fabro_server::server::{build_router, create_app_state_with_env_lookup_and_server_secret_env};
+use fabro_server::server::{
+    build_router, create_app_state_with_runtime_settings_and_env_lookup_and_server_secret_env,
+};
 use serde_yaml::Value;
 use tower::ServiceExt;
 
@@ -145,9 +147,11 @@ fn github_webhook_spec_and_sdk_describe_a_json_body() {
 #[tokio::test]
 async fn github_webhook_spec_route_is_routable_when_webhook_secret_is_present() {
     let secret = "test-webhook-secret".to_string();
+    let settings = test_settings();
     let app = build_router(
-        create_app_state_with_env_lookup_and_server_secret_env(
-            test_settings(),
+        create_app_state_with_runtime_settings_and_env_lookup_and_server_secret_env(
+            settings.server_settings,
+            settings.manifest_run_defaults,
             5,
             |_| None,
             &std::collections::HashMap::from([("GITHUB_APP_WEBHOOK_SECRET".to_string(), secret)]),

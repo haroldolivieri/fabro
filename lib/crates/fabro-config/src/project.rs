@@ -12,7 +12,7 @@
 use std::fmt::Write;
 use std::path::{Component, Path, PathBuf};
 
-use fabro_types::settings::SettingsLayer;
+use fabro_types::settings::{RunNamespace, SettingsLayer};
 use serde::Serialize;
 
 use crate::load::load_settings_path;
@@ -113,14 +113,17 @@ pub fn resolve_workflow_path(workflow_path: &Path, cwd: &Path) -> Result<Workflo
 }
 
 pub fn resolve_working_directory(settings: &SettingsLayer, caller_cwd: &Path) -> PathBuf {
-    let Some(work_dir) = WorkflowSettingsBuilder::run_from_layer(settings)
-        .ok()
-        .and_then(|settings| settings.working_dir)
-        .map(|value| value.as_source())
-    else {
+    let Some(run_settings) = WorkflowSettingsBuilder::run_from_layer(settings).ok() else {
         return caller_cwd.to_path_buf();
     };
-    let path = PathBuf::from(&work_dir);
+    resolve_working_directory_from_run(&run_settings, caller_cwd)
+}
+
+pub fn resolve_working_directory_from_run(run: &RunNamespace, caller_cwd: &Path) -> PathBuf {
+    let Some(work_dir) = run.working_dir.as_ref().map(|value| value.as_source()) else {
+        return caller_cwd.to_path_buf();
+    };
+    let path = PathBuf::from(work_dir);
     if path.is_absolute() {
         path
     } else {
@@ -584,5 +587,19 @@ file = "prompts/goal.md"
             file.as_source(),
             config_dir.join("prompts").join("goal.md").to_string_lossy()
         );
+    }
+
+    #[test]
+    fn resolve_working_directory_from_run_joins_relative_path() {
+        let cwd = Path::new("/tmp/workspace");
+        let resolved = resolve_working_directory_from_run(
+            &fabro_types::settings::RunNamespace {
+                working_dir: Some(fabro_types::settings::InterpString::parse("repo")),
+                ..fabro_types::settings::RunNamespace::default()
+            },
+            cwd,
+        );
+
+        assert_eq!(resolved, cwd.join("repo"));
     }
 }

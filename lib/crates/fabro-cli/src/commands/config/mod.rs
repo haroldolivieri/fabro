@@ -23,10 +23,7 @@ struct RenderedConfig {
     server: ServerSettings,
 }
 
-async fn rendered_config(
-    args: &SettingsArgs,
-    base_ctx: &CommandContext,
-) -> anyhow::Result<serde_json::Value> {
+pub(crate) async fn execute(args: &SettingsArgs, base_ctx: &CommandContext) -> anyhow::Result<()> {
     let ctx = base_ctx.with_target(&args.target)?;
     let user = fabro_config::UserSettings::resolve()?;
     let server = ctx
@@ -34,11 +31,8 @@ async fn rendered_config(
         .await?
         .retrieve_resolved_server_settings()
         .await?;
-    serde_json::to_value(RenderedConfig { user, server }).map_err(Into::into)
-}
+    let config = serde_json::to_value(RenderedConfig { user, server })?;
 
-pub(crate) async fn execute(args: &SettingsArgs, base_ctx: &CommandContext) -> anyhow::Result<()> {
-    let config = Box::pin(rendered_config(args, base_ctx)).await?;
     if base_ctx.json_output() {
         print_json_pretty(&config)?;
         return Ok(());

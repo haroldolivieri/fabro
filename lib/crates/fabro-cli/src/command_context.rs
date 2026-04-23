@@ -9,7 +9,9 @@ use fabro_types::settings::cli::{CliLayer, OutputFormat};
 use fabro_util::printer::Printer;
 use tokio::sync::OnceCell;
 
-use crate::args::{ServerConnectionArgs, ServerTargetArgs};
+use crate::args::{
+    ServerConnectionArgs, ServerTargetArgs, printer_from_verbosity, require_no_json_override,
+};
 use crate::server_client::Client;
 use crate::{server_client, user_config};
 
@@ -48,7 +50,7 @@ pub(crate) struct ResolvedBaseContext {
 impl ResolvedBaseContext {
     pub(crate) fn from_disk(cli_layer: &CliLayer, process_local_json: bool) -> Result<Self> {
         let (machine_settings, user_settings) = load_merged_settings(cli_layer, &ServerMode::None)?;
-        let printer = crate::args::printer_from_verbosity(user_settings.cli.output.verbosity);
+        let printer = printer_from_verbosity(user_settings.cli.output.verbosity);
 
         Ok(Self {
             printer,
@@ -139,7 +141,7 @@ impl CommandContext {
     }
 
     pub(crate) fn require_no_json_override(&self) -> Result<()> {
-        crate::args::require_no_json_override(self.process_local_json)
+        require_no_json_override(self.process_local_json)
     }
 
     pub(crate) fn cwd(&self) -> &Path {
@@ -195,15 +197,20 @@ impl CommandContext {
         let (machine_settings, user_settings) =
             load_merged_settings(&self.cli_layer, &server_mode)?;
 
-        Ok(
-            self.with_server_mode_from_loaded_settings(
-                server_mode,
-                machine_settings,
-                user_settings,
-            ),
-        )
+        Ok(Self {
+            printer: self.printer,
+            process_local_json: self.process_local_json,
+            cwd: self.cwd.clone(),
+            base_config_path: self.base_config_path.clone(),
+            cli_layer: self.cli_layer.clone(),
+            machine_settings,
+            user_settings,
+            server_mode,
+            server: OnceCell::new(),
+        })
     }
 
+    #[cfg(test)]
     fn with_server_mode_from_loaded_settings(
         &self,
         server_mode: ServerMode,
@@ -256,8 +263,8 @@ mod tests {
 
     use fabro_config::user::apply_storage_dir_override;
     use fabro_config::{UserSettings, parse_settings_layer};
-    use fabro_types::settings::SettingsLayer;
     use fabro_types::settings::cli::{CliLayer, CliOutputLayer, OutputFormat, OutputVerbosity};
+    use fabro_types::settings::{InterpString, SettingsLayer};
     use fabro_util::printer::Printer;
     use tokio::sync::OnceCell;
 
@@ -377,7 +384,7 @@ root = "/srv/fabro/default"
                 .as_ref()
                 .and_then(|server| server.storage.as_ref())
                 .and_then(|storage| storage.root.as_ref())
-                .map(|root| root.as_source()),
+                .map(InterpString::as_source),
             Some("/srv/fabro/default".to_string())
         );
         assert_eq!(
@@ -386,7 +393,7 @@ root = "/srv/fabro/default"
                 .as_ref()
                 .and_then(|server| server.storage.as_ref())
                 .and_then(|storage| storage.root.as_ref())
-                .map(|root| root.as_source()),
+                .map(InterpString::as_source),
             Some("/srv/fabro/override".to_string())
         );
     }
@@ -441,7 +448,7 @@ root = "/srv/fabro/default"
                 .as_ref()
                 .and_then(|server| server.storage.as_ref())
                 .and_then(|storage| storage.root.as_ref())
-                .map(|root| root.as_source()),
+                .map(InterpString::as_source),
             Some("/srv/fabro/default".to_string())
         );
     }

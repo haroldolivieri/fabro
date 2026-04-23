@@ -282,6 +282,27 @@ export default function InstallApp() {
     );
   }
 
+  const runStepSubmit = async (args: {
+    action:   () => Promise<void>;
+    fallback: string;
+    next?:    string;
+  }) => {
+    setSubmitting(true);
+    setSaveError(null);
+    try {
+      await args.action();
+      if (args.next) {
+        const nextSession = await getInstallSession(installToken);
+        setSessionState({ status: "ready", data: nextSession });
+        navigate(args.next);
+      }
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : args.fallback);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (sessionState.status === "error") {
     return (
       <TokenEntryScreen
@@ -329,7 +350,7 @@ export default function InstallApp() {
               const current = llmSelection[id] ?? { apiKey: "" };
               return {
                 provider: id,
-                api_key: current.apiKey.trim(),
+                api_key:  current.apiKey.trim(),
               };
             }).filter((provider) => provider.api_key.length > 0);
 
@@ -338,23 +359,16 @@ export default function InstallApp() {
               return;
             }
 
-            setSubmitting(true);
-            setSaveError(null);
-            try {
-              await Promise.all(
-                providers.map((provider) => testInstallLlm(installToken, provider)),
-              );
-              await putInstallLlm(installToken, providers);
-              const nextSession = await getInstallSession(installToken);
-              setSessionState({ status: "ready", data: nextSession });
-              navigate("/install/github");
-            } catch (error) {
-              setSaveError(
-                error instanceof Error ? error.message : "Failed to save LLM settings.",
-              );
-            } finally {
-              setSubmitting(false);
-            }
+            await runStepSubmit({
+              action: async () => {
+                await Promise.all(
+                  providers.map((provider) => testInstallLlm(installToken, provider)),
+                );
+                await putInstallLlm(installToken, providers);
+              },
+              fallback: "Failed to save LLM settings.",
+              next:     "/install/github",
+            });
           }}
         >
           <ProviderFields value={llmSelection} onChange={setLlmSelection} />
@@ -372,20 +386,11 @@ export default function InstallApp() {
               focusInput(canonicalUrlInputRef);
               return;
             }
-            setSubmitting(true);
-            setSaveError(null);
-            try {
-              await putInstallServer(installToken, canonicalUrl.trim());
-              const nextSession = await getInstallSession(installToken);
-              setSessionState({ status: "ready", data: nextSession });
-              navigate("/install/object-store");
-            } catch (error) {
-              setSaveError(
-                error instanceof Error ? error.message : "Failed to save server settings.",
-              );
-            } finally {
-              setSubmitting(false);
-            }
+            await runStepSubmit({
+              action:   () => putInstallServer(installToken, canonicalUrl.trim()),
+              fallback: "Failed to save server settings.",
+              next:     "/install/object-store",
+            });
           }}
         >
           <Field
@@ -448,25 +453,16 @@ export default function InstallApp() {
             }
 
             const payload = buildObjectStorePayload(objectStoreForm);
-            setSubmitting(true);
-            setSaveError(null);
-            try {
-              if (objectStoreForm.provider === "s3") {
-                await testInstallObjectStore(installToken, payload);
-              }
-              await putInstallObjectStore(installToken, payload);
-              const nextSession = await getInstallSession(installToken);
-              setSessionState({ status: "ready", data: nextSession });
-              navigate("/install/llm");
-            } catch (error) {
-              setSaveError(
-                error instanceof Error
-                  ? error.message
-                  : "Failed to save object-store settings.",
-              );
-            } finally {
-              setSubmitting(false);
-            }
+            await runStepSubmit({
+              action: async () => {
+                if (objectStoreForm.provider === "s3") {
+                  await testInstallObjectStore(installToken, payload);
+                }
+                await putInstallObjectStore(installToken, payload);
+              },
+              fallback: "Failed to save object-store settings.",
+              next:     "/install/llm",
+            });
           }}
         >
           <CardPicker
@@ -590,58 +586,56 @@ export default function InstallApp() {
           submitLabel={githubStrategy === "app" ? "Continue on GitHub" : "Continue"}
           backHref="/install/llm"
           onSubmit={async () => {
-            setSubmitting(true);
-            setSaveError(null);
-            try {
-              if (githubStrategy === "token") {
-                const trimmedToken = tokenForm.token.trim();
-                if (!trimmedToken) {
-                  setSaveError("Provide the GitHub token before continuing.");
-                  return;
-                }
-                const username = await testInstallGithubToken(installToken, trimmedToken);
-                setTokenForm({ token: trimmedToken, username });
-                await putInstallGithubToken(installToken, trimmedToken, username);
-                const nextSession = await getInstallSession(installToken);
-                setSessionState({ status: "ready", data: nextSession });
-                navigate("/install/review");
+            if (githubStrategy === "token") {
+              const trimmedToken = tokenForm.token.trim();
+              if (!trimmedToken) {
+                setSaveError("Provide the GitHub token before continuing.");
                 return;
               }
-
-              const { owner, appName, allowedUsername } = appForm;
-              if (owner.kind === "org" && !(owner.slug ?? "").trim()) {
-                setSaveError("Enter the organization slug for the GitHub App.");
-                return;
-              }
-              if (!appName.trim()) {
-                setSaveError("Enter the GitHub App name before continuing.");
-                return;
-              }
-              if (!allowedUsername.trim()) {
-                setSaveError("Enter the GitHub username that should be allowed to log in.");
-                return;
-              }
-
-              const manifest = await createInstallGithubAppManifest(installToken, {
-                owner:
-                  owner.kind === "org"
-                    ? { kind: "org", slug: (owner.slug ?? "").trim() }
-                    : { kind: "personal" },
-                app_name:         appName.trim(),
-                allowed_username: allowedUsername.trim(),
+              await runStepSubmit({
+                action: async () => {
+                  const username = await testInstallGithubToken(installToken, trimmedToken);
+                  setTokenForm({ token: trimmedToken, username });
+                  await putInstallGithubToken(installToken, trimmedToken, username);
+                },
+                fallback: "Failed to start GitHub setup.",
+                next:     "/install/review",
               });
-              submitGithubManifest(
-                manifest.github_form_action,
-                manifest.manifest,
-                manifest.state,
-              );
-            } catch (error) {
-              setSaveError(
-                error instanceof Error ? error.message : "Failed to start GitHub setup.",
-              );
-            } finally {
-              setSubmitting(false);
+              return;
             }
+
+            const { owner, appName, allowedUsername } = appForm;
+            if (owner.kind === "org" && !(owner.slug ?? "").trim()) {
+              setSaveError("Enter the organization slug for the GitHub App.");
+              return;
+            }
+            if (!appName.trim()) {
+              setSaveError("Enter the GitHub App name before continuing.");
+              return;
+            }
+            if (!allowedUsername.trim()) {
+              setSaveError("Enter the GitHub username that should be allowed to log in.");
+              return;
+            }
+
+            await runStepSubmit({
+              action: async () => {
+                const manifest = await createInstallGithubAppManifest(installToken, {
+                  owner:
+                    owner.kind === "org"
+                      ? { kind: "org", slug: (owner.slug ?? "").trim() }
+                      : { kind: "personal" },
+                  app_name:         appName.trim(),
+                  allowed_username: allowedUsername.trim(),
+                });
+                submitGithubManifest(
+                  manifest.github_form_action,
+                  manifest.manifest,
+                  manifest.state,
+                );
+              },
+              fallback: "Failed to start GitHub setup.",
+            });
           }}
         >
           <CardPicker

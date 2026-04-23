@@ -285,14 +285,14 @@ fn store_error(err: impl std::fmt::Display) -> Error {
 }
 
 fn resolve_settings_tree(settings: &SettingsLayer) -> Result<ResolvedSettingsTree, Error> {
+    let resolver = fabro_config::Resolver::from_file(settings);
+    let to_error =
+        |errors: Vec<_>| Error::Precondition(fabro_config::render_resolve_errors(&errors));
     Ok(ResolvedSettingsTree {
-        server_storage_root: fabro_config::resolve_storage_root(settings),
-        project:             fabro_config::resolve_project_from_file(settings)
-            .map_err(|errors| Error::Precondition(fabro_config::render_resolve_errors(&errors)))?,
-        workflow:            fabro_config::resolve_workflow_from_file(settings)
-            .map_err(|errors| Error::Precondition(fabro_config::render_resolve_errors(&errors)))?,
-        run:                 fabro_config::resolve_run_from_file(settings)
-            .map_err(|errors| Error::Precondition(fabro_config::render_resolve_errors(&errors)))?,
+        server_storage_root: resolver.storage_root(),
+        project:             resolver.project().map_err(to_error)?,
+        workflow:            resolver.workflow().map_err(to_error)?,
+        run:                 resolver.run().map_err(to_error)?,
     })
 }
 

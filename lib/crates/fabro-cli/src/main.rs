@@ -225,8 +225,8 @@ async fn main_inner() -> (String, Result<()>) {
             Commands::Artifact(ns) => {
                 commands::artifact::dispatch(ns, &base_ctx).await?;
             }
-            Commands::Store(ns) => {
-                commands::store::dispatch(ns, &base_ctx).await?;
+            Commands::Dump(args) => {
+                commands::dump::run(&args, &base_ctx).await?;
             }
             Commands::RunsCmd(cmd) => {
                 commands::runs::dispatch(cmd, &base_ctx).await?;
@@ -448,7 +448,7 @@ async fn prepare_server_bootstrap(
 mod tests {
     use args::{
         AuthCommand, AuthNamespace, Commands, InstallGitHubStrategyArg, ModelsCommand,
-        ProviderCommand, ProviderNamespace, StoreCommand, StoreNamespace,
+        ProviderCommand, ProviderNamespace,
     };
     use tokio::runtime::Runtime;
 
@@ -883,13 +883,11 @@ level = "warn"
     }
 
     #[test]
-    fn parse_store_dump_command() {
-        let cli = Cli::try_parse_from(["fabro", "store", "dump", "ABC123", "-o", "./out"])
-            .expect("should parse");
+    fn parse_dump_command() {
+        let cli =
+            Cli::try_parse_from(["fabro", "dump", "ABC123", "-o", "./out"]).expect("should parse");
         match *cli.command.unwrap() {
-            Commands::Store(StoreNamespace {
-                command: StoreCommand::Dump(args),
-            }) => {
+            Commands::Dump(args) => {
                 assert_eq!(args.run, "ABC123");
                 assert_eq!(args.output, std::path::PathBuf::from("./out"));
             }

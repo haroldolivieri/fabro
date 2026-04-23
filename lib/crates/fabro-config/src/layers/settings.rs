@@ -5,6 +5,8 @@
 //! unset in the source stay `None`/empty and are layered later by
 //! `fabro-config`.
 
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 use super::cli::CliLayer;
@@ -15,8 +17,8 @@ use super::server::ServerLayer;
 use super::workflow::WorkflowLayer;
 
 /// A sparse settings layer before merge/resolve.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SettingsLayer {
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+pub(crate) struct SettingsLayer {
     #[serde(default, rename = "_version", skip_serializing_if = "Option::is_none")]
     pub version:  Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -31,6 +33,68 @@ pub struct SettingsLayer {
     pub server:   Option<ServerLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub features: Option<FeaturesLayer>,
+}
+
+impl FromStr for SettingsLayer {
+    type Err = toml::de::Error;
+
+    fn from_str(source: &str) -> Result<Self, Self::Err> {
+        toml::from_str(source)
+    }
+}
+
+impl From<CliLayer> for SettingsLayer {
+    fn from(cli: CliLayer) -> Self {
+        Self {
+            cli: Some(cli),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<FeaturesLayer> for SettingsLayer {
+    fn from(features: FeaturesLayer) -> Self {
+        Self {
+            features: Some(features),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<ProjectLayer> for SettingsLayer {
+    fn from(project: ProjectLayer) -> Self {
+        Self {
+            project: Some(project),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<RunLayer> for SettingsLayer {
+    fn from(run: RunLayer) -> Self {
+        Self {
+            run: Some(run),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<ServerLayer> for SettingsLayer {
+    fn from(server: ServerLayer) -> Self {
+        Self {
+            server: Some(server),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<WorkflowLayer> for SettingsLayer {
+    fn from(workflow: WorkflowLayer) -> Self {
+        Self {
+            workflow: Some(workflow),
+            ..Self::default()
+        }
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -49,7 +113,9 @@ impl SettingsLayer {
     /// Existing methods (set by a fixture) are preserved. Use to make a
     /// parsed-from-TOML layer resolve cleanly without overriding test intent.
     pub fn ensure_test_auth_methods(&mut self) {
-        use super::server::{ServerAuthLayer, ServerAuthMethod, ServerLayer as ServerLayerTy};
+        use fabro_types::settings::ServerAuthMethod;
+
+        use super::server::{ServerAuthLayer, ServerLayer as ServerLayerTy};
 
         if self
             .server

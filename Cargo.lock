@@ -1720,6 +1720,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs",
+ "fabro-macros",
  "fabro-proc",
  "fabro-types",
  "fabro-util",

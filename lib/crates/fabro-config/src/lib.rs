@@ -8,6 +8,7 @@ extern crate self as fabro_config;
 
 pub mod builders;
 mod defaults;
+mod layers;
 
 pub mod bind;
 pub mod daemon;
@@ -31,6 +32,23 @@ pub use builders::{
 pub use error::{Error, Result};
 pub use fabro_util::path::expand_tilde;
 pub use home::Home;
+pub use layers::{
+    CliAuthLayer, CliExecAgentLayer, CliExecLayer, CliExecModelLayer, CliLayer, CliLoggingLayer,
+    CliOutputLayer, CliTargetLayer, CliUpdatesLayer, DaytonaDockerfileLayer, DaytonaSandboxLayer,
+    DaytonaSnapshotLayer, DiscordIntegrationLayer, FeaturesLayer, GitAuthorLayer,
+    GithubIntegrationLayer, HookAgentMarker, HookEntry, HookTlsMode, IntegrationWebhooksLayer,
+    InterviewProviderLayer, InterviewsLayer, LocalSandboxLayer, McpEntryLayer, MergeMap,
+    ModelRefOrSplice, NotificationProviderLayer, NotificationRouteLayer, ObjectStoreLocalLayer,
+    ObjectStoreS3Layer, PrepareStep, ProjectLayer, ReplaceMap, RunAgentLayer, RunArtifactsLayer,
+    RunCheckpointLayer, RunExecutionLayer, RunGitLayer, RunGoalLayer, RunLayer, RunModelLayer,
+    RunPrepareLayer, RunPullRequestLayer, RunSandboxLayer, RunScmLayer, ScmGitHubLayer,
+    ServerApiLayer, ServerArtifactsLayer, ServerAuthGithubLayer, ServerAuthLayer,
+    ServerIntegrationsLayer, ServerIpAllowlistLayer, ServerIpAllowlistOverrideLayer, ServerLayer,
+    ServerListenLayer, ServerLoggingLayer, ServerSchedulerLayer, ServerSlateDbLayer,
+    ServerStorageLayer, ServerWebLayer, SlackIntegrationLayer, StickyMap, StringOrSplice,
+    TeamsIntegrationLayer, WorkflowLayer,
+};
+pub(crate) use layers::{Combine, SPLICE_MARKER, SettingsLayer, SpliceArray};
 pub use parse::{ParseError, parse_settings_layer};
 pub use resolve::{
     ResolveError, dev_token_auth_enabled, resolve_cli, resolve_features, resolve_project,

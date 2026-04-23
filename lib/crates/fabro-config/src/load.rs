@@ -5,11 +5,10 @@
 
 use std::path::{Path, PathBuf};
 
-use fabro_types::settings::run::RunGoalLayer;
-use fabro_types::settings::{InterpString, SettingsLayer};
+use fabro_types::settings::InterpString;
 
 use crate::parse::parse_settings_layer;
-use crate::{Error, Result};
+use crate::{Error, Result, RunGoalLayer, SettingsLayer};
 
 pub(crate) fn load_settings_path(path: &Path) -> Result<SettingsLayer> {
     let content = std::fs::read_to_string(path).map_err(|source| Error::read_file(path, source))?;

@@ -1,25 +1,11 @@
-//! Workflow domain.
-//!
-//! `[workflow]` is descriptive: `name`, `description`, optional `graph` (a
-//! path override for the default `workflow.fabro` file), and `metadata`.
-
-use std::collections::HashMap;
+//! Sparse `[workflow]` settings layer definitions.
 
 use serde::{Deserialize, Serialize};
 
 use super::maps::ReplaceMap;
 
-/// A structurally resolved `[workflow]` view for consumers.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct WorkflowNamespace {
-    pub name:        Option<String>,
-    pub description: Option<String>,
-    pub graph:       String,
-    pub metadata:    HashMap<String, String>,
-}
-
 /// A sparse `[workflow]` layer as it appears in a single settings file.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]

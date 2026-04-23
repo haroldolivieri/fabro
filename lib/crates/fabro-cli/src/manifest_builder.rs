@@ -10,14 +10,11 @@ use anyhow::{Context, Result, anyhow};
 use fabro_api::types;
 use fabro_config::project::{self, discover_project_config, resolve_workflow_path};
 use fabro_config::run::{resolve_run_goal_from_layer, resolve_run_goal_from_namespace};
-use fabro_config::{WorkflowSettingsBuilder, parse_settings_layer};
+use fabro_config::{CliLayer, DaytonaDockerfileLayer, RunLayer, WorkflowSettingsBuilder};
 use fabro_graphviz::graph::AttrValue;
 use fabro_graphviz::parser;
 use fabro_sandbox::daytona::detect_repo_info;
-use fabro_types::settings::cli::CliLayer;
-use fabro_types::settings::run::{
-    DaytonaDockerfileLayer, ResolvedGoalSource, ResolvedRunGoal, RunLayer,
-};
+use fabro_types::settings::run::{ResolvedGoalSource, ResolvedRunGoal};
 use fabro_types::{RunId, WorkflowSettings};
 use fabro_workflow::git::{GitSyncStatus, head_sha, sync_status};
 
@@ -349,12 +346,19 @@ fn collect_workflow_config_files(
     config: &types::ManifestWorkflowConfig,
     files: &mut HashMap<String, types::ManifestFileEntry>,
 ) -> Result<()> {
-    let config_layer = parse_settings_layer(&config.source)
+    let mut document: toml::Table = config
+        .source
+        .parse()
         .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?;
-    let dockerfile = config_layer
-        .run
+    let run = document
+        .remove("run")
+        .map(|value| value.try_into::<RunLayer>())
+        .transpose()
+        .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?
+        .unwrap_or_default();
+    let dockerfile = run
+        .sandbox
         .as_ref()
-        .and_then(|run| run.sandbox.as_ref())
         .and_then(|sandbox| sandbox.daytona.as_ref())
         .and_then(|daytona| daytona.snapshot.as_ref())
         .and_then(|snapshot| snapshot.dockerfile.as_ref());

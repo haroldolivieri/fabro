@@ -2,8 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result, bail};
+use fabro_config::CliLayer;
 use fabro_types::settings::RunNamespace;
-use fabro_types::settings::cli::{CliLayer, OutputFormat, OutputVerbosity};
+use fabro_types::settings::cli::{OutputFormat, OutputVerbosity};
 use fabro_types::{ServerSettings, UserSettings};
 use fabro_util::printer::Printer;
 use tokio::sync::OnceCell;

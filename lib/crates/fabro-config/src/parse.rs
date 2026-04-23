@@ -1,6 +1,6 @@
 use std::fmt;
 
-use fabro_types::settings::SettingsLayer;
+use crate::SettingsLayer;
 
 const CURRENT_VERSION: u32 = 1;
 

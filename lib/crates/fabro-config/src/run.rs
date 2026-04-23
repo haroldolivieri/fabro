@@ -11,13 +11,11 @@
 
 use std::path::{Path, PathBuf};
 
-use fabro_types::settings::run::{
-    ResolvedGoalSource, ResolvedRunGoal, RunGoal, RunGoalLayer, RunLayer, RunNamespace,
-};
-use fabro_types::settings::{InterpString, SettingsLayer};
+use fabro_types::settings::InterpString;
+use fabro_types::settings::run::{ResolvedGoalSource, ResolvedRunGoal, RunGoal, RunNamespace};
 
-use crate::Result;
 use crate::load::{load_settings_path, resolve_goal_file_path};
+use crate::{Result, RunGoalLayer, RunLayer, SettingsLayer};
 
 /// Load and parse a run config from a TOML file.
 ///

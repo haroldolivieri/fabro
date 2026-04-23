@@ -18,10 +18,9 @@ use fabro_types::settings::cli::{CliLayer, CliOutputLayer, OutputVerbosity};
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{
     ApprovalMode, DaytonaDockerfileLayer, DaytonaNetworkLayer, DaytonaSettings, DockerfileSource,
-    RunExecutionLayer, RunGoalLayer, RunLayer, RunMode, RunModelLayer, RunNamespace,
-    RunSandboxLayer,
+    RunExecutionLayer, RunGoal, RunLayer, RunMode, RunModelLayer, RunNamespace, RunSandboxLayer,
 };
-use fabro_types::settings::{Combine, ReplaceMap, ServerNamespace, SettingsLayer};
+use fabro_types::settings::{ReplaceMap, ServerNamespace, SettingsLayer};
 use fabro_types::{RunId, WorkflowSettings};
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_validate::Severity;
@@ -47,6 +46,12 @@ pub(crate) struct PreparedManifest {
     pub working_directory: PathBuf,
 }
 
+#[derive(Clone, Debug, Default)]
+struct ManifestSettingsOverrides {
+    run: Option<RunLayer>,
+    cli: Option<CliLayer>,
+}
+
 pub(crate) fn manifest_run_defaults(settings: &SettingsLayer) -> RunLayer {
     settings.run.clone().unwrap_or_default()
 }
@@ -68,35 +73,44 @@ pub(crate) fn prepare_manifest(
         .ok_or_else(|| anyhow!("manifest target path is missing from workflows map"))?;
     let root_source = workflow_input.source.clone();
 
-    let args_layer = manifest_args_layer(manifest.args.as_ref());
-    let workflow_layer = root_workflow_config_layer(manifest, &workflow_input)?;
-    let project_layer = manifest
+    let args_overrides = manifest_args_overrides(manifest.args.as_ref());
+    let workflow_run_layer = root_workflow_run_layer(manifest, &workflow_input)?;
+    let mut workflow_settings_builder =
+        WorkflowSettingsBuilder::new().server_run_defaults(manifest_run_defaults.clone());
+    if let Some(run) = args_overrides.run {
+        workflow_settings_builder = workflow_settings_builder.run_overrides(run);
+    }
+    if let Some(cli) = args_overrides.cli {
+        workflow_settings_builder = workflow_settings_builder.cli_overrides(cli);
+    }
+    if !workflow_run_layer.eq(&RunLayer::default()) {
+        workflow_settings_builder =
+            workflow_settings_builder.workflow_run_layer(workflow_run_layer);
+    }
+    for config in manifest
         .configs
         .iter()
         .filter(|config| config.type_ == types::ManifestConfigType::Project)
-        .try_fold(SettingsLayer::default(), |layer, config| {
-            Ok::<_, anyhow::Error>(parse_manifest_config(config)?.combine(layer))
-        })?;
-    let user_layer = manifest
+    {
+        if let Some(source) = config.source.as_deref() {
+            workflow_settings_builder = workflow_settings_builder.project_toml(source)?;
+        }
+    }
+    for config in manifest
         .configs
         .iter()
         .filter(|config| config.type_ == types::ManifestConfigType::User)
-        .try_fold(SettingsLayer::default(), |layer, config| {
-            Ok::<_, anyhow::Error>(parse_manifest_config(config)?.combine(layer))
-        })?;
-    let mut settings_layer = WorkflowSettingsBuilder::new()
-        .args_layer(args_layer)
-        .workflow_layer(workflow_layer)
-        .project_layer(project_layer)
-        .user_layer(user_layer)
-        .server_run_defaults(manifest_run_defaults.clone())
-        .build_layer();
-    if let Some(goal) = manifest.goal.as_ref() {
-        let run = settings_layer.run.get_or_insert_with(RunLayer::default);
-        run.goal = Some(RunGoalLayer::Inline(InterpString::parse(&goal.text)));
+    {
+        if let Some(source) = config.source.as_deref() {
+            workflow_settings_builder = workflow_settings_builder.user_toml(source)?;
+        }
     }
-    let settings = WorkflowSettingsBuilder::from_layer(&settings_layer)
+    let mut settings = workflow_settings_builder
+        .build()
         .map_err(|errors| anyhow!("failed to resolve manifest settings: {errors}"))?;
+    if let Some(goal) = manifest.goal.as_ref() {
+        settings.run.goal = Some(RunGoal::Inline(InterpString::parse(&goal.text)));
+    }
 
     Ok(PreparedManifest {
         cwd: cwd.clone(),
@@ -192,33 +206,26 @@ fn workflow_bundle_from_manifest(
     Ok(WorkflowBundle::new(workflows))
 }
 
-fn root_workflow_config_layer(
+fn root_workflow_run_layer(
     manifest: &types::RunManifest,
     workflow: &BundledWorkflow,
-) -> Result<SettingsLayer> {
+) -> Result<RunLayer> {
     let Some(root) = manifest.workflows.get(&manifest.target.path) else {
         bail!("manifest target path is missing from workflows map");
     };
     let Some(config) = root.config.as_ref() else {
-        return Ok(SettingsLayer::default());
+        return Ok(RunLayer::default());
     };
 
     let mut layer = parse_settings_layer(&config.source)
         .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?;
     resolve_manifest_dockerfile(&mut layer, Path::new(&config.path), &workflow.files)?;
-    Ok(layer)
+    Ok(layer.run.unwrap_or_default())
 }
 
-fn parse_manifest_config(config: &types::ManifestConfig) -> Result<SettingsLayer> {
-    let Some(source) = config.source.as_deref() else {
-        return Ok(SettingsLayer::default());
-    };
-    parse_settings_layer(source).map_err(|err| anyhow!("Failed to parse settings file: {err}"))
-}
-
-fn manifest_args_layer(args: Option<&types::ManifestArgs>) -> SettingsLayer {
+fn manifest_args_overrides(args: Option<&types::ManifestArgs>) -> ManifestSettingsOverrides {
     let Some(args) = args else {
-        return SettingsLayer::default();
+        return ManifestSettingsOverrides::default();
     };
 
     let model = (args.model.is_some() || args.provider.is_some()).then(|| RunModelLayer {
@@ -271,11 +278,7 @@ fn manifest_args_layer(args: Option<&types::ManifestArgs>) -> SettingsLayer {
         })
     });
 
-    SettingsLayer {
-        run,
-        cli,
-        ..SettingsLayer::default()
-    }
+    ManifestSettingsOverrides { run, cli }
 }
 
 fn parse_labels(labels: &[String]) -> HashMap<String, String> {

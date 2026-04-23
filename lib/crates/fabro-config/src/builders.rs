@@ -222,6 +222,20 @@ impl WorkflowSettingsBuilder {
         self
     }
 
+    #[must_use]
+    pub fn workflow_run_layer(self, run: RunLayer) -> Self {
+        self.workflow_layer(SettingsLayer {
+            run: Some(run),
+            ..SettingsLayer::default()
+        })
+    }
+
+    pub fn workflow_toml(self, source: &str) -> Result<Self> {
+        let layer = parse_settings_layer(source)
+            .map_err(|err| Error::parse("Failed to parse settings file", err))?;
+        Ok(self.workflow_layer(layer))
+    }
+
     pub fn workflow_file(self, path: &Path) -> Result<Self> {
         Ok(self.workflow_layer(run::load_run_config(path)?))
     }
@@ -232,6 +246,12 @@ impl WorkflowSettingsBuilder {
         self
     }
 
+    pub fn project_toml(self, source: &str) -> Result<Self> {
+        let layer = parse_settings_layer(source)
+            .map_err(|err| Error::parse("Failed to parse settings file", err))?;
+        Ok(self.project_layer(layer))
+    }
+
     pub fn project_file(self, path: &Path) -> Result<Self> {
         Ok(self.project_layer(load_settings_path(path)?))
     }
@@ -240,6 +260,12 @@ impl WorkflowSettingsBuilder {
     pub fn user_layer(mut self, layer: SettingsLayer) -> Self {
         self.user = layer;
         self
+    }
+
+    pub fn user_toml(self, source: &str) -> Result<Self> {
+        let layer = parse_settings_layer(source)
+            .map_err(|err| Error::parse("Failed to parse settings file", err))?;
+        Ok(self.user_layer(layer))
     }
 
     pub fn user_file(self, path: &Path) -> Result<Self> {

@@ -6,9 +6,9 @@ pub(crate) use fabro_client::ServerTarget;
 use fabro_config::user::default_socket_path;
 pub(crate) use fabro_config::user::{active_settings_path, default_storage_dir};
 use fabro_config::{
-    RunSettingsBuilder, ServerSettingsBuilder, UserSettingsBuilder, load_config_file,
+    CliLayer, RunSettingsBuilder, ServerSettingsBuilder, UserSettingsBuilder, load_config_file,
 };
-use fabro_types::settings::cli::{CliLayer, CliTargetSettings};
+use fabro_types::settings::cli::CliTargetSettings;
 use fabro_types::settings::{CliNamespace, InterpString, RunNamespace};
 use fabro_types::{ServerSettings, UserSettings};
 use fabro_util::version::FABRO_VERSION;

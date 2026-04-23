@@ -1,10 +1,7 @@
 use std::fmt;
 use std::path::Path;
 
-use fabro_types::settings::{
-    CliLayer, Combine, ProjectNamespace, RunLayer, RunNamespace, ServerLayer, SettingsLayer,
-    WorkflowNamespace,
-};
+use fabro_types::settings::{ProjectNamespace, RunNamespace, WorkflowNamespace};
 use fabro_types::{ServerSettings, UserSettings, WorkflowSettings};
 
 use crate::defaults::DEFAULTS_LAYER;
@@ -15,7 +12,7 @@ use crate::resolve::{
     resolve_workflow,
 };
 use crate::user::load_settings_config;
-use crate::{Error, Result, run};
+use crate::{CliLayer, Combine, Error, Result, RunLayer, ServerLayer, SettingsLayer, run};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolveErrors(pub Vec<ResolveError>);

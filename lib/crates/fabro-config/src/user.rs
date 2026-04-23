@@ -6,11 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use fabro_types::settings::SettingsLayer;
-
-use crate::Result;
 use crate::home::Home;
 use crate::load::load_settings_path;
+use crate::{Result, SettingsLayer};
 
 pub const SETTINGS_CONFIG_FILENAME: &str = "settings.toml";
 pub const FABRO_CONFIG_ENV: &str = "FABRO_CONFIG";

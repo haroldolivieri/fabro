@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow, bail};
 use fabro_api::types;
-use fabro_config::{WorkflowSettingsBuilder, parse_settings_layer};
+use fabro_config::{
+    CliLayer, CliOutputLayer, DaytonaDockerfileLayer, ReplaceMap, RunExecutionLayer, RunLayer,
+    RunModelLayer, RunSandboxLayer, WorkflowSettingsBuilder,
+};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
 use fabro_llm::Provider;
@@ -14,13 +17,15 @@ use fabro_sandbox::config::{
 };
 use fabro_sandbox::daytona::DaytonaConfig;
 use fabro_sandbox::{DockerSandboxOptions, Sandbox, SandboxProvider, SandboxSpec};
-use fabro_types::settings::cli::{CliLayer, CliOutputLayer, OutputVerbosity};
+use fabro_types::settings::ServerNamespace;
+#[cfg(test)]
+use fabro_types::settings::SettingsLayer;
+use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{
-    ApprovalMode, DaytonaDockerfileLayer, DaytonaNetworkLayer, DaytonaSettings, DockerfileSource,
-    RunExecutionLayer, RunGoal, RunLayer, RunMode, RunModelLayer, RunNamespace, RunSandboxLayer,
+    ApprovalMode, DaytonaNetworkLayer, DaytonaSettings, DockerfileSource, RunGoal, RunMode,
+    RunNamespace,
 };
-use fabro_types::settings::{ReplaceMap, ServerNamespace, SettingsLayer};
 use fabro_types::{RunId, WorkflowSettings};
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_validate::Severity;
@@ -52,8 +57,8 @@ struct ManifestSettingsOverrides {
     cli: Option<CliLayer>,
 }
 
-pub(crate) fn manifest_run_defaults(settings: &SettingsLayer) -> RunLayer {
-    settings.run.clone().unwrap_or_default()
+pub(crate) fn manifest_run_defaults(run: Option<&RunLayer>) -> RunLayer {
+    run.cloned().unwrap_or_default()
 }
 
 pub(crate) fn prepare_manifest(
@@ -217,10 +222,18 @@ fn root_workflow_run_layer(
         return Ok(RunLayer::default());
     };
 
-    let mut layer = parse_settings_layer(&config.source)
+    let mut document: toml::Table = config
+        .source
+        .parse()
         .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?;
-    resolve_manifest_dockerfile(&mut layer, Path::new(&config.path), &workflow.files)?;
-    Ok(layer.run.unwrap_or_default())
+    let mut run = document
+        .remove("run")
+        .map(|value| value.try_into::<RunLayer>())
+        .transpose()
+        .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?
+        .unwrap_or_default();
+    resolve_manifest_dockerfile(&mut run, Path::new(&config.path), &workflow.files)?;
+    Ok(run)
 }
 
 fn manifest_args_overrides(args: Option<&types::ManifestArgs>) -> ManifestSettingsOverrides {
@@ -307,14 +320,13 @@ fn resolve_working_directory(settings: &WorkflowSettings, caller_cwd: &Path) -> 
 }
 
 fn resolve_manifest_dockerfile(
-    layer: &mut SettingsLayer,
+    run: &mut RunLayer,
     config_path: &Path,
     files: &HashMap<PathBuf, String>,
 ) -> Result<()> {
-    let source = layer
-        .run
+    let source = run
+        .sandbox
         .as_mut()
-        .and_then(|run| run.sandbox.as_mut())
         .and_then(|sandbox| sandbox.daytona.as_mut())
         .and_then(|daytona| daytona.snapshot.as_mut())
         .and_then(|snapshot| snapshot.dockerfile.as_mut());

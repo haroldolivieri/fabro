@@ -12,11 +12,11 @@
 use std::fmt::Write;
 use std::path::{Component, Path, PathBuf};
 
-use fabro_types::settings::{RunNamespace, SettingsLayer};
+use fabro_types::settings::RunNamespace;
 use serde::Serialize;
 
 use crate::load::load_settings_path;
-use crate::{Error, Result, WorkflowSettingsBuilder, run};
+use crate::{Error, Result, RunGoalLayer, SettingsLayer, WorkflowSettingsBuilder, run};
 
 const CONFIG_FILENAME: &str = ".fabro/project.toml";
 #[derive(Clone, Debug)]

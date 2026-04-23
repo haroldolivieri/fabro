@@ -40,7 +40,7 @@ pub use fabro_api::types::{
 };
 use fabro_auth::parse_credential_secret;
 use fabro_config::daemon::ServerDaemon;
-use fabro_config::{RunSettingsBuilder, ServerSettingsBuilder, Storage};
+use fabro_config::{RunLayer, RunSettingsBuilder, ServerSettingsBuilder, Storage};
 use fabro_interview::{
     Answer, ControlInterviewer, Interviewer, Question, QuestionType, WorkerControlEnvelope,
 };
@@ -64,12 +64,11 @@ use fabro_store::{
 };
 #[cfg(test)]
 use fabro_types::BlockedReason;
-use fabro_types::settings::run::{RunLayer, RunMode};
+use fabro_types::settings::run::RunMode;
 use fabro_types::settings::server::{
-    GithubIntegrationSettings, GithubIntegrationStrategy, ServerAuthLayer, ServerAuthMethod,
-    ServerLayer,
+    GithubIntegrationSettings, GithubIntegrationStrategy, ServerAuthLayer, ServerLayer,
 };
-use fabro_types::settings::{InterpString, RunNamespace, SettingsLayer};
+use fabro_types::settings::{InterpString, RunNamespace, ServerAuthMethod, SettingsLayer};
 use fabro_types::{
     ActorRef, EventBody, InterviewQuestionRecord, InterviewQuestionType, RunBlobId,
     RunClientProvenance, RunControlAction, RunEvent, RunId, RunProvenance, RunServerProvenance,
@@ -1706,12 +1705,27 @@ fn resolve_manifest_run_settings(
     RunSettingsBuilder::from_run_layer(manifest_run_defaults).map_err(|err| err.to_string())
 }
 
+fn settings_toml(layer: &SettingsLayer) -> anyhow::Result<String> {
+    toml::to_string(layer).map_err(|err| anyhow::anyhow!("failed to serialize settings: {err}"))
+}
+
 pub(crate) fn resolve_app_state_settings(
     layer: &SettingsLayer,
 ) -> anyhow::Result<ResolvedAppStateSettings> {
-    let manifest_run_defaults = run_manifest::manifest_run_defaults(layer);
+    let manifest_run_defaults = layer
+        .run
+        .as_ref()
+        .map(|run| {
+            toml::Value::try_from(run)
+                .map_err(|err| anyhow::anyhow!("failed to serialize run defaults: {err}"))?
+                .try_into::<RunLayer>()
+                .map_err(|err| anyhow::anyhow!("failed to parse run defaults: {err}"))
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let settings_toml = settings_toml(layer)?;
     Ok(ResolvedAppStateSettings {
-        server_settings: ServerSettingsBuilder::from_layer(layer)?,
+        server_settings: ServerSettingsBuilder::from_toml(&settings_toml)?,
         manifest_run_settings: resolve_manifest_run_settings(&manifest_run_defaults),
         manifest_run_defaults,
     })

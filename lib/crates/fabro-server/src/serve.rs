@@ -730,6 +730,7 @@ where
 
     // Spawn config polling task
     let state_for_poll = Arc::clone(&state);
+    let shared_settings_for_poll = Arc::clone(&shared_settings);
     let config_path_for_poll = config_path.clone();
     let args_for_poll = args.clone();
     let data_dir_for_poll = data_dir.clone();
@@ -746,15 +747,19 @@ where
                         &data_dir_for_poll,
                     );
                     let changed = {
-                        let cfg = state_for_poll
-                            .settings
+                        let cfg = shared_settings_for_poll
                             .read()
                             .expect("config lock poisoned");
                         *cfg != effective
                     };
                     if changed {
-                        match state_for_poll.replace_settings(effective) {
-                            Ok(()) => info!("Server config reloaded"),
+                        match state_for_poll.replace_settings(effective.clone()) {
+                            Ok(()) => {
+                                *shared_settings_for_poll
+                                    .write()
+                                    .expect("config lock poisoned") = effective;
+                                info!("Server config reloaded");
+                            }
                             Err(err) => {
                                 warn!(error = %err, "Rejected reloaded server config, keeping previous");
                             }

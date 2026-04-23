@@ -1,5 +1,6 @@
 #![expect(
     clippy::disallowed_methods,
+    clippy::disallowed_types,
     reason = "sync env-file load/save used at CLI and server startup; not on a Tokio path"
 )]
 

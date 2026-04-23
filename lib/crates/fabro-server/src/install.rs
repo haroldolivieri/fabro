@@ -14,6 +14,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD as BASE64_STANDARD, URL_SAFE_NO_PAD};
 use fabro_auth::{AuthCredential, AuthDetails, credential_id_for};
 use fabro_config::bind::{Bind, BindRequest};
+use fabro_config::envfile::EnvFileUpdate;
 use fabro_config::{Storage, resolve_server_from_file};
 use fabro_install::{
     InstallListenConfig, OBJECT_STORE_ACCESS_KEY_ID_ENV, OBJECT_STORE_SECRET_ACCESS_KEY_ENV,
@@ -42,6 +43,7 @@ use zeroize::Zeroizing;
 
 use crate::error::ApiError;
 use crate::serve::{self, DEFAULT_TCP_PORT};
+use crate::server_secrets::ServerSecrets;
 use crate::{security_headers, static_files};
 
 #[derive(Clone)]
@@ -894,7 +896,7 @@ fn object_store_validation_settings(
 }
 
 fn install_object_store_lookup<'a>(
-    server_secrets: &'a crate::server_secrets::ServerSecrets,
+    server_secrets: &'a ServerSecrets,
     manual_credentials: Option<&'a InstallAwsCredentialPair>,
 ) -> impl Fn(&str) -> Option<String> + 'a {
     move |name| match (manual_credentials, name) {
@@ -960,8 +962,7 @@ async fn validate_install_object_store_selection(
     let server_env_path = Storage::new(state.storage_dir.as_ref())
         .runtime_directory()
         .env_path();
-    let server_secrets = crate::server_secrets::ServerSecrets::load(server_env_path)
-        .map_err(|err| err.to_string())?;
+    let server_secrets = ServerSecrets::load(server_env_path).map_err(|err| err.to_string())?;
     let build_options = serve::ObjectStoreBuildOptions {
         client_options,
         retry_config: RetryConfig {
@@ -1289,7 +1290,7 @@ async fn post_install_finish(
         });
     }
 
-    let make_env_write = |key: &str, value: String| fabro_config::envfile::EnvFileUpdate {
+    let make_env_write = |key: &str, value: String| EnvFileUpdate {
         key: key.to_string(),
         value,
         comment: None,
@@ -1438,18 +1439,15 @@ async fn post_install_finish(
             warn!(error = %err, "failed to write artifact store metadata after install");
         }
     }
-    if let Some(pending_object_store) = lock_unpoisoned(&state.pending_install, "install session")
+    if let Some(InstallObjectStoreState::S3 {
+        credential_mode: InstallObjectStoreCredentialMode::AccessKey,
+        manual_credentials,
+        ..
+    }) = lock_unpoisoned(&state.pending_install, "install session")
         .object_store
         .as_mut()
     {
-        if let InstallObjectStoreState::S3 {
-            credential_mode: InstallObjectStoreCredentialMode::AccessKey,
-            manual_credentials,
-            ..
-        } = pending_object_store
-        {
-            *manual_credentials = None;
-        }
+        *manual_credentials = None;
     }
 
     if let Some(on_finish) = state.on_finish.clone() {
@@ -1979,7 +1977,7 @@ mod tests {
     use super::{
         AWS_SESSION_TOKEN_ENV, DEFAULT_INSTALL_GITHUB_API_BASE_URL, InstallAppState,
         InstallAwsCredentialPair, InstallFinishGuard, InstallObjectStoreCredentialMode,
-        InstallObjectStoreInput, InstallObjectStoreProvider, PendingInstall,
+        InstallObjectStoreInput, InstallObjectStoreProvider, PendingInstall, ServerSecrets,
         classify_object_store_validation_error, detect_canonical_url, install_object_store_lookup,
         lock_unpoisoned, resolve_install_object_store_state, token_is_valid,
     };
@@ -2091,6 +2089,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "sync std::fs::write in a unit test fixture; not on a Tokio path"
+    )]
     fn install_object_store_lookup_overrides_static_keys_and_suppresses_session_token() {
         let temp_dir = tempfile::tempdir().unwrap();
         let env_path = temp_dir.path().join("server.env");
@@ -2103,9 +2105,7 @@ AWS_SESSION_TOKEN=ambient-session\n\
 AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/fabro-web-identity-token\n",
         )
         .unwrap();
-        let server_secrets =
-            crate::server_secrets::ServerSecrets::with_env_lookup(env_path.clone(), |_| None)
-                .unwrap();
+        let server_secrets = ServerSecrets::with_env_lookup(env_path.clone(), |_| None).unwrap();
         let manual_credentials =
             InstallAwsCredentialPair::new("submitted-access", "submitted-secret");
 

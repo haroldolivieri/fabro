@@ -187,9 +187,9 @@ mod tests {
     use std::path::PathBuf;
 
     use fabro_config::parse_settings_layer;
-    use fabro_config::user::apply_storage_dir_override;
     use fabro_types::settings::InterpString;
     use fabro_types::settings::cli::{CliLayer, CliOutputLayer, OutputFormat, OutputVerbosity};
+    use fabro_types::settings::server::{ServerLayer, ServerStorageLayer};
     use fabro_util::printer::Printer;
     use tokio::sync::OnceCell;
 
@@ -223,6 +223,18 @@ mod tests {
         }
     }
 
+    fn with_storage_dir_override(
+        mut layer: fabro_types::settings::SettingsLayer,
+        path: &std::path::Path,
+    ) -> fabro_types::settings::SettingsLayer {
+        let server = layer.server.get_or_insert_with(ServerLayer::default);
+        let storage = server
+            .storage
+            .get_or_insert_with(ServerStorageLayer::default);
+        storage.root = Some(InterpString::parse(&path.display().to_string()));
+        layer
+    }
+
     #[test]
     fn context_exposes_resolved_output_and_explicit_json_state() {
         let ctx = synthetic_context(true, Printer::Default);
@@ -248,9 +260,9 @@ root = "/srv/fabro/default"
 "#,
         )
         .expect("settings fixture should parse");
-        let override_disk_settings = apply_storage_dir_override(
+        let override_disk_settings = with_storage_dir_override(
             base_disk_settings.clone(),
-            Some(std::path::Path::new("/srv/fabro/override")),
+            std::path::Path::new("/srv/fabro/override"),
         );
 
         let (base_settings, base_user_settings) =

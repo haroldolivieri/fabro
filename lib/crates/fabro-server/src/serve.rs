@@ -6,12 +6,12 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Args;
 use fabro_config::bind::{self, Bind, BindRequest};
-use fabro_config::user::{apply_storage_dir_override, load_settings_config};
+use fabro_config::user::load_settings_config;
 use fabro_config::{ServerSettingsBuilder, Storage};
 use fabro_install::{OBJECT_STORE_ACCESS_KEY_ID_ENV, OBJECT_STORE_SECRET_ACCESS_KEY_ENV};
 use fabro_sandbox::SandboxProvider;
 use fabro_types::settings::server::{
-    GithubIntegrationStrategy, ServerLayer, ServerListenLayer, WebhookStrategy,
+    GithubIntegrationStrategy, ServerLayer, ServerListenLayer, ServerStorageLayer, WebhookStrategy,
 };
 use fabro_types::settings::{
     Combine, GithubIntegrationSettings, InterpString, ObjectStoreSettings, ServerListenSettings,
@@ -191,7 +191,16 @@ fn apply_runtime_settings(
     args: &ServeArgs,
     data_dir: &Path,
 ) -> SettingsLayer {
-    apply_storage_dir_override(apply_serve_overrides(base, args), Some(data_dir))
+    apply_storage_dir_override(apply_serve_overrides(base, args), data_dir)
+}
+
+fn apply_storage_dir_override(mut settings: SettingsLayer, data_dir: &Path) -> SettingsLayer {
+    let server = settings.server.get_or_insert_with(ServerLayer::default);
+    let storage = server
+        .storage
+        .get_or_insert_with(ServerStorageLayer::default);
+    storage.root = Some(InterpString::parse(&data_dir.display().to_string()));
+    settings
 }
 
 async fn resolve_github_webhook_ip_allowlist(

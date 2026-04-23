@@ -1,9 +1,8 @@
 //! Workflow / run config loading helpers.
 //!
-//! Thin wrappers around `parse_settings_layer` / `load_settings_path` plus
-//! path resolution for the `[workflow] graph` override. Runtime types
-//! that used to be re-exported from here live under
-//! `fabro_types::settings::run` now.
+//! Helpers for loading workflow-local settings and resolving runtime goal /
+//! graph paths. Runtime types that used to be re-exported from here live
+//! under `fabro_types::settings::run` now.
 
 #![expect(
     clippy::disallowed_methods,
@@ -15,15 +14,8 @@ use std::path::{Path, PathBuf};
 use fabro_types::settings::SettingsLayer;
 use fabro_types::settings::run::{ResolvedGoalSource, ResolvedRunGoal, RunGoalLayer};
 
+use crate::Result;
 use crate::load::{load_settings_path, resolve_goal_file_path};
-use crate::parse::parse_settings_layer;
-use crate::{Error, Result};
-
-/// Load and parse a run config from a TOML file.
-pub fn parse_run_config(contents: &str) -> Result<SettingsLayer> {
-    parse_settings_layer(contents)
-        .map_err(|err| Error::parse("Failed to parse run config TOML", err))
-}
 
 /// Load and parse a run config from a TOML file.
 ///

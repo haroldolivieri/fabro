@@ -4,7 +4,8 @@ use std::str::FromStr;
 use anyhow::Result;
 pub(crate) use fabro_client::ServerTarget;
 use fabro_config::UserSettingsBuilder;
-pub(crate) use fabro_config::user::*;
+pub(crate) use fabro_config::user::{active_settings_path, default_storage_dir};
+use fabro_config::user::{default_socket_path, load_settings_config};
 use fabro_types::settings::cli::CliTargetSettings;
 use fabro_types::settings::{CliNamespace, SettingsLayer};
 use fabro_util::version::FABRO_VERSION;
@@ -29,6 +30,24 @@ pub(crate) fn load_settings_with_config_and_storage_dir(
 ) -> anyhow::Result<SettingsLayer> {
     let layer = load_settings_config(config_path)?;
     Ok(apply_storage_dir_override(layer, storage_dir))
+}
+
+fn apply_storage_dir_override(
+    mut layer: SettingsLayer,
+    storage_dir: Option<&Path>,
+) -> SettingsLayer {
+    use fabro_types::settings::InterpString;
+    use fabro_types::settings::server::{ServerLayer, ServerStorageLayer};
+
+    if let Some(dir) = storage_dir {
+        let server = layer.server.get_or_insert_with(ServerLayer::default);
+        let storage = server
+            .storage
+            .get_or_insert_with(ServerStorageLayer::default);
+        storage.root = Some(InterpString::parse(&dir.display().to_string()));
+    }
+
+    layer
 }
 
 /// Pull the resolved CLI target configuration out of `[cli.target]`.

@@ -575,7 +575,6 @@ pub struct AppState {
     pub(crate) vault:                Arc<AsyncRwLock<Vault>>,
     pub(super) server_secrets:       ServerSecrets,
     pub(crate) provider_credentials: ProviderCredentials,
-    pub(crate) settings:             Arc<RwLock<SettingsLayer>>,
     manifest_defaults:               RwLock<Arc<SettingsLayer>>,
     pub(crate) server_settings:      RwLock<Arc<ServerSettings>>,
     pub(crate) env_lookup:           EnvLookup,
@@ -797,7 +796,6 @@ impl AppState {
         let manifest_defaults = Arc::new(run_manifest::manifest_defaults_layer(&settings));
         resolve_canonical_origin(&resolved.server, &self.env_lookup).map_err(anyhow::Error::msg)?;
 
-        *self.settings.write().expect("settings lock poisoned") = settings;
         *self
             .manifest_defaults
             .write()
@@ -2646,7 +2644,6 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         vault,
         server_secrets,
         provider_credentials,
-        settings,
         manifest_defaults: RwLock::new(current_manifest_defaults),
         server_settings: RwLock::new(current_server_settings),
         env_lookup: Arc::clone(&env_lookup),
@@ -7530,17 +7527,6 @@ root = "/srv/new"
             Some(RunMode::DryRun)
         );
         assert!(manifest_defaults.server.is_none());
-
-        let layer_root = state
-            .settings
-            .read()
-            .expect("settings lock poisoned")
-            .server
-            .as_ref()
-            .and_then(|server| server.storage.as_ref())
-            .and_then(|storage| storage.root.as_ref())
-            .map(InterpString::as_source);
-        assert_eq!(layer_root.as_deref(), Some("/srv/new"));
     }
 
     #[test]

@@ -376,7 +376,7 @@ mod tests {
     use axum::{Json, Router};
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use fabro_config::{parse_settings_layer, resolve_server_from_file};
+    use fabro_config::{Error as ConfigError, ServerSettingsBuilder, parse_settings_layer};
     use fabro_types::IdpIdentity;
     use fabro_types::settings::ServerAuthMethod;
     use tower::ServiceExt;
@@ -387,8 +387,9 @@ mod tests {
 
     use super::*;
     fn settings(source: &str) -> ServerNamespace {
-        let file = parse_settings_layer(source).expect("fixture should parse");
-        resolve_server_from_file(&file).expect("fixture should resolve")
+        ServerSettingsBuilder::from_toml(source)
+            .expect("fixture should resolve")
+            .server
     }
 
     fn empty_lookup(_name: &str) -> Option<String> {
@@ -557,7 +558,11 @@ methods = []
 ",
         )
         .expect("fixture should parse");
-        let errors = resolve_server_from_file(&file).expect_err("empty auth methods should fail");
+        let ConfigError::Resolve { errors, .. } =
+            ServerSettingsBuilder::from_layer(&file).expect_err("empty auth methods should fail")
+        else {
+            panic!("expected settings resolution error");
+        };
         assert!(errors.iter().any(|err| matches!(
             err,
             fabro_config::ResolveError::Invalid { path, reason }

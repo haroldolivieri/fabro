@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::WorkflowSettings;
 use crate::graph::Graph;
 use crate::run_blob_id::RunBlobId;
 use crate::run_id::RunId;
-use crate::WorkflowSettings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

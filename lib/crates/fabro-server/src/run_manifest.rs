@@ -4,10 +4,9 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow, bail};
 use fabro_api::types;
-use fabro_config::WorkflowSettingsBuilder;
 use fabro_config::project::resolve_working_directory;
 use fabro_config::run::parse_run_config;
-use fabro_config::parse_settings_layer;
+use fabro_config::{WorkflowSettingsBuilder, parse_settings_layer};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
 use fabro_llm::Provider;
@@ -367,9 +366,8 @@ async fn build_preflight_report(
     let server_settings = state.server_settings();
     let github_integration = &server_settings.server.integrations.github;
     let sandbox_provider = resolve_sandbox_provider(&resolved_run.run)?;
-    let sandbox_provider = if resolved_run.run.execution.mode == RunMode::DryRun
-        && !sandbox_provider.is_local()
-    {
+    let sandbox_provider =
+        if resolved_run.run.execution.mode == RunMode::DryRun && !sandbox_provider.is_local() {
             SandboxProvider::Local
         } else {
             sandbox_provider

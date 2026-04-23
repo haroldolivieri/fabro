@@ -3,8 +3,8 @@
     reason = "sync test fixture setup; not on a Tokio path"
 )]
 
-use fabro_config::{ServerSettingsBuilder, parse_settings_layer};
 use fabro_config::user::default_storage_dir;
+use fabro_config::{ServerSettingsBuilder, parse_settings_layer};
 use fabro_types::settings::server::{
     GithubIntegrationStrategy, IpAllowEntry, ObjectStoreSettings, ServerListenSettings,
 };
@@ -556,7 +556,10 @@ root = "{{ env.FABRO_STORAGE_ROOT }}"
     let settings =
         ServerSettingsBuilder::from_layer(&file).expect("server settings should resolve");
 
-    assert_eq!(settings.server.storage.root, InterpString::parse("{{ env.FABRO_STORAGE_ROOT }}"));
+    assert_eq!(
+        settings.server.storage.root,
+        InterpString::parse("{{ env.FABRO_STORAGE_ROOT }}")
+    );
 }
 
 #[test]

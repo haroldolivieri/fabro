@@ -115,11 +115,7 @@ async fn initialized(
         initialized: Initialized {
             graph: graph.clone(),
             source: String::new(),
-            inputs: run_options
-                .settings
-                .run
-                .inputs
-                .clone(),
+            inputs: run_options.settings.run.inputs.clone(),
             run_options: run_options.clone(),
             workflow_path: None,
             workflow_bundle: None,

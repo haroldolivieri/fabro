@@ -715,12 +715,7 @@ pub async fn initialize(
     Ok(Initialized {
         graph,
         source,
-        inputs: options
-            .run_options
-            .settings
-            .run
-            .inputs
-            .clone(),
+        inputs: options.run_options.settings.run.inputs.clone(),
         run_options: options.run_options,
         workflow_path: options.workflow_path,
         workflow_bundle: options.workflow_bundle,
@@ -754,8 +749,7 @@ mod tests {
     use fabro_interview::AutoApproveInterviewer;
     use fabro_sandbox::SandboxSpec;
     use fabro_store::Database;
-    use fabro_types::settings::SettingsLayer;
-    use fabro_types::{RunId, fixtures};
+    use fabro_types::{RunId, WorkflowSettings, fixtures};
     use fabro_vault::{SecretType, Vault};
     use object_store::memory::InMemory;
     use tokio::sync::RwLock as AsyncRwLock;
@@ -837,7 +831,7 @@ mod tests {
 
     fn test_settings(run_dir: &std::path::Path) -> RunOptions {
         RunOptions {
-            settings:         SettingsLayer::default(),
+            settings:         WorkflowSettings::default(),
             run_dir:          run_dir.to_path_buf(),
             cancel_token:     None,
             run_id:           test_run_id(),
@@ -859,7 +853,7 @@ mod tests {
             run_dir.to_path_buf(),
             RunSpec {
                 run_id: test_run_id(),
-                settings: SettingsLayer::default(),
+                settings: WorkflowSettings::default(),
                 graph,
                 workflow_slug: Some("test".to_string()),
                 working_directory: std::env::current_dir().unwrap(),

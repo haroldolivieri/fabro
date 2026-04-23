@@ -148,12 +148,8 @@ pub enum DockerfileSource {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum DockerfileSourceRepr {
-    Inline {
-        value: String,
-    },
-    Path {
-        path: String,
-    },
+    Inline { value: String },
+    Path { path: String },
 }
 
 impl Serialize for DockerfileSource {

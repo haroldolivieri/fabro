@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 use anyhow::Result;
 pub(crate) use fabro_client::ServerTarget;
-pub(crate) use fabro_config::user::*;
 use fabro_config::UserSettingsBuilder;
+pub(crate) use fabro_config::user::*;
 use fabro_types::settings::cli::CliTargetSettings;
 use fabro_types::settings::{CliNamespace, SettingsLayer};
 use fabro_util::version::FABRO_VERSION;

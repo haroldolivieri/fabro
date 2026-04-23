@@ -17,7 +17,7 @@ use axum::extract::{Request, State as AxumState};
 use axum::middleware::{self, Next};
 use axum::response::Response as AxumResponse;
 use chrono::{Duration as ChronoDuration, Utc};
-use fabro_config::{parse_settings_layer, resolve_server_from_file};
+use fabro_config::{ServerSettingsBuilder, parse_settings_layer};
 use fabro_server::auth::GithubEndpoints;
 use fabro_server::ip_allowlist::IpAllowlistConfig;
 use fabro_server::jwt_auth::resolve_auth_mode_with_lookup;
@@ -71,7 +71,9 @@ impl RealAuthHarness {
         let (api_listener, api_base_url) = bind_listener().await;
 
         let settings = auth_settings(&api_base_url, &github_client_id, auth_methods);
-        let resolved = resolve_server_from_file(&settings).expect("settings should resolve");
+        let resolved = ServerSettingsBuilder::from_layer(&settings)
+            .expect("settings should resolve")
+            .server;
         let dev_token = dev_token.map(str::to_string);
         let auth_mode = resolve_auth_mode_with_lookup(&resolved, |name| match name {
             "SESSION_SECRET" => Some(TEST_SESSION_SECRET.to_string()),

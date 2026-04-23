@@ -16,8 +16,8 @@ use async_trait::async_trait;
 use fabro_config::{ServerSettingsBuilder, Storage};
 use fabro_interview::{ControlInterviewer, WorkerControlEnvelope, WorkerControlMessage};
 use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
-use fabro_types::settings::run::RunMode;
 use fabro_types::settings::InterpString;
+use fabro_types::settings::run::RunMode;
 use fabro_types::{
     ArtifactUpload, EventBody, FailureReason, RunBlobId, RunEvent, RunId, WorkflowSettings,
 };
@@ -513,8 +513,8 @@ fn maybe_build_github_credentials(
     let required_github_credentials = (resolved_run.execution.mode != RunMode::DryRun
         && resolved_run.sandbox.provider == "daytona")
         || resolved_server
-        .as_ref()
-        .is_some_and(|settings| !settings.server.integrations.github.permissions.is_empty());
+            .as_ref()
+            .is_some_and(|settings| !settings.server.integrations.github.permissions.is_empty());
     let pull_request_enabled =
         resolved_run.execution.mode != RunMode::DryRun && resolved_run.pull_request.is_some();
     let strategy = resolved_server

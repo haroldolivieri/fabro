@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result as AnyResult;
 use fabro_agent::cli::{OutputFormat, run_with_args, run_with_args_and_client};
+use fabro_config::WorkflowSettingsBuilder;
 use fabro_llm::client::Client;
 use fabro_llm::error::{
     Error as LlmError, ProviderErrorDetail, ProviderErrorKind, error_from_status_code,
@@ -414,9 +415,10 @@ pub(crate) async fn execute(mut args: ExecArgs, ctx: &CommandContext) -> AnyResu
             .map(|(name, entry)| runtime_mcp_server(name, entry))
             .collect()
     } else {
-        fabro_config::resolve_run_from_file(&raw_settings)
+        WorkflowSettingsBuilder::from_layer(&raw_settings)
             .map(|settings| {
                 settings
+                    .run
                     .agent
                     .mcps
                     .values()

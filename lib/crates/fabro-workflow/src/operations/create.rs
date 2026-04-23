@@ -15,8 +15,8 @@ use fabro_sandbox::SandboxProvider;
 use fabro_sandbox::daytona::detect_repo_info;
 use fabro_store::Database;
 use fabro_template::{TemplateContext, render as render_template};
-use fabro_types::settings::run::RunMode;
 use fabro_types::settings::SettingsLayer;
+use fabro_types::settings::run::RunMode;
 use fabro_types::{RunId, RunProvenance};
 use fabro_util::json::normalize_json_value;
 use tokio::task::spawn_blocking;
@@ -85,9 +85,9 @@ pub async fn create(
     })
     .map_err(|err| Error::Parse(err.to_string()))?;
 
-    if WorkflowSettingsBuilder::from_layer(&resolved.settings)
-        .map_or(true, |settings| settings.run.execution.mode != RunMode::DryRun)
-    {
+    if WorkflowSettingsBuilder::from_layer(&resolved.settings).map_or(true, |settings| {
+        settings.run.execution.mode != RunMode::DryRun
+    }) {
         validate_sandbox_provider(&resolved.settings)?;
     }
 

@@ -1332,11 +1332,8 @@ async fn get_system_info(
     _auth: AuthenticatedService,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    let settings = state
-        .settings
-        .read()
-        .expect("settings lock poisoned")
-        .clone();
+    let manifest_defaults = state.manifest_defaults();
+    let server_settings = state.server_settings();
     let (total_runs, active_runs) = {
         let runs = state.runs.lock().expect("runs lock poisoned");
         let active = runs
@@ -1369,17 +1366,22 @@ async fn get_system_info(
             total:  Some(to_i64(total_runs)),
             active: Some(to_i64(active_runs)),
         }),
-        sandbox_provider: Some(system_sandbox_provider(&settings)),
-        features:         Some(system_features(&settings)),
+        sandbox_provider: Some(system_sandbox_provider(manifest_defaults.as_ref())),
+        features:         Some(system_features(
+            server_settings.as_ref(),
+            manifest_defaults.as_ref(),
+        )),
     };
     (StatusCode::OK, Json(response)).into_response()
 }
 
-fn system_features(settings: &SettingsLayer) -> SystemFeatures {
-    let session_sandboxes =
-        ServerSettingsBuilder::from_layer(settings).is_ok_and(|s| s.features.session_sandboxes);
-    let retros =
-        WorkflowSettingsBuilder::from_layer(settings).is_ok_and(|s| s.run.execution.retros);
+fn system_features(
+    server_settings: &ServerSettings,
+    manifest_defaults: &SettingsLayer,
+) -> SystemFeatures {
+    let session_sandboxes = server_settings.features.session_sandboxes;
+    let retros = WorkflowSettingsBuilder::from_layer(manifest_defaults)
+        .is_ok_and(|s| s.run.execution.retros);
     SystemFeatures {
         session_sandboxes: Some(session_sandboxes),
         retros:            Some(retros),
@@ -1671,8 +1673,8 @@ fn build_prune_plan(
     })
 }
 
-fn system_sandbox_provider(settings: &SettingsLayer) -> String {
-    WorkflowSettingsBuilder::from_layer(settings).map_or_else(
+fn system_sandbox_provider(manifest_defaults: &SettingsLayer) -> String {
+    WorkflowSettingsBuilder::from_layer(manifest_defaults).map_or_else(
         |_| SandboxProvider::default().to_string(),
         |settings| settings.run.sandbox.provider,
     )
@@ -7539,6 +7541,50 @@ root = "/srv/new"
             .and_then(|storage| storage.root.as_ref())
             .map(InterpString::as_source);
         assert_eq!(layer_root.as_deref(), Some("/srv/new"));
+    }
+
+    #[test]
+    fn system_features_use_dense_server_and_manifest_defaults() {
+        let settings = fabro_config::parse_settings_layer(
+            r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[features]
+session_sandboxes = true
+
+[run.execution]
+retros = false
+"#,
+        )
+        .expect("settings fixture should parse");
+        let server_settings =
+            ServerSettingsBuilder::from_layer(&settings).expect("server settings should resolve");
+        let manifest_defaults = run_manifest::manifest_defaults_layer(&settings);
+        let features = system_features(&server_settings, &manifest_defaults);
+
+        assert_eq!(features.session_sandboxes, Some(true));
+        assert_eq!(features.retros, Some(false));
+    }
+
+    #[test]
+    fn system_sandbox_provider_uses_manifest_defaults() {
+        let settings = fabro_config::parse_settings_layer(
+            r#"
+_version = 1
+
+[run.sandbox]
+provider = "daytona"
+"#,
+        )
+        .expect("settings fixture should parse");
+
+        assert_eq!(
+            system_sandbox_provider(&run_manifest::manifest_defaults_layer(&settings)),
+            "daytona"
+        );
     }
 
     #[tokio::test]

@@ -181,10 +181,10 @@ fn merge_settings_layer(
 mod tests {
     use std::path::PathBuf;
 
-    use fabro_config::user::apply_storage_dir_override;
     use fabro_config::parse_settings_layer;
-    use fabro_types::settings::cli::{CliLayer, CliOutputLayer, OutputFormat, OutputVerbosity};
+    use fabro_config::user::apply_storage_dir_override;
     use fabro_types::settings::InterpString;
+    use fabro_types::settings::cli::{CliLayer, CliOutputLayer, OutputFormat, OutputVerbosity};
     use fabro_util::printer::Printer;
     use tokio::sync::OnceCell;
 

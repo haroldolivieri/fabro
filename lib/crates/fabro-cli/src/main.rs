@@ -208,7 +208,10 @@ async fn main_inner() -> (String, Result<()>) {
         let build_base_ctx = || resolved_base.to_context();
 
         match *command {
-            Commands::Exec(args) => commands::exec::execute(args, cli_settings, printer).await?,
+            Commands::Exec(args) => {
+                let base_ctx = build_base_ctx()?;
+                commands::exec::execute(args, &base_ctx).await?;
+            }
             Commands::RunCmd(cmd) => {
                 let base_ctx = build_base_ctx()?;
                 Box::pin(commands::run::dispatch(cmd, &base_ctx)).await?;
@@ -228,7 +231,7 @@ async fn main_inner() -> (String, Result<()>) {
                 commands::graph::run(&args, &styles, &base_ctx).await?;
             }
             Commands::Parse(args) => {
-                commands::parse::run(&args, cli_settings, printer)?;
+                commands::parse::run(&args)?;
             }
             Commands::Artifact(ns) => {
                 let base_ctx = build_base_ctx()?;
@@ -298,7 +301,8 @@ async fn main_inner() -> (String, Result<()>) {
                 .await?;
             }
             Commands::Uninstall(args) => {
-                commands::uninstall::run_uninstall(&args, cli_settings, printer).await?;
+                let base_ctx = build_base_ctx()?;
+                commands::uninstall::run_uninstall(&args, &base_ctx).await?;
             }
             Commands::Auth(ns) => {
                 let base_ctx = build_base_ctx()?;
@@ -316,9 +320,13 @@ async fn main_inner() -> (String, Result<()>) {
                 let base_ctx = build_base_ctx()?;
                 Box::pin(commands::config::execute(&args, &base_ctx)).await?;
             }
-            Commands::Workflow(ns) => commands::workflow::dispatch(ns, cli_settings, printer)?,
+            Commands::Workflow(ns) => {
+                let base_ctx = build_base_ctx()?;
+                commands::workflow::dispatch(ns, &base_ctx)?;
+            }
             Commands::Upgrade(args) => {
-                commands::upgrade::run_upgrade(args, cli_settings, printer).await?;
+                let base_ctx = build_base_ctx()?;
+                commands::upgrade::run_upgrade(args, &base_ctx).await?;
             }
             Commands::Provider(ns) => {
                 let base_ctx = build_base_ctx()?;

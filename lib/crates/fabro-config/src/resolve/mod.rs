@@ -2,6 +2,7 @@ mod cli;
 mod error;
 mod features;
 mod project;
+mod resolver;
 mod run;
 mod server;
 mod workflow;
@@ -14,90 +15,45 @@ use fabro_types::settings::{
 };
 pub use features::resolve_features;
 pub use project::resolve_project;
+pub use resolver::Resolver;
 pub use run::resolve_run;
-pub use server::{dev_token_auth_enabled, resolve_server, resolve_storage_root};
+pub use server::{dev_token_auth_enabled, resolve_server};
 pub use workflow::resolve_workflow;
 
-use crate::apply_builtin_defaults;
+pub fn resolve_storage_root(file: &SettingsLayer) -> InterpString {
+    Resolver::from_file(file).storage_root()
+}
 
 pub fn resolve_cli_from_file(file: &SettingsLayer) -> Result<CliNamespace, Vec<ResolveError>> {
-    let file = apply_builtin_defaults(file.clone());
-    let mut errors = Vec::new();
-    let cli_layer = file.cli.clone().unwrap_or_default();
-    let cli = resolve_cli(&cli_layer, &mut errors);
-    if errors.is_empty() {
-        Ok(cli)
-    } else {
-        Err(errors)
-    }
+    Resolver::from_file(file).cli()
 }
 
 pub fn resolve_server_from_file(
     file: &SettingsLayer,
 ) -> Result<ServerNamespace, Vec<ResolveError>> {
-    let file = apply_builtin_defaults(file.clone());
-    let mut errors = Vec::new();
-    let server_layer = file.server.clone().unwrap_or_default();
-    let server = resolve_server(&server_layer, &mut errors);
-    if errors.is_empty() {
-        Ok(server)
-    } else {
-        Err(errors)
-    }
+    Resolver::from_file(file).server()
 }
 
 pub fn resolve_project_from_file(
     file: &SettingsLayer,
 ) -> Result<ProjectNamespace, Vec<ResolveError>> {
-    let file = apply_builtin_defaults(file.clone());
-    let mut errors = Vec::new();
-    let project_layer = file.project.clone().unwrap_or_default();
-    let project = resolve_project(&project_layer, &mut errors);
-    if errors.is_empty() {
-        Ok(project)
-    } else {
-        Err(errors)
-    }
+    Resolver::from_file(file).project()
 }
 
 pub fn resolve_features_from_file(
     file: &SettingsLayer,
 ) -> Result<FeaturesNamespace, Vec<ResolveError>> {
-    let file = apply_builtin_defaults(file.clone());
-    let mut errors = Vec::new();
-    let features_layer = file.features.clone().unwrap_or_default();
-    let features = resolve_features(&features_layer, &mut errors);
-    if errors.is_empty() {
-        Ok(features)
-    } else {
-        Err(errors)
-    }
+    Resolver::from_file(file).features()
 }
 
 pub fn resolve_run_from_file(file: &SettingsLayer) -> Result<RunNamespace, Vec<ResolveError>> {
-    let file = apply_builtin_defaults(file.clone());
-    let mut errors = Vec::new();
-    let run_layer = file.run.clone().unwrap_or_default();
-    let run = resolve_run(&run_layer, &mut errors);
-    if errors.is_empty() {
-        Ok(run)
-    } else {
-        Err(errors)
-    }
+    Resolver::from_file(file).run()
 }
 
 pub fn resolve_workflow_from_file(
     file: &SettingsLayer,
 ) -> Result<WorkflowNamespace, Vec<ResolveError>> {
-    let file = apply_builtin_defaults(file.clone());
-    let mut errors = Vec::new();
-    let workflow_layer = file.workflow.clone().unwrap_or_default();
-    let workflow = resolve_workflow(&workflow_layer, &mut errors);
-    if errors.is_empty() {
-        Ok(workflow)
-    } else {
-        Err(errors)
-    }
+    Resolver::from_file(file).workflow()
 }
 
 /// Render a list of [`ResolveError`]s as a single semicolon-separated message

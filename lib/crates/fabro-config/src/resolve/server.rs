@@ -17,15 +17,6 @@ use fabro_util::Home;
 use super::{ResolveError, default_interp, parse_socket_addr, require_interp};
 use crate::user::default_storage_dir;
 
-pub fn resolve_storage_root(file: &SettingsLayer) -> InterpString {
-    let file = crate::apply_builtin_defaults(file.clone());
-    file.server
-        .as_ref()
-        .and_then(|server| server.storage.as_ref())
-        .and_then(|storage| storage.root.clone())
-        .unwrap_or_else(|| default_interp(default_storage_dir()))
-}
-
 pub fn dev_token_auth_enabled(layer: &SettingsLayer) -> bool {
     layer
         .server

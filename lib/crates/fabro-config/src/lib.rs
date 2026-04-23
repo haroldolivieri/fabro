@@ -37,7 +37,7 @@ pub use load::{
 };
 pub use parse::{ParseError, parse_settings_layer};
 pub use resolve::{
-    ResolveError, dev_token_auth_enabled, render_resolve_errors, resolve_cli,
+    ResolveError, Resolver, dev_token_auth_enabled, render_resolve_errors, resolve_cli,
     resolve_cli_from_file, resolve_features, resolve_features_from_file, resolve_project,
     resolve_project_from_file, resolve_run, resolve_run_from_file, resolve_server,
     resolve_server_from_file, resolve_storage_root, resolve_workflow, resolve_workflow_from_file,

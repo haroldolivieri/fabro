@@ -116,12 +116,15 @@ verify_release_tests() {
   fi
 
   echo "Running release-mode test smoke (SEGMENT_WRITE_KEY baked in)..."
-  SEGMENT_WRITE_KEY="fake-for-local-smoke" \
-    cargo nextest run \
+  (
+    unset GH_TOKEN GITHUB_TOKEN
+    SEGMENT_WRITE_KEY="fake-for-local-smoke" \
+      cargo nextest run \
       --workspace \
       --release \
       --profile ci \
       --status-level slow
+  )
 }
 
 main() {

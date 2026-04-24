@@ -1,9 +1,10 @@
 use std::fmt;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, ValueEnum};
+
+use super::{PlannedCommand, command, shell_arg, workspace_root};
 
 const ZIG_VERSION: &str = "0.13.0";
 
@@ -199,13 +200,8 @@ impl DockerBuildPlan {
             .arg(".")
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "dev docker-build intentionally runs synchronous Docker subprocesses"
-    )]
     fn run_command(&self, planned: &PlannedCommand) -> Result<()> {
-        let status = Command::new(&planned.program)
-            .args(&planned.args)
+        let status = command(planned)
             .current_dir(&self.workspace_root)
             .status()
             .with_context(|| format!("running {}", planned.to_shell_line()))?;
@@ -228,32 +224,6 @@ impl DockerBuildPlan {
     }
 }
 
-struct PlannedCommand {
-    program: String,
-    args:    Vec<String>,
-}
-
-impl PlannedCommand {
-    fn new(program: impl Into<String>) -> Self {
-        Self {
-            program: program.into(),
-            args:    Vec::new(),
-        }
-    }
-
-    fn arg(mut self, arg: impl Into<String>) -> Self {
-        self.args.push(arg.into());
-        self
-    }
-
-    fn to_shell_line(&self) -> String {
-        std::iter::once(shell_arg(&self.program))
-            .chain(self.args.iter().map(shell_arg))
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-}
-
 fn build_script(target: &str, zig_arch: &str) -> String {
     format!(
         "set -e; \
@@ -268,24 +238,4 @@ fn build_script(target: &str, zig_arch: &str) -> String {
          rustup target add {target}; \
          cargo zigbuild --release -p fabro-cli --target {target}"
     )
-}
-
-fn shell_arg(arg: impl AsRef<str>) -> String {
-    let arg = arg.as_ref();
-    if arg
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || "_-./:=@".contains(ch))
-    {
-        return arg.to_string();
-    }
-
-    format!("'{}'", arg.replace('\'', "'\\''"))
-}
-
-fn workspace_root() -> PathBuf {
-    let mut root = Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    root.pop();
-    root.pop();
-    root.pop();
-    root
 }

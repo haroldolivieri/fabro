@@ -1,8 +1,10 @@
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use clap::{Arg, ArgAction, Command};
+
+use super::{markdown_cell, replace_generated_region, workspace_root};
 
 const CLI_REFERENCE_PATH: &str = "docs/reference/cli.mdx";
 const FENCE_START: &str = "<!-- generated:cli -->";
@@ -29,7 +31,13 @@ pub(crate) fn generate_cli_reference(args: GenerateCliReferenceArgs) -> Result<(
     let current =
         std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     let generated = render_cli_reference(fabro_cli::command_for_reference());
-    let updated = replace_generated_region(&current, &generated)?;
+    let updated = replace_generated_region(
+        &current,
+        &generated,
+        CLI_REFERENCE_PATH,
+        FENCE_START,
+        FENCE_END,
+    )?;
 
     if args.check {
         if current != updated {
@@ -253,54 +261,4 @@ fn is_boolean_switch(arg: &Arg) -> bool {
 fn os_str_to_markdown_code(value: &OsStr) -> Option<String> {
     let value = value.to_str()?;
     (!value.is_empty()).then(|| format!("`{}`", markdown_cell(value)))
-}
-
-fn markdown_cell(value: &str) -> String {
-    value
-        .replace('|', "\\|")
-        .replace('\n', "<br />")
-        .trim()
-        .to_string()
-}
-
-fn replace_generated_region(current: &str, generated: &str) -> Result<String> {
-    let start = current
-        .find(FENCE_START)
-        .with_context(|| format!("{CLI_REFERENCE_PATH} is missing {FENCE_START}"))?;
-    let content_start = start + FENCE_START.len();
-    let relative_end = current[content_start..]
-        .find(FENCE_END)
-        .with_context(|| format!("{CLI_REFERENCE_PATH} is missing {FENCE_END}"))?;
-    let end = content_start + relative_end;
-
-    let before = &current[..content_start];
-    let after = &current[end..];
-    Ok(format!("{before}\n{generated}\n{after}"))
-}
-
-fn workspace_root() -> PathBuf {
-    let mut root = Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    root.pop();
-    root.pop();
-    root.pop();
-    root
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn replace_generated_region_preserves_manual_content() {
-        let updated = replace_generated_region(
-            "before\n<!-- generated:cli -->\nstale\n<!-- /generated:cli -->\nafter\n",
-            "fresh",
-        )
-        .expect("generated region should be replaced");
-
-        assert_eq!(
-            updated,
-            "before\n<!-- generated:cli -->\nfresh\n<!-- /generated:cli -->\nafter\n"
-        );
-    }
 }

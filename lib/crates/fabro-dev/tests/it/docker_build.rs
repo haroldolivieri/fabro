@@ -1,10 +1,4 @@
-fn fabro_dev() -> assert_cmd::Command {
-    assert_cmd::cargo::cargo_bin_cmd!("fabro-dev")
-}
-
-fn output_text(bytes: &[u8]) -> String {
-    String::from_utf8(bytes.to_vec()).expect("command output should be valid utf-8")
-}
+use super::{fabro_dev, output_text};
 
 #[test]
 fn help_lists_docker_build_flags() {

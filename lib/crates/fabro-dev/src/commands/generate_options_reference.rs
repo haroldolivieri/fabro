@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use fabro_options_metadata::{OptionField, OptionSet, Visit};
+
+use super::{markdown_cell, replace_generated_region, workspace_root};
 
 const OPTIONS_REFERENCE_PATH: &str = "docs/reference/user-configuration.mdx";
 const FENCE_START: &str = "<!-- generated:options -->";
@@ -30,7 +32,13 @@ pub(crate) fn generate_options_reference(args: GenerateOptionsReferenceArgs) -> 
     let current =
         std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     let generated = render_options_reference();
-    let updated = replace_generated_region(&current, &generated)?;
+    let updated = replace_generated_region(
+        &current,
+        &generated,
+        OPTIONS_REFERENCE_PATH,
+        FENCE_START,
+        FENCE_END,
+    )?;
 
     if args.check {
         if current != updated {
@@ -275,54 +283,4 @@ See [MCP](/agents/mcp) for transport-specific examples.
 
 fn normalize_doc(doc: &str) -> String {
     doc.trim().trim_end_matches('.').to_string()
-}
-
-fn markdown_cell(value: &str) -> String {
-    value
-        .replace('|', "\\|")
-        .replace('\n', "<br />")
-        .trim()
-        .to_string()
-}
-
-fn replace_generated_region(current: &str, generated: &str) -> Result<String> {
-    let start = current
-        .find(FENCE_START)
-        .with_context(|| format!("{OPTIONS_REFERENCE_PATH} is missing {FENCE_START}"))?;
-    let content_start = start + FENCE_START.len();
-    let relative_end = current[content_start..]
-        .find(FENCE_END)
-        .with_context(|| format!("{OPTIONS_REFERENCE_PATH} is missing {FENCE_END}"))?;
-    let end = content_start + relative_end;
-
-    let before = &current[..content_start];
-    let after = &current[end..];
-    Ok(format!("{before}\n{generated}\n{after}"))
-}
-
-fn workspace_root() -> PathBuf {
-    let mut root = Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    root.pop();
-    root.pop();
-    root.pop();
-    root
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn replace_generated_region_preserves_manual_content() {
-        let updated = replace_generated_region(
-            "before\n<!-- generated:options -->\nstale\n<!-- /generated:options -->\nafter\n",
-            "fresh",
-        )
-        .expect("generated region should be replaced");
-
-        assert_eq!(
-            updated,
-            "before\n<!-- generated:options -->\nfresh\n<!-- /generated:options -->\nafter\n"
-        );
-    }
 }

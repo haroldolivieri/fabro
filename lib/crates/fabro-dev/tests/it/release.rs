@@ -1,21 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 
-fn fabro_dev() -> assert_cmd::Command {
-    assert_cmd::cargo::cargo_bin_cmd!("fabro-dev")
-}
-
-fn output_text(bytes: &[u8]) -> String {
-    String::from_utf8(bytes.to_vec()).expect("command output should be valid utf-8")
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "integration tests stage temporary release fixture repositories with sync std::fs::write"
-)]
-fn write_file(path: &Path, contents: &str) {
-    std::fs::write(path, contents).expect("writing fixture file");
-}
+use super::{fabro_dev, output_text, write_file};
 
 #[expect(
     clippy::disallowed_methods,
@@ -39,7 +25,8 @@ fn git(root: &Path, args: &[&str]) {
 fn release_fixture() -> tempfile::TempDir {
     let fixture = tempfile::tempdir().expect("creating fixture");
     write_file(
-        &fixture.path().join("Cargo.toml"),
+        fixture.path(),
+        "Cargo.toml",
         r#"[workspace]
 members = []
 
@@ -198,7 +185,7 @@ fn dry_run_reports_skip_tests_without_running_release_tests() {
 #[test]
 fn dirty_worktree_errors_unless_dry_run() {
     let fixture = release_fixture();
-    write_file(&fixture.path().join("dirty.txt"), "dirty\n");
+    write_file(fixture.path(), "dirty.txt", "dirty\n");
 
     let output = fabro_dev()
         .args([

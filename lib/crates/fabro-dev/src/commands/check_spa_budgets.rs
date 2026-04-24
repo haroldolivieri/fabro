@@ -5,6 +5,8 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use walkdir::WalkDir;
 
+use super::workspace_root;
+
 const DEFAULT_ASSET_BUDGET_BYTES: u64 = 15 * 1024 * 1024;
 const DEFAULT_PAYLOAD_BUDGET_BYTES: u64 = 5 * 1024 * 1024;
 
@@ -126,12 +128,4 @@ fn ensure_gzip_success(file: &Path, output: &Output) -> Result<u64> {
     }
 
     Ok(output.stdout.len() as u64)
-}
-
-fn workspace_root() -> PathBuf {
-    let mut root = Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    root.pop();
-    root.pop();
-    root.pop();
-    root
 }

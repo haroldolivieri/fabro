@@ -311,7 +311,7 @@ impl RunSession {
 
         let resolved = &settings.run;
 
-        let sandbox_provider = resolve_sandbox_provider(&resolved)?;
+        let sandbox_provider = resolve_sandbox_provider(resolved)?;
         let sandbox_provider =
             if resolved.execution.mode == RunMode::DryRun && !sandbox_provider.is_local() {
                 SandboxProvider::Local
@@ -366,7 +366,7 @@ impl RunSession {
                     None => None,
                 };
                 SandboxSpec::Daytona {
-                    config: resolve_daytona_config(&resolved).unwrap_or_default(),
+                    config: resolve_daytona_config(resolved).unwrap_or_default(),
                     github_app: services.github_app.clone(),
                     run_id: Some(record.run_id),
                     clone_branch: detected_base_branch.or_else(|| record.base_branch.clone()),
@@ -434,7 +434,7 @@ impl RunSession {
             artifact_sink: services.artifact_sink,
             git,
             github_app: services.github_app.clone(),
-            worktree_mode: Some(resolve_worktree_mode(&resolved)),
+            worktree_mode: Some(resolve_worktree_mode(resolved)),
             registry_override: services.registry_override,
             retro_enabled: resolved.execution.retros && project_config::is_retro_enabled(),
             preserve_sandbox: resolved.sandbox.preserve,
@@ -971,8 +971,8 @@ mod tests {
     use chrono::Utc;
     use fabro_config::{RunExecutionLayer, RunLayer, WorkflowSettingsBuilder};
     use fabro_store::Database;
-    use fabro_types::{WorkflowSettings, fixtures};
     use fabro_types::settings::run::RunMode;
+    use fabro_types::{WorkflowSettings, fixtures};
     use object_store::memory::InMemory;
 
     use super::*;

@@ -283,7 +283,7 @@ impl WorkflowSettingsBuilder {
 
     #[must_use]
     pub(crate) fn args_layer(mut self, layer: SettingsLayer) -> Self {
-        self.args = layer;
+        self.args = layer.combine(self.args);
         self
     }
 
@@ -458,9 +458,14 @@ fn finish_dense_result<T>(
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::settings::run::RunMode;
+    use std::collections::HashMap;
 
-    use super::RunSettingsBuilder;
+    use fabro_types::settings::InterpString;
+    use fabro_types::settings::cli::OutputVerbosity;
+    use fabro_types::settings::run::{ApprovalMode, RunMode};
+
+    use super::{RunSettingsBuilder, WorkflowSettingsBuilder};
+    use crate::{CliLayer, CliOutputLayer, ReplaceMap, RunExecutionLayer, RunLayer, RunModelLayer};
 
     #[test]
     fn run_settings_builder_resolves_run_namespace() {
@@ -480,5 +485,59 @@ command = ["demo-mcp"]
 
         assert_eq!(settings.execution.mode, RunMode::DryRun);
         assert!(settings.agent.mcps.contains_key("demo"));
+    }
+
+    #[test]
+    fn workflow_builder_preserves_run_overrides_when_cli_overrides_are_added() {
+        let settings = WorkflowSettingsBuilder::new()
+            .run_overrides(RunLayer {
+                metadata: ReplaceMap::from(HashMap::from([("env".to_string(), "cli".to_string())])),
+                model: Some(RunModelLayer {
+                    provider:  Some(InterpString::parse("openai")),
+                    name:      Some(InterpString::parse("gpt-5")),
+                    fallbacks: Vec::new(),
+                }),
+                execution: Some(RunExecutionLayer {
+                    mode:     Some(RunMode::DryRun),
+                    approval: Some(ApprovalMode::Auto),
+                    retros:   Some(false),
+                }),
+                ..RunLayer::default()
+            })
+            .cli_overrides(CliLayer {
+                output: Some(CliOutputLayer {
+                    verbosity: Some(OutputVerbosity::Verbose),
+                    ..CliOutputLayer::default()
+                }),
+                ..CliLayer::default()
+            })
+            .build()
+            .expect("settings should resolve");
+
+        assert_eq!(
+            settings.run.metadata.get("env").map(String::as_str),
+            Some("cli")
+        );
+        assert_eq!(
+            settings
+                .run
+                .model
+                .provider
+                .as_ref()
+                .map(InterpString::as_source),
+            Some("openai".to_string())
+        );
+        assert_eq!(
+            settings
+                .run
+                .model
+                .name
+                .as_ref()
+                .map(InterpString::as_source),
+            Some("gpt-5".to_string())
+        );
+        assert_eq!(settings.run.execution.mode, RunMode::DryRun);
+        assert_eq!(settings.run.execution.approval, ApprovalMode::Auto);
+        assert!(!settings.run.execution.retros);
     }
 }

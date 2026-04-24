@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use fabro_config::bind::BindRequest;
+use fabro_config::user::default_storage_dir;
+use fabro_server::serve::resolve_bind_request_from_server_settings;
 use fabro_types::ServerSettings;
 use fabro_types::settings::{InterpString, ServerAuthMethod};
 
@@ -58,7 +60,7 @@ impl LocalServerConfig {
             .server_settings
             .as_ref()
             .map_err(|err| anyhow::anyhow!("{err}"))?;
-        fabro_server::serve::resolve_bind_request_from_server_settings(settings, cli_override)
+        resolve_bind_request_from_server_settings(settings, cli_override)
     }
 }
 
@@ -72,11 +74,10 @@ fn storage_dir_from_toml_with_lookup(
 ) -> Result<PathBuf> {
     let document: toml::Value = toml::from_str(source)
         .map_err(|err| anyhow::anyhow!("failed to parse settings file: {err}"))?;
-    let storage_root = string_at_path(&document, &["server", "storage", "root"])
-        .map(|root| InterpString::parse(&root))
-        .unwrap_or_else(|| {
-            InterpString::parse(&fabro_config::user::default_storage_dir().to_string_lossy())
-        });
+    let storage_root = string_at_path(&document, &["server", "storage", "root"]).map_or_else(
+        || InterpString::parse(&default_storage_dir().to_string_lossy()),
+        |root| InterpString::parse(&root),
+    );
     let resolved_root = storage_root
         .resolve(lookup)
         .map_err(|err| anyhow::anyhow!("failed to resolve {}: {err}", storage_root.as_source()))?;
@@ -94,6 +95,8 @@ fn string_at_path(document: &toml::Value, path: &[&str]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+
+    use fabro_config::user::default_storage_dir;
 
     use super::{storage_dir_from_toml, storage_dir_from_toml_with_lookup};
 
@@ -116,7 +119,7 @@ root = "/srv/fabro"
     fn storage_dir_from_toml_defaults_without_auth_methods() {
         let path = storage_dir_from_toml("_version = 1\n").expect("default storage dir");
 
-        assert_eq!(path, fabro_config::user::default_storage_dir());
+        assert_eq!(path, default_storage_dir());
     }
 
     #[test]

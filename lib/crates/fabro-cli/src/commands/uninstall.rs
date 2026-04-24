@@ -59,8 +59,9 @@ pub(crate) async fn run_uninstall(args: &UninstallArgs, ctx: &CommandContext) ->
 
     let storage_dir = local_server::LocalServerConfig::load_with_storage_dir(None)
         .ok()
-        .map(|settings| settings.storage_dir().to_path_buf())
-        .unwrap_or_else(user_config::default_storage_dir);
+        .map_or_else(user_config::default_storage_dir, |settings| {
+            settings.storage_dir().to_path_buf()
+        });
 
     let inventory = build_inventory(&home_root, &storage_dir)?;
 

@@ -110,7 +110,7 @@ fn login_with_invalid_dev_token_fails_before_writing_auth_store() {
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
-    error: invalid dev-token format
+      × invalid dev-token format
     ");
 
     assert!(!context.home_dir.join(".fabro").join("auth.json").exists());

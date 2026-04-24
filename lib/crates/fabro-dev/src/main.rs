@@ -18,8 +18,6 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Check source boundary rules.
-    CheckBoundary(commands::CheckBoundaryArgs),
     /// Build Fabro Docker images with the release pipeline layout.
     DockerBuild(commands::DockerBuildArgs),
     /// Generate docs/reference/cli.mdx from the Fabro clap command tree.
@@ -37,7 +35,6 @@ enum Command {
 impl Command {
     fn run(self) -> Result<()> {
         match self {
-            Self::CheckBoundary(args) => commands::check_boundary(args),
             Self::DockerBuild(args) => commands::docker_build(args),
             Self::GenerateCliReference(args) => commands::generate_cli_reference(args),
             Self::GenerateOptionsReference(args) => commands::generate_options_reference(args),

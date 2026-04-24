@@ -5,6 +5,8 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use walkdir::WalkDir;
 
+use super::workspace_root;
+
 #[derive(Debug, Args)]
 pub(crate) struct RefreshSpaArgs {
     /// Repository root containing apps/fabro-web and lib/crates/fabro-spa.
@@ -100,12 +102,4 @@ fn mirror_dist(dist_dir: &Path, asset_dir: &Path) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn workspace_root() -> PathBuf {
-    let mut root = Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    root.pop();
-    root.pop();
-    root.pop();
-    root
 }

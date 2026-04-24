@@ -1,7 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-mod check_boundary;
 mod docker_build;
 mod generate_cli_reference;
 mod generate_options_reference;
@@ -22,6 +21,25 @@ fn workspace_root() -> PathBuf {
 
 fn output_text(bytes: &[u8]) -> String {
     String::from_utf8(bytes.to_vec()).expect("command output should be valid utf-8")
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "integration tests stage temporary fixture files with sync std::fs::write"
+)]
+fn write_file(root: &Path, path: &str, contents: impl AsRef<[u8]>) {
+    let path = root.join(path);
+    std::fs::create_dir_all(path.parent().expect("fixture path should have parent"))
+        .expect("creating fixture parent directory");
+    std::fs::write(path, contents).expect("writing fixture file");
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "integration tests inspect fixture files with sync std::fs::read_to_string"
+)]
+fn read_file(root: &Path, path: &str) -> String {
+    std::fs::read_to_string(root.join(path)).expect("reading fixture file")
 }
 
 #[expect(
@@ -48,7 +66,6 @@ fn help_lists_scaffolded_commands() {
     let stdout = output_text(&output.stdout);
 
     for command in [
-        "check-boundary",
         "docker-build",
         "generate-cli-reference",
         "generate-options-reference",
@@ -76,26 +93,8 @@ fn cargo_dev_alias_resolves_to_fabro_dev_help() {
 
     let stdout = output_text(&output.stdout);
     assert!(
-        stdout.contains("check-boundary"),
+        stdout.contains("docker-build"),
         "cargo dev help should come from fabro-dev:\n{stdout}"
-    );
-}
-
-#[test]
-fn check_boundary_help_succeeds() {
-    let output = cargo_dev(&["check-boundary", "--help"]);
-
-    assert!(
-        output.status.success(),
-        "cargo dev check-boundary --help failed\nstdout:\n{}\nstderr:\n{}",
-        output_text(&output.stdout),
-        output_text(&output.stderr)
-    );
-
-    let stdout = output_text(&output.stdout);
-    assert!(
-        stdout.contains("Check source boundary rules"),
-        "check-boundary help should describe the subcommand:\n{stdout}"
     );
 }
 

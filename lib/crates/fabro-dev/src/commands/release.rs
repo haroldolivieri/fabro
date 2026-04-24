@@ -1,10 +1,12 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 
 use anyhow::{Context, Result, bail};
 use chrono::{Local, NaiveDate};
 use clap::{Args, ValueEnum};
+
+use super::{PlannedCommand, command, workspace_root};
 
 const RELEASE_EPOCH: &str = "2026-01-01";
 const RELEASE_TEST_SEGMENT_WRITE_KEY: &str = "fake-for-local-smoke";
@@ -352,92 +354,4 @@ fn update_version(cargo_toml: &Path, current_version: &str, new_version: &str) -
 
     std::fs::write(cargo_toml, contents.replacen(&needle, &replacement, 1))
         .with_context(|| format!("writing {}", cargo_toml.display()))
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "dev release builds synchronous subprocess commands"
-)]
-fn command(planned: &PlannedCommand) -> Command {
-    let mut command = Command::new(&planned.program);
-    command.args(&planned.args);
-    for key in &planned.unset_env {
-        command.env_remove(key);
-    }
-    for (key, value) in &planned.env {
-        command.env(key, value);
-    }
-    command
-}
-
-struct PlannedCommand {
-    program:   String,
-    args:      Vec<String>,
-    unset_env: Vec<String>,
-    env:       Vec<(String, String)>,
-}
-
-impl PlannedCommand {
-    fn new(program: impl Into<String>) -> Self {
-        Self {
-            program:   program.into(),
-            args:      Vec::new(),
-            unset_env: Vec::new(),
-            env:       Vec::new(),
-        }
-    }
-
-    fn arg(mut self, arg: impl Into<String>) -> Self {
-        self.args.push(arg.into());
-        self
-    }
-
-    fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.env.push((key.into(), value.into()));
-        self
-    }
-
-    fn env_remove(mut self, key: impl Into<String>) -> Self {
-        self.unset_env.push(key.into());
-        self
-    }
-
-    fn to_shell_line(&self) -> String {
-        let mut parts = Vec::new();
-
-        if !self.unset_env.is_empty() {
-            parts.push("unset".to_string());
-            parts.extend(self.unset_env.iter().map(shell_arg));
-            parts.push("&&".to_string());
-        }
-
-        parts.extend(
-            self.env
-                .iter()
-                .map(|(key, value)| format!("{}={}", shell_arg(key), shell_arg(value))),
-        );
-        parts.push(shell_arg(&self.program));
-        parts.extend(self.args.iter().map(shell_arg));
-        parts.join(" ")
-    }
-}
-
-fn shell_arg(arg: impl AsRef<str>) -> String {
-    let arg = arg.as_ref();
-    if arg
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || "_-./:=@".contains(ch))
-    {
-        return arg.to_string();
-    }
-
-    format!("'{}'", arg.replace('\'', "'\\''"))
-}
-
-fn workspace_root() -> PathBuf {
-    let mut root = Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    root.pop();
-    root.pop();
-    root.pop();
-    root
 }

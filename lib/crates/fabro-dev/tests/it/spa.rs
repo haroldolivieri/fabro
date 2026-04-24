@@ -1,23 +1,4 @@
-use std::path::Path;
-
-fn fabro_dev() -> assert_cmd::Command {
-    assert_cmd::cargo::cargo_bin_cmd!("fabro-dev")
-}
-
-fn output_text(bytes: &[u8]) -> String {
-    String::from_utf8(bytes.to_vec()).expect("command output should be valid utf-8")
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "integration tests stage temporary SPA fixture files with sync std::fs::write"
-)]
-fn write_file(root: &Path, path: &str, contents: &[u8]) {
-    let path = root.join(path);
-    std::fs::create_dir_all(path.parent().expect("fixture path should have parent"))
-        .expect("creating fixture parent directory");
-    std::fs::write(path, contents).expect("writing fixture file");
-}
+use super::{fabro_dev, output_text, write_file};
 
 #[test]
 fn refresh_spa_mirrors_dist_and_removes_source_maps() {

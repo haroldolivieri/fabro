@@ -1,32 +1,6 @@
-use std::fs;
 use std::path::Path;
 
-fn fabro_dev() -> assert_cmd::Command {
-    assert_cmd::cargo::cargo_bin_cmd!("fabro-dev")
-}
-
-fn output_text(bytes: &[u8]) -> String {
-    String::from_utf8(bytes.to_vec()).expect("command output should be valid utf-8")
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "integration tests stage temporary CLI reference fixtures with sync std::fs::write"
-)]
-fn write_file(root: &Path, path: &str, contents: &str) {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().expect("fixture path should have parent"))
-        .expect("creating fixture parent directory");
-    fs::write(path, contents).expect("writing fixture file");
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "integration tests inspect generated CLI reference fixtures with sync std::fs::read_to_string"
-)]
-fn read_file(root: &Path, path: &str) -> String {
-    fs::read_to_string(root.join(path)).expect("reading fixture file")
-}
+use super::{fabro_dev, output_text, read_file, write_file};
 
 fn cli_reference(root: &Path) -> assert_cmd::Command {
     let mut cmd = fabro_dev();

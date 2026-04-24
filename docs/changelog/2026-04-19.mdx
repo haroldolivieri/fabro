@@ -1,24 +1,80 @@
 ---
-title: "Archive terminal runs"
+title: "Run files, archived runs, and browser setup"
 date: "2026-04-19"
 ---
 
+<Warning>
+**Fabro no longer terminates inbound TLS or mTLS itself.** Keep the Fabro listener on plain HTTP or a Unix socket, then terminate HTTPS or mTLS at a reverse proxy, load balancer, or platform ingress.
+
+To migrate:
+1. Remove direct TLS listener settings from Fabro.
+2. Put the TLS-terminating proxy in front of Fabro.
+3. Set `server.api.url` and `server.web.url` to the external HTTPS origin.
+</Warning>
+
+## Browse changed files from a run
+
+Run detail pages now include a Files view backed by server-side file metadata and diffs. Instead of leaving the web app to infer output from terminal logs or downloaded artifacts, Fabro can show the changed files, empty states, loading states, errors, and refresh behavior directly in the run UI.
+
+The same data is available through the API:
+
+```bash
+GET /api/v1/runs/{id}/files
+```
+
+The server reads the run's sandbox path when available and can fall back to final patch data for failed runs, so file review still works across more failure modes.
+
 ## Archive terminal runs
 
-Terminal runs — `succeeded`, `failed`, and `dead` — can now be explicitly archived to signal "reviewed, no further action needed." Archived runs are hidden from default listings (`fabro ps`, `GET /api/v1/runs`) and are read-only: any mutation on an archived run returns an actionable error asking you to unarchive first.
+Terminal runs - `succeeded`, `failed`, and `dead` - can now be archived after review. Archived runs are hidden from default listings and are read-only; if you try to mutate one, Fabro returns an actionable error asking you to unarchive it first.
 
-Two new CLI commands mirror `fabro rm`'s bulk-by-ID shape:
-
-```
+```bash
 fabro archive <run-id> [<run-id> ...]
 fabro unarchive <run-id> [<run-id> ...]
 ```
 
-Both are idempotent in their respective directions — archiving an already-archived run is a no-op, and unarchiving a non-archived terminal run is a no-op — so retries and mixed-id batches are safe. Unarchive restores the run's exact prior terminal status.
+Both commands are idempotent in their respective directions, which makes retries and mixed batches safe. `fabro ps -a` shows active, terminal, and archived runs together, while the default `fabro ps` view stays focused on active work.
 
-On the HTTP surface, two new endpoints sit alongside the existing control family:
+## Browser-based server setup
 
-- `POST /api/v1/runs/{id}/archive`
-- `POST /api/v1/runs/{id}/unarchive`
+Starting a server without an existing settings file now enters install mode and opens a browser wizard. The wizard walks through server URL, object storage defaults, LLM credentials, and GitHub integration instead of requiring a long manual `settings.toml` edit before first use.
 
-`GET /api/v1/runs` gained an `include_archived=true` query parameter for opting in. `fabro ps` continues to show active runs only by default; `fabro ps -a` now shows active, terminal, and archived runs together.
+```bash
+fabro server start
+```
+
+The install flow is also available in the embedded web app, so Docker and hosted deployments can complete setup from the same server process they will keep running.
+
+## More
+
+<Accordion title="API">
+- New `GET /api/v1/runs/{id}/files` endpoint returns paginated run file data and diff metadata
+- New `POST /api/v1/runs/{id}/archive` and `POST /api/v1/runs/{id}/unarchive` endpoints manage archived terminal runs
+- `GET /api/v1/runs` accepts `include_archived=true` for listing archived runs
+- GitHub webhook handling now supports explicit source IP allowlisting with GitHub webhook range refresh
+</Accordion>
+
+<Accordion title="CLI">
+- Added `fabro archive` and `fabro unarchive` for bulk archiving terminal runs
+- `fabro ps -a` now includes archived runs alongside active and terminal runs
+</Accordion>
+
+<Accordion title="Workflows">
+- Added `run.archived` and `run.unarchived` events for archive state changes
+- Captured `final_patch` on failed runs so Run Files can still show changed files when finalization degrades
+- Added machine-readable sandbox git helpers for Run Files extraction
+</Accordion>
+
+<Accordion title="Improvements">
+- Promoted Settings to the top-level web navigation and added page headers for settings pages
+- Tightened run detail layout, graph toolbar behavior, billing presentation, and stage sidebar ergonomics
+- Added a shared empty, loading, and error state primitive for web run views
+- Canonicalized paginated run list responses across real and demo mode
+</Accordion>
+
+<Accordion title="Fixes">
+- Fixed Run Files path normalization for Unicode paths and tightened denylist handling for sandbox, artifact, and blob paths
+- Fixed archive and unarchive bulk failure grammar in CLI output
+- Fixed archived run mutation handling so archived runs return the correct actionable error
+- Fixed install wizard edge cases around GitHub App setup, unsupported providers, and demo status parsing
+</Accordion>

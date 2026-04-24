@@ -378,7 +378,7 @@ When `--no-web` is set, the server still exposes the machine API under `/api/v1`
 
 ### Install mode
 
-If `~/.fabro/settings.toml` does not exist yet, `fabro server start` enters install mode: it prints an install URL, attempts to open it in your default browser, and serves a web wizard for configuring LLM providers, the server URL, and GitHub integration. The server exits cleanly when the wizard finishes; start it again (or let a supervisor restart it) to boot in configured mode. See [Running the Fabro Server](/administration/deploy-server) for the full flow, and `fabro install` for the headless CLI-only equivalent.
+If `~/.fabro/settings.toml` does not exist yet, `fabro server start` enters install mode: it prints an install URL, attempts to open it in your default browser, and serves a web wizard for configuring the server URL, shared object store, LLM providers, and GitHub integration. The server exits cleanly when the wizard finishes; start it again (or let a supervisor restart it) to boot in configured mode. See [Running the Fabro Server](/administration/deploy-server) for the full flow, and `fabro install` for the headless CLI-only equivalent.
 
 ## `fabro server stop`
 

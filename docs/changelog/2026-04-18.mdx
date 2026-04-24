@@ -1,37 +1,57 @@
 ---
-title: "Deploy to Railway, Alpine and musl support"
+title: "Homebrew install, deployment guides, and hardened hosting"
 date: "2026-04-18"
 ---
 
-## One-click deploy to Railway
+<Warning>
+**GitHub webhook exposure is now explicit.** Fabro no longer starts Tailscale Funnel or rewrites the GitHub App webhook URL just because `[server.integrations.github.webhooks]` exists.
 
-Self-hosting Fabro on Railway no longer requires bespoke Dockerfile work. A new `railway.toml` and Railway deploy button ship with the project, along with a full guide covering volume setup at `/storage`, required environment variables, dev-token retrieval, and pointing your CLI at the deployed server.
+To migrate:
+1. Set `strategy = "server_url"` for deployments with a stable HTTPS URL.
+2. Set `strategy = "tailscale_funnel"` if you intentionally want Fabro to run Tailscale Funnel on startup.
+</Warning>
 
-The runtime container now binds `0.0.0.0:${PORT:-32276}`, so Railway, Fly, Render, and Cloud Run can route traffic without manual port configuration. Default behavior on local `docker run` and `docker-compose` is unchanged.
+## More ways to install and deploy Fabro
+
+Homebrew is now a first-class install path, so macOS and Linux users can let Brew manage updates instead of downloading release archives manually.
+
+```bash
+brew install fabro-sh/tap/fabro-nightly
+```
+
+Self-hosting also has more direct paths: Railway uses the prebuilt GHCR image, Render has a blueprint and deploy button, Fly.io ships with a `fly.toml`, and DigitalOcean now has a Droplet plus Compose guide. The deployment docs cover persistent storage, required environment variables, server URLs, and how to point the CLI at the hosted server.
 
 ## Alpine and musl Linux support
 
-The release pipeline now builds `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` tarballs alongside the glibc Linux targets. The `install.sh` script detects musl-based distributions via `ldd --version` and downloads the right archive automatically, so installs on Alpine and other musl hosts work out of the box.
+Fabro now publishes `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` tarballs alongside the glibc Linux builds. The installer detects musl-based distributions through `ldd --version` and downloads the matching archive automatically, so Alpine and other musl hosts work without a custom build.
 
-The published Docker image switched to [Docker Hardened Images](https://www.docker.com/products/hardened-images/) (Alpine 3.23 via our nightly mirror at `ghcr.io/fabro-sh/dhi-alpine-base`), dropping from ~287 MB to ~96 MB (66% smaller) with a CVE-minimized, hardened base. The image and the `install.sh` tarball now ship the same binary.
+The Docker image also moved to an Alpine-based Docker Hardened Image. That keeps the release binary layout shared between the image and tarballs while reducing image size and trimming the default runtime surface.
 
-## Production Docker compose with Caddy
+## Server hardening by default
 
-A new `docker-compose.prod.yaml` stands up a Caddy 2 sidecar that handles auto-HTTPS on ports 80/443 and proxies to the Fabro service. Set `FABRO_DOMAIN` to your domain and Caddy provisions and renews the certificate; certs persist in a named volume. The base `docker-compose.yaml` has moved to the repo root.
+Fabro now emits baseline HTTP security headers on every server response and adds a report-only Content Security Policy for the web app. Operators get stronger defaults without having to place every deployment behind custom proxy header rules first.
 
-## GitHub webhook exposure is now explicit
-
-GitHub App webhook exposure no longer auto-enables just because `[server.integrations.github.webhooks]` exists. The webhook handler now lives on the main API router at `POST /api/v1/webhooks/github`, and operators must choose an explicit strategy if they want Fabro to mutate any external state on startup.
-
-- Breaking: if you previously relied on Fabro silently starting `tailscale funnel` and rewriting the GitHub App webhook URL, add `strategy = "tailscale_funnel"` under `[server.integrations.github.webhooks]` to restore that behavior.
-- New: `strategy = "server_url"` tells Fabro to use `server.api.url` and set the GitHub App webhook URL to `<server.api.url>/api/v1/webhooks/github` on startup. This is the recommended choice for stable production deployments behind HTTPS.
-- Unset `strategy`: Fabro still verifies and serves signed GitHub webhooks when `GITHUB_APP_WEBHOOK_SECRET` is present, but it will not run `tailscale funnel` and it will not rewrite the GitHub App webhook URL.
+The GitHub webhook handler now lives on the main API router at `POST /api/v1/webhooks/github`. When `GITHUB_APP_WEBHOOK_SECRET` is configured, Fabro verifies signed webhook deliveries whether or not it is configured to update the GitHub App webhook URL.
 
 ## More
 
+<Accordion title="CLI">
+- Added the Homebrew install path to the quick start and public install page
+- `fabro version` now warns when the CLI and server versions differ
+- `fabro version` now surfaces when the binary was built from a debug profile
+</Accordion>
+
+<Accordion title="Improvements">
+- Added Render, Fly.io, and DigitalOcean deployment guides alongside the existing Railway path
+- Added a production Docker Compose setup with Caddy handling automatic HTTPS in front of Fabro
+- Added `/health` to the container deployment path so platform health checks can target the server directly
+- Published the runtime image from the Docker Hardened Images Alpine base
+</Accordion>
+
 <Accordion title="Fixes">
-- Fixed Gemini API keys being sent as URL query parameters; they now go through the `x-goog-api-key` header so they don't leak into access logs, proxies, or request traces
-- Hardened the `fabro-demo` cookie with `HttpOnly` unconditionally and `Secure` when the web URL is HTTPS
-- Fixed a path-traversal issue where authenticated users could send percent-encoded `..` segments in the GitHub repo lookup endpoint and redirect the server's privileged token to an unintended GitHub API path; owner and repo now require `[A-Za-z0-9._-]` with length caps
-- Fixed SIGSEGV at startup on the `aarch64-unknown-linux-musl` target (Apple Silicon, Graviton, Ampere) caused by a glibc-vs-musl `.init_array` calling-convention mismatch; the release pipeline now uses `cargo-zigbuild` for musl targets, producing binaries that start cleanly on arm64 Alpine, Debian, and DHI runtimes
+- Fixed startup crashes on `aarch64-unknown-linux-musl` by building musl targets through `cargo-zigbuild`
+- Fixed the SPA fallback so `/api/*` paths no longer resolve to the frontend shell
+- Fixed Gemini API keys being sent as URL query parameters; they now use the `x-goog-api-key` header
+- Hardened the `fabro-demo` cookie with `HttpOnly` and conditional `Secure`
+- Fixed GitHub repo lookup path validation so encoded `..` segments cannot redirect server-side GitHub API requests
 </Accordion>

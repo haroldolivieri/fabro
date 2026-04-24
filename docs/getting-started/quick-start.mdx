@@ -10,6 +10,20 @@ Fabro has two modes:
 - **Server mode** — An API server with a web UI for launching and managing workflow runs at scale. See [Server Mode](/administration/deploy-server) for details.
 </Note>
 
+## Supported platforms
+
+| OS | Architecture | Supported |
+| --- | --- | --- |
+| Linux | x86_64 | Yes |
+| Linux | arm64 (aarch64) | Yes |
+| macOS | arm64 (Apple Silicon) | Yes |
+| macOS | x86_64 (Intel) | No |
+| Windows | any | No |
+
+<Note>
+On Intel Macs, run Fabro in a Linux x86_64 container or VM. Native Windows isn't supported; use WSL2 with a supported Linux architecture.
+</Note>
+
 ## Install
 
 <Tabs>

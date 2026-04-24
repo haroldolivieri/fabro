@@ -38,7 +38,7 @@ If `~/.fabro/settings.toml` does not yet exist, `fabro server start` enters **in
 
 The `Object store` step offers two wizard-managed modes:
 
-- `Local disk` for the default host-local SlateDB + artifact storage path
+- `Local disk` for a host-local object-store root, detected by default and editable before continuing
 - `AWS S3` for one shared bucket with fixed `slatedb/` and `artifacts/` prefixes
 
 The wizard's manual-credential path stores only `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in `server.env`. It does not collect STS/session tokens or S3-compatible endpoint settings. If you need MinIO, Cloudflare R2, path-style options, or custom endpoints, finish install with local defaults and then edit `[server.slatedb]` / `[server.artifacts]` in `settings.toml` manually.

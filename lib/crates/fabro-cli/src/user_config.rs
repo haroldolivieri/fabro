@@ -1,6 +1,4 @@
 use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use anyhow::Result;
@@ -12,8 +10,6 @@ use fabro_util::version::FABRO_VERSION;
 use tracing::debug;
 
 use crate::args::ServerTargetArgs;
-#[cfg(test)]
-use crate::local_server;
 
 pub(crate) fn load_settings() -> anyhow::Result<SettingsLayer> {
     load_settings_with_config_and_storage_dir(None, None)
@@ -55,14 +51,6 @@ pub(crate) fn default_server_target() -> ServerTarget {
     ServerTarget::unix_socket_path(default_socket_path()).expect("default socket path is absolute")
 }
 
-#[deprecated(
-    note = "use local_server::storage_dir for lifecycle; PR commands must move to server-side API"
-)]
-#[cfg(test)]
-pub(crate) fn storage_dir(settings: &SettingsLayer) -> anyhow::Result<PathBuf> {
-    local_server::storage_dir(settings)
-}
-
 fn parse_server_target(value: &str) -> Result<ServerTarget> {
     ServerTarget::from_str(value)
 }
@@ -96,16 +84,15 @@ pub(crate) fn cli_http_client_builder() -> fabro_http::HttpClientBuilder {
 }
 
 #[cfg(test)]
-#[allow(
-    deprecated,
-    reason = "the storage_dir tests are exercising the deprecated helper by definition"
-)]
 mod tests {
+    use std::path::PathBuf;
+
     use fabro_config::parse_settings_layer;
     use fabro_config::user::default_storage_dir;
 
     use super::*;
     use crate::args::ServerTargetArgs;
+    use crate::local_server;
 
     fn server_target_args(value: Option<&str>) -> ServerTargetArgs {
         ServerTargetArgs {
@@ -225,7 +212,10 @@ url = "https://config.example.com"
     fn storage_dir_defaults_without_server_auth_methods() {
         let settings = SettingsLayer::default();
 
-        assert_eq!(storage_dir(&settings).unwrap(), default_storage_dir());
+        assert_eq!(
+            local_server::storage_dir(&settings).unwrap(),
+            default_storage_dir()
+        );
     }
 
     #[test]
@@ -239,7 +229,10 @@ root = "/srv/fabro"
 "#,
         );
 
-        assert_eq!(storage_dir(&settings).unwrap(), PathBuf::from("/srv/fabro"));
+        assert_eq!(
+            local_server::storage_dir(&settings).unwrap(),
+            PathBuf::from("/srv/fabro")
+        );
     }
 
     #[test]

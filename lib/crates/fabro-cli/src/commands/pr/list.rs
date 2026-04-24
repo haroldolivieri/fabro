@@ -1,6 +1,7 @@
 use anyhow::Result;
 use cli_table::format::{Border, Separator};
 use cli_table::{Cell, CellStruct, Color, Style, Table};
+use fabro_api::types::PullRequestDetail;
 use fabro_util::terminal::Styles;
 use futures::stream::{self, StreamExt};
 use serde::Serialize;
@@ -8,8 +9,23 @@ use tracing::info;
 
 use crate::args::PrListArgs;
 use crate::command_context::CommandContext;
-use crate::server_runs::ServerSummaryLookup;
+use crate::server_runs::{ServerRunSummaryInfo, ServerSummaryLookup};
 use crate::shared::{color_if, print_json_pretty};
+
+fn pr_display_state(detail: &PullRequestDetail) -> String {
+    if detail.merged {
+        "merged"
+    } else if detail.draft {
+        "draft"
+    } else {
+        match detail.state.as_str() {
+            "open" => "open",
+            "closed" => "closed",
+            _ => "unknown",
+        }
+    }
+    .to_string()
+}
 
 #[derive(Serialize)]
 struct PrRow {
@@ -26,14 +42,24 @@ pub(super) async fn list_command(args: PrListArgs, base_ctx: &CommandContext) ->
     let printer = ctx.printer();
     let lookup = ServerSummaryLookup::from_client(ctx.server().await?).await?;
 
-    let mut entries = Vec::new();
-    for run in lookup.runs() {
-        if let Ok(state) = lookup.client().get_run_state(&run.run_id()).await {
-            if let Some(record) = state.pull_request {
-                entries.push((run.run_id().to_string(), record));
+    let client = lookup.client().clone_for_reuse();
+    let run_ids: Vec<_> = lookup
+        .runs()
+        .iter()
+        .map(ServerRunSummaryInfo::run_id)
+        .collect();
+    let entries: Vec<_> = stream::iter(run_ids)
+        .map(|run_id| {
+            let client = client.clone_for_reuse();
+            async move {
+                let state = client.get_run_state(&run_id).await.ok()?;
+                state.pull_request.map(|record| (run_id, record))
             }
-        }
-    }
+        })
+        .buffer_unordered(10)
+        .filter_map(|entry| async move { entry })
+        .collect()
+        .await;
 
     if entries.is_empty() {
         if ctx.json_output() {
@@ -44,51 +70,34 @@ pub(super) async fn list_command(args: PrListArgs, base_ctx: &CommandContext) ->
         return Ok(());
     }
 
-    let client = lookup.client().clone_for_reuse();
     let all_rows = stream::iter(entries)
         .map(|(run_id, record)| {
             let client = client.clone_for_reuse();
             async move {
-                match client
-                    .get_run_pull_request(&run_id.parse().expect("run id should parse"))
-                    .await
-                {
-                    Ok(detail) => {
-                        let state = if detail.merged {
-                            "merged".to_string()
-                        } else if detail.draft {
-                            "draft".to_string()
-                        } else if detail.state == "open" {
-                            "open".to_string()
-                        } else if detail.state == "closed" {
-                            "closed".to_string()
-                        } else {
-                            "unknown".to_string()
-                        };
-                        Ok(PrRow {
-                            run_id,
-                            number: detail.number,
-                            state,
-                            merged: detail.merged,
-                            title: detail.title,
-                            url: detail.html_url,
-                        })
-                    }
+                match client.get_run_pull_request(&run_id).await {
+                    Ok(detail) => Ok(PrRow {
+                        run_id: run_id.to_string(),
+                        number: detail.number,
+                        state:  pr_display_state(&detail),
+                        merged: detail.merged,
+                        title:  detail.title,
+                        url:    detail.html_url,
+                    }),
                     Err(err) => {
                         let message = err.to_string();
                         if message.contains("GitHub integration unavailable on server.") {
                             return Err(err);
                         }
 
-                        tracing::warn!(run_id, error = %message, "Failed to fetch PR state");
+                        tracing::warn!(run_id = %run_id, error = %message, "Failed to fetch PR state");
                         Ok(PrRow {
-                            run_id,
+                            run_id: run_id.to_string(),
                             number: i64::try_from(record.number)
                                 .expect("stored pull request number should fit in i64"),
-                            state: "unknown".to_string(),
+                            state:  "unknown".to_string(),
                             merged: false,
-                            title: record.title,
-                            url: record.html_url,
+                            title:  record.title,
+                            url:    record.html_url,
                         })
                     }
                 }

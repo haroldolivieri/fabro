@@ -10,39 +10,14 @@ use fabro_auth::CredentialSource;
 use fabro_auth::ResolvedCredentials;
 use fabro_hooks::{HookContext, HookDecision, HookRunner};
 use fabro_model::Provider;
-#[cfg(test)]
-use fabro_store::Database;
-#[cfg(test)]
-use object_store::memory::InMemory;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 use crate::event::Emitter;
 use crate::handler::HandlerRegistry;
-#[cfg(test)]
-use crate::handler::start;
 use crate::runtime_store::RunStoreHandle;
 use crate::sandbox_git::GitState;
 use crate::workflow_bundle::WorkflowBundle;
-
-#[cfg(test)]
-#[derive(Debug, Default)]
-struct StubCredentialSource;
-
-#[cfg(test)]
-#[async_trait::async_trait]
-impl CredentialSource for StubCredentialSource {
-    async fn resolve(&self) -> anyhow::Result<ResolvedCredentials> {
-        Ok(ResolvedCredentials {
-            credentials: Vec::new(),
-            auth_issues: Vec::new(),
-        })
-    }
-
-    async fn configured_providers(&self) -> Vec<Provider> {
-        Vec::new()
-    }
-}
 
 /// Services shared across workflow phases.
 #[derive(Clone)]
@@ -146,46 +121,6 @@ impl RunServices {
             ..self.as_ref().clone()
         })
     }
-
-    /// Test-only default: local sandbox at cwd, empty run store, stub source.
-    #[cfg(test)]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "This test helper must initialize a current-thread runtime safely from both sync tests and #[tokio::test]."
-    )]
-    pub fn for_test() -> Arc<Self> {
-        let store = Arc::new(Database::new(
-            Arc::new(InMemory::new()),
-            "",
-            Duration::from_millis(1),
-            None,
-        ));
-        Self::new(
-            std::thread::spawn(move || {
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("test runtime should initialize")
-                    .block_on(async {
-                        store
-                            .create_run(&fabro_types::RunId::new())
-                            .await
-                            .expect("slate-backed test run store should initialize")
-                    })
-            })
-            .join()
-            .expect("test run store thread should join")
-            .into(),
-            Arc::new(Emitter::default()),
-            Arc::new(fabro_agent::LocalSandbox::new(
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            )),
-            None,
-            None,
-            Provider::Anthropic,
-            Arc::new(StubCredentialSource),
-        )
-    }
 }
 
 /// Services available only while executing workflow nodes.
@@ -222,9 +157,66 @@ impl EngineServices {
 
     /// Test-only default: empty registry and cross-phase services.
     #[cfg(test)]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test scaffolding must build a slate-backed run store from sync code."
+    )]
     pub fn test_default() -> Self {
+        use fabro_store::Database;
+        use object_store::memory::InMemory;
+
+        use crate::handler::start;
+
+        #[derive(Debug, Default)]
+        struct StubCredentialSource;
+
+        #[async_trait::async_trait]
+        impl CredentialSource for StubCredentialSource {
+            async fn resolve(&self) -> anyhow::Result<ResolvedCredentials> {
+                Ok(ResolvedCredentials {
+                    credentials: Vec::new(),
+                    auth_issues: Vec::new(),
+                })
+            }
+
+            async fn configured_providers(&self) -> Vec<Provider> {
+                Vec::new()
+            }
+        }
+
+        let store = Arc::new(Database::new(
+            Arc::new(InMemory::new()),
+            "",
+            Duration::from_millis(1),
+            None,
+        ));
+        let run_store = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime should initialize")
+                .block_on(async {
+                    store
+                        .create_run(&fabro_types::RunId::new())
+                        .await
+                        .expect("slate-backed test run store should initialize")
+                })
+        })
+        .join()
+        .expect("test run store thread should join");
+
         Self {
-            run:             RunServices::for_test(),
+            run:             RunServices::new(
+                run_store.into(),
+                Arc::new(Emitter::default()),
+                Arc::new(fabro_agent::LocalSandbox::new(
+                    std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                )),
+                None,
+                None,
+                Provider::Anthropic,
+                Arc::new(StubCredentialSource),
+            ),
             registry:        Arc::new(HandlerRegistry::new(Box::new(start::StartHandler))),
             git_state:       std::sync::RwLock::new(None),
             env:             HashMap::new(),
@@ -266,12 +258,19 @@ pub(crate) fn sandbox_cancel_token(
 
 #[cfg(test)]
 mod tests {
-    use super::RunServices;
+    use super::EngineServices;
 
     #[tokio::test]
-    async fn for_test_uses_stub_credential_source() {
-        let services = RunServices::for_test();
+    async fn test_default_uses_stub_credential_source() {
+        let services = EngineServices::test_default();
 
-        assert!(services.llm_source.configured_providers().await.is_empty());
+        assert!(
+            services
+                .run
+                .llm_source
+                .configured_providers()
+                .await
+                .is_empty()
+        );
     }
 }

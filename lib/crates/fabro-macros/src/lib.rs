@@ -4,6 +4,8 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{DeriveInput, Ident, ItemFn, LitStr, Token, parenthesized, parse_macro_input};
 
+mod options_metadata;
+
 enum E2eRequirement {
     Twin,
     Live(LitStr),
@@ -164,6 +166,14 @@ pub fn e2e_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn derive_combine(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     impl_combine(&input)
+}
+
+#[proc_macro_derive(OptionsMetadata, attributes(option, option_group, arg, clap, serde))]
+pub fn derive_options_metadata(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    options_metadata::derive_impl(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 fn impl_combine(ast: &DeriveInput) -> TokenStream {

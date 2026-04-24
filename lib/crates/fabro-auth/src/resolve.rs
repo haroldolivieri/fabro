@@ -63,6 +63,24 @@ pub enum ResolveError {
     RefreshTokenMissing(Provider),
 }
 
+#[must_use]
+pub fn auth_issue_message(provider: Provider, err: &ResolveError) -> String {
+    match err {
+        ResolveError::NotConfigured(_) => {
+            format!("{} is not configured", provider.display_name())
+        }
+        ResolveError::RefreshFailed { source, .. } => format!(
+            "{} requires re-authentication: {}",
+            provider.display_name(),
+            source
+        ),
+        ResolveError::RefreshTokenMissing(_) => format!(
+            "{} requires re-authentication: refresh token missing",
+            provider.display_name()
+        ),
+    }
+}
+
 #[derive(Clone)]
 pub struct CredentialResolver {
     vault:      Arc<AsyncRwLock<Vault>>,
@@ -815,6 +833,19 @@ mod tests {
             err,
             ResolveError::RefreshTokenMissing(Provider::OpenAi)
         ));
+    }
+
+    #[test]
+    fn auth_issue_message_formats_refresh_token_missing() {
+        let message = auth_issue_message(
+            Provider::OpenAi,
+            &ResolveError::RefreshTokenMissing(Provider::OpenAi),
+        );
+
+        assert_eq!(
+            message,
+            "OpenAI requires re-authentication: refresh token missing"
+        );
     }
 
     #[test]

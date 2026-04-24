@@ -52,19 +52,6 @@ async fn run_hooks(
     runner.run(hook_context, sandbox, work_dir).await
 }
 
-fn emit_run_notice(
-    emitter: &Emitter,
-    level: RunNoticeLevel,
-    code: impl Into<String>,
-    message: impl Into<String>,
-) {
-    emitter.emit(&Event::RunNotice {
-        level,
-        code: code.into(),
-        message: message.into(),
-    });
-}
-
 async fn resolve_worktree_plan(options: &mut InitOptions) -> Result<Option<WorktreePlan>, Error> {
     let Some(worktree_mode) = options.worktree_mode else {
         options.run_options.display_base_sha = None;
@@ -113,8 +100,7 @@ async fn resolve_worktree_plan(options: &mut InitOptions) -> Result<Option<Workt
             WorkdirStrategy::LocalDirectory => None,
         };
         if let Some(env_name) = env_name {
-            emit_run_notice(
-                &options.emitter,
+            options.emitter.notice(
                 RunNoticeLevel::Warn,
                 "dirty_worktree",
                 format!("Uncommitted changes will not be included in the {env_name}."),
@@ -153,14 +139,12 @@ async fn resolve_worktree_plan(options: &mut InitOptions) -> Result<Option<Workt
                 })
                 .await
                 {
-                    Ok(()) => emit_run_notice(
-                        &options.emitter,
+                    Ok(()) => options.emitter.notice(
                         RunNoticeLevel::Info,
                         "git_push_succeeded",
                         format!("{branch} (synced local commits to remote)"),
                     ),
-                    Err(e) => emit_run_notice(
-                        &options.emitter,
+                    Err(e) => options.emitter.notice(
                         RunNoticeLevel::Warn,
                         "git_push_failed",
                         format!("Failed to push {branch} to origin: {e}"),
@@ -190,8 +174,7 @@ async fn resolve_worktree_plan(options: &mut InitOptions) -> Result<Option<Workt
                     }))
                 }
                 Err(e) => {
-                    emit_run_notice(
-                        &options.emitter,
+                    options.emitter.notice(
                         RunNoticeLevel::Warn,
                         "worktree_setup_failed",
                         format!("Git worktree setup failed ({e}), running without worktree."),
@@ -266,8 +249,7 @@ async fn build_sandbox_env(
                     Ok(token) => {
                         env.insert("GITHUB_TOKEN".to_string(), token);
                     }
-                    Err(e) => emit_run_notice(
-                        emitter,
+                    Err(e) => emitter.notice(
                         RunNoticeLevel::Warn,
                         "github_token_failed",
                         format!("Failed to mint GitHub token: {e}"),
@@ -513,8 +495,7 @@ pub async fn initialize(
                 Arc::new(ReadBeforeWriteSandbox::new(Arc::new(worktree)))
             }
             Err(e) => {
-                emit_run_notice(
-                    &options.emitter,
+                options.emitter.notice(
                     RunNoticeLevel::Warn,
                     "worktree_setup_failed",
                     format!("Git worktree setup failed ({e}), running without worktree."),

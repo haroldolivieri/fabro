@@ -6,13 +6,12 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use fabro_checkpoint::branch::BranchStore;
 use fabro_checkpoint::git::Store as GitStore;
 use fabro_store::RunProjection;
 use fabro_test::{fabro_snapshot, test_context};
 use fabro_types::Checkpoint;
 use fabro_workflow::operations::{RunTimeline, build_timeline};
-use git2::{Repository, Signature};
+use git2::Repository;
 
 use crate::support::unique_run_id;
 
@@ -25,32 +24,6 @@ fn list_metadata_run_ids(repo_dir: &Path) -> BTreeSet<String> {
         .filter_map(|name| {
             name.strip_prefix("refs/heads/fabro/meta/")
                 .map(ToOwned::to_owned)
-        })
-        .collect()
-}
-
-fn metadata_checkpoints(repo_dir: &Path, run_id: &str) -> Vec<Checkpoint> {
-    let repo = Repository::discover(repo_dir).expect("recovery fixture should be a git repo");
-    let store = GitStore::new(repo);
-    let sig =
-        Signature::now("Fabro", "noreply@fabro.sh").expect("test recovery signature should build");
-    let branch = format!("fabro/meta/{run_id}");
-    let bs = BranchStore::new(&store, &branch, &sig);
-
-    bs.log(100)
-        .expect("metadata branch log should load")
-        .iter()
-        .rev()
-        .filter(|commit| commit.message.starts_with("checkpoint"))
-        .map(|commit| {
-            let projection_blob = store
-                .read_blob_at(commit.oid, "run.json")
-                .expect("projection blob should load")
-                .expect("projection blob should exist");
-            serde_json::from_slice::<RunProjection>(&projection_blob)
-                .expect("projection blob should deserialize")
-                .checkpoint
-                .expect("projection checkpoint should exist")
         })
         .collect()
 }
@@ -77,14 +50,6 @@ fn timeline_run_shas(repo_dir: &Path, run_id: &str) -> Vec<Option<String>> {
         .entries
         .into_iter()
         .map(|entry| entry.run_commit_sha)
-        .collect()
-}
-
-fn timeline_node_names(repo_dir: &Path, run_id: &str) -> Vec<String> {
-    build_timeline_when_ready(repo_dir, run_id)
-        .entries
-        .into_iter()
-        .map(|entry| entry.node_name)
         .collect()
 }
 
@@ -182,7 +147,7 @@ digraph Recovery {
 }
 
 #[test]
-fn rewind_and_fork_recover_missing_metadata_from_real_run_state() {
+fn rewind_list_reports_empty_timeline_when_metadata_branch_is_missing() {
     let context = test_context!();
     context.ensure_home_server_auth_methods();
     let repo_dir = tempfile::tempdir().unwrap();
@@ -206,10 +171,6 @@ fn rewind_and_fork_recover_missing_metadata_from_real_run_state() {
         .assert()
         .success();
 
-    let mut filters = Vec::new();
-    filters.push((r"\b[0-9a-f]{7,40}\b".to_string(), "[SHA]".to_string()));
-    filters.extend(context.filters());
-
     delete_metadata_branch_when_ready(repo_dir.path(), &source_run_id);
 
     assert!(
@@ -221,23 +182,44 @@ fn rewind_and_fork_recover_missing_metadata_from_real_run_state() {
     rewind_list.current_dir(repo_dir.path());
     rewind_list.args(["rewind", &source_run_id, "--list"]);
     rewind_list.timeout(std::time::Duration::from_secs(15));
-    rewind_list.assert().success();
+    fabro_snapshot!(context.filters(), rewind_list, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    ----- stderr -----
+    No checkpoints found.
+    ");
 
-    let rebuilt_nodes = timeline_node_names(repo_dir.path(), &source_run_id);
-    assert_eq!(rebuilt_nodes.last().map(String::as_str), Some("build"));
     assert!(
-        rebuilt_nodes.ends_with(&["plan".to_string(), "build".to_string()]),
-        "expected rebuilt timeline to end with plan -> build, got {rebuilt_nodes:?}"
+        list_metadata_run_ids(repo_dir.path()).is_empty(),
+        "server timeline should not rebuild missing metadata"
     );
+}
 
-    let rebuilt_checkpoints = metadata_checkpoints(repo_dir.path(), &source_run_id);
-    assert_eq!(
-        rebuilt_checkpoints
-            .first()
-            .and_then(|c| c.git_commit_sha.clone()),
-        None
-    );
-    assert!(rebuilt_checkpoints.len() >= 2);
+#[test]
+fn fork_chain_preserves_checkpoint_metadata() {
+    let context = test_context!();
+    context.ensure_home_server_auth_methods();
+    let repo_dir = tempfile::tempdir().unwrap();
+    let source_run_id = unique_run_id();
+
+    init_repo_with_workflow(repo_dir.path());
+
+    context
+        .command()
+        .current_dir(repo_dir.path())
+        .args([
+            "run",
+            "--dry-run",
+            "--no-retro",
+            "--sandbox",
+            "local",
+            "--run-id",
+            source_run_id.as_str(),
+            "workflow.fabro",
+        ])
+        .assert()
+        .success();
 
     let timeline_shas = timeline_run_shas(repo_dir.path(), &source_run_id);
     let build_sha = timeline_shas.last().cloned().flatten();
@@ -259,36 +241,11 @@ fn rewind_and_fork_recover_missing_metadata_from_real_run_state() {
     let child_checkpoint = latest_metadata_checkpoint(repo_dir.path(), child_run_id);
     assert_eq!(child_checkpoint.git_commit_sha, build_sha);
 
-    let mut rewind_filters = filters.clone();
-    rewind_filters.push((
-        regex::escape(&source_run_id[..8]),
-        "[RUN_PREFIX]".to_string(),
-    ));
-    rewind_filters.push((r"@\d+".to_string(), "@[ORDINAL]".to_string()));
-
-    let mut source_rewind = context.command();
-    source_rewind.current_dir(repo_dir.path());
-    source_rewind.args(["rewind", &source_run_id, "build", "--no-push"]);
-    source_rewind.timeout(std::time::Duration::from_secs(15));
-    fabro_snapshot!(rewind_filters, source_rewind, @"
-    success: true
-    exit_code: 0
-    ----- stdout -----
-    ----- stderr -----
-    Rewound metadata branch to @[ORDINAL] (build)
-    Rewound run branch fabro/run/[ULID] to [SHA]
-
-    To resume: fabro resume [RUN_PREFIX]
-    ");
-
-    let rewound_timeline_shas = timeline_run_shas(repo_dir.path(), &source_run_id);
-    assert_eq!(rewound_timeline_shas.last().cloned().flatten(), build_sha);
-
     let before_grandchild = list_metadata_run_ids(repo_dir.path());
     context
         .command()
         .current_dir(repo_dir.path())
-        .args(["fork", &source_run_id, "--no-push"])
+        .args(["fork", child_run_id, "--no-push"])
         .timeout(std::time::Duration::from_secs(15))
         .assert()
         .success();

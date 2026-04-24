@@ -2,8 +2,8 @@ use fabro_test::{fabro_snapshot, run_and_format, test_context};
 use insta::assert_snapshot;
 
 use super::support::{
-    git_filters, git_stdout, output_stderr as support_stderr, run_branch_commits_since_base,
-    run_events, run_state, setup_git_backed_changed_run,
+    git_filters, git_stdout, metadata_run_ids, output_stderr as support_stderr,
+    run_branch_commits_since_base, run_events, run_state, setup_git_backed_changed_run,
 };
 
 #[test]
@@ -48,8 +48,7 @@ fn rewind_outside_git_repo_errors() {
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
-    error: not in a git repository
-      > could not find repository at '.'; class=Repository (6); code=NotFound (-3)
+    error: No run found matching '[ULID]' (tried run ID prefix and workflow name)
     ");
 }
 
@@ -76,6 +75,7 @@ fn rewind_list_prints_timeline_for_completed_git_run() {
 fn rewind_target_updates_metadata_and_resume_hint() {
     let context = test_context!();
     let setup = setup_git_backed_changed_run(&context);
+    let before = metadata_run_ids(&setup.repo_dir);
     let expected_run_head =
         run_branch_commits_since_base(&setup.repo_dir, &setup.run.run_id, &setup.base_sha)
             .into_iter()
@@ -92,37 +92,40 @@ fn rewind_target_updates_metadata_and_resume_hint() {
     exit_code: 0
     ----- stdout -----
     ----- stderr -----
-    Rewound metadata branch to @1 (step_one)
-    Rewound run branch fabro/run/[ULID] to [SHA]
 
+    Rewound [RUN_PREFIX]; new run [RUN_PREFIX]
     To resume: fabro resume [RUN_PREFIX]
     ");
     assert!(output.status.success(), "rewind should succeed");
 
+    let after = metadata_run_ids(&setup.repo_dir);
+    let new_run_ids: Vec<_> = after.difference(&before).cloned().collect();
+    assert_eq!(
+        new_run_ids.len(),
+        1,
+        "rewind should create one replacement run"
+    );
+    let new_run_id = &new_run_ids[0];
+
     let run_head = git_stdout(&setup.repo_dir, &[
         "rev-parse",
-        &format!("fabro/run/{}", setup.run.run_id),
+        &format!("fabro/run/{new_run_id}"),
     ]);
     assert_eq!(run_head.trim(), expected_run_head);
 
-    let mut list_cmd = context.command();
-    list_cmd.current_dir(&setup.repo_dir);
-    list_cmd.args(["rewind", &setup.run.run_id, "--list"]);
-    let list_output = list_cmd.output().expect("rewind --list should execute");
-    assert!(list_output.status.success(), "rewind --list should succeed");
-    let list = support_stderr(&list_output);
-    assert!(
-        list.contains("@1"),
-        "rewound timeline should keep @1: {list}"
-    );
-    assert!(
-        !list.contains("@2"),
-        "rewound timeline should drop @2: {list}"
+    let state = run_state(&setup.run.run_dir);
+    assert!(matches!(
+        state.status,
+        Some(fabro_types::RunStatus::Archived { .. })
+    ));
+    assert_eq!(
+        state.superseded_by.map(|run_id| run_id.to_string()),
+        Some(new_run_id.clone())
     );
 }
 
 #[test]
-fn rewind_preserves_event_history_and_clears_terminal_snapshot_state() {
+fn rewind_archives_source_and_records_superseded_by() {
     let context = test_context!();
     let setup = setup_git_backed_changed_run(&context);
     let before_events = run_events(&setup.run.run_dir);
@@ -147,8 +150,8 @@ fn rewind_preserves_event_history_and_clears_terminal_snapshot_state() {
     let after_events = run_events(&setup.run.run_dir);
     assert_eq!(
         after_events.len(),
-        before_events.len() + 3,
-        "rewind should append run.rewound, checkpoint.completed, and run.submitted"
+        before_events.len() + 2,
+        "rewind should append run.archived and run.superseded_by"
     );
     assert_eq!(
         after_events[..before_events.len()]
@@ -163,38 +166,17 @@ fn rewind_preserves_event_history_and_clears_terminal_snapshot_state() {
     );
     assert_eq!(
         after_events[before_events.len()].event.event_name(),
-        "run.rewound"
+        "run.archived"
     );
     assert_eq!(
         after_events[before_events.len() + 1].event.event_name(),
-        "checkpoint.completed"
-    );
-    assert_eq!(
-        after_events[before_events.len() + 2].event.event_name(),
-        "run.submitted"
-    );
-    assert!(
-        after_events[before_events.len() + 2]
-            .event
-            .properties()
-            .unwrap()["definition_blob"]
-            .is_string(),
-        "rewind should re-emit run.submitted with the definition_blob"
+        "run.superseded_by"
     );
 
     let state = run_state(&setup.run.run_dir);
-    assert_eq!(state.status, Some(fabro_types::RunStatus::Submitted));
-    assert!(state.conclusion.is_none(), "rewind should clear conclusion");
-    assert!(
-        state.final_patch.is_none(),
-        "rewind should clear final patch"
-    );
-    assert!(
-        state.pull_request.is_none(),
-        "rewind should clear pull request"
-    );
-    assert!(
-        state.is_empty(),
-        "rewind should clear node state that belonged to the prior execution"
-    );
+    assert!(matches!(
+        state.status,
+        Some(fabro_types::RunStatus::Archived { .. })
+    ));
+    assert!(state.superseded_by.is_some());
 }

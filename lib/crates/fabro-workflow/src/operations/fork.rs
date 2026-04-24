@@ -1,11 +1,14 @@
 use anyhow::{Context, Result};
 use fabro_checkpoint::branch::BranchStore;
 use fabro_checkpoint::git::Store;
-use fabro_store::RunProjection;
+use fabro_store::{Database, RunProjection};
 use fabro_types::RunId;
 use git2::{Oid, Signature};
 
-use super::rewind::{RewindTarget, TimelineEntry, build_timeline};
+use super::run_git;
+use super::timeline::{ForkTarget, TimelineEntry, build_timeline};
+use crate::error::Error;
+use crate::event::{self, Event};
 use crate::git::{MetadataStore, RUN_BRANCH_PREFIX, push_run_branches};
 use crate::records::{Checkpoint, RunSpec, StartRecord};
 use crate::run_dump::RunDump;
@@ -13,8 +16,35 @@ use crate::run_dump::RunDump;
 #[derive(Debug, Clone)]
 pub struct ForkRunInput {
     pub source_run_id: RunId,
-    pub target:        Option<RewindTarget>,
+    pub target:        Option<ForkTarget>,
     pub push:          bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedForkTarget {
+    pub checkpoint_ordinal: usize,
+    pub node_id:            String,
+    pub visit:              usize,
+}
+
+impl ResolvedForkTarget {
+    #[must_use]
+    pub fn response_target(&self) -> String {
+        format!("@{}", self.checkpoint_ordinal)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForkOutcome {
+    pub source_run_id: RunId,
+    pub new_run_id:    RunId,
+    pub target:        ResolvedForkTarget,
+}
+
+#[derive(Debug)]
+struct ForkedRun {
+    new_run_id: RunId,
+    projection: RunProjection,
 }
 
 /// Create a new run that branches from an existing run at a specific
@@ -29,7 +59,45 @@ pub fn fork(store: &Store, input: &ForkRunInput) -> Result<RunId> {
             anyhow::anyhow!("no checkpoints found for run {}", input.source_run_id)
         })?,
     };
-    fork_from_entry(store, &input.source_run_id, entry, input.push)
+    Ok(fork_from_entry(store, &input.source_run_id, entry, input.push)?.new_run_id)
+}
+
+pub async fn fork_run(store: &Database, input: &ForkRunInput) -> Result<ForkOutcome, Error> {
+    let source_run_id = input.source_run_id;
+    let target = input.target.clone();
+    let push = input.push;
+
+    let (outcome, projection) =
+        run_git::with_run_git_store(store, source_run_id, move |git_store| {
+            let timeline = build_timeline(&git_store, &source_run_id.to_string())
+                .map_err(|err| Error::engine(err.to_string()))?;
+            let entry = match target.as_ref() {
+                Some(target) => timeline
+                    .resolve(target)
+                    .map_err(|err| Error::Validation(err.to_string()))?,
+                None => timeline.entries.last().ok_or_else(|| {
+                    Error::Validation(format!("no checkpoints found for run {source_run_id}"))
+                })?,
+            };
+            let resolved = ResolvedForkTarget {
+                checkpoint_ordinal: entry.ordinal,
+                node_id:            entry.node_name.clone(),
+                visit:              entry.visit,
+            };
+            let forked = fork_from_entry(&git_store, &source_run_id, entry, push)
+                .map_err(|err| Error::engine(err.to_string()))?;
+            let outcome = ForkOutcome {
+                source_run_id,
+                new_run_id: forked.new_run_id,
+                target: resolved,
+            };
+            Ok((outcome, forked.projection))
+        })
+        .await?;
+
+    persist_forked_run(store, &projection).await?;
+
+    Ok(outcome)
 }
 
 fn fork_from_entry(
@@ -37,7 +105,7 @@ fn fork_from_entry(
     source_run_id: &RunId,
     entry: &TimelineEntry,
     push: bool,
-) -> Result<RunId> {
+) -> Result<ForkedRun> {
     let new_run_id = RunId::new();
     let sig = Signature::now("Fabro", "noreply@fabro.sh")?;
 
@@ -86,7 +154,7 @@ fn fork_from_entry(
         run_id:     new_run_id,
         start_time: new_run_id.created_at(),
         run_branch: Some(new_run_branch.clone()),
-        base_sha:   None,
+        base_sha:   entry.run_commit_sha.clone(),
     };
 
     let mut init_projection = RunProjection::default();
@@ -156,7 +224,123 @@ fn fork_from_entry(
         )?;
     }
 
-    Ok(new_run_id)
+    Ok(ForkedRun {
+        new_run_id,
+        projection: checkpoint_projection,
+    })
+}
+
+async fn persist_forked_run(store: &Database, projection: &RunProjection) -> Result<(), Error> {
+    let spec = projection
+        .spec
+        .as_ref()
+        .ok_or_else(|| Error::engine("forked run projection has no spec"))?;
+    let start = projection
+        .start
+        .as_ref()
+        .ok_or_else(|| Error::engine("forked run projection has no start record"))?;
+    let checkpoint = projection
+        .checkpoint
+        .as_ref()
+        .ok_or_else(|| Error::engine("forked run projection has no checkpoint"))?;
+
+    let run_store = store
+        .create_run(&spec.run_id)
+        .await
+        .map_err(|err| Error::engine(err.to_string()))?;
+
+    event::append_event(&run_store, &spec.run_id, &Event::RunCreated {
+        run_id:            spec.run_id,
+        settings:          serde_json::to_value(&spec.settings)
+            .map_err(|err| Error::engine(err.to_string()))?,
+        graph:             serde_json::to_value(&spec.graph)
+            .map_err(|err| Error::engine(err.to_string()))?,
+        workflow_source:   projection.graph_source.clone(),
+        workflow_config:   None,
+        labels:            spec.labels.clone().into_iter().collect(),
+        run_dir:           String::new(),
+        working_directory: spec.working_directory.display().to_string(),
+        host_repo_path:    spec.host_repo_path.clone(),
+        repo_origin_url:   spec.repo_origin_url.clone(),
+        base_branch:       spec.base_branch.clone(),
+        workflow_slug:     spec.workflow_slug.clone(),
+        db_prefix:         None,
+        provenance:        spec.provenance.clone(),
+        manifest_blob:     spec.manifest_blob,
+    })
+    .await
+    .map_err(|err| Error::engine(err.to_string()))?;
+
+    event::append_event(&run_store, &spec.run_id, &Event::WorkflowRunStarted {
+        name:         spec.graph.name.clone(),
+        run_id:       spec.run_id,
+        base_branch:  spec.base_branch.clone(),
+        base_sha:     start.base_sha.clone(),
+        run_branch:   start.run_branch.clone(),
+        worktree_dir: None,
+        goal:         None,
+    })
+    .await
+    .map_err(|err| Error::engine(err.to_string()))?;
+
+    if let Some(sandbox) = projection.sandbox.as_ref() {
+        event::append_event(&run_store, &spec.run_id, &Event::SandboxInitialized {
+            provider:               sandbox.provider.clone(),
+            working_directory:      sandbox.working_directory.clone(),
+            identifier:             sandbox.identifier.clone(),
+            host_working_directory: sandbox.host_working_directory.clone(),
+            container_mount_point:  sandbox.container_mount_point.clone(),
+        })
+        .await
+        .map_err(|err| Error::engine(err.to_string()))?;
+    }
+
+    event::append_event(
+        &run_store,
+        &spec.run_id,
+        &checkpoint_completed_event(checkpoint),
+    )
+    .await
+    .map_err(|err| Error::engine(err.to_string()))?;
+    event::append_event(&run_store, &spec.run_id, &Event::RunSubmitted {
+        definition_blob: spec.definition_blob,
+    })
+    .await
+    .map_err(|err| Error::engine(err.to_string()))
+}
+
+fn checkpoint_completed_event(checkpoint: &Checkpoint) -> Event {
+    let status = checkpoint
+        .node_outcomes
+        .get(&checkpoint.current_node)
+        .map_or_else(
+            || "success".to_string(),
+            |outcome| outcome.status.to_string(),
+        );
+
+    Event::CheckpointCompleted {
+        node_id: checkpoint.current_node.clone(),
+        status,
+        current_node: checkpoint.current_node.clone(),
+        completed_nodes: checkpoint.completed_nodes.clone(),
+        node_retries: checkpoint.node_retries.clone().into_iter().collect(),
+        context_values: checkpoint.context_values.clone().into_iter().collect(),
+        node_outcomes: checkpoint.node_outcomes.clone().into_iter().collect(),
+        next_node_id: checkpoint.next_node_id.clone(),
+        git_commit_sha: checkpoint.git_commit_sha.clone(),
+        loop_failure_signatures: checkpoint
+            .loop_failure_signatures
+            .iter()
+            .map(|(signature, count)| (signature.to_string(), *count))
+            .collect(),
+        restart_failure_signatures: checkpoint
+            .restart_failure_signatures
+            .iter()
+            .map(|(signature, count)| (signature.to_string(), *count))
+            .collect(),
+        node_visits: checkpoint.node_visits.clone().into_iter().collect(),
+        diff: None,
+    }
 }
 
 #[cfg(test)]
@@ -275,7 +459,7 @@ mod tests {
 
         let new_run_id = fork(&store, &ForkRunInput {
             source_run_id,
-            target: Some(RewindTarget::from_str("@2").unwrap()),
+            target: Some(ForkTarget::from_str("@2").unwrap()),
             push: false,
         })
         .unwrap();

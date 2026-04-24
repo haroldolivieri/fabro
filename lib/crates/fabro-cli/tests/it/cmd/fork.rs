@@ -48,8 +48,7 @@ fn fork_outside_git_repo_errors() {
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
-    error: not in a git repository
-      > could not find repository at '.'; class=Repository (6); code=NotFound (-3)
+    error: No run found matching '[ULID]' (tried run ID prefix and workflow name)
     ");
 }
 

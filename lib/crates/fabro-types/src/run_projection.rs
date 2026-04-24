@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     Checkpoint, Conclusion, InterviewQuestionRecord, InvalidTransition, NodeStatusRecord,
-    PullRequestRecord, Retro, RunControlAction, RunSpec, RunStatus, SandboxRecord, StageId,
+    PullRequestRecord, Retro, RunControlAction, RunId, RunSpec, RunStatus, SandboxRecord, StageId,
     StartRecord,
 };
 
@@ -26,6 +26,7 @@ pub struct RunProjection {
     pub sandbox:            Option<SandboxRecord>,
     pub final_patch:        Option<String>,
     pub pull_request:       Option<PullRequestRecord>,
+    pub superseded_by:      Option<RunId>,
     pub pending_interviews: BTreeMap<String, PendingInterviewRecord>,
     nodes:                  HashMap<StageId, NodeState>,
 }
@@ -129,22 +130,5 @@ impl RunProjection {
                 Ok(())
             }
         }
-    }
-
-    pub fn reset_for_rewind(&mut self) {
-        self.status = None;
-        self.status_updated_at = None;
-        self.pending_control = None;
-        self.checkpoint = None;
-        self.checkpoints.clear();
-        self.conclusion = None;
-        self.retro = None;
-        self.retro_prompt = None;
-        self.retro_response = None;
-        self.sandbox = None;
-        self.final_patch = None;
-        self.pull_request = None;
-        self.pending_interviews.clear();
-        self.nodes.clear();
     }
 }

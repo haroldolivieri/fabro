@@ -124,8 +124,8 @@ pub enum EventBody {
     RunPaused(RunControlEffectProps),
     #[serde(rename = "run.unpaused")]
     RunUnpaused(RunControlEffectProps),
-    #[serde(rename = "run.rewound")]
-    RunRewound(RunRewoundProps),
+    #[serde(rename = "run.superseded_by")]
+    RunSupersededBy(RunSupersededByProps),
     #[serde(rename = "run.archived")]
     RunArchived(RunArchivedProps),
     #[serde(rename = "run.unarchived")]
@@ -390,7 +390,7 @@ impl EventBody {
             Self::RunUnpauseRequested(_) => "run.unpause.requested",
             Self::RunPaused(_) => "run.paused",
             Self::RunUnpaused(_) => "run.unpaused",
-            Self::RunRewound(_) => "run.rewound",
+            Self::RunSupersededBy(_) => "run.superseded_by",
             Self::RunArchived(_) => "run.archived",
             Self::RunUnarchived(_) => "run.unarchived",
             Self::RunCompleted(_) => "run.completed",
@@ -521,7 +521,7 @@ fn is_known_event_name(event: &str) -> bool {
             | "run.blocked"
             | "run.unblocked"
             | "run.removing"
-            | "run.rewound"
+            | "run.superseded_by"
             | "run.archived"
             | "run.unarchived"
             | "run.completed"

@@ -18,6 +18,8 @@ pub struct RunSummary {
     pub pending_control:  Option<RunControlAction>,
     pub duration_ms:      Option<u64>,
     pub total_usd_micros: Option<i64>,
+    #[serde(default)]
+    pub superseded_by:    Option<RunId>,
 }
 
 #[cfg(test)]
@@ -45,6 +47,7 @@ mod tests {
             pending_control:  Some(RunControlAction::Pause),
             duration_ms:      Some(42),
             total_usd_micros: Some(123),
+            superseded_by:    Some(fixtures::RUN_2),
         };
 
         let value = serde_json::to_value(&summary).unwrap();

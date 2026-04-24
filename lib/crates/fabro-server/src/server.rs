@@ -28,15 +28,15 @@ pub use fabro_api::types::{
     CompletionMessageRole, CompletionResponse, CompletionToolChoiceMode, CompletionUsage,
     CreateCompletionRequest, CreateRunPullRequestRequest, CreateSecretRequest, DeleteSecretRequest,
     DiskUsageResponse, DiskUsageRunRow, DiskUsageSummaryRow, EventEnvelope as ApiEventEnvelope,
-    MergeRunPullRequestRequest, MergeRunPullRequestResponse, ModelReference, PaginatedEventList,
-    PaginatedRunList, PaginationMeta, PreflightResponse, PreviewUrlRequest, PreviewUrlResponse,
-    PruneRunEntry, PruneRunsRequest, PruneRunsResponse, QuestionType as ApiQuestionType,
-    RenderWorkflowGraphDirection, RenderWorkflowGraphRequest, RunArtifactEntry,
-    RunArtifactListResponse, RunBilling, RunBillingStage, RunBillingTotals, RunError, RunManifest,
-    RunStage, RunStatusResponse, SandboxFileEntry, SandboxFileListResponse,
-    SecretType as ApiSecretType, SshAccessRequest, SshAccessResponse,
-    StageStatus as ApiStageStatus, StartRunRequest, SubmitAnswerRequest, SystemFeatures,
-    SystemInfoResponse, SystemRunCounts, WriteBlobResponse,
+    ForkRequest, ForkResponse, MergeRunPullRequestRequest, MergeRunPullRequestResponse,
+    ModelReference, PaginatedEventList, PaginatedRunList, PaginationMeta, PreflightResponse,
+    PreviewUrlRequest, PreviewUrlResponse, PruneRunEntry, PruneRunsRequest, PruneRunsResponse,
+    QuestionType as ApiQuestionType, RenderWorkflowGraphDirection, RenderWorkflowGraphRequest,
+    RewindRequest, RewindResponse, RunArtifactEntry, RunArtifactListResponse, RunBilling,
+    RunBillingStage, RunBillingTotals, RunError, RunManifest, RunStage, RunStatusResponse,
+    SandboxFileEntry, SandboxFileListResponse, SecretType as ApiSecretType, SshAccessRequest,
+    SshAccessResponse, StageStatus as ApiStageStatus, StartRunRequest, SubmitAnswerRequest,
+    SystemFeatures, SystemInfoResponse, SystemRunCounts, TimelineEntryResponse, WriteBlobResponse,
 };
 use fabro_auth::{
     CredentialSource, VaultCredentialSource, auth_issue_message, parse_credential_secret,
@@ -1199,6 +1199,9 @@ fn real_routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/pause", post(pause_run))
         .route("/runs/{id}/unpause", post(unpause_run))
         .route("/runs/{id}/archive", post(archive_run))
+        .route("/runs/{id}/rewind", post(rewind_run))
+        .route("/runs/{id}/fork", post(fork_run))
+        .route("/runs/{id}/timeline", get(run_timeline))
         .route("/runs/{id}/unarchive", post(unarchive_run))
         .route("/runs/{id}/graph", get(get_graph))
         .route("/runs/{id}/stages", get(list_run_stages))
@@ -2886,6 +2889,7 @@ fn summary_to_api_run_summary(summary: fabro_types::RunSummary) -> serde_json::V
         "duration_ms": summary.duration_ms,
         "elapsed_secs": elapsed_secs(summary.duration_ms),
         "total_usd_micros": summary.total_usd_micros,
+        "superseded_by": summary.superseded_by.map(|run_id| run_id.to_string()),
         "created_at": created_at,
     })
 }
@@ -3426,7 +3430,7 @@ fn reconcile_live_interview_state_for_event(run: &mut ManagedRun, event: &RunEve
         EventBody::InterviewInterrupted(props) => {
             run.accepted_questions.remove(&props.question_id);
         }
-        EventBody::RunCompleted(_) | EventBody::RunFailed(_) | EventBody::RunRewound(_) => {
+        EventBody::RunCompleted(_) | EventBody::RunFailed(_) => {
             run.accepted_questions.clear();
         }
         _ => {}
@@ -6662,8 +6666,7 @@ fn actor_from_subject(subject: &AuthenticatedSubject) -> Option<ActorRef> {
 /// These endpoints enforce authorization and status-transition preconditions
 /// (e.g. "archive only from terminal") that a direct event append would
 /// bypass. Other run-lifecycle events flow through this endpoint legitimately:
-/// the worker subprocess emits state transitions during execution, and the
-/// rewind CLI relays `RunRewound` / `RunSubmitted` here.
+/// the worker subprocess emits state transitions during execution.
 fn denied_lifecycle_event_name(body: &EventBody) -> Option<&'static str> {
     match body {
         EventBody::RunArchived(_) => Some("run.archived"),
@@ -7082,6 +7085,166 @@ async fn unarchive_run(
     Path(id): Path<String>,
 ) -> Response {
     run_archive_action(state, subject, id, ArchiveAction::Unarchive).await
+}
+
+async fn rewind_run(
+    subject: AuthenticatedSubject,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    body: Option<Json<RewindRequest>>,
+) -> Response {
+    let id = match parse_run_id_path(&id) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
+    let request = body.map(|Json(body)| body).unwrap_or_default();
+    let target = match parse_fork_target(request.target) {
+        Ok(target) => target,
+        Err(err) => return err.into_response(),
+    };
+    let input = operations::RewindInput {
+        run_id: id,
+        target,
+        push: request.push.unwrap_or(true),
+    };
+    match Box::pin(operations::rewind(
+        &state.store,
+        &input,
+        actor_from_subject(&subject),
+    ))
+    .await
+    {
+        Ok(operations::RewindOutcome::Full {
+            source_run_id,
+            new_run_id,
+            target,
+            archived,
+        }) => (
+            StatusCode::OK,
+            Json(RewindResponse {
+                source_run_id: source_run_id.to_string(),
+                new_run_id: new_run_id.to_string(),
+                target: target.response_target(),
+                archived,
+                archive_error: None,
+            }),
+        )
+            .into_response(),
+        Ok(operations::RewindOutcome::Partial {
+            source_run_id,
+            new_run_id,
+            target,
+            archive_error,
+        }) => (
+            StatusCode::MULTI_STATUS,
+            Json(RewindResponse {
+                source_run_id: source_run_id.to_string(),
+                new_run_id:    new_run_id.to_string(),
+                target:        target.response_target(),
+                archived:      false,
+                archive_error: Some(archive_error),
+            }),
+        )
+            .into_response(),
+        Err(err) => workflow_operation_error_response(err),
+    }
+}
+
+async fn fork_run(
+    _subject: AuthenticatedSubject,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    body: Option<Json<ForkRequest>>,
+) -> Response {
+    let id = match parse_run_id_path(&id) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
+    let request = body.map(|Json(body)| body).unwrap_or_default();
+    let target = match parse_fork_target(request.target) {
+        Ok(target) => target,
+        Err(err) => return err.into_response(),
+    };
+    let input = operations::ForkRunInput {
+        source_run_id: id,
+        target,
+        push: request.push.unwrap_or(true),
+    };
+    match operations::fork_run(&state.store, &input).await {
+        Ok(outcome) => (
+            StatusCode::OK,
+            Json(ForkResponse {
+                source_run_id: outcome.source_run_id.to_string(),
+                new_run_id:    outcome.new_run_id.to_string(),
+                target:        outcome.target.response_target(),
+            }),
+        )
+            .into_response(),
+        Err(err) => workflow_operation_error_response(err),
+    }
+}
+
+async fn run_timeline(
+    _auth: AuthenticatedService,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let id = match parse_run_id_path(&id) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    match operations::timeline(&state.store, &id).await {
+        Ok(entries) => Json(
+            entries
+                .into_iter()
+                .map(|entry| TimelineEntryResponse {
+                    ordinal:        std::num::NonZeroU64::new(entry.ordinal as u64)
+                        .expect("timeline ordinals start at 1"),
+                    node_name:      entry.node_name,
+                    visit:          std::num::NonZeroU64::new(entry.visit as u64)
+                        .expect("timeline visits start at 1"),
+                    run_commit_sha: entry.run_commit_sha,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
+        Err(err) => workflow_operation_error_response(err),
+    }
+}
+
+fn parse_fork_target(target: Option<String>) -> Result<Option<operations::ForkTarget>, ApiError> {
+    target
+        .map(|target| {
+            target
+                .parse::<operations::ForkTarget>()
+                .map_err(|err| ApiError::bad_request(err.to_string()))
+        })
+        .transpose()
+}
+
+fn workflow_operation_error_response(err: WorkflowError) -> Response {
+    match err {
+        WorkflowError::Parse(message) | WorkflowError::Validation(message) => {
+            ApiError::bad_request(message).into_response()
+        }
+        WorkflowError::ValidationFailed { .. } => {
+            ApiError::bad_request("Validation failed").into_response()
+        }
+        WorkflowError::Precondition(message) => {
+            ApiError::new(StatusCode::CONFLICT, message).into_response()
+        }
+        WorkflowError::RunNotFound(_) => ApiError::not_found("Run not found.").into_response(),
+        WorkflowError::Unsupported(message) => {
+            ApiError::new(StatusCode::NOT_IMPLEMENTED, message).into_response()
+        }
+        err => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+    }
 }
 
 #[derive(Clone, Copy)]

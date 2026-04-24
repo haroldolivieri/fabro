@@ -578,6 +578,14 @@ pub(crate) fn git_filters(context: &TestContext) -> Vec<(String, String)> {
         r"(-> )[0-9A-HJKMNP-TV-Z]{8}\b".to_string(),
         "$1[RUN_PREFIX]".to_string(),
     ));
+    filters.push((
+        r"(Rewound )[0-9A-HJKMNP-TV-Z]{8}\b".to_string(),
+        "$1[RUN_PREFIX]".to_string(),
+    ));
+    filters.push((
+        r"(; new run )[0-9A-HJKMNP-TV-Z]{8}\b".to_string(),
+        "$1[RUN_PREFIX]".to_string(),
+    ));
     filters
 }
 

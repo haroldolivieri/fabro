@@ -1,0 +1,17 @@
+---
+title: "Server-backed rewind and fork"
+date: "2026-04-24"
+---
+
+## Server-backed rewind and fork
+
+`fabro rewind` now creates a replacement run at the target checkpoint and archives the source run instead of mutating the source run in place. The command prints the new run ID:
+
+```
+fabro rewind <run-id> plan@2
+fabro resume <new-run-id>
+```
+
+The source run records which run superseded it, so archived run history keeps a clear audit trail. Rewind requires the source to be terminal (`succeeded`, `failed`, or `dead`).
+
+`fabro fork`, `fabro rewind`, and their `--list` modes now use the server API. The server must be able to read the run's recorded working directory. Timeline listing no longer rebuilds a missing metadata branch; if the metadata branch is gone, the timeline is empty until metadata is restored.

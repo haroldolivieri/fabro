@@ -1,0 +1,16 @@
+[package]
+name = "fabro-options-metadata"
+edition.workspace = true
+version.workspace = true
+publish = false
+license.workspace = true
+description = "Runtime option metadata model for Fabro"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

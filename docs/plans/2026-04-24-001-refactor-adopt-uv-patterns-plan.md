@@ -742,7 +742,7 @@ Solid arrows are real dependencies. Dashed lines show phases that are independen
 
 ### Phase 6 — OptionsMetadata and CLI reference generation
 
-- [ ] **Unit 6.1: Add `fabro-options-metadata` and `#[derive(OptionsMetadata)]`**
+- [x] **Unit 6.1: Add `fabro-options-metadata` and `#[derive(OptionsMetadata)]`**
 
 **Goal:** Ship the runtime metadata model plus a proc macro that extracts clap field help, `ValueEnum` possibilities, and option descriptions into that model.
 

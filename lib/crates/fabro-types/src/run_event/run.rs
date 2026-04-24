@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ActorRef, BilledTokenCounts, RunNoticeLevel};
 use crate::status::{BlockedReason, FailureReason, SuccessReason};
-use crate::{Graph, RunBlobId, RunControlAction, RunProvenance, WorkflowSettings};
+use crate::{Graph, RunBlobId, RunControlAction, RunId, RunProvenance, WorkflowSettings};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCreatedProps {
@@ -87,14 +87,11 @@ pub struct RunBlockedProps {
 pub struct RunControlEffectProps {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RunRewoundProps {
+pub struct RunSupersededByProps {
+    pub new_run_id:                RunId,
     pub target_checkpoint_ordinal: usize,
     pub target_node_id:            String,
     pub target_visit:              usize,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub previous_status:           Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub run_commit_sha:            Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

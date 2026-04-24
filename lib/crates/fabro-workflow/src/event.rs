@@ -102,14 +102,11 @@ pub enum Event {
     },
     RunPaused,
     RunUnpaused,
-    RunRewound {
+    RunSupersededBy {
+        new_run_id:                RunId,
         target_checkpoint_ordinal: usize,
         target_node_id:            String,
         target_visit:              usize,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        previous_status:           Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        run_commit_sha:            Option<String>,
     },
     RunArchived {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -623,20 +620,18 @@ impl Event {
             Self::RunUnpaused => {
                 info!("Run unpaused");
             }
-            Self::RunRewound {
+            Self::RunSupersededBy {
+                new_run_id,
                 target_checkpoint_ordinal,
                 target_node_id,
                 target_visit,
-                previous_status,
-                run_commit_sha,
             } => {
                 info!(
+                    %new_run_id,
                     target_checkpoint_ordinal,
                     target_node_id,
                     target_visit,
-                    previous_status = previous_status.as_deref().unwrap_or(""),
-                    run_commit_sha = run_commit_sha.as_deref().unwrap_or(""),
-                    "Run rewound"
+                    "Run superseded by new run"
                 );
             }
             Self::RunArchived { actor } => {
@@ -1188,7 +1183,7 @@ pub fn event_name(event: &Event) -> &'static str {
         Event::RunUnpauseRequested { .. } => "run.unpause.requested",
         Event::RunPaused => "run.paused",
         Event::RunUnpaused => "run.unpaused",
-        Event::RunRewound { .. } => "run.rewound",
+        Event::RunSupersededBy { .. } => "run.superseded_by",
         Event::RunArchived { .. } => "run.archived",
         Event::RunUnarchived { .. } => "run.unarchived",
         Event::WorkflowRunCompleted { .. } => "run.completed",
@@ -1596,18 +1591,16 @@ fn event_body_from_event(event: &Event) -> EventBody {
         }
         Event::RunPaused => EventBody::RunPaused(fabro_types::RunControlEffectProps::default()),
         Event::RunUnpaused => EventBody::RunUnpaused(fabro_types::RunControlEffectProps::default()),
-        Event::RunRewound {
+        Event::RunSupersededBy {
+            new_run_id,
             target_checkpoint_ordinal,
             target_node_id,
             target_visit,
-            previous_status,
-            run_commit_sha,
-        } => EventBody::RunRewound(fabro_types::RunRewoundProps {
+        } => EventBody::RunSupersededBy(fabro_types::RunSupersededByProps {
+            new_run_id:                *new_run_id,
             target_checkpoint_ordinal: *target_checkpoint_ordinal,
             target_node_id:            target_node_id.clone(),
             target_visit:              *target_visit,
-            previous_status:           previous_status.clone(),
-            run_commit_sha:            run_commit_sha.clone(),
         }),
         Event::RunArchived { actor } => EventBody::RunArchived(fabro_types::RunArchivedProps {
             actor: actor.clone(),

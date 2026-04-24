@@ -42,6 +42,7 @@ export interface StoreRunSummary {
     'duration_ms'?: number | null;
     'elapsed_secs'?: number | null;
     'total_usd_micros'?: number | null;
+    'superseded_by'?: string | null;
 }
 
 

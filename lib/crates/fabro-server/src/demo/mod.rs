@@ -800,6 +800,7 @@ mod runs {
             start_time: Some(ts(created_at)),
             status: parse_run_status(status, status_reason)
                 .unwrap_or_else(|| panic!("invalid demo run status: {status}")),
+            superseded_by: None,
             title: truncate_goal(goal),
             total_usd_micros,
             workflow_name: Some(workflow_name.into()),

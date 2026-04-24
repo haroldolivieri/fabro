@@ -13,7 +13,9 @@ use git2::{Repository, Signature};
 use tokio::task::spawn_blocking;
 use ulid::Ulid;
 
-use super::rewind::{self, RunTimeline, build_timeline};
+use super::timeline::{
+    RunTimeline, build_timeline, find_run_id_by_prefix_opt, run_commit_shas_by_node,
+};
 use crate::git::MetadataStore;
 use crate::records::Checkpoint;
 use crate::run_dump::RunDump;
@@ -147,7 +149,7 @@ pub async fn find_run_id_by_prefix_or_store(
     fabro_store: &DurableStore,
     prefix: &str,
 ) -> Result<RunId> {
-    if let Some(run_id) = rewind::find_run_id_by_prefix_opt(repo, prefix)? {
+    if let Some(run_id) = find_run_id_by_prefix_opt(repo, prefix)? {
         return Ok(run_id);
     }
 
@@ -241,7 +243,7 @@ fn backfill_missing_checkpoint_shas(
         return;
     }
 
-    let node_commits = rewind::run_commit_shas_by_node(git_store, &run_id.to_string());
+    let node_commits = run_commit_shas_by_node(git_store, &run_id.to_string());
     let mut node_indices: HashMap<String, usize> = HashMap::new();
 
     for (_seq, checkpoint) in checkpoints.iter_mut() {

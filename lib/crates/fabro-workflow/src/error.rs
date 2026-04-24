@@ -235,6 +235,9 @@ pub enum Error {
     #[error("Run not found: {0}")]
     RunNotFound(String),
 
+    #[error("Unsupported operation: {0}")]
+    Unsupported(String),
+
     #[error("Pipeline cancelled")]
     Cancelled,
 }
@@ -281,6 +284,7 @@ impl Error {
             | Self::Checkpoint(_)
             | Self::Precondition(_)
             | Self::RunNotFound(_)
+            | Self::Unsupported(_)
             | Self::Cancelled => false,
         }
     }
@@ -296,7 +300,8 @@ impl Error {
             | Self::Validation(_)
             | Self::ValidationFailed { .. }
             | Self::Stylesheet(_)
-            | Self::Checkpoint(_) => FailureCategory::Deterministic,
+            | Self::Checkpoint(_)
+            | Self::Unsupported(_) => FailureCategory::Deterministic,
             Self::Precondition(_) | Self::RunNotFound(_) => FailureCategory::Structural,
             Self::Handler { failure_class, .. } | Self::Engine { failure_class, .. } => {
                 *failure_class

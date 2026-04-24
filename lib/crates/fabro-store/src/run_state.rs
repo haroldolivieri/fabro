@@ -167,8 +167,8 @@ impl RunProjectionReducer for RunProjection {
                 self.final_patch.clone_from(&props.final_patch);
                 self.pending_interviews.clear();
             }
-            EventBody::RunRewound(_) => {
-                self.reset_for_rewind();
+            EventBody::RunSupersededBy(props) => {
+                self.superseded_by = Some(props.new_run_id);
             }
             EventBody::RunArchived(_props) => {
                 if let Some(current) = self.status {
@@ -404,6 +404,7 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> RunSummary
             .as_ref()
             .and_then(|conclusion| conclusion.billing.as_ref())
             .and_then(|billing| billing.total_usd_micros),
+        superseded_by: state.superseded_by,
     }
 }
 
@@ -1112,6 +1113,30 @@ mod tests {
                 },
             })
         );
+    }
+
+    #[test]
+    fn run_superseded_by_populates_projection_and_summary() {
+        use fabro_types::run_event::RunSupersededByProps;
+
+        let mut state = RunProjection::default();
+        state
+            .apply_event(&test_event(
+                1,
+                EventBody::RunSupersededBy(RunSupersededByProps {
+                    new_run_id:                fixtures::RUN_2,
+                    target_checkpoint_ordinal: 2,
+                    target_node_id:            "build".to_string(),
+                    target_visit:              1,
+                }),
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(state.superseded_by, Some(fixtures::RUN_2));
+
+        let summary = build_summary(&state, &fixtures::RUN_1);
+        assert_eq!(summary.superseded_by, Some(fixtures::RUN_2));
     }
 
     #[test]

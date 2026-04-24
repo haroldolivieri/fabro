@@ -50,6 +50,7 @@ export interface RunProjection {
     'sandbox'?: { [key: string]: any; } | null;
     'final_patch'?: string | null;
     'pull_request'?: { [key: string]: any; } | null;
+    'superseded_by'?: string | null;
     'pending_interviews'?: { [key: string]: PendingInterviewRecord; };
     /**
      * Map from StageId (`node_id@visit`) to NodeState.

@@ -11,7 +11,6 @@ pub(crate) mod parse;
 pub(crate) mod pr;
 pub(crate) mod preflight;
 pub(crate) mod provider;
-pub(crate) mod rebuild;
 pub(crate) mod render_graph;
 pub(crate) mod repo;
 pub(crate) mod run;

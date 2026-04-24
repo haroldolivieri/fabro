@@ -536,7 +536,7 @@ fabro graph run.toml
 
 ## `fabro rewind`
 
-Rewind a workflow run to an earlier checkpoint. This resets both the run branch and metadata branch refs so that `fabro resume` continues from the target checkpoint.
+Rewind a terminal workflow run to an earlier checkpoint. This creates a replacement run at the target checkpoint, archives the source run, and prints the new run ID for `fabro resume`.
 
 ```bash
 fabro rewind <RUN_ID> [TARGET]
@@ -548,7 +548,7 @@ fabro rewind <RUN_ID> --list
 | `<RUN_ID>` | Run ID or unambiguous prefix (required) |
 | `[TARGET]` | Checkpoint to rewind to: node name, `node@visit`, or `@ordinal` (1-based). Omit to show the timeline. |
 | `--list` | Show the checkpoint timeline instead of rewinding |
-| `--no-push` | Skip force-pushing rewound refs to the remote |
+| `--no-push` | Skip pushing the replacement run refs to the remote |
 
 Target formats:
 
@@ -558,17 +558,19 @@ Target formats:
 | `node@N` | `plan@2` | The 2nd visit of the named node |
 | `@N` | `@3` | The 3rd checkpoint in sequence |
 
-After rewinding, resume from the earlier point:
+After rewinding, resume the replacement run:
 
 ```bash
-fabro resume <RUN_ID>
+fabro resume <NEW_RUN_ID>
 ```
+
+The source run must be `succeeded`, `failed`, or `dead`. Archived sources are rejected until you unarchive them. Rewind is not idempotent; if it creates the replacement run but cannot archive the source, archive the source manually instead of retrying rewind.
 
 See [Checkpoints](/execution/checkpoints#rewinding-to-an-earlier-checkpoint) for background on how checkpointing works.
 
 ## `fabro fork`
 
-Fork a new run from an existing run's checkpoint. Unlike `fabro rewind`, which resets the original run in place, `fabro fork` creates an independent copy — the original run stays intact.
+Fork a new run from an existing run's checkpoint. Unlike `fabro rewind`, which archives the original run after creating a replacement, `fabro fork` creates an independent copy and leaves the original run intact.
 
 ```bash
 fabro fork <RUN_ID> [TARGET]
@@ -587,6 +589,8 @@ Target formats are the same as [`fabro rewind`](#fabro-rewind). After forking, r
 ```bash
 fabro resume <NEW_RUN_ID>
 ```
+
+`fabro rewind`, `fabro fork`, and their `--list` modes run through the server. The server must be able to access the run's recorded working directory. Timeline listing reads the metadata branch without rebuilding it; if the metadata branch is missing, the list can be empty.
 
 See [Checkpoints — Forking a run](/execution/checkpoints#forking-a-run) for when to use fork vs. rewind.
 

@@ -647,7 +647,7 @@ mod tests {
         let state: RunProjection = serde_json::from_value(serde_json::json!({
             "spec": {
                 "run_id": "01JW6A7VNFZSFF0SKXJG29Z2M3",
-                "settings": { "_version": 1 },
+                "settings": WorkflowSettings::default(),
                 "graph": { "name": "ship", "nodes": {}, "edges": [], "attrs": {} },
                 "workflow_slug": "demo",
                 "working_directory": "/tmp/project",

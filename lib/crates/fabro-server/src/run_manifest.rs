@@ -55,6 +55,7 @@ struct ManifestSettingsOverrides {
     cli: Option<CliLayer>,
 }
 
+#[cfg(test)]
 pub(crate) fn manifest_run_defaults(run: Option<&RunLayer>) -> RunLayer {
     run.cloned().unwrap_or_default()
 }
@@ -226,7 +227,7 @@ fn root_workflow_run_layer(
         .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?;
     let mut run = document
         .remove("run")
-        .map(|value| value.try_into::<RunLayer>())
+        .map(toml::Value::try_into::<RunLayer>)
         .transpose()
         .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?
         .unwrap_or_default();
@@ -975,7 +976,7 @@ mod tests {
         let mut document: toml::Table = source.parse().expect("v2 fixture should parse");
         document
             .remove("run")
-            .map(|value| value.try_into::<RunLayer>())
+            .map(toml::Value::try_into::<RunLayer>)
             .transpose()
             .expect("run settings should parse")
             .unwrap_or_default()

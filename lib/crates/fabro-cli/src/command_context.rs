@@ -199,16 +199,16 @@ fn load_merged_settings(
             Some(cli_layer),
         )?,
     };
-    resolve_command_settings(loaded_settings)
+    Ok(resolve_command_settings(loaded_settings))
 }
 
-fn resolve_command_settings(loaded_settings: LoadedSettings) -> Result<ResolvedCommandSettings> {
-    Ok(ResolvedCommandSettings {
+fn resolve_command_settings(loaded_settings: LoadedSettings) -> ResolvedCommandSettings {
+    ResolvedCommandSettings {
         storage_dir:     loaded_settings.storage_dir,
         run_settings:    loaded_settings.run_settings,
         server_settings: loaded_settings.server_settings,
         user_settings:   loaded_settings.user_settings,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -238,8 +238,7 @@ mod tests {
         let resolved_settings = resolve_command_settings(
             user_config::load_resolved_settings_from_toml("_version = 1\n", None, Some(&cli_layer))
                 .expect("settings should resolve"),
-        )
-        .expect("settings should merge");
+        );
         CommandContext {
             printer,
             process_local_json,
@@ -283,8 +282,7 @@ root = "/srv/fabro/default"
                 Some(&cli_layer),
             )
             .expect("base settings should resolve"),
-        )
-        .expect("base settings should merge");
+        );
         let connection_settings = resolve_command_settings(
             user_config::load_resolved_settings_from_toml(
                 r#"
@@ -297,8 +295,7 @@ root = "/srv/fabro/default"
                 Some(&cli_layer),
             )
             .expect("connection settings should resolve"),
-        )
-        .expect("connection settings should merge");
+        );
 
         assert_eq!(
             base_settings.user_settings,
@@ -339,8 +336,7 @@ root = "/srv/fabro"
                 Some(&CliLayer::default()),
             )
             .expect("settings should resolve"),
-        )
-        .expect("settings should merge");
+        );
 
         assert_eq!(resolved.storage_dir, PathBuf::from("/srv/fabro"));
         assert!(resolved.run_settings.is_ok());
@@ -362,8 +358,7 @@ command = ["demo-mcp"]
                 Some(&CliLayer::default()),
             )
             .expect("settings should resolve"),
-        )
-        .expect("settings should merge");
+        );
 
         let run_settings = resolved.run_settings.expect("run settings should resolve");
         assert!(run_settings.agent.mcps.contains_key("demo"));

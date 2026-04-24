@@ -1067,7 +1067,7 @@ mod tests {
         let mut document: toml::Table = source.parse().expect("v2 fixture should parse");
         document
             .remove("run")
-            .map(|value| value.try_into::<fabro_config::RunLayer>())
+            .map(toml::Value::try_into::<fabro_config::RunLayer>)
             .transpose()
             .expect("run settings should parse")
             .unwrap_or_default()

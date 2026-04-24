@@ -62,7 +62,7 @@ pub(crate) fn settings_from_toml(source: &str) -> TestAppSettings {
     ensure_test_auth_methods(&mut document);
     let manifest_run_defaults = document
         .remove("run")
-        .map(|value| value.try_into::<RunLayer>())
+        .map(toml::Value::try_into::<RunLayer>)
         .transpose()
         .expect("test run settings should parse")
         .unwrap_or_default();
@@ -93,17 +93,18 @@ pub(crate) fn test_app_state_with_options(
 }
 
 pub(crate) fn test_settings() -> TestAppSettings {
-    let mut settings = TestAppSettings::default();
-    settings.manifest_run_defaults = RunLayer {
-        sandbox: Some(RunSandboxLayer {
-            local: Some(LocalSandboxLayer {
-                worktree_mode: Some(WorktreeMode::Never),
+    TestAppSettings {
+        manifest_run_defaults: RunLayer {
+            sandbox: Some(RunSandboxLayer {
+                local: Some(LocalSandboxLayer {
+                    worktree_mode: Some(WorktreeMode::Never),
+                }),
+                ..RunSandboxLayer::default()
             }),
-            ..RunSandboxLayer::default()
-        }),
-        ..RunLayer::default()
-    };
-    settings
+            ..RunLayer::default()
+        },
+        ..TestAppSettings::default()
+    }
 }
 
 pub(crate) fn test_app_with_scheduler(state: Arc<AppState>) -> axum::Router {

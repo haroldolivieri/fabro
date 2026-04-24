@@ -304,12 +304,12 @@ pub(crate) async fn execute(mut args: ExecArgs, ctx: &CommandContext) -> AnyResu
     // v2 MCPs live under `cli.exec.agent.mcps` (owner-specific) or
     // `run.agent.mcps`. For `fabro exec` we use the cli.exec path, falling
     // back to run.agent.mcps if unset.
-    let mcp_servers: Vec<McpServerSettings> = if !cli.exec.agent.mcps.is_empty() {
-        cli.exec.agent.mcps.values().cloned().collect()
-    } else {
+    let mcp_servers: Vec<McpServerSettings> = if cli.exec.agent.mcps.is_empty() {
         ctx.run_settings()
             .map(|settings| settings.agent.mcps.values().cloned().collect())
             .unwrap_or_default()
+    } else {
+        cli.exec.agent.mcps.values().cloned().collect()
     };
     if let Some(target) = server_target {
         tracing::info!(transport = "server", "Agent session starting");

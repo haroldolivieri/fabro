@@ -3,10 +3,10 @@ use std::str::FromStr;
 
 use anyhow::Result;
 pub(crate) use fabro_client::ServerTarget;
-use fabro_config::user::default_socket_path;
-pub(crate) use fabro_config::user::{active_settings_path, default_storage_dir};
+pub(crate) use fabro_config::user::{FABRO_CONFIG_ENV, active_settings_path, default_storage_dir};
+use fabro_config::user::{default_settings_path, default_socket_path};
 use fabro_config::{
-    CliLayer, RunSettingsBuilder, ServerSettingsBuilder, UserSettingsBuilder, load_config_file,
+    CliLayer, ParseError, RunSettingsBuilder, ServerSettingsBuilder, UserSettingsBuilder,
 };
 use fabro_types::settings::cli::CliTargetSettings;
 use fabro_types::settings::{CliNamespace, InterpString, RunNamespace};
@@ -52,7 +52,40 @@ pub(crate) fn load_resolved_settings(
 }
 
 fn load_settings_document(config_path: Option<&Path>) -> anyhow::Result<toml::Value> {
-    let table: toml::Table = load_config_file(config_path, "settings.toml")?;
+    load_settings_document_with_lookup(config_path, |name| std::env::var_os(name))
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "sync settings load during CLI startup; not on a Tokio path"
+)]
+fn load_settings_document_with_lookup(
+    config_path: Option<&Path>,
+    lookup: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> anyhow::Result<toml::Value> {
+    let config_path = config_path
+        .map(Path::to_path_buf)
+        .or_else(|| lookup(FABRO_CONFIG_ENV).map(PathBuf::from));
+
+    let path = if let Some(path) = config_path {
+        path
+    } else {
+        let default_path = default_settings_path();
+        if !default_path.is_file() {
+            return Ok(toml::Value::Table(toml::Table::new()));
+        }
+        default_path
+    };
+
+    let contents = std::fs::read_to_string(&path)
+        .map_err(|source| fabro_config::Error::read_file(&path, source))?;
+    let table: toml::Table = toml::from_str(&contents).map_err(|source| {
+        fabro_config::Error::parse_file(
+            "Failed to parse settings file",
+            &path,
+            ParseError::Toml(source.to_string()),
+        )
+    })?;
     Ok(toml::Value::Table(table))
 }
 
@@ -104,9 +137,10 @@ fn storage_dir_from_document_with_lookup(
         return Ok(dir.to_path_buf());
     }
 
-    let storage_root = string_at_path(document, &["server", "storage", "root"])
-        .map(|root| InterpString::parse(&root))
-        .unwrap_or_else(|| InterpString::parse(&default_storage_dir().to_string_lossy()));
+    let storage_root = string_at_path(document, &["server", "storage", "root"]).map_or_else(
+        || InterpString::parse(&default_storage_dir().to_string_lossy()),
+        |root| InterpString::parse(&root),
+    );
     let resolved_root = storage_root.resolve(lookup)?;
     Ok(PathBuf::from(resolved_root.value))
 }
@@ -376,6 +410,36 @@ root = "{{ env.FABRO_STORAGE_ROOT }}"
             })
             .unwrap(),
             temp.path()
+        );
+    }
+
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "unit test writes a temporary settings fixture with sync std::fs::write"
+    )]
+    fn load_settings_document_uses_fabro_config_env_for_storage_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("settings.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+_version = 1
+
+[server.storage]
+root = "/srv/fabro"
+"#,
+        )
+        .unwrap();
+
+        let document = load_settings_document_with_lookup(None, |_| {
+            Some(config_path.clone().into_os_string())
+        })
+        .expect("settings document should load");
+
+        assert_eq!(
+            storage_dir_from_document(&document, None).unwrap(),
+            PathBuf::from("/srv/fabro")
         );
     }
 }

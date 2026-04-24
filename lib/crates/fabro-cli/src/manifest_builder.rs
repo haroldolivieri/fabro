@@ -352,7 +352,7 @@ fn collect_workflow_config_files(
         .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?;
     let run = document
         .remove("run")
-        .map(|value| value.try_into::<RunLayer>())
+        .map(toml::Value::try_into::<RunLayer>)
         .transpose()
         .map_err(|err| anyhow!("Failed to parse run config TOML: {err}"))?
         .unwrap_or_default();

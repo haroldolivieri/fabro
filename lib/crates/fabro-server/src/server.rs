@@ -2658,10 +2658,6 @@ pub(crate) fn create_test_app_state_with_runtime_settings_and_session_key(
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "test helper writes a fixture server.env with sync std::fs::write"
-)]
 pub(crate) fn create_test_app_state_with_session_key(
     server_settings: ServerSettings,
     manifest_run_defaults: RunLayer,
@@ -7491,7 +7487,7 @@ mod tests {
         let mut document: toml::Table = source.parse().expect("run defaults should parse");
         document
             .remove("run")
-            .map(|value| value.try_into::<fabro_config::RunLayer>())
+            .map(toml::Value::try_into::<fabro_config::RunLayer>)
             .transpose()
             .expect("run defaults should parse")
             .unwrap_or_default()
@@ -11045,11 +11041,8 @@ timeout = "30s"
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn concurrency_limit_respected() {
-        let state = create_app_state_with_options(
-            default_test_server_settings(),
-            RunLayer::default(),
-            1,
-        );
+        let state =
+            create_app_state_with_options(default_test_server_settings(), RunLayer::default(), 1);
         let app = test_app_with_scheduler(Arc::clone(&state));
 
         // Create and start two runs with max_concurrent_runs=1

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context;
-use fabro_config::project::resolve_working_directory_from_run;
+use fabro_config::project::{resolve_workflow_path, resolve_working_directory_from_run};
 use fabro_config::run::resolve_run_goal_from_namespace;
 use fabro_types::WorkflowSettings;
 
@@ -65,8 +65,7 @@ fn workflow_slug_from_path(workflow_path: &Path) -> Option<String> {
 pub(crate) fn resolve_workflow(request: ResolveWorkflowInput) -> anyhow::Result<ResolvedWorkflow> {
     match request.workflow {
         WorkflowInput::Path(workflow_path) => {
-            let resolution =
-                fabro_config::project::resolve_workflow_path(&workflow_path, &request.cwd)?;
+            let resolution = resolve_workflow_path(&workflow_path, &request.cwd)?;
             let settings = request.settings;
             let raw_source = std::fs::read_to_string(&resolution.dot_path)
                 .with_context(|| format!("Failed to read {}", resolution.dot_path.display()))?;

@@ -1,14 +1,8 @@
-use std::sync::Arc;
-
 use anyhow::{Context, Result, bail};
-use fabro_auth::configured_providers_from_process_env;
-use fabro_config::Storage;
 use fabro_model::Catalog;
 use fabro_sandbox::daytona::detect_repo_info;
-use fabro_vault::Vault;
 use fabro_workflow::outcome::StageStatus;
 use fabro_workflow::pull_request::maybe_open_pull_request;
-use tokio::sync::RwLock as AsyncRwLock;
 use tracing::info;
 
 use crate::args::PrCreateArgs;
@@ -97,17 +91,15 @@ pub(super) async fn create_command(args: PrCreateArgs, base_ctx: &CommandContext
         );
     }
 
-    let vault = Vault::load(Storage::new(ctx.storage_dir()).secrets_path())
-        .ok()
-        .map(|vault| Arc::new(AsyncRwLock::new(vault)));
-    let configured = configured_providers_from_process_env(vault.as_ref()).await;
+    let llm_source = ctx.llm_source().await?;
+    let configured = llm_source.configured_providers().await;
     let model = args.model.unwrap_or_else(|| {
         Catalog::builtin()
             .default_for_configured(&configured)
             .id
             .clone()
     });
-
+    let run_store_handle = run_store.clone().into();
     let pull_request = maybe_open_pull_request(
         &creds,
         &origin_url,
@@ -118,7 +110,8 @@ pub(super) async fn create_command(args: PrCreateArgs, base_ctx: &CommandContext
         &model,
         true,
         None,
-        &run_store.clone().into(),
+        &run_store_handle,
+        llm_source.as_ref(),
         None,
     )
     .await

@@ -37,14 +37,17 @@ pub use fabro_api::types::{
     StageStatus as ApiStageStatus, StartRunRequest, SubmitAnswerRequest, SystemFeatures,
     SystemInfoResponse, SystemRunCounts, WriteBlobResponse,
 };
-use fabro_auth::parse_credential_secret;
+use fabro_auth::{
+    CredentialSource, VaultCredentialSource, auth_issue_message, parse_credential_secret,
+};
 use fabro_config::daemon::ServerDaemon;
 use fabro_config::{RunLayer, RunSettingsBuilder, ServerSettingsBuilder, Storage, envfile};
 use fabro_interview::{
     Answer, ControlInterviewer, Interviewer, Question, QuestionType, WorkerControlEnvelope,
 };
+use fabro_llm::client::Client as LlmClient;
 use fabro_llm::generate::{GenerateParams, generate_object};
-use fabro_llm::model_test::{ModelTestMode, run_model_test_with_client};
+use fabro_llm::model_test::{ModelTestMode, run_model_test};
 use fabro_llm::types::{
     ContentPart, FinishReason, Message as LlmMessage, Request as LlmRequest, Role, ToolChoice,
     ToolDefinition,
@@ -113,9 +116,7 @@ use crate::ip_allowlist::{IpAllowlistConfig, ip_allowlist_middleware};
 use crate::jwt_auth::{self, AuthMode, AuthenticatedService, AuthenticatedSubject};
 use crate::run_files::{FilesInFlight, list_run_files, new_files_in_flight};
 use crate::run_selector::{ResolveRunError, resolve_run_by_selector};
-use crate::server_secrets::{
-    LlmClientResult, ProviderCredentials, ServerSecrets, auth_issue_message,
-};
+use crate::server_secrets::{LlmClientResult, ServerSecrets};
 use crate::spawn_env::{apply_render_graph_env, apply_worker_env};
 use crate::worker_token::{
     AuthorizeRunBlob, AuthorizeRunScoped, AuthorizeStageArtifact, WorkerTokenKeys,
@@ -548,18 +549,18 @@ pub struct AppState {
     /// proceed in parallel. See `crate::run_files` for semantics.
     pub(crate) files_in_flight: FilesInFlight,
 
-    pub(crate) vault:                Arc<AsyncRwLock<Vault>>,
-    pub(super) server_secrets:       ServerSecrets,
-    pub(crate) provider_credentials: ProviderCredentials,
-    manifest_run_defaults:           RwLock<Arc<RunLayer>>,
-    manifest_run_settings:           RwLock<std::result::Result<RunNamespace, String>>,
-    pub(crate) server_settings:      RwLock<Arc<ServerSettings>>,
-    pub(crate) env_lookup:           EnvLookup,
-    http_client:                     Option<fabro_http::HttpClient>,
-    shutting_down:                   AtomicBool,
-    registry_factory_override:       Option<Box<RegistryFactoryOverride>>,
-    slack_service:                   Option<Arc<SlackService>>,
-    slack_started:                   AtomicBool,
+    pub(crate) vault:           Arc<AsyncRwLock<Vault>>,
+    pub(super) server_secrets:  ServerSecrets,
+    pub(crate) llm_source:      Arc<dyn CredentialSource>,
+    manifest_run_defaults:      RwLock<Arc<RunLayer>>,
+    manifest_run_settings:      RwLock<std::result::Result<RunNamespace, String>>,
+    pub(crate) server_settings: RwLock<Arc<ServerSettings>>,
+    pub(crate) env_lookup:      EnvLookup,
+    http_client:                Option<fabro_http::HttpClient>,
+    shutting_down:              AtomicBool,
+    registry_factory_override:  Option<Box<RegistryFactoryOverride>>,
+    slack_service:              Option<Arc<SlackService>>,
+    slack_started:              AtomicBool,
 }
 
 pub(crate) struct AppStateConfig {
@@ -664,8 +665,20 @@ impl AppState {
         )
     }
 
-    pub(crate) async fn build_llm_client(&self) -> Result<LlmClientResult, String> {
-        self.provider_credentials.build_llm_client().await
+    pub(crate) async fn resolve_llm_client(&self) -> Result<LlmClientResult, String> {
+        let resolved = self
+            .llm_source
+            .resolve()
+            .await
+            .map_err(|err| err.to_string())?;
+        let client = LlmClient::from_credentials(resolved.credentials)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(LlmClientResult {
+            client,
+            auth_issues: resolved.auth_issues,
+        })
     }
 
     pub(crate) fn vault_or_env(&self, name: &str) -> Option<String> {
@@ -2667,10 +2680,13 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     } = config;
 
     let vault = Arc::new(AsyncRwLock::new(Vault::load(vault_path)?));
-    let provider_credentials = ProviderCredentials::with_env_lookup(Arc::clone(&vault), {
-        let env_lookup = Arc::clone(&env_lookup);
-        move |name| env_lookup(name)
-    });
+    let llm_source: Arc<dyn CredentialSource> = Arc::new(VaultCredentialSource::with_env_lookup(
+        Arc::clone(&vault),
+        {
+            let env_lookup = Arc::clone(&env_lookup);
+            move |name| env_lookup(name)
+        },
+    ));
     let (global_event_tx, _) = broadcast::channel(4096);
     let current_server_settings = Arc::new(resolved_settings.server_settings);
     let current_manifest_run_defaults = Arc::new(resolved_settings.manifest_run_defaults);
@@ -2713,7 +2729,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         files_in_flight: new_files_in_flight(),
         vault,
         server_secrets,
-        provider_credentials,
+        llm_source,
         manifest_run_defaults: RwLock::new(current_manifest_run_defaults),
         manifest_run_settings: RwLock::new(current_manifest_run_settings),
         server_settings: RwLock::new(current_server_settings),
@@ -4093,7 +4109,7 @@ async fn create_run(
     let run_id = prepared.run_id.unwrap_or_else(RunId::new);
     info!(run_id = %run_id, "Run created");
 
-    let configured_providers = state.provider_credentials.configured_providers().await;
+    let configured_providers = state.llm_source.configured_providers().await;
     let mut create_input = run_manifest::create_run_input(prepared.clone(), configured_providers);
     create_input.run_id = Some(run_id);
     create_input.provenance = Some(run_provenance(&headers, &subject));
@@ -6798,12 +6814,12 @@ async fn test_model(
         return ApiError::not_found(format!("Model not found: {id}")).into_response();
     };
 
-    let llm_result = match state.build_llm_client().await {
+    let llm_result = match state.resolve_llm_client().await {
         Ok(result) => result,
         Err(err) => {
             return ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to build LLM client: {err}"),
+                format!("Failed to resolve LLM client: {err}"),
             )
             .into_response();
         }
@@ -6828,7 +6844,7 @@ async fn test_model(
     }
     let client = Arc::new(llm_result.client);
 
-    let outcome = run_model_test_with_client(info, mode, client).await;
+    let outcome = run_model_test(info, mode, client).await;
     Json(serde_json::json!({
         "model_id": info.id,
         "status": outcome.status.as_str(),
@@ -6976,8 +6992,7 @@ async fn create_completion(
     // Force non-streaming for structured output
     let use_stream = req.stream && req.schema.is_none();
 
-    // Get or create LLM client (cached in AppState)
-    let llm_result = match state.build_llm_client().await {
+    let llm_result = match state.resolve_llm_client().await {
         Ok(result) => result,
         Err(err) => {
             return ApiError::new(
@@ -7041,9 +7056,9 @@ async fn create_completion(
 
         if let Some(schema) = req.schema {
             // Structured output uses generate_object for JSON parsing logic
-            let mut params = GenerateParams::new(&request.model)
-                .messages(request.messages)
-                .client(std::sync::Arc::new(client.clone()));
+            let mut params =
+                GenerateParams::new(&request.model, std::sync::Arc::new(client.clone()))
+                    .messages(request.messages);
             if let Some(ref p) = request.provider {
                 params = params.provider(p);
             }
@@ -7316,13 +7331,17 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Method, Request, header};
     use chrono::{Duration as ChronoDuration, Utc};
+    use fabro_auth::{AuthCredential, AuthDetails};
     use fabro_config::bind::Bind;
     use fabro_interview::{AnswerValue, ControlInterviewer, Interviewer, Question, QuestionType};
+    use fabro_llm::types::{Message as LlmMessage, Request as LlmRequest};
     use fabro_model::Provider;
     use fabro_types::settings::ServerAuthMethod;
     use fabro_types::{
         InterviewQuestionRecord, InterviewQuestionType, RunAuthMethod, RunBlobId, RunId, fixtures,
     };
+    use httpmock::Method::POST;
+    use httpmock::MockServer;
     use serde_json::json;
     use tokio_stream::StreamExt as _;
     use tower::ServiceExt;
@@ -7379,6 +7398,39 @@ mod tests {
     async fn body_json(body: Body) -> serde_json::Value {
         let bytes = to_bytes(body, usize::MAX).await.unwrap();
         serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn openai_api_key_credential(key: &str) -> AuthCredential {
+        AuthCredential {
+            provider: Provider::OpenAi,
+            details:  AuthDetails::ApiKey {
+                key: key.to_string(),
+            },
+        }
+    }
+
+    fn openai_responses_payload(text: &str) -> serde_json::Value {
+        json!({
+            "id": "resp_1",
+            "model": "gpt-5.4",
+            "output": [
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": text
+                        }
+                    ]
+                }
+            ],
+            "status": "completed",
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20
+            }
+        })
     }
 
     macro_rules! assert_status {
@@ -7955,6 +8007,120 @@ provider = "invalid-provider"
     }
 
     #[tokio::test]
+    async fn resolve_llm_client_reads_openai_codex_credential_from_vault() {
+        let state = create_app_state_with_env_lookup(
+            default_test_server_settings(),
+            RunLayer::default(),
+            5,
+            |_| None,
+        );
+        state
+            .vault
+            .write()
+            .await
+            .set(
+                "openai_codex",
+                &serde_json::to_string(&openai_api_key_credential("vault-openai-key")).unwrap(),
+                SecretType::Credential,
+                None,
+            )
+            .unwrap();
+
+        let llm_result = state.resolve_llm_client().await.unwrap();
+
+        assert_eq!(llm_result.client.provider_names(), vec!["openai"]);
+        assert!(llm_result.auth_issues.is_empty());
+    }
+
+    #[tokio::test]
+    async fn llm_source_configured_providers_reads_openai_codex_from_vault() {
+        let state = create_app_state_with_env_lookup(
+            default_test_server_settings(),
+            RunLayer::default(),
+            5,
+            |_| None,
+        );
+        state
+            .vault
+            .write()
+            .await
+            .set(
+                "openai_codex",
+                &serde_json::to_string(&openai_api_key_credential("vault-openai-key")).unwrap(),
+                SecretType::Credential,
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(state.llm_source.configured_providers().await, vec![
+            Provider::OpenAi
+        ]);
+    }
+
+    #[tokio::test]
+    async fn resolve_llm_client_uses_env_lookup_for_openai_settings() {
+        let server = MockServer::start_async().await;
+        let response_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v1/responses")
+                    .header("authorization", "Bearer vault-openai-key")
+                    .header("OpenAI-Organization", "env-org");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(openai_responses_payload("hello from env lookup"));
+            })
+            .await;
+        let base_url = server.url("/v1");
+        let state = create_app_state_with_env_lookup(
+            default_test_server_settings(),
+            RunLayer::default(),
+            5,
+            move |name| match name {
+                "OPENAI_BASE_URL" => Some(base_url.clone()),
+                "OPENAI_ORG_ID" => Some("env-org".to_string()),
+                _ => None,
+            },
+        );
+        state
+            .vault
+            .write()
+            .await
+            .set(
+                "openai_codex",
+                &serde_json::to_string(&openai_api_key_credential("vault-openai-key")).unwrap(),
+                SecretType::Credential,
+                None,
+            )
+            .unwrap();
+
+        let llm_result = state.resolve_llm_client().await.unwrap();
+        let response = llm_result
+            .client
+            .complete(&LlmRequest {
+                model:            "gpt-5.4".to_string(),
+                messages:         vec![LlmMessage::user("Hello")],
+                provider:         Some("openai".to_string()),
+                tools:            None,
+                tool_choice:      None,
+                response_format:  None,
+                temperature:      None,
+                top_p:            None,
+                max_tokens:       None,
+                stop_sequences:   None,
+                reasoning_effort: None,
+                speed:            None,
+                metadata:         None,
+                provider_options: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(response.text(), "hello from env lookup");
+        response_mock.assert_async().await;
+    }
+
+    #[tokio::test]
     async fn list_secrets_includes_credential_metadata() {
         let state = create_app_state();
         {
@@ -8302,27 +8468,6 @@ allowed_usernames = ["octocat"]
                 })
             })
             .unwrap_or(EnvOverride::Unchanged)
-    }
-
-    #[test]
-    fn provider_credentials_resolve_process_env_before_vault() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
-        vault
-            .set("OPENAI_API_KEY", "vault-key", SecretType::Environment, None)
-            .unwrap();
-
-        let provider_credentials =
-            ProviderCredentials::with_env_lookup(Arc::new(AsyncRwLock::new(vault)), |name| {
-                match name {
-                    "OPENAI_API_KEY" => Some("env-key".to_string()),
-                    _ => None,
-                }
-            });
-
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let resolved = runtime.block_on(provider_credentials.get("OPENAI_API_KEY"));
-        assert_eq!(resolved.as_deref(), Some("env-key"));
     }
 
     #[tokio::test]

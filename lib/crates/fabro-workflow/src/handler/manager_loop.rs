@@ -23,7 +23,6 @@ use crate::pipeline;
 use crate::pipeline::types::Initialized;
 use crate::run_dir::visit_from_context;
 use crate::run_options::RunOptions;
-use crate::services::RunServices;
 
 /// Orchestrates a child workflow engine, polling for completion or stop
 /// conditions.
@@ -228,12 +227,8 @@ impl Handler for SubWorkflowHandler {
         }
         let before_snapshot = context.snapshot();
 
-        let emitter = Arc::clone(&services.run.emitter);
-        let sandbox = Arc::clone(&services.run.sandbox);
+        let parent_run = Arc::clone(&services.run);
         let registry = Arc::clone(&services.registry);
-        let hook_runner = services.run.hook_runner.clone();
-        let provider = services.run.provider;
-        let llm_source = Arc::clone(&services.run.llm_source);
         let env = services.env.clone();
         let inputs = services.inputs.clone();
         let dry_run = services.dry_run;
@@ -253,6 +248,9 @@ impl Handler for SubWorkflowHandler {
 
         // Spawn child engine
         let mut child_handle = tokio::spawn(async move {
+            let child_run = parent_run
+                .with_run_store(run_store.into())
+                .with_cancel_requested(None);
             let initialized = Initialized {
                 graph:         child_graph,
                 source:        String::new(),
@@ -263,15 +261,7 @@ impl Handler for SubWorkflowHandler {
                 artifact_sink: Some(ArtifactSink::Store(artifact_store)),
                 run_control:   None,
                 engine:        Arc::new(EngineServices {
-                    run: RunServices::new(
-                        run_store.into(),
-                        emitter,
-                        sandbox,
-                        hook_runner,
-                        None,
-                        provider,
-                        llm_source,
-                    ),
+                    run: child_run,
                     registry,
                     git_state: std::sync::RwLock::new(None),
                     env,

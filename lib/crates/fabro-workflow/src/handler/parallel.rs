@@ -19,7 +19,6 @@ use crate::millis_u64;
 use crate::outcome::{FailureCategory, FailureDetail, Outcome, OutcomeExt, StageStatus};
 use crate::run_dir::visit_from_context;
 use crate::sandbox_git::{GIT_REMOTE, git_checkpoint, git_merge_ff_only, git_remove_worktree};
-use crate::services::RunServices;
 
 /// Fans out execution to multiple branches concurrently.
 /// Each branch gets an isolated context clone and runs independently.
@@ -286,16 +285,11 @@ impl Handler for ParallelHandler {
         // --- Fan out: concurrent execution ---
         let mut handles = Vec::new();
         for setup in branch_setups {
+            let parent_run = Arc::clone(&services.run);
             let registry = Arc::clone(&services.registry);
-            let emitter = Arc::clone(&services.run.emitter);
-            let hook_runner = services.run.hook_runner.clone();
-            let run_store = services.run.run_store.clone();
             let env = services.env.clone();
             let inputs = services.inputs.clone();
             let dry_run = services.dry_run;
-            let cancel_requested = services.run.cancel_requested.clone();
-            let provider = services.run.provider;
-            let llm_source = Arc::clone(&services.run.llm_source);
             let workflow_path = services.workflow_path.clone();
             let workflow_bundle = services.workflow_bundle.clone();
             let graph = graph.clone();
@@ -321,7 +315,7 @@ impl Handler for ParallelHandler {
                     .await
                     .map_err(|e| Error::handler(format!("semaphore error: {e}")))?;
 
-                emitter.emit_scoped(
+                parent_run.emitter.emit_scoped(
                     &Event::ParallelBranchStarted {
                         parallel_group_id:  group_id.clone(),
                         parallel_branch_id: setup.parallel_branch_id.clone(),
@@ -337,7 +331,7 @@ impl Handler for ParallelHandler {
                         "branch target node not found: {}",
                         setup.target_id
                     ));
-                    emitter.emit_scoped(
+                    parent_run.emitter.emit_scoped(
                         &Event::ParallelBranchCompleted {
                             parallel_group_id:  group_id.clone(),
                             parallel_branch_id: setup.parallel_branch_id.clone(),
@@ -358,15 +352,7 @@ impl Handler for ParallelHandler {
                 };
 
                 let branch_services = EngineServices {
-                    run: RunServices::new(
-                        run_store.clone(),
-                        Arc::clone(&emitter),
-                        Arc::clone(&setup.sandbox),
-                        hook_runner.clone(),
-                        cancel_requested,
-                        provider,
-                        llm_source,
-                    ),
+                    run: parent_run.with_sandbox(Arc::clone(&setup.sandbox)),
                     registry: Arc::clone(&registry),
                     git_state: std::sync::RwLock::new(None),
                     env: env.clone(),
@@ -419,7 +405,7 @@ impl Handler for ParallelHandler {
                     match sha_result {
                         Ok(r) if r.exit_code == 0 => {
                             let sha = r.stdout.trim().to_string();
-                            emitter.emit_scoped(
+                            parent_run.emitter.emit_scoped(
                                 &Event::GitCommit {
                                     node_id: Some(setup.target_id.clone()),
                                     sha:     sha.clone(),
@@ -434,7 +420,7 @@ impl Handler for ParallelHandler {
                     None
                 };
 
-                emitter.emit_scoped(
+                parent_run.emitter.emit_scoped(
                     &Event::ParallelBranchCompleted {
                         parallel_group_id:  group_id.clone(),
                         parallel_branch_id: setup.parallel_branch_id.clone(),

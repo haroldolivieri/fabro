@@ -5317,13 +5317,15 @@ async fn create_run_pull_request(
         return missing_remote_branch_error(run_branch).into_response();
     }
 
-    let configured = configured_providers_from_process_env(Some(&state.vault)).await;
-    let model = body.model.unwrap_or_else(|| {
+    let model = if let Some(model) = body.model {
+        model
+    } else {
+        let configured = configured_providers_from_process_env(Some(&state.vault)).await;
         Catalog::builtin()
             .default_for_configured(&configured)
             .id
             .clone()
-    });
+    };
 
     let pull_request = match pull_request::maybe_open_pull_request(
         &creds,

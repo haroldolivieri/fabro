@@ -7121,14 +7121,13 @@ async fn rewind_run(
             source_run_id,
             new_run_id,
             target,
-            archived,
         }) => (
             StatusCode::OK,
             Json(RewindResponse {
                 source_run_id: source_run_id.to_string(),
-                new_run_id: new_run_id.to_string(),
-                target: target.response_target(),
-                archived,
+                new_run_id:    new_run_id.to_string(),
+                target:        target.response_target(),
+                archived:      true,
                 archive_error: None,
             }),
         )

@@ -112,6 +112,7 @@ impl RunServices {
         )
     }
 
+    #[cfg(test)]
     #[must_use]
     pub fn with_run_store(self: &Arc<Self>, run_store: RunStoreHandle) -> Arc<Self> {
         Arc::new(Self {
@@ -120,6 +121,7 @@ impl RunServices {
         })
     }
 
+    #[cfg(test)]
     #[must_use]
     pub fn with_emitter(self: &Arc<Self>, emitter: Arc<Emitter>) -> Arc<Self> {
         Arc::new(Self {
@@ -128,6 +130,7 @@ impl RunServices {
         })
     }
 
+    #[cfg(test)]
     #[must_use]
     pub fn with_sandbox(self: &Arc<Self>, sandbox: Arc<dyn Sandbox>) -> Arc<Self> {
         Arc::new(Self {
@@ -136,6 +139,7 @@ impl RunServices {
         })
     }
 
+    #[cfg(test)]
     #[must_use]
     pub fn with_cancel_requested(
         self: &Arc<Self>,

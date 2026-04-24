@@ -820,7 +820,8 @@ impl Client {
                     .send()
                     .await
             })
-            .await?;
+            .await
+            .map_err(add_pr_upgrade_hint)?;
         convert_type(response.into_inner())
     }
 
@@ -833,7 +834,8 @@ impl Client {
                     .send()
                     .await
             })
-            .await?;
+            .await
+            .map_err(add_pr_upgrade_hint)?;
         convert_type(response.into_inner())
     }
 
@@ -854,7 +856,8 @@ impl Client {
                     .send()
                     .await
             })
-            .await?;
+            .await
+            .map_err(add_pr_upgrade_hint)?;
         convert_type(response.into_inner())
     }
 
@@ -870,7 +873,8 @@ impl Client {
                     .send()
                     .await
             })
-            .await?;
+            .await
+            .map_err(add_pr_upgrade_hint)?;
         convert_type(response.into_inner())
     }
 
@@ -1385,6 +1389,23 @@ fn non_zero_u64_from_usize(value: usize) -> Option<NonZeroU64> {
     u64::try_from(value).ok().and_then(NonZeroU64::new)
 }
 
+// Unstructured 404s from classify_api_error surface as "request failed with
+// status 404 ...". Structured 404s from the server (e.g. no_stored_record)
+// surface as the server's detail text. So seeing the "status 404" substring
+// means the old server didn't know the route — point the user at a server
+// upgrade rather than leaving them with an opaque message.
+fn add_pr_upgrade_hint(err: anyhow::Error) -> anyhow::Error {
+    if err.to_string().contains("status 404") {
+        anyhow!(
+            "{err}\n\n\
+             The fabro server may not support pull request endpoints — `fabro pr` commands \
+             moved server-side in a recent release. Upgrade the fabro server."
+        )
+    } else {
+        err
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Duration as ChronoDuration;
@@ -1573,5 +1594,29 @@ mod tests {
 
         assert_eq!(exit::exit_code_for(&err), 1);
         assert!(auth_store.get(&target).unwrap().is_some());
+    }
+
+    #[test]
+    fn add_pr_upgrade_hint_appends_on_unstructured_404() {
+        let err = anyhow!("request failed with status 404 Not Found");
+        let wrapped = super::add_pr_upgrade_hint(err);
+        let message = wrapped.to_string();
+        assert!(
+            message.contains("Upgrade the fabro server"),
+            "expected upgrade hint, got: {message}"
+        );
+        assert!(message.contains("status 404"), "original preserved");
+    }
+
+    #[test]
+    fn add_pr_upgrade_hint_does_not_touch_structured_404() {
+        let err =
+            anyhow!("No pull request found in store. Create one first with: fabro pr create abc");
+        let wrapped = super::add_pr_upgrade_hint(err);
+        let message = wrapped.to_string();
+        assert!(
+            !message.contains("Upgrade the fabro server"),
+            "hint should only fire on unstructured 404s, got: {message}"
+        );
     }
 }

@@ -5087,12 +5087,22 @@ fn invalid_merge_method_error(method: &str) -> ApiError {
     )
 }
 
-fn pull_request_already_exists_error(record: &PullRequestRecord) -> ApiError {
-    ApiError::with_code(
-        StatusCode::CONFLICT,
-        format!("Pull request already exists at {}", record.html_url),
-        "pull_request_exists",
+fn pull_request_already_exists_response(record: &PullRequestRecord) -> Response {
+    let status = StatusCode::CONFLICT;
+    let title = status.canonical_reason().unwrap_or("Conflict").to_string();
+    (
+        status,
+        Json(serde_json::json!({
+            "errors": [{
+                "status": status.as_u16().to_string(),
+                "title": title,
+                "detail": format!("Pull request already exists at {}", record.html_url),
+                "code": "pull_request_exists",
+            }],
+            "pull_request": record,
+        })),
     )
+        .into_response()
 }
 
 fn missing_repo_origin_error() -> ApiError {
@@ -5236,7 +5246,7 @@ async fn create_run_pull_request(
     };
 
     if let Some(record) = run_state.pull_request.as_ref() {
-        return pull_request_already_exists_error(record).into_response();
+        return pull_request_already_exists_response(record);
     }
 
     let Some(run_spec) = run_state.spec.as_ref() else {
@@ -9697,6 +9707,11 @@ slug = "fabro"
         let body = response_json!(response, StatusCode::CONFLICT).await;
 
         assert_eq!(body["errors"][0]["code"], "pull_request_exists");
+        assert_eq!(body["pull_request"]["number"], 42);
+        assert_eq!(
+            body["pull_request"]["html_url"],
+            "https://github.com/acme/widgets/pull/42"
+        );
     }
 
     #[tokio::test]
@@ -9811,6 +9826,306 @@ slug = "fabro"
         let body = response_json!(response, StatusCode::BAD_REQUEST).await;
 
         assert_eq!(body["errors"][0]["code"], "unsupported_host");
+    }
+
+    #[tokio::test]
+    async fn pull_request_endpoints_use_github_base_url_captured_at_startup() {
+        let github = MockServer::start();
+        let captured_mock = github.mock(|when, then| {
+            when.method("GET")
+                .path("/repos/acme/widgets/pulls/42")
+                .header("authorization", "Bearer ghu_test");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(
+                    json!({
+                        "number": 42,
+                        "title": "Captured",
+                        "body": "",
+                        "state": "open",
+                        "draft": false,
+                        "merged": false,
+                        "mergeable": true,
+                        "additions": 1,
+                        "deletions": 0,
+                        "changed_files": 1,
+                        "html_url": "https://github.com/acme/widgets/pull/42",
+                        "user": { "login": "octocat" },
+                        "head": { "ref": "feature" },
+                        "base": { "ref": "main" },
+                        "created_at": "2026-04-23T12:00:00Z",
+                        "updated_at": "2026-04-23T12:00:00Z"
+                    })
+                    .to_string(),
+                );
+        });
+        let state = create_github_token_app_state(Some("ghu_test"), Some(github.base_url()));
+        assert_eq!(state.github_api_base_url, github.base_url());
+
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = fixtures::RUN_1;
+        create_run_with_pull_request_record(
+            &state,
+            run_id,
+            "https://github.com/acme/widgets/pull/42",
+            42,
+            "Captured",
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api(&format!("/runs/{run_id}/pull_request")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        response_json!(response, StatusCode::OK).await;
+
+        // If the handler read GITHUB_BASE_URL at request time instead of using the
+        // value captured at AppState construction, the outbound call would miss
+        // this mock — no other server is running at the captured URL, and the
+        // process env default points elsewhere.
+        captured_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn merge_run_pull_request_returns_not_found_when_record_missing() {
+        let state = create_github_token_app_state(Some("ghu_test"), None);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = create_run(&app, MINIMAL_DOT).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/merge")))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "method": "squash" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::NOT_FOUND).await;
+
+        assert_eq!(body["errors"][0]["code"], "no_stored_record");
+    }
+
+    #[tokio::test]
+    async fn merge_run_pull_request_rejects_invalid_method() {
+        let state = create_github_token_app_state(Some("ghu_test"), None);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = fixtures::RUN_1;
+
+        create_run_with_pull_request_record(
+            &state,
+            run_id,
+            "https://github.com/acme/widgets/pull/42",
+            42,
+            "Fix the bug",
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/merge")))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "method": "bogus" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+
+        assert_eq!(body["errors"][0]["code"], "invalid_merge_method");
+    }
+
+    #[tokio::test]
+    async fn merge_run_pull_request_rejects_non_github_record_url() {
+        let state = create_github_token_app_state(Some("ghu_test"), None);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = fixtures::RUN_1;
+
+        create_run_with_pull_request_record(
+            &state,
+            run_id,
+            "https://gitlab.com/acme/widgets/-/merge_requests/42",
+            42,
+            "Fix the bug",
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/merge")))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "method": "squash" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+
+        assert_eq!(body["errors"][0]["code"], "unsupported_host");
+    }
+
+    #[tokio::test]
+    async fn merge_run_pull_request_returns_service_unavailable_without_github_credentials() {
+        let state = create_github_token_app_state(None, None);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = fixtures::RUN_1;
+
+        create_run_with_pull_request_record(
+            &state,
+            run_id,
+            "https://github.com/acme/widgets/pull/42",
+            42,
+            "Fix the bug",
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/merge")))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "method": "squash" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
+
+        assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+    }
+
+    #[tokio::test]
+    async fn close_run_pull_request_returns_not_found_when_record_missing() {
+        let state = create_github_token_app_state(Some("ghu_test"), None);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = create_run(&app, MINIMAL_DOT).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/close")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::NOT_FOUND).await;
+
+        assert_eq!(body["errors"][0]["code"], "no_stored_record");
+    }
+
+    #[tokio::test]
+    async fn close_run_pull_request_rejects_non_github_record_url() {
+        let state = create_github_token_app_state(Some("ghu_test"), None);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = fixtures::RUN_1;
+
+        create_run_with_pull_request_record(
+            &state,
+            run_id,
+            "https://gitlab.com/acme/widgets/-/merge_requests/42",
+            42,
+            "Fix the bug",
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/close")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+
+        assert_eq!(body["errors"][0]["code"], "unsupported_host");
+    }
+
+    #[tokio::test]
+    async fn close_run_pull_request_returns_service_unavailable_without_github_credentials() {
+        let state = create_github_token_app_state(None, None);
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = fixtures::RUN_1;
+
+        create_run_with_pull_request_record(
+            &state,
+            run_id,
+            "https://github.com/acme/widgets/pull/42",
+            42,
+            "Fix the bug",
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/close")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
+
+        assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+    }
+
+    #[tokio::test]
+    async fn close_run_pull_request_returns_bad_gateway_when_github_pr_is_missing() {
+        let github = MockServer::start();
+        let github_mock = github.mock(|when, then| {
+            when.method("PATCH")
+                .path("/repos/acme/widgets/pulls/42")
+                .header("authorization", "Bearer ghu_test");
+            then.status(404)
+                .header("content-type", "application/json")
+                .body(json!({ "message": "Not Found" }).to_string());
+        });
+        let state = create_github_token_app_state(Some("ghu_test"), Some(github.base_url()));
+        let app = build_router(Arc::clone(&state), AuthMode::Disabled);
+        let run_id = fixtures::RUN_1;
+
+        create_run_with_pull_request_record(
+            &state,
+            run_id,
+            "https://github.com/acme/widgets/pull/42",
+            42,
+            "Fix the bug",
+        )
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/close")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::BAD_GATEWAY).await;
+
+        assert_eq!(body["errors"][0]["code"], "github_not_found");
+        github_mock.assert();
     }
 
     #[tokio::test]

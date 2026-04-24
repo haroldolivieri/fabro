@@ -444,7 +444,7 @@ Run IDs support prefix matching — you can use the first few characters instead
 
 ## `fabro pr`
 
-Manage GitHub pull requests created by workflow runs. Requires GitHub access to be configured via the default `token` strategy or a [GitHub App](/integrations/github).
+Manage GitHub pull requests created by workflow runs. The `fabro` server performs the GitHub calls on your behalf, so GitHub access must be configured on the server — via the default `token` strategy or a [GitHub App](/integrations/github) — rather than on the client.
 
 ### `fabro pr create`
 

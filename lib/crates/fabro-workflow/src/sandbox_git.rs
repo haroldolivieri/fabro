@@ -20,7 +20,22 @@ pub struct GitState {
     pub git_author:               GitAuthor,
 }
 
-pub const GIT_REMOTE: &str = "git -c maintenance.auto=0 -c gc.auto=0";
+pub const GIT_REMOTE: &str =
+    "git -c maintenance.auto=0 -c gc.auto=0 -c commit.gpgsign=false -c tag.gpgsign=false";
+
+fn exec_err(label: &str, r: &fabro_sandbox::ExecResult) -> String {
+    if r.timed_out {
+        return format!("{label} timed out after {}ms", r.duration_ms);
+    }
+
+    let detail = format!("{}{}", r.stdout, r.stderr);
+    let detail = detail.trim();
+    if detail.is_empty() {
+        format!("{label} killed (exit {}, no output)", r.exit_code)
+    } else {
+        format!("{label} failed (exit {}): {detail}", r.exit_code)
+    }
+}
 
 /// Shell-escape a string using `shlex::try_quote` (POSIX-safe).
 fn shell_quote(s: &str) -> String {
@@ -61,12 +76,7 @@ pub async fn git_checkpoint(
         .await;
     match &add_result {
         Ok(r) if r.exit_code == 0 => {}
-        Ok(r) => {
-            return Err(format!(
-                "git add failed (exit {}): {}{}",
-                r.exit_code, r.stdout, r.stderr
-            ));
-        }
+        Ok(r) => return Err(exec_err("git add", r)),
         Err(e) => return Err(format!("git add failed: {e}")),
     }
 
@@ -107,12 +117,7 @@ pub async fn git_checkpoint(
         .await;
     match &commit_result {
         Ok(r) if r.exit_code == 0 => {}
-        Ok(r) => {
-            return Err(format!(
-                "git commit failed (exit {}): {}{}",
-                r.exit_code, r.stdout, r.stderr
-            ));
-        }
+        Ok(r) => return Err(exec_err("git commit", r)),
         Err(e) => return Err(format!("git commit failed: {e}")),
     }
 
@@ -122,10 +127,7 @@ pub async fn git_checkpoint(
         .await;
     match sha_result {
         Ok(r) if r.exit_code == 0 => Ok(r.stdout.trim().to_string()),
-        Ok(r) => Err(format!(
-            "git rev-parse HEAD failed (exit {}): {}{}",
-            r.exit_code, r.stdout, r.stderr
-        )),
+        Ok(r) => Err(exec_err("git rev-parse HEAD", &r)),
         Err(e) => Err(format!("git rev-parse HEAD failed: {e}")),
     }
 }
@@ -214,7 +216,7 @@ pub(crate) async fn git_diff_with_timeout(
         .await
     {
         Ok(r) if r.exit_code == 0 => Ok(r.stdout),
-        Ok(r) => Err(format!("exit {}: {}", r.exit_code, r.stderr.trim())),
+        Ok(r) => Err(exec_err("git diff", &r)),
         Err(e) => Err(e.clone()),
     }
 }
@@ -789,7 +791,235 @@ mod tests {
         reason = "These unit tests use the real git CLI to construct sandbox-git fixture repositories and sync-write fixtures to disk."
     )]
 
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
+    use async_trait::async_trait;
+    use fabro_agent::{DirEntry, ExecResult, GrepOptions};
+    use tokio_util::sync::CancellationToken;
+
     use super::*;
+
+    struct ScriptedSandbox {
+        exec_results: Mutex<VecDeque<ExecResult>>,
+    }
+
+    impl ScriptedSandbox {
+        fn new(exec_results: Vec<ExecResult>) -> Self {
+            Self {
+                exec_results: Mutex::new(exec_results.into()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for ScriptedSandbox {
+        async fn read_file(
+            &self,
+            _path: &str,
+            _offset: Option<usize>,
+            _limit: Option<usize>,
+        ) -> Result<String, String> {
+            Err("read_file not implemented for ScriptedSandbox".to_string())
+        }
+
+        async fn write_file(&self, _path: &str, _content: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        async fn delete_file(&self, _path: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        async fn file_exists(&self, _path: &str) -> Result<bool, String> {
+            Ok(false)
+        }
+
+        async fn list_directory(
+            &self,
+            _path: &str,
+            _depth: Option<usize>,
+        ) -> Result<Vec<DirEntry>, String> {
+            Ok(Vec::new())
+        }
+
+        async fn exec_command(
+            &self,
+            _command: &str,
+            _timeout_ms: u64,
+            _working_dir: Option<&str>,
+            _env_vars: Option<&std::collections::HashMap<String, String>>,
+            _cancel_token: Option<CancellationToken>,
+        ) -> Result<ExecResult, String> {
+            self.exec_results
+                .lock()
+                .expect("exec_results lock poisoned")
+                .pop_front()
+                .ok_or_else(|| "unexpected exec_command call".to_string())
+        }
+
+        async fn grep(
+            &self,
+            _pattern: &str,
+            _path: &str,
+            _options: &GrepOptions,
+        ) -> Result<Vec<String>, String> {
+            Ok(Vec::new())
+        }
+
+        async fn glob(&self, _pattern: &str, _path: Option<&str>) -> Result<Vec<String>, String> {
+            Ok(Vec::new())
+        }
+
+        async fn download_file_to_local(
+            &self,
+            _remote_path: &str,
+            _local_path: &std::path::Path,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+
+        async fn upload_file_from_local(
+            &self,
+            _local_path: &std::path::Path,
+            _remote_path: &str,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+
+        async fn initialize(&self) -> Result<(), String> {
+            Ok(())
+        }
+
+        async fn cleanup(&self) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn working_directory(&self) -> &str {
+            "/work"
+        }
+
+        fn platform(&self) -> &str {
+            "darwin"
+        }
+
+        fn os_version(&self) -> String {
+            "Darwin".to_string()
+        }
+    }
+
+    fn exec_ok() -> ExecResult {
+        ExecResult {
+            stdout:      String::new(),
+            stderr:      String::new(),
+            exit_code:   0,
+            timed_out:   false,
+            duration_ms: 1,
+        }
+    }
+
+    fn exec_timed_out(duration_ms: u64) -> ExecResult {
+        ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            exit_code: -1,
+            timed_out: true,
+            duration_ms,
+        }
+    }
+
+    fn exec_failed(exit_code: i32, stdout: &str, stderr: &str) -> ExecResult {
+        ExecResult {
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+            exit_code,
+            timed_out: false,
+            duration_ms: 1,
+        }
+    }
+
+    #[test]
+    fn git_remote_disables_commit_and_tag_signing() {
+        assert!(GIT_REMOTE.contains("-c commit.gpgsign=false"));
+        assert!(GIT_REMOTE.contains("-c tag.gpgsign=false"));
+    }
+
+    #[tokio::test]
+    async fn git_checkpoint_reports_add_timeout() {
+        let sandbox = ScriptedSandbox::new(vec![exec_timed_out(77)]);
+        let err = git_checkpoint(
+            &sandbox,
+            "run1",
+            "work",
+            "success",
+            1,
+            None,
+            &[],
+            &crate::git::GitAuthor::default(),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err, "git add timed out after 77ms");
+    }
+
+    #[tokio::test]
+    async fn git_checkpoint_reports_commit_timeout() {
+        let sandbox = ScriptedSandbox::new(vec![exec_ok(), exec_timed_out(88)]);
+        let err = git_checkpoint(
+            &sandbox,
+            "run1",
+            "work",
+            "success",
+            1,
+            None,
+            &[],
+            &crate::git::GitAuthor::default(),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err, "git commit timed out after 88ms");
+    }
+
+    #[tokio::test]
+    async fn git_checkpoint_reports_rev_parse_killed_without_output() {
+        let sandbox = ScriptedSandbox::new(vec![exec_ok(), exec_ok(), exec_failed(-1, "", "")]);
+        let err = git_checkpoint(
+            &sandbox,
+            "run1",
+            "work",
+            "success",
+            1,
+            None,
+            &[],
+            &crate::git::GitAuthor::default(),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err, "git rev-parse HEAD killed (exit -1, no output)");
+    }
+
+    #[tokio::test]
+    async fn git_diff_reports_timeout() {
+        let sandbox = ScriptedSandbox::new(vec![exec_timed_out(99)]);
+        let err = git_diff_with_timeout(&sandbox, "HEAD~1", 99)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err, "git diff timed out after 99ms");
+    }
+
+    #[tokio::test]
+    async fn git_diff_reports_failure_detail() {
+        let sandbox = ScriptedSandbox::new(vec![exec_failed(128, "", "fatal: bad revision\n")]);
+        let err = git_diff_with_timeout(&sandbox, "bad-base", 100)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err, "git diff failed (exit 128): fatal: bad revision");
+    }
 
     #[tokio::test]
     async fn git_checkpoint_includes_builtin_excludes() {

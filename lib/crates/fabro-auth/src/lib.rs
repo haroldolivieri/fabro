@@ -15,12 +15,12 @@ pub use credential::{
     ApiKeyHeader, AuthCredential, AuthDetails, OAuthConfig, OAuthTokens, credential_id_for,
     parse_credential_secret,
 };
-pub use credential_source::{CredentialSource, ResolvedCredentials, auth_issue_message};
+pub use credential_source::{CredentialSource, ResolvedCredentials};
 pub use env_source::EnvCredentialSource;
 pub use refresh::refresh_oauth_credential;
 pub use resolve::{
     ApiCredential, CliAgentKind, CliCredential, CredentialResolver, CredentialUsage, EnvLookup,
-    ResolveError, ResolvedCredential, configured_providers_from_process_env,
+    ResolveError, ResolvedCredential, auth_issue_message, configured_providers_from_process_env,
 };
 pub use strategy::{
     AuthMethod, AuthStrategy, CODEX_AUTH_URL, CODEX_CLIENT_ID, CODEX_TOKEN_URL, codex_oauth_config,

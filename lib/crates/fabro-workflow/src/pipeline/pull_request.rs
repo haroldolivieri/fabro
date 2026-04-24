@@ -12,7 +12,7 @@ use fabro_util::text::strip_goal_decoration;
 use tracing::{debug, info};
 
 use super::types::{Concluded, Finalized, PullRequestOptions};
-use crate::event::{Emitter, Event, RunNoticeLevel};
+use crate::event::{Event, RunNoticeLevel};
 use crate::outcome::{StageStatus, format_cost as outcome_format_cost};
 use crate::records::{Conclusion, RunSpec};
 use crate::runtime_store::RunStoreHandle;
@@ -272,19 +272,6 @@ fn assemble_pr_body(
     parts.push("\u{2692}\u{fe0f} Generated with [Fabro](https://fabro.sh)".to_string());
 
     parts.join("\n")
-}
-
-fn emit_run_notice(
-    emitter: &Emitter,
-    level: RunNoticeLevel,
-    code: impl Into<String>,
-    message: impl Into<String>,
-) {
-    emitter.emit(&Event::RunNotice {
-        level,
-        code: code.into(),
-        message: message.into(),
-    });
 }
 
 async fn load_pull_request_diff(run_store: &RunStoreHandle) -> String {
@@ -580,8 +567,7 @@ pub async fn pull_request(concluded: Concluded, options: &PullRequestOptions) ->
                             services
                                 .emitter
                                 .emit(&Event::PullRequestFailed { error: e.clone() });
-                            emit_run_notice(
-                                &services.emitter,
+                            services.emitter.notice(
                                 RunNoticeLevel::Warn,
                                 "pull_request_failed",
                                 format!("PR creation failed: {e}"),

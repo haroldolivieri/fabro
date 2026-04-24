@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
-use fabro_hooks::{HookContext, HookEvent, HookRunner};
+use fabro_hooks::{HookContext, HookEvent};
 use fabro_types::BilledTokenCounts;
 
 use super::types::{Concluded, FinalizeOptions, Retroed};
 use crate::error::Error;
-use crate::event::{Emitter, Event, RunNoticeLevel};
+use crate::event::RunNoticeLevel;
 use crate::git::MetadataStore;
 use crate::outcome::{Outcome, OutcomeExt, StageStatus};
 use crate::records::{Checkpoint, Conclusion, StageSummary};
@@ -14,19 +12,7 @@ use crate::run_options::RunOptions;
 use crate::run_status::{FailureReason, RunStatus, SuccessReason};
 use crate::runtime_store::RunStoreHandle;
 use crate::sandbox_git::git_push_host;
-
-fn emit_run_notice(
-    emitter: &Emitter,
-    level: RunNoticeLevel,
-    code: impl Into<String>,
-    message: impl Into<String>,
-) {
-    emitter.emit(&Event::RunNotice {
-        level,
-        code: code.into(),
-        message: message.into(),
-    });
-}
+use crate::services::RunServices;
 
 pub fn classify_engine_result(
     engine_result: &Result<Outcome, Error>,
@@ -189,20 +175,8 @@ pub async fn write_finalize_commit(run_options: &RunOptions, run_store: &RunStor
     .await;
 }
 
-async fn run_hooks(
-    hook_runner: Option<&HookRunner>,
-    hook_context: &HookContext,
-    sandbox: Arc<dyn fabro_agent::Sandbox>,
-) {
-    let Some(runner) = hook_runner else {
-        return;
-    };
-    let _ = runner.run(hook_context, sandbox, None).await;
-}
-
 async fn cleanup_sandbox(
-    hook_runner: Option<Arc<HookRunner>>,
-    sandbox: Arc<dyn fabro_agent::Sandbox>,
+    services: &RunServices,
     run_id: &fabro_types::RunId,
     workflow_name: &str,
     preserve: bool,
@@ -212,9 +186,9 @@ async fn cleanup_sandbox(
         *run_id,
         workflow_name.to_string(),
     );
-    run_hooks(hook_runner.as_deref(), &hook_ctx, Arc::clone(&sandbox)).await;
+    let _ = services.run_hooks(&hook_ctx).await;
     if !preserve {
-        sandbox.cleanup().await?;
+        services.sandbox.cleanup().await?;
     }
     Ok(())
 }
@@ -248,25 +222,17 @@ pub async fn finalize(retroed: Retroed, options: &FinalizeOptions) -> Result<Con
 
     if options.preserve_sandbox {
         let info = services.sandbox.sandbox_info();
-        if info.is_empty() {
-            emit_run_notice(
-                &services.emitter,
-                RunNoticeLevel::Info,
-                "sandbox_preserved",
-                "sandbox preserved",
-            );
+        let message = if info.is_empty() {
+            "sandbox preserved".to_string()
         } else {
-            emit_run_notice(
-                &services.emitter,
-                RunNoticeLevel::Info,
-                "sandbox_preserved",
-                format!("sandbox preserved: {info}"),
-            );
-        }
+            format!("sandbox preserved: {info}")
+        };
+        services
+            .emitter
+            .notice(RunNoticeLevel::Info, "sandbox_preserved", message);
     }
     if let Err(e) = cleanup_sandbox(
-        services.hook_runner.clone(),
-        Arc::clone(&services.sandbox),
+        &services,
         &options.run_id,
         &options.workflow_name,
         options.preserve_sandbox,
@@ -274,8 +240,7 @@ pub async fn finalize(retroed: Retroed, options: &FinalizeOptions) -> Result<Con
     .await
     {
         tracing::warn!(error = %e, "Sandbox cleanup failed");
-        emit_run_notice(
-            &services.emitter,
+        services.emitter.notice(
             RunNoticeLevel::Warn,
             "sandbox_cleanup_failed",
             format!("sandbox cleanup failed: {e}"),
@@ -306,10 +271,9 @@ mod tests {
     use object_store::memory::InMemory;
 
     use super::*;
-    use crate::event::StoreProgressLogger;
+    use crate::event::{Emitter, StoreProgressLogger};
     use crate::pipeline::types::Retroed;
     use crate::run_options::RunOptions;
-    use crate::services::RunServices;
 
     fn test_run_id() -> RunId {
         fixtures::RUN_1

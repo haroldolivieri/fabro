@@ -769,10 +769,11 @@ async fn put_install_server(
             .into_response();
     }
 
-    if let Err(err) = validate_canonical_url(canonical_url) {
-        return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, err);
-    }
-    input.canonical_url = canonical_url.to_string();
+    let canonical_url = match validate_public_url_with_label(canonical_url, "canonical_url") {
+        Ok(value) => value,
+        Err(err) => return install_error_response(StatusCode::UNPROCESSABLE_ENTITY, err),
+    };
+    input.canonical_url = canonical_url;
 
     lock_unpoisoned(&state.pending_install, "install session").server = Some(input);
     info!(step = "server", "install step completed");
@@ -1718,10 +1719,6 @@ fn missing_step_response(step: &str) -> Response {
 
 fn install_error_response(status: StatusCode, message: impl Into<String>) -> Response {
     ApiError::new(status, message).into_response()
-}
-
-fn validate_canonical_url(value: &str) -> Result<(), String> {
-    validate_public_url_with_label(value, "canonical_url").map(|_| ())
 }
 
 fn generate_ephemeral_secret() -> String {

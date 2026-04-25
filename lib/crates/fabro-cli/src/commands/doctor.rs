@@ -21,29 +21,29 @@ pub(crate) fn check_config(settings_path: Option<PathBuf>) -> CheckResult {
         Some(path) => {
             let display = contract_tilde(&path);
             let wildcard_urls = wildcard_public_url_details(&path);
-            let status = if wildcard_urls.is_empty() {
-                CheckStatus::Pass
-            } else {
-                CheckStatus::Warning
-            };
-            let summary = if wildcard_urls.is_empty() {
-                display.display().to_string()
-            } else {
-                "wildcard public URL configured".to_string()
-            };
             let mut details = vec![CheckDetail::new(format!(
                 "Loaded from {}",
                 display.display()
             ))];
-            details.extend(wildcard_urls);
-            CheckResult {
-                name:        "Configuration".to_string(),
-                status,
-                summary,
-                details,
-                remediation: (status == CheckStatus::Warning).then(|| {
-                    "Replace wildcard public URLs with loopback or proxy URLs, then update the GitHub App callback URL.".to_string()
-                }),
+            if wildcard_urls.is_empty() {
+                CheckResult {
+                    name: "Configuration".to_string(),
+                    status: CheckStatus::Pass,
+                    summary: display.display().to_string(),
+                    details,
+                    remediation: None,
+                }
+            } else {
+                details.extend(wildcard_urls);
+                CheckResult {
+                    name:        "Configuration".to_string(),
+                    status:      CheckStatus::Warning,
+                    summary:     "wildcard public URL configured".to_string(),
+                    details,
+                    remediation: Some(
+                        "Replace wildcard public URLs with loopback or proxy URLs, then update the GitHub App callback URL.".to_string(),
+                    ),
+                }
             }
         }
         None => CheckResult {
@@ -122,8 +122,9 @@ fn wildcard_public_url_details(path: &Path) -> Vec<CheckDetail> {
     let callback_base = bad_urls
         .iter()
         .find(|entry| entry.field == "server.web.url")
-        .or_else(|| bad_urls.first())
-        .map_or("http://127.0.0.1:32276", |entry| entry.suggestion.as_str());
+        .unwrap_or(&bad_urls[0])
+        .suggestion
+        .as_str();
     let github_settings_url = toml_string_at(&doc, &["server", "integrations", "github", "slug"])
         .map_or_else(
             || "the GitHub App settings page".to_string(),

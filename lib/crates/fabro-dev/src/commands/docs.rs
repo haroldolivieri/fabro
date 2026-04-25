@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
-use super::generate_cli_reference::generate_cli_reference_root;
-use super::generate_options_reference::generate_options_reference_root;
+use super::docs_cli_reference::docs_cli_reference_root;
+use super::docs_options_reference::docs_options_reference_root;
 use super::workspace_root;
 
 #[derive(Debug, Args)]
@@ -37,13 +37,13 @@ pub(crate) fn docs(args: DocsArgs) -> Result<()> {
 }
 
 fn refresh_docs(root: &Path) -> Result<()> {
-    generate_cli_reference_root(root, false)?;
-    generate_options_reference_root(root, false)
+    docs_cli_reference_root(root, false)?;
+    docs_options_reference_root(root, false)
 }
 
 fn check_docs(root: &Path) -> Result<()> {
-    generate_cli_reference_root(root, true)?;
-    generate_options_reference_root(root, true)
+    docs_cli_reference_root(root, true)?;
+    docs_options_reference_root(root, true)
 }
 
 #[expect(

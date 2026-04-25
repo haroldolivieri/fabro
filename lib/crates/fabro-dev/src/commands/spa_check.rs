@@ -6,14 +6,14 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use walkdir::WalkDir;
 
-use super::refresh_spa::{TempDir, mirror_dist, run_bun_build};
+use super::spa_refresh::{TempDir, mirror_dist, run_bun_build};
 use super::workspace_root;
 
 const DEFAULT_ASSET_BUDGET_BYTES: u64 = 15 * 1024 * 1024;
 const DEFAULT_PAYLOAD_BUDGET_BYTES: u64 = 5 * 1024 * 1024;
 
 #[derive(Debug, Args)]
-pub(crate) struct CheckSpaBudgetsArgs {
+pub(crate) struct SpaCheckArgs {
     /// Repository root containing lib/crates/fabro-spa/assets.
     #[arg(long, hide = true)]
     root:                 Option<PathBuf>,
@@ -32,7 +32,7 @@ pub(crate) struct CheckSpaBudgetsArgs {
     clippy::print_stdout,
     reason = "dev spa check command reports measured budgets directly"
 )]
-pub(crate) fn check_spa_budgets(args: CheckSpaBudgetsArgs) -> Result<()> {
+pub(crate) fn spa_check(args: SpaCheckArgs) -> Result<()> {
     let root = args.root.unwrap_or_else(workspace_root);
     let web_dir = root.join("apps/fabro-web");
     let dist_dir = web_dir.join("dist");

@@ -27,15 +27,15 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use fabro_agent::Sandbox;
 use fabro_api::types::{
-    DiffFile, FileDiff, FileDiffChangeKind, FileDiffTruncationReason, PaginatedRunFileList,
-    RunFilesMeta, RunFilesMetaDegradedReason, RunFilesMetaToSha,
+    DiffFile, DiffStats, FileDiff, FileDiffChangeKind, FileDiffTruncationReason,
+    PaginatedRunFileList, RunFilesMeta, RunFilesMetaDegradedReason, RunFilesMetaToSha,
 };
 use fabro_sandbox::reconnect::reconnect;
 use fabro_static::EnvVars;
 use fabro_types::RunId;
 use fabro_workflow::sandbox_git::{
-    DiffError, RawDiffEntry, SubmoduleChange, SymlinkChange, list_binary_paths,
-    list_changed_files_raw, stream_blob_metadata, stream_blobs,
+    DiffError, DiffNumstat, RawDiffEntry, SubmoduleChange, SymlinkChange, list_changed_files_raw,
+    list_diff_numstat, stream_blob_metadata, stream_blobs,
 };
 use futures_util::FutureExt;
 use serde::Deserialize;
@@ -270,9 +270,9 @@ async fn materialize_sandbox_path(state: &Arc<AppState>, run_id: &RunId) -> List
     // Enumerate changes and classify binary vs text in parallel — both
     // traversals are mutually independent once `to_sha` is known, and
     // running them sequentially would add ~100 ms per request on Daytona.
-    let (raw_res, binary_res) = tokio::join!(
+    let (raw_res, numstat_res) = tokio::join!(
         list_changed_files_raw(sandbox.as_ref(), &base_sha, &to_sha),
-        list_binary_paths(sandbox.as_ref(), &base_sha, &to_sha),
+        list_diff_numstat(sandbox.as_ref(), &base_sha, &to_sha),
     );
 
     // Permanent errors (bad_sha, missing object) fall through to the
@@ -290,13 +290,14 @@ async fn materialize_sandbox_path(state: &Arc<AppState>, run_id: &RunId) -> List
         }
     };
 
-    let binary_paths = match binary_res {
+    let numstat = match numstat_res {
         Ok(v) => v,
-        Err(DiffError::Permanent { .. }) => HashSet::new(),
+        Err(DiffError::Permanent { .. }) => DiffNumstat::default(),
         Err(DiffError::Transient { message }) => {
             return Err(transient_503("git diff --numstat", &message));
         }
     };
+    let binary_paths = numstat.binary_paths.clone();
 
     let total_changed_before_cap = raw_entries.len();
 
@@ -363,6 +364,7 @@ async fn materialize_sandbox_path(state: &Arc<AppState>, run_id: &RunId) -> List
             files_omitted_by_budget: (files_omitted_by_budget > 0)
                 .then(|| i64::try_from(files_omitted_by_budget).unwrap_or(i64::MAX)),
             total_changed: i64::try_from(total_changed_before_cap).unwrap_or(i64::MAX),
+            stats: numstat_to_stats(&numstat),
             to_sha: Some(to_sha_wrapper(&to_sha)),
             to_sha_committed_at,
             degraded: Some(false),
@@ -370,6 +372,13 @@ async fn materialize_sandbox_path(state: &Arc<AppState>, run_id: &RunId) -> List
             patch: None,
         },
     })
+}
+
+fn numstat_to_stats(n: &DiffNumstat) -> DiffStats {
+    DiffStats {
+        additions: i64::try_from(n.additions).unwrap_or(i64::MAX),
+        deletions: i64::try_from(n.deletions).unwrap_or(i64::MAX),
+    }
 }
 
 /// Choose a degraded reason given the current projection. Docker-provider
@@ -409,6 +418,7 @@ fn build_fallback_response(
     let (filtered_patch, truncated_by_cap) = apply_patch_cap(patch, AGGREGATE_BYTES_CAP);
     let filtered_patch = strip_denylisted_sections(&filtered_patch, is_sensitive);
     let total_changed = count_diff_headers(&filtered_patch);
+    let stats = patch_to_stats(&filtered_patch);
 
     let to_sha = projection
         .conclusion
@@ -427,12 +437,36 @@ fn build_fallback_response(
             truncated: truncated_by_cap,
             files_omitted_by_budget: None,
             total_changed: i64::try_from(total_changed).unwrap_or(i64::MAX),
+            stats,
             to_sha,
             to_sha_committed_at,
             degraded: Some(true),
             degraded_reason: Some(reason),
             patch: Some(filtered_patch),
         },
+    }
+}
+
+/// Count `+` and `-` line totals in a unified patch, excluding `+++`/`---`
+/// file headers and any non-content lines. Mirrors the `git diff --numstat`
+/// summation we use on the live-sandbox path so the toolbar shows the same
+/// numbers regardless of which response branch we took.
+fn patch_to_stats(patch: &str) -> DiffStats {
+    let mut additions: u64 = 0;
+    let mut deletions: u64 = 0;
+    for line in patch.lines() {
+        if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        }
+        match line.as_bytes().first() {
+            Some(b'+') => additions = additions.saturating_add(1),
+            Some(b'-') => deletions = deletions.saturating_add(1),
+            _ => {}
+        }
+    }
+    DiffStats {
+        additions: i64::try_from(additions).unwrap_or(i64::MAX),
+        deletions: i64::try_from(deletions).unwrap_or(i64::MAX),
     }
 }
 
@@ -538,6 +572,10 @@ fn empty_envelope() -> PaginatedRunFileList {
             truncated:               false,
             files_omitted_by_budget: None,
             total_changed:           0,
+            stats:                   DiffStats {
+                additions: 0,
+                deletions: 0,
+            },
             to_sha:                  None,
             to_sha_committed_at:     None,
             degraded:                Some(false),
@@ -1079,6 +1117,10 @@ mod tests {
                 truncated:               false,
                 files_omitted_by_budget: None,
                 total_changed:           0,
+                stats:                   DiffStats {
+                    additions: 0,
+                    deletions: 0,
+                },
                 to_sha:                  None,
                 to_sha_committed_at:     None,
                 degraded:                None,

@@ -15,7 +15,7 @@ use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use fabro_api::types::{
-    CreateSecretRequest, DeleteSecretRequest, DiffFile, FileDiff, FileDiffChangeKind,
+    CreateSecretRequest, DeleteSecretRequest, DiffFile, DiffStats, FileDiff, FileDiffChangeKind,
     PaginatedRunFileList, RunArtifactListResponse, RunFilesMeta,
 };
 use serde_json::json;
@@ -221,6 +221,10 @@ fn demo_run_files() -> PaginatedRunFileList {
             truncated:               false,
             files_omitted_by_budget: None,
             total_changed:           3,
+            stats:                   DiffStats {
+                additions: 42,
+                deletions: 11,
+            },
             to_sha:                  None,
             to_sha_committed_at:     None,
             degraded:                Some(false),

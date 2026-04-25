@@ -10,6 +10,8 @@ export type DiffStyle = "split" | "unified";
 
 export function Toolbar({
   totalChanged,
+  additions,
+  deletions,
   onRefresh,
   refreshing,
   refreshDisabled,
@@ -21,6 +23,10 @@ export function Toolbar({
 }: {
   /** From `meta.total_changed`. May exceed the rendered file list when truncated. */
   totalChanged: number;
+  /** From `meta.stats.additions`. Aggregate `+` line count across the diff. */
+  additions: number;
+  /** From `meta.stats.deletions`. Aggregate `-` line count across the diff. */
+  deletions: number;
   onRefresh: () => void;
   refreshing: boolean;
   /** True when the server has nothing new to show (to_sha unchanged). */
@@ -44,11 +50,19 @@ export function Toolbar({
       : "Refresh";
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line pb-3">
-      <p className="text-base font-semibold text-fg">
-        <span className="tabular-nums">{totalChanged}</span>
-        {" "}
-        {totalChanged === 1 ? "file" : "files"} changed
-      </p>
+      <div className="flex min-w-0 items-baseline gap-3">
+        <p className="text-base font-semibold text-fg">
+          <span className="tabular-nums">{totalChanged}</span>
+          {" "}
+          {totalChanged === 1 ? "file" : "files"} changed
+        </p>
+        {totalChanged > 0 && (additions > 0 || deletions > 0) ? (
+          <p className="font-mono text-sm tabular-nums">
+            <span className="font-medium text-mint">+{additions}</span>
+            <span className="ml-1 font-medium text-coral">−{deletions}</span>
+          </p>
+        ) : null}
+      </div>
       <div className="flex items-center gap-3 text-xs">
         {freshness ? (
           <span

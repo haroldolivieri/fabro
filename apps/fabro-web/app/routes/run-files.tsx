@@ -26,6 +26,7 @@ import {
   RunFilesErrorBoundary,
 } from "./run-files/states";
 import { useFileKeyboardNav } from "./run-files/keyboard";
+import { FileTreeSidebar } from "./run-files/file-tree-sidebar";
 import { Toolbar, type DiffStyle } from "./run-files/toolbar";
 import { ApiError, extractRequestId } from "../lib/api-client";
 import { useRun, useRunFiles } from "../lib/queries";
@@ -299,6 +300,13 @@ export default function RunFiles() {
     }
   }, [data, hashFile, push]);
 
+  const handleFileSelect = useCallback((path: string) => {
+    if (typeof window === "undefined") return;
+    const next = `#file=${encodeURIComponent(path)}`;
+    if (window.location.hash === next) return;
+    window.location.hash = next;
+  }, []);
+
   const renderFiles = useCallback(
     (files: ApiFileDiff[]): ReactElement[] =>
       files.map((file, idx) => {
@@ -460,7 +468,16 @@ export default function RunFiles() {
           onRetry={() => void filesQuery.mutate()}
         />
       ) : null}
-      {body}
+      <div className="flex gap-4">
+        <FileTreeSidebar
+          files={files}
+          selectedPath={hashFile}
+          onSelect={handleFileSelect}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {body}
+        </div>
+      </div>
     </div>
   );
 }

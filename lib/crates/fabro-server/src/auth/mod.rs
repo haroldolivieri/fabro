@@ -1,9 +1,11 @@
+mod browser_shell;
 mod cli_flow;
 mod github_endpoints;
 mod jwt;
 mod keys;
 mod translate;
 
+pub(crate) use browser_shell::browser_shell;
 pub(crate) use cli_flow::web_routes;
 pub(crate) use fabro_store::{AuthCode, ConsumeOutcome, RefreshToken};
 pub use github_endpoints::GithubEndpoints;

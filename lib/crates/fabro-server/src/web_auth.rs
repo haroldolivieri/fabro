@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use cookie::time::Duration;
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{debug, error, info, warn};
 
-use crate::auth::GithubEndpoints;
+use crate::auth::{GithubEndpoints, browser_shell};
 use crate::jwt_auth::{
     AuthMode, AuthenticatedService, AuthenticatedSubject, auth_method_name, dev_token_matches,
 };
@@ -204,26 +204,21 @@ fn json_response(status: StatusCode, body: serde_json::Value) -> Response {
     (status, Json(body)).into_response()
 }
 
-fn static_error_page(body: &'static str) -> Response {
-    let mut response = (
+fn static_error_page(message: &'static str) -> Response {
+    browser_shell(
         StatusCode::BAD_REQUEST,
-        Html(format!(
-            "<!doctype html><html><body><p>{body}</p></body></html>"
-        )),
+        "Sign-in failed",
+        &format!(
+            r#"
+<div>
+  <p class="eyebrow error">Sign-in failed</p>
+  <h1>We couldn't complete sign-in</h1>
+</div>
+<p>{message}</p>
+<a class="button" href="/login">Back to sign in</a>
+"#
+        ),
     )
-        .into_response();
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("text/html; charset=utf-8"),
-    );
-    response.headers_mut().insert(
-        "x-content-type-options",
-        HeaderValue::from_static("nosniff"),
-    );
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response
 }
 
 fn sanitize_return_to(return_to: Option<String>) -> Option<String> {

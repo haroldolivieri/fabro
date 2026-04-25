@@ -15,6 +15,8 @@
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
     "@pierre/diffs": "1.1.15",
+    "@pierre/theme": "0.0.28",
+    "@pierre/trees": "1.0.0-beta.3",
     "@qltysh/fabro-api-client": "workspace:*",
     "@tailwindcss/typography": "^0.5.19",
     "@viz-js/viz": "^3.24.0",

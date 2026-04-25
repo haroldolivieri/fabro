@@ -32,6 +32,7 @@ function buildRunFilesPayload({
       degraded,
       patch,
       total_changed: files.length,
+      stats: { additions: 0, deletions: 0 },
       truncated: false,
     },
   } as any;
@@ -165,7 +166,11 @@ describe("loader", () => {
   test("200 OK returns { data, error: null } with parsed envelope", async () => {
     const envelope = {
       data: [],
-      meta: { truncated: false, total_changed: 0 },
+      meta: {
+        truncated: false,
+        total_changed: 0,
+        stats: { additions: 0, deletions: 0 },
+      },
     };
     restoreFetch = stubFetchOnce({
       status: 200,

@@ -552,16 +552,29 @@ fn classify_entry(
     })
 }
 
-/// Classify which changed paths in `base_sha..to_sha` are binary, via
-/// `git diff --numstat`. Binary entries show `-\t-\t<path>` in the output.
-///
-/// Returns the set of repo-relative paths (post-rename, i.e. `<new_path>`
-/// when a rename occurred) that `git` classifies as binary.
-pub async fn list_binary_paths(
+/// Output of `git diff --numstat`: which paths are binary, plus aggregate
+/// `+/-` line totals across the text files in the range. Both pieces come
+/// from a single git invocation so callers don't need to run two diffs.
+#[derive(Debug, Default, Clone)]
+pub struct DiffNumstat {
+    /// Repo-relative paths (post-rename) that git classifies as binary.
+    pub binary_paths: std::collections::HashSet<String>,
+    /// Sum of `+` columns across text files. Binary entries (`-\t-`) do not
+    /// contribute.
+    pub additions:    u64,
+    /// Sum of `-` columns across text files. Binary entries (`-\t-`) do not
+    /// contribute.
+    pub deletions:    u64,
+}
+
+/// Run `git diff --numstat` once and return both the set of binary paths and
+/// the aggregate text-file `+/-` totals. The single call replaces the
+/// previous binary-only helper.
+pub async fn list_diff_numstat(
     sandbox: &dyn Sandbox,
     base_sha: &str,
     to_sha: &str,
-) -> std::result::Result<std::collections::HashSet<String>, DiffError> {
+) -> std::result::Result<DiffNumstat, DiffError> {
     let base_q = shell_quote(base_sha);
     let to_q = shell_quote(to_sha);
     let env = sandbox_git_hardening_env();
@@ -584,18 +597,30 @@ pub async fn list_binary_paths(
         return Err(DiffError::Transient { message: stderr });
     }
 
-    let mut binary = std::collections::HashSet::new();
+    let mut out = DiffNumstat::default();
     for line in res.stdout.lines() {
         // `-\t-\t<path>` marks binary. Rename lines read `<+>\t<->\t<path> =>
-        // <path>` or `<+>\t<->\t{<old> => <new>}` — for the binary case we
-        // just need presence of "-\t-" prefix; extract the path portion.
+        // <path>` or `<+>\t<->\t{<old> => <new>}`.
         if let Some(rest) = line.strip_prefix("-\t-\t") {
-            // Normalize rename display to the new path.
-            let path = extract_new_path_from_numstat(rest);
-            binary.insert(path);
+            out.binary_paths.insert(extract_new_path_from_numstat(rest));
+            continue;
         }
+        // Text rows: `<adds>\t<dels>\t<path>`. Tolerate malformed lines
+        // (e.g. trailing whitespace) by skipping rather than failing the
+        // whole diff — the rest of the response stays usable.
+        let mut parts = line.splitn(3, '\t');
+        let adds_s = parts.next().unwrap_or("");
+        let dels_s = parts.next().unwrap_or("");
+        let Ok(adds) = adds_s.parse::<u64>() else {
+            continue;
+        };
+        let Ok(dels) = dels_s.parse::<u64>() else {
+            continue;
+        };
+        out.additions = out.additions.saturating_add(adds);
+        out.deletions = out.deletions.saturating_add(dels);
     }
-    Ok(binary)
+    Ok(out)
 }
 
 fn extract_new_path_from_numstat(rest: &str) -> String {
@@ -686,7 +711,7 @@ pub async fn stream_blob_metadata(
 /// Contents are size-capped per blob: any blob exceeding `size_cap_bytes`
 /// returns `None` in its slot (the caller should flag that entry as
 /// truncated). Callers are expected to have pre-filtered binary blobs via
-/// [`list_binary_paths`] — `--batch` output stream is text-oriented and
+/// [`list_diff_numstat`] — `--batch` output stream is text-oriented and
 /// non-UTF-8 bytes are lossy through the sandbox `String` channel.
 pub async fn stream_blobs(
     sandbox: &dyn Sandbox,
@@ -1207,15 +1232,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_binary_paths_flags_png_but_not_text() {
+    async fn list_diff_numstat_flags_png_and_aggregates_text_lines() {
         let repo_dir = tempfile::tempdir().unwrap();
         let repo = repo_dir.path();
         init_git_repo(repo);
 
-        std::fs::write(repo.join("doc.md"), "hi").unwrap();
+        std::fs::write(repo.join("doc.md"), "hi\nthere\n").unwrap();
         let base = git_commit_all(repo, "initial");
 
-        std::fs::write(repo.join("doc.md"), "bye\n").unwrap();
+        // doc.md: replace 2 lines with 3 lines → adds=3, dels=2
+        std::fs::write(repo.join("doc.md"), "alpha\nbeta\ngamma\n").unwrap();
         // Minimal PNG header (8-byte signature) + a chunk — git classifies
         // this as binary via NUL-byte detection.
         let png: &[u8] = &[
@@ -1226,10 +1252,20 @@ mod tests {
         let head = git_commit_all(repo, "change");
 
         let sandbox = fabro_agent::LocalSandbox::new(repo.to_path_buf());
-        let binary = list_binary_paths(&sandbox, &base, &head).await.unwrap();
+        let stats = list_diff_numstat(&sandbox, &base, &head).await.unwrap();
 
-        assert!(binary.contains("logo.png"), "binary: {binary:?}");
-        assert!(!binary.contains("doc.md"), "binary: {binary:?}");
+        assert!(
+            stats.binary_paths.contains("logo.png"),
+            "binary_paths: {:?}",
+            stats.binary_paths
+        );
+        assert!(
+            !stats.binary_paths.contains("doc.md"),
+            "binary_paths: {:?}",
+            stats.binary_paths
+        );
+        assert_eq!(stats.additions, 3, "additions: {stats:?}");
+        assert_eq!(stats.deletions, 2, "deletions: {stats:?}");
     }
 
     #[tokio::test]

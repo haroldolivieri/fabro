@@ -5327,7 +5327,11 @@ components:
           example: false
 
     DiffStats:
-      description: Aggregate line-change statistics for a diff.
+      description: |
+        Aggregate `+/-` line counts across all files in a diff (or the unified
+        patch in degraded mode). Binary, sensitive, symlink, and submodule
+        files contribute 0/0 since they have no line-level diff. Both fields
+        are 0 for empty / pre-start envelopes.
       type: object
       required:
         - additions
@@ -5351,7 +5355,10 @@ components:
       required:
         - truncated
         - total_changed
+        - stats
       properties:
+        stats:
+          $ref: "#/components/schemas/DiffStats"
         truncated:
           type: boolean
           description: True when any cap (file count, per-file size, or aggregate size) was hit for this response.

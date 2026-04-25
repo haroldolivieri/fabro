@@ -13,11 +13,15 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { DiffStats } from './diff-stats';
 
 /**
  * Metadata for a `PaginatedRunFileList` response.  Replaces `PaginationMeta` on the files endpoint — the naturally-bounded list does not use cursor pagination but exposes caps and a degraded-response path instead. 
  */
 export interface RunFilesMeta {
+    'stats': DiffStats;
     /**
      * True when any cap (file count, per-file size, or aggregate size) was hit for this response.
      */

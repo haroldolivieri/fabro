@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
-use super::check_spa_budgets::{CheckSpaBudgetsArgs, check_spa_budgets};
-use super::refresh_spa::{RefreshSpaArgs, refresh_spa};
+use super::spa_check::{SpaCheckArgs, spa_check};
+use super::spa_refresh::{SpaRefreshArgs, spa_refresh};
 
 #[derive(Debug, Args)]
 pub(crate) struct SpaArgs {
@@ -13,15 +13,15 @@ pub(crate) struct SpaArgs {
 #[derive(Debug, Subcommand)]
 enum SpaCommand {
     /// Rebuild and refresh the embedded Fabro web SPA bundle.
-    Refresh(RefreshSpaArgs),
+    Refresh(SpaRefreshArgs),
     /// Verify embedded Fabro web SPA assets are current and within budget.
-    Check(CheckSpaBudgetsArgs),
+    Check(SpaCheckArgs),
 }
 
 pub(crate) fn spa(args: SpaArgs) -> Result<()> {
     match args.command {
-        Some(SpaCommand::Refresh(args)) => refresh_spa(args),
-        Some(SpaCommand::Check(args)) => check_spa_budgets(args),
+        Some(SpaCommand::Refresh(args)) => spa_refresh(args),
+        Some(SpaCommand::Check(args)) => spa_check(args),
         None => print_spa_help(),
     }
 }

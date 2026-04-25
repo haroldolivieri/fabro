@@ -1,11 +1,11 @@
-mod check_spa_budgets;
 mod docker_build;
 mod docs;
-mod generate_cli_reference;
-mod generate_options_reference;
-mod refresh_spa;
+mod docs_cli_reference;
+mod docs_options_reference;
 mod release;
 mod spa;
+mod spa_check;
+mod spa_refresh;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};

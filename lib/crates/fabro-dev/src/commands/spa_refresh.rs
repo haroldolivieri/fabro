@@ -5,14 +5,14 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use walkdir::WalkDir;
 
-use super::check_spa_budgets::check_spa_asset_budgets;
+use super::spa_check::check_spa_asset_budgets;
 use super::workspace_root;
 
 const DEFAULT_ASSET_BUDGET_BYTES: u64 = 15 * 1024 * 1024;
 const DEFAULT_PAYLOAD_BUDGET_BYTES: u64 = 5 * 1024 * 1024;
 
 #[derive(Debug, Args)]
-pub(crate) struct RefreshSpaArgs {
+pub(crate) struct SpaRefreshArgs {
     /// Repository root containing apps/fabro-web and lib/crates/fabro-spa.
     #[arg(long, hide = true)]
     root: Option<PathBuf>,
@@ -27,9 +27,9 @@ pub(crate) struct RefreshSpaArgs {
     pub(super) payload_budget_bytes: u64,
 }
 
-pub(crate) fn refresh_spa(args: RefreshSpaArgs) -> Result<()> {
+pub(crate) fn spa_refresh(args: SpaRefreshArgs) -> Result<()> {
     let root = args.root.unwrap_or_else(workspace_root);
-    refresh_spa_root(
+    spa_refresh_root(
         &root,
         args.skip_build,
         args.asset_budget_bytes,
@@ -41,7 +41,7 @@ pub(crate) fn refresh_spa(args: RefreshSpaArgs) -> Result<()> {
     clippy::print_stdout,
     reason = "dev spa refresh command reports progress directly"
 )]
-pub(super) fn refresh_spa_root(
+pub(super) fn spa_refresh_root(
     root: &Path,
     skip_build: bool,
     asset_budget_bytes: u64,

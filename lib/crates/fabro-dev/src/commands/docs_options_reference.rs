@@ -15,7 +15,7 @@ const FENCE_END: &str = "<!-- /generated:options -->";
     clippy::disallowed_methods,
     reason = "dev generator reports the generated docs path directly and intentionally uses sync filesystem I/O"
 )]
-pub(crate) fn generate_options_reference_root(root: &Path, check: bool) -> Result<()> {
+pub(crate) fn docs_options_reference_root(root: &Path, check: bool) -> Result<()> {
     let path = root.join(OPTIONS_REFERENCE_PATH);
     let current =
         std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;

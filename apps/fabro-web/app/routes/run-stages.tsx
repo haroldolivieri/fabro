@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { Marked } from "marked";
 
@@ -38,11 +38,11 @@ import type { ToolUse } from "../components/tool-use";
 import { StageSidebar, statusConfig } from "../components/stage-sidebar";
 import type { Stage } from "../components/stage-sidebar";
 import { EmptyState } from "../components/state";
-import { apiJson, apiJsonOrNull } from "../api";
 import { CopyButton } from "../components/ui";
-import { isVisibleStage } from "../data/runs";
 import { formatDurationSecs } from "../lib/format";
-import type { PaginatedRunStageList, StageTurn as ApiStageTurn, PaginatedStageTurnList, PaginatedEventList } from "@qltysh/fabro-api-client";
+import { useRunEventsList, useRunStageTurns, useRunStages } from "../lib/queries";
+import { mapRunStagesToSidebarStages } from "../lib/stage-sidebar";
+import type { StageTurn as ApiStageTurn, PaginatedStageTurnList, PaginatedEventList } from "@qltysh/fabro-api-client";
 
 export const handle = { wide: true };
 
@@ -147,26 +147,14 @@ function turnsFromEvents(events: RawEvent[], stageId: string): TurnType[] {
   return turns;
 }
 
-export async function loader({ request, params }: any) {
-  const stagesResult = await apiJsonOrNull<PaginatedRunStageList>(`/runs/${params.id}/stages`, { request });
-  const stages: Stage[] = (stagesResult?.data ?? []).filter((s) => isVisibleStage(s.id)).map((s) => ({
-    id: s.id,
-    name: s.name,
-    status: s.status as Stage["status"],
-    duration: s.duration_secs != null ? formatDurationSecs(s.duration_secs) : "--",
-  }));
-
-  const selectedStageId = params.stageId ?? stages[0]?.id;
-
-  // Try demo turns endpoint first, fall back to events.
-  let turns: TurnType[] = [];
-  if (selectedStageId) {
-    const turnsResult = await apiJsonOrNull<PaginatedStageTurnList>(
-      `/runs/${params.id}/stages/${selectedStageId}/turns`,
-      { request },
-    );
-    if (turnsResult?.data?.length) {
-      turns = turnsResult.data.map((t: ApiStageTurn): TurnType => {
+function mapTurns(
+  turnsResult: PaginatedStageTurnList | null | undefined,
+  eventsResult: PaginatedEventList | null | undefined,
+  selectedStageId: string | undefined,
+): TurnType[] {
+  if (!selectedStageId) return [];
+  if (turnsResult?.data?.length) {
+    return turnsResult.data.map((t: ApiStageTurn): TurnType => {
         if (t.kind === "tool" && t.tools) {
           return {
             kind: "tool",
@@ -182,19 +170,11 @@ export async function loader({ request, params }: any) {
         }
         return { kind: t.kind as "system" | "assistant", content: t.content ?? "" };
       });
-    } else {
-      // Fetch events and build turns from them.
-      const eventsResult = await apiJsonOrNull<PaginatedEventList>(
-        `/runs/${params.id}/events?limit=1000`,
-        { request },
-      );
-      if (eventsResult?.data) {
-        turns = turnsFromEvents(eventsResult.data as unknown as RawEvent[], selectedStageId);
-      }
-    }
   }
-
-  return { stages, turns };
+  if (eventsResult?.data) {
+    return turnsFromEvents(eventsResult.data as unknown as RawEvent[], selectedStageId);
+  }
+  return [];
 }
 
 function Markdown({ content }: { content: string }) {
@@ -376,30 +356,56 @@ function CommandBlock({ turn }: { turn: Extract<TurnType, { kind: "command" }> }
   );
 }
 
-export default function RunStages({ loaderData }: any) {
-  const { id, stageId } = useParams();
-  const { stages, turns } = loaderData;
-
-  const selectedStage = stages.find((s: Stage) => s.id === stageId) ?? stages[0];
-  const isRunning = selectedStage?.status === "running";
-
-  // Ticking timer for running stage header
-  const runningStartRef = useRef(isRunning ? Date.now() : 0);
+function RunningStageDuration({
+  isRunning,
+  duration,
+}: {
+  isRunning: boolean;
+  duration: string;
+}) {
+  const [startedAt, setStartedAt] = useState<number | null>(() =>
+    isRunning ? Date.now() : null,
+  );
   const [, setTick] = useState(0);
 
   useEffect(() => {
-    if (isRunning && runningStartRef.current === 0) {
-      runningStartRef.current = Date.now();
-    } else if (!isRunning) {
-      runningStartRef.current = 0;
-    }
+    setStartedAt((current) => {
+      if (!isRunning) return null;
+      return current ?? Date.now();
+    });
   }, [isRunning]);
 
   useEffect(() => {
     if (!isRunning) return;
-    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    const interval = setInterval(() => setTick((tick) => tick + 1), 1000);
     return () => clearInterval(interval);
   }, [isRunning]);
+
+  if (isRunning && startedAt) {
+    return formatDurationSecs(Math.floor((Date.now() - startedAt) / 1000));
+  }
+  return duration;
+}
+
+export default function RunStages() {
+  const { id, stageId } = useParams();
+  const stagesQuery = useRunStages(id);
+  const stages = useMemo(
+    () => mapRunStagesToSidebarStages(stagesQuery.data),
+    [stagesQuery.data],
+  );
+
+  const selectedStage = stages.find((s: Stage) => s.id === stageId) ?? stages[0];
+  const turnsQuery = useRunStageTurns(id, selectedStage?.id);
+  const hasStageTurns = (turnsQuery.data?.data.length ?? 0) > 0;
+  const shouldLoadEventFallback =
+    !!selectedStage?.id && !turnsQuery.isLoading && !turnsQuery.error && !hasStageTurns;
+  const eventsQuery = useRunEventsList(id, shouldLoadEventFallback);
+  const turns = useMemo(
+    () => mapTurns(turnsQuery.data, eventsQuery.data, selectedStage?.id),
+    [eventsQuery.data, selectedStage?.id, turnsQuery.data],
+  );
+  const isRunning = selectedStage?.status === "running";
 
   if (!stages.length) {
     return (
@@ -414,9 +420,6 @@ export default function RunStages({ loaderData }: any) {
 
   const selectedConfig = statusConfig[selectedStage.status];
   const SelectedIcon = selectedConfig.icon;
-  const headerDuration = isRunning && runningStartRef.current
-    ? formatDurationSecs(Math.floor((Date.now() - runningStartRef.current) / 1000))
-    : selectedStage.duration;
 
   return (
     <div className="flex gap-6">
@@ -426,7 +429,12 @@ export default function RunStages({ loaderData }: any) {
         <div className="sticky top-0 z-10 -mx-2 flex items-center gap-2 bg-page/85 px-2 py-2 backdrop-blur">
           <SelectedIcon className={`size-5 ${selectedConfig.color} ${isRunning ? "animate-spin" : ""}`} />
           <h3 className="text-base font-semibold text-fg">{selectedStage.name}</h3>
-          <span className="font-mono text-xs tabular-nums text-fg-muted">{headerDuration}</span>
+          <span className="font-mono text-xs tabular-nums text-fg-muted">
+            <RunningStageDuration
+              isRunning={isRunning}
+              duration={selectedStage.duration}
+            />
+          </span>
         </div>
 
         {turns.map((turn: TurnType, i: number) => {

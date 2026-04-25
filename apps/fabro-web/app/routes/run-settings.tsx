@@ -1,32 +1,22 @@
+import { useMemo } from "react";
 import { useParams } from "react-router";
 import { CollapsibleFile } from "../components/collapsible-file";
 import { StageSidebar } from "../components/stage-sidebar";
-import type { Stage } from "../components/stage-sidebar";
-import { apiJson } from "../api";
-import { isVisibleStage } from "../data/runs";
-import { formatDurationSecs } from "../lib/format";
-import type { PaginatedRunStageList } from "@qltysh/fabro-api-client";
+import { useRunSettings, useRunStages } from "../lib/queries";
+import { mapRunStagesToSidebarStages } from "../lib/stage-sidebar";
 
 export const handle = { wide: true };
 type WorkflowSettingsSnapshot = Record<string, unknown>;
 
-export async function loader({ request, params }: any) {
-  const [{ data: apiStages }, settings] = await Promise.all([
-    apiJson<PaginatedRunStageList>(`/runs/${params.id}/stages`, { request }),
-    apiJson<WorkflowSettingsSnapshot>(`/runs/${params.id}/settings`, { request }),
-  ]);
-  const stages: Stage[] = apiStages.filter((s) => isVisibleStage(s.id)).map((s) => ({
-    id: s.id,
-    name: s.name,
-    status: s.status as Stage["status"],
-    duration: s.duration_secs != null ? formatDurationSecs(s.duration_secs) : "--",
-  }));
-  return { stages, settings };
-}
-
-export default function RunSettingsPage({ loaderData }: any) {
+export default function RunSettingsPage() {
   const { id } = useParams();
-  const { stages, settings } = loaderData;
+  const stagesQuery = useRunStages(id);
+  const settingsQuery = useRunSettings<WorkflowSettingsSnapshot>(id);
+  const stages = useMemo(
+    () => mapRunStagesToSidebarStages(stagesQuery.data),
+    [stagesQuery.data],
+  );
+  const settings = settingsQuery.data ?? {};
 
   return (
     <div className="flex gap-6">

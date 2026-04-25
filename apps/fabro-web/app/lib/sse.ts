@@ -1,81 +1,164 @@
-import { useEffect } from "react";
-import { useRevalidator } from "react-router";
+import type { MutatorCallback } from "swr";
 
-export interface RunEventPayload {
+export type MutateFn = (key: string) => ReturnType<MutatorCallback>;
+
+export interface EventPayload {
   event?: string;
   [key: string]: unknown;
 }
 
-export interface RunEventSourceLike {
+export interface EventSourceLike {
   onmessage: ((event: { data: string }) => void) | null;
-  close: () => void;
+  close(): void;
 }
 
-interface SubscribeOptions {
-  allowlist: ReadonlySet<string>;
-  debounceMs?: number;
-  onEvent?: (payload: RunEventPayload) => void;
-  revalidate: () => void;
-  eventSourceFactory?: (url: string) => RunEventSourceLike;
+export interface EventInvalidation {
+  keys: string[];
+  close?: boolean;
+  immediate?: boolean;
 }
 
-function createBrowserEventSource(url: string): RunEventSourceLike {
+export interface SharedEventSubscription {
+  source: EventSourceLike;
+  refcount: number;
+  mutators: Map<MutateFn, number>;
+  pendingKeys: Set<string>;
+  debounceTimer: ReturnType<typeof setTimeout> | null;
+}
+
+export function createBrowserEventSource(url: string): EventSourceLike {
   return new EventSource(url);
 }
 
-export function subscribeToRunEventSource(runId: string, options: SubscribeOptions): () => void {
-  const {
-    allowlist,
-    debounceMs = 300,
-    onEvent,
-    revalidate,
-    eventSourceFactory = createBrowserEventSource,
-  } = options;
+export function subscribeToSharedEventSource<TPayload extends EventPayload>({
+  subscriptions,
+  subscriptionKey,
+  url,
+  mutate,
+  resolveInvalidation,
+  eventSourceFactory = createBrowserEventSource,
+  debounceMs = 300,
+}: {
+  subscriptions: Map<string, SharedEventSubscription>;
+  subscriptionKey: string;
+  url: string;
+  mutate: MutateFn;
+  resolveInvalidation: (payload: TPayload) => EventInvalidation;
+  eventSourceFactory?: (url: string) => EventSourceLike;
+  debounceMs?: number;
+}): () => void {
+  let subscription = subscriptions.get(subscriptionKey);
+  if (!subscription) {
+    const source = eventSourceFactory(url);
+    subscription = {
+      source,
+      refcount: 0,
+      mutators: new Map(),
+      pendingKeys: new Set(),
+      debounceTimer: null,
+    };
+    subscriptions.set(subscriptionKey, subscription);
 
-  const source = eventSourceFactory(`/api/v1/runs/${runId}/attach?since_seq=1`);
-  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    source.onmessage = (message) => {
+      const current = subscriptions.get(subscriptionKey);
+      if (!current) return;
 
-  source.onmessage = (message) => {
-    try {
-      const payload = JSON.parse(message.data) as RunEventPayload;
-      if (!payload.event || !allowlist.has(payload.event)) {
+      let payload: TPayload;
+      try {
+        payload = JSON.parse(message.data) as TPayload;
+      } catch {
         return;
       }
-      onEvent?.(payload);
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => revalidate(), debounceMs);
-    } catch {
-      // ignore malformed events
-    }
-  };
+
+      const invalidation = resolveInvalidation(payload);
+      queueInvalidations(current, invalidation.keys, {
+        debounceMs,
+        immediate: invalidation.immediate,
+      });
+
+      if (invalidation.close) {
+        closeSharedEventSource(subscriptions, subscriptionKey, { flushPending: true });
+      }
+    };
+  }
+
+  subscription.refcount += 1;
+  subscription.mutators.set(mutate, (subscription.mutators.get(mutate) ?? 0) + 1);
 
   return () => {
-    clearTimeout(debounceTimer);
-    source.close();
+    const current = subscriptions.get(subscriptionKey);
+    if (!current) return;
+
+    const mutateCount = current.mutators.get(mutate) ?? 0;
+    if (mutateCount <= 1) {
+      current.mutators.delete(mutate);
+    } else {
+      current.mutators.set(mutate, mutateCount - 1);
+    }
+
+    current.refcount -= 1;
+    if (current.refcount <= 0) {
+      closeSharedEventSource(subscriptions, subscriptionKey);
+    }
   };
 }
 
-export function useRunEventSource(
-  runId: string | undefined,
+function queueInvalidations(
+  subscription: SharedEventSubscription,
+  keys: string[],
   {
-    allowlist,
-    debounceMs = 300,
-    onEvent,
+    debounceMs,
+    immediate,
   }: {
-    allowlist: ReadonlySet<string>;
-    debounceMs?: number;
-    onEvent?: (payload: RunEventPayload) => void;
+    debounceMs: number;
+    immediate?: boolean;
   },
 ) {
-  const revalidator = useRevalidator();
+  if (keys.length === 0) return;
+  for (const key of keys) {
+    subscription.pendingKeys.add(key);
+  }
 
-  useEffect(() => {
-    if (!runId) return;
-    return subscribeToRunEventSource(runId, {
-      allowlist,
-      debounceMs,
-      onEvent,
-      revalidate: () => revalidator.revalidate(),
-    });
-  }, [allowlist, debounceMs, onEvent, revalidator, runId]);
+  if (immediate || debounceMs <= 0) {
+    flushInvalidations(subscription);
+    return;
+  }
+
+  if (subscription.debounceTimer) {
+    clearTimeout(subscription.debounceTimer);
+  }
+  subscription.debounceTimer = setTimeout(() => {
+    subscription.debounceTimer = null;
+    flushInvalidations(subscription);
+  }, debounceMs);
+}
+
+function flushInvalidations(subscription: SharedEventSubscription) {
+  if (subscription.pendingKeys.size === 0) return;
+  const keys = [...subscription.pendingKeys];
+  subscription.pendingKeys.clear();
+
+  for (const mutator of subscription.mutators.keys()) {
+    for (const key of keys) {
+      void mutator(key);
+    }
+  }
+}
+
+function closeSharedEventSource(
+  subscriptions: Map<string, SharedEventSubscription>,
+  subscriptionKey: string,
+  { flushPending = false }: { flushPending?: boolean } = {},
+) {
+  const subscription = subscriptions.get(subscriptionKey);
+  if (!subscription) return;
+
+  if (flushPending) {
+    flushInvalidations(subscription);
+  }
+  if (subscription.debounceTimer) {
+    clearTimeout(subscription.debounceTimer);
+  }
+  subscription.source.close();
+  subscriptions.delete(subscriptionKey);
 }

@@ -1,35 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { graphTheme } from "../lib/graph-theme";
-import { apiFetch, apiJsonOrNull } from "../api";
-import { isVisibleStage } from "../data/runs";
-import { formatDurationSecs } from "../lib/format";
+import { useRunGraph, useRunStages } from "../lib/queries";
 import { StageSidebar } from "../components/stage-sidebar";
-import type { Stage } from "../components/stage-sidebar";
 import {
   GRAPH_DEFAULT_ZOOM_INDEX,
   GRAPH_ZOOM_STEPS,
   GraphToolbar,
 } from "../components/graph-toolbar";
-import type { PaginatedRunStageList } from "@qltysh/fabro-api-client";
+import { mapRunStagesToSidebarStages } from "../lib/stage-sidebar";
 
 export const handle = { wide: true };
-
-export async function loader({ request, params }: any) {
-  const [stagesResult, graphRes] = await Promise.all([
-    apiJsonOrNull<PaginatedRunStageList>(`/runs/${params.id}/stages`, { request }),
-    apiFetch(`/runs/${params.id}/graph`, { request }),
-  ]);
-  const stages: Stage[] = (stagesResult?.data ?? []).filter((s) => isVisibleStage(s.id)).map((s) => ({
-    id: s.id,
-    name: s.name,
-    dotId: s.dot_id ?? s.id,
-    status: s.status as Stage["status"],
-    duration: s.duration_secs != null ? formatDurationSecs(s.duration_secs) : "--",
-  }));
-  const graphSvg = graphRes.ok ? await graphRes.text() : null;
-  return { stages, graphSvg };
-}
 
 type Direction = "LR" | "TB";
 
@@ -88,34 +69,44 @@ function stripGraphTitle(svg: SVGSVGElement) {
   title.remove();
 }
 
-export default function RunGraph({ loaderData }: any) {
+export default function RunGraph() {
   const { id } = useParams();
-  const { stages, graphSvg } = loaderData;
+  const [direction, setDirection] = useState<Direction>("LR");
+  const stagesQuery = useRunStages(id);
+  const graphQuery = useRunGraph(id, direction);
+  const stages = useMemo(
+    () => mapRunStagesToSidebarStages(stagesQuery.data),
+    [stagesQuery.data],
+  );
+  const graphSvg = graphQuery.data;
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState(GRAPH_DEFAULT_ZOOM_INDEX);
-  const [direction, setDirection] = useState<Direction>("LR");
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragState = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
   const zoom = GRAPH_ZOOM_STEPS[zoomIndex];
 
   useEffect(() => {
+    if (graphSvg === undefined && !graphQuery.error) return;
+
     let cancelled = false;
 
     async function render() {
       try {
+        setError(null);
+
+        if (graphQuery.error) {
+          setError("Failed to load graph");
+          return;
+        }
+
         let svg: SVGSVGElement;
 
         if (graphSvg) {
-          // Re-fetch from server with direction param.
-          const res = await fetch(`/api/v1/runs/${id}/graph?direction=${direction}`, { credentials: "include" });
-          if (cancelled) return;
-          if (!res.ok) { setError("Failed to load graph"); return; }
-          const svgText = await res.text();
           const parser = new DOMParser();
-          const doc = parser.parseFromString(svgText, "image/svg+xml");
+          const doc = parser.parseFromString(graphSvg, "image/svg+xml");
           const parsed = doc.documentElement;
           if (!(parsed instanceof SVGSVGElement)) {
             setError("Invalid SVG from server");
@@ -144,7 +135,7 @@ export default function RunGraph({ loaderData }: any) {
     setPan({ x: 0, y: 0 });
     render();
     return () => { cancelled = true; };
-  }, [direction, graphSvg, id]);
+  }, [direction, graphQuery.error, graphSvg]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;

@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { apiFetch, apiJsonOrNull } from "../api";
-import { isVisibleStage } from "../data/runs";
-import { formatDurationSecs } from "../lib/format";
 import { graphTheme } from "../lib/graph-theme";
+import { useRun, useRunGraph, useRunStages } from "../lib/queries";
 import { StageSidebar } from "../components/stage-sidebar";
 import type { Stage } from "../components/stage-sidebar";
 import {
@@ -12,42 +10,29 @@ import {
   GraphToolbar,
 } from "../components/graph-toolbar";
 import { EmptyState } from "../components/state";
-import type { PaginatedRunStageList } from "@qltysh/fabro-api-client";
+import { mapRunStagesToSidebarStages } from "../lib/stage-sidebar";
 
 export const handle = { wide: true };
 
-export async function loader({ request, params }: any) {
-  const stagesResult = await apiJsonOrNull<PaginatedRunStageList>(
-    `/runs/${params.id}/stages`,
-    { request },
-  );
-  const stages: Stage[] = (stagesResult?.data ?? []).filter((s) => isVisibleStage(s.id)).map((s) => ({
-    id: s.id,
-    name: s.name,
-    status: s.status as Stage["status"],
-    duration: s.duration_secs != null ? formatDurationSecs(s.duration_secs) : "--",
-    dotId: s.dot_id ?? s.id,
-  }));
-  const [graphRes, runRes] = await Promise.all([
-    apiFetch(`/runs/${params.id}/graph`, { request }),
-    apiJsonOrNull<{ status: string | null }>(`/runs/${params.id}`, { request }),
-  ]);
-  const graphSvg = graphRes.ok ? await graphRes.text() : null;
-  const runStatus = runRes?.status ?? null;
-  return { stages, graphSvg, runStatus };
-}
-
 type Direction = "LR" | "TB";
 
-export default function RunOverview({ loaderData }: any) {
+export default function RunOverview() {
   const { id } = useParams();
-  const { stages, graphSvg, runStatus } = loaderData;
+  const [direction, setDirection] = useState<Direction>("LR");
+  const stagesQuery = useRunStages(id);
+  const graphQuery = useRunGraph(id, direction);
+  const runQuery = useRun(id);
+  const stages = useMemo(
+    () => mapRunStagesToSidebarStages(stagesQuery.data),
+    [stagesQuery.data],
+  );
+  const graphSvg = graphQuery.data;
+  const runStatus = runQuery.data?.status?.kind ?? null;
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const navigate = useNavigate();
   const [zoomIndex, setZoomIndex] = useState(GRAPH_DEFAULT_ZOOM_INDEX);
-  const [direction, setDirection] = useState<Direction>("LR");
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragState = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
   const zoom = GRAPH_ZOOM_STEPS[zoomIndex];
@@ -59,10 +44,8 @@ export default function RunOverview({ loaderData }: any) {
 
     let cancelled = false;
     (async () => {
-    const res = await fetch(`/api/v1/runs/${id}/graph?direction=${direction}`, { credentials: "include" });
-    if (cancelled || !res.ok) return;
-    const svgText = await res.text();
-    inner.innerHTML = svgText;
+    if (cancelled) return;
+    inner.innerHTML = graphSvg;
     const svg = inner.querySelector("svg");
     if (!svg) return;
     svgRef.current = svg;
@@ -155,7 +138,7 @@ export default function RunOverview({ loaderData }: any) {
     }
     })();
     return () => { cancelled = true; };
-  }, [stages, graphSvg, direction, id]);
+  }, [stages, graphSvg, id, navigate, runStatus]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
@@ -202,7 +185,9 @@ export default function RunOverview({ loaderData }: any) {
       <StageSidebar stages={stages} runId={id!} />
 
       <div className="min-w-0 flex-1">
-        {graphSvg ? (
+        {graphSvg === undefined && graphQuery.isLoading ? (
+          <div className="py-12" />
+        ) : graphSvg ? (
           <div className="graph-svg relative rounded-md border border-line bg-panel-alt">
             <GraphToolbar
               direction={direction}

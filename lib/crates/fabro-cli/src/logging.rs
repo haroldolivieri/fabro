@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use fabro_static::EnvVars;
-use fabro_types::settings::server::LogDestination;
 use fabro_util::run_log::BufferedFileAppender;
 use tracing_appender::rolling;
 use tracing_subscriber::fmt::writer::MakeWriter;
@@ -17,15 +16,19 @@ use tracing_subscriber::{EnvFilter, fmt};
 const LOG_RETENTION_DAYS: u32 = 7;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum LogSink {
+    File(PathBuf),
+    Stdout,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum InternalLogSink {
     Cli,
-    /// `Some(path)` writes the server log to a file at `path`; `None` writes to
-    /// stdout.
     Server {
-        log_path: Option<PathBuf>,
+        log: LogSink,
     },
     Worker {
-        server_log_path:  PathBuf,
+        server_log:       LogSink,
         per_run_log_path: PathBuf,
     },
 }
@@ -62,15 +65,17 @@ pub(crate) fn init_tracing(
             init_subscriber(filter, file_appender);
         }
         InternalLogSink::Server {
-            log_path: Some(path),
+            log: LogSink::File(path),
         } => {
             init_subscriber(filter, open_buffered_appender(path)?);
         }
-        InternalLogSink::Server { log_path: None } => {
+        InternalLogSink::Server {
+            log: LogSink::Stdout,
+        } => {
             init_subscriber(filter, std::io::stdout);
         }
         InternalLogSink::Worker {
-            server_log_path,
+            server_log: LogSink::File(server_log_path),
             per_run_log_path,
         } => {
             init_worker_subscriber(
@@ -79,31 +84,19 @@ pub(crate) fn init_tracing(
                 open_buffered_appender(per_run_log_path)?,
             );
         }
+        InternalLogSink::Worker {
+            server_log: LogSink::Stdout,
+            per_run_log_path,
+        } => {
+            init_worker_subscriber(
+                filter,
+                std::io::stdout,
+                open_buffered_appender(per_run_log_path)?,
+            );
+        }
     }
 
     Ok(())
-}
-
-pub(crate) fn resolve_log_destination(
-    config_destination: LogDestination,
-) -> Result<LogDestination> {
-    let env_value = std::env::var(EnvVars::FABRO_LOG_DESTINATION).ok();
-    resolve_log_destination_with_env(config_destination, env_value.as_deref())
-}
-
-pub(crate) fn resolve_log_destination_with_env(
-    config_destination: LogDestination,
-    env_value: Option<&str>,
-) -> Result<LogDestination> {
-    match env_value {
-        Some(value) => value.parse::<LogDestination>().with_context(|| {
-            format!(
-                "invalid {} value `{value}`; expected `file` or `stdout`",
-                EnvVars::FABRO_LOG_DESTINATION
-            )
-        }),
-        None => Ok(config_destination),
-    }
 }
 
 fn cleanup_old_logs(log_dir: &Path, prefix: &str, max_age_days: u32) {

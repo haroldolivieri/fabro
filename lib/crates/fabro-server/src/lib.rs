@@ -9,6 +9,7 @@
 )]
 
 pub mod auth;
+mod canonical_host;
 mod canonical_origin;
 pub mod csp;
 #[allow(

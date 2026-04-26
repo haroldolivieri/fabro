@@ -126,7 +126,9 @@ use crate::worker_token::{
     AuthorizeRunBlob, AuthorizeRunScoped, AuthorizeStageArtifact, WorkerTokenKeys,
     issue_worker_token,
 };
-use crate::{demo, diagnostics, run_manifest, security_headers, static_files, web_auth};
+use crate::{
+    canonical_host, demo, diagnostics, run_manifest, security_headers, static_files, web_auth,
+};
 
 pub(crate) type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
@@ -974,6 +976,7 @@ pub fn build_router_with_options(
     let web_enabled = options.web_enabled;
     let webhook_ip_allowlist = options.github_webhook_ip_allowlist;
     let translation_state = Arc::clone(&state);
+    let state_for_canonical_host = Arc::clone(&state);
     let github_endpoints = options
         .github_endpoints
         .clone()
@@ -1075,6 +1078,13 @@ pub fn build_router_with_options(
     }
 
     router
+        .layer(middleware::from_fn_with_state(
+            canonical_host::Config {
+                state: state_for_canonical_host,
+                web_enabled,
+            },
+            canonical_host::redirect_middleware,
+        ))
         .layer(middleware::from_fn(security_headers::layer))
         .layer(trace_layer)
 }
@@ -8240,6 +8250,62 @@ methods = ["dev-token"]
 url = "{url}"
 "#
         ))
+    }
+
+    fn canonical_host_test_app() -> Router {
+        let state = create_app_state_with_options(
+            canonical_origin_settings("http://127.0.0.1:32276"),
+            RunLayer::default(),
+            5,
+        );
+        build_router_with_options(
+            state,
+            &AuthMode::Disabled,
+            Arc::new(IpAllowlistConfig::default()),
+            RouterOptions::default(),
+        )
+    }
+
+    #[tokio::test]
+    async fn router_redirects_web_page_requests_to_canonical_host() {
+        let app = canonical_host_test_app();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/login")
+                    .header(header::HOST, "localhost:32276")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let response = checked_response!(response, StatusCode::PERMANENT_REDIRECT).await;
+        assert_eq!(
+            response.headers().get(header::LOCATION).unwrap(),
+            "http://127.0.0.1:32276/login"
+        );
+    }
+
+    #[tokio::test]
+    async fn router_does_not_redirect_api_requests_to_canonical_host() {
+        let app = canonical_host_test_app();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api("/openapi.json"))
+                    .header(header::HOST, "localhost:32276")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_status!(response, StatusCode::OK).await;
     }
 
     #[test]

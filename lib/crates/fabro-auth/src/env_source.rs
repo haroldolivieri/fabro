@@ -38,9 +38,19 @@ impl EnvCredentialSource {
             .find_map(|var| self.lookup(var))?;
 
         let mut cred = ApiCredential::from_api_key(provider, key);
+        if let Some(pk) = self.lookup("PORTKEY_API_KEY") {
+            cred.extra_headers
+                .insert("x-portkey-api-key".to_string(), pk);
+        }
+        if let Some(slug) = self.lookup("PORTKEY_PROVIDER_SLUG") {
+            cred.extra_headers
+                .insert("x-portkey-provider".to_string(), slug);
+        }
         match provider {
             Provider::Anthropic => {
-                cred.base_url = self.lookup(EnvVars::ANTHROPIC_BASE_URL);
+                cred.base_url = self
+                    .lookup("PORTKEY_URL")
+                    .or_else(|| self.lookup(EnvVars::ANTHROPIC_BASE_URL));
             }
             Provider::OpenAi => {
                 cred.base_url = self.lookup(EnvVars::OPENAI_BASE_URL);

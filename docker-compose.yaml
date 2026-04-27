@@ -1,7 +1,6 @@
 services:
   fabro:
     image: ghcr.io/fabro-sh/fabro:nightly
-    platform: linux/amd64
     restart: unless-stopped
     ports:
       - "32276:32276"

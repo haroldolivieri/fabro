@@ -172,6 +172,7 @@ pub(crate) fn run_manifest_args(args: &RunArgs) -> Option<types::ManifestArgs> {
         sandbox:          args
             .sandbox
             .map(|provider| fabro_sandbox::SandboxProvider::from(provider).to_string()),
+        docker_image:     None,
         verbose:          args.verbose.then_some(true),
     };
     (!manifest_args_is_empty(&payload)).then_some(payload)
@@ -189,6 +190,7 @@ pub(crate) fn preflight_manifest_args(args: &PreflightArgs) -> Option<types::Man
         sandbox:          args
             .sandbox
             .map(|provider| fabro_sandbox::SandboxProvider::from(provider).to_string()),
+        docker_image:     None,
         verbose:          args.verbose.then_some(true),
     };
     (!manifest_args_is_empty(&payload)).then_some(payload)
@@ -498,13 +500,9 @@ fn build_manifest_git(repo_path: &Path) -> Option<types::ManifestGit> {
     Some(types::ManifestGit {
         branch,
         clean,
-        origin_url: sanitize_origin_url(&origin_url),
+        origin_url: fabro_github::normalize_repo_origin_url(&origin_url),
         sha,
     })
-}
-
-fn sanitize_origin_url(origin_url: &str) -> String {
-    fabro_github::normalize_repo_origin_url(origin_url)
 }
 
 fn normalize_absolute_path(base_dir: &Path, reference: &str) -> Option<PathBuf> {
@@ -582,6 +580,7 @@ fn manifest_args_is_empty(args: &types::ManifestArgs) -> bool {
         && args.preserve_sandbox.is_none()
         && args.provider.is_none()
         && args.sandbox.is_none()
+        && args.docker_image.is_none()
         && args.verbose.is_none()
 }
 

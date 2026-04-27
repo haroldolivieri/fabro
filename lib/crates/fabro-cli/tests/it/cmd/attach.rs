@@ -623,6 +623,14 @@ fn attach_json_errors_without_prompting_for_human_input() {
               "sandbox": {
                 "daytona": null,
                 "devcontainer": false,
+                "docker": {
+                  "cpu_quota": 200000,
+                  "env_vars": {},
+                  "image": "buildpack-deps:noble",
+                  "memory_limit": 4000000000,
+                  "network_mode": null,
+                  "skip_clone": false
+                },
                 "env": {},
                 "local": {
                   "worktree_mode": "clean"

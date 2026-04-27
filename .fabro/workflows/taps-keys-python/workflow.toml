@@ -1,0 +1,15 @@
+[run]
+goal = "Build taps-keys Python encoding library."
+
+[run.execution]
+retros = true
+
+[run.scm]
+owner = "Skyscanner"
+repository = "taps-keys-python"
+
+[run.sandbox]
+provider = "local"
+
+[run.sandbox.env]
+TAPS_KEYS_JAR = "tools/taps-keys-fixture-gen/build/libs/taps-keys-fixture-gen.jar"

@@ -1,0 +1,94 @@
+digraph TapsKeysPython {
+    graph [
+        goal="Build a byte-for-byte compatible Python taps-keys encoding library, validated against the Java reference.",
+        model_stylesheet="* { model: eu.anthropic.claude-sonnet-4-6; }",
+        stall_timeout="3600s"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Done"]
+
+    // ── Setup ────────────────────────────────────────────────────────────
+
+    setup [
+        label="Setup:\ninstall deps",
+        shape=parallelogram,
+        script="echo '=== Checking shadow JAR ==='\ntest -f $TAPS_KEYS_JAR || { echo 'FATAL: Shadow JAR not found at $TAPS_KEYS_JAR'; exit 1; }\necho '=== Installing upstream packages from merged PRs ==='\npip install git+ssh://git@github.com/Skyscanner/taps-keys-fixtures.git 2>&1 || { echo 'FATAL: merge taps-keys-fixtures PR first'; exit 1; }\npip install git+ssh://git@github.com/Skyscanner/taps-keys-schemas.git 2>&1 || { echo 'FATAL: merge taps-keys-schemas PR first'; exit 1; }\necho '=== Extracting golden fixtures for L5/L6 ==='\nmkdir -p /tmp/fixtures\npython3 -c '\nfrom importlib.resources import files; import pathlib\nsrc = files(\"taps_keys_fixtures.fixtures\")\ndst = pathlib.Path(\"/tmp/fixtures\")\nfor f in [\"golden_encodings.json\", \"golden_signatures.json\"]:\n    (dst / f).write_text((src / f).read_text())\nprint(\"Extracted fixtures from pip package\")\n' 2>&1\necho '=== Setup complete ==='",
+        max_retries=0
+    ]
+
+    // ── Build ────────────────────────────────────────────────────────────
+
+    build_python [
+        label="Build Python library\n(encoding + harness)",
+        prompt="@prompts/python-build.md",
+        thread_id="python", fidelity=full,
+        max_visits=6
+    ]
+
+    validate_python [
+        label="Validate Python\n(runner + pytest)",
+        shape=parallelogram,
+        script="echo '=== Running contract runner (all layers) ==='\npython3 -m taps_keys_fixtures.runner --module taps_keys 2>&1\necho '=== Running pytest ==='\npython3 -m pytest tests/ -v 2>&1\necho 'Python: ALL CHECKS PASSED'",
+        goal_gate=true,
+        retry_target="fix_python"
+    ]
+
+    fix_python [
+        label="Fix Python errors",
+        prompt="The Python validation failed. Read the output and fix the issues. If contract runner failed, fix encoding. If pytest failed, fix tests.\n\nPROHIBITED: Do not read fixture files. Do not modify scripts/validate.py to weaken checks. Fix the implementation based on error descriptions only.",
+        thread_id="python", fidelity=full,
+        max_visits=5
+    ]
+
+    // ── L5: Java/Python direct parity ────────────────────────────────────
+
+    validate_java_parity [
+        label="L5: Java binary\nvs Python direct",
+        shape=parallelogram,
+        script="echo '=== L5: Generating live Java outputs ==='\njava -cp $TAPS_KEYS_JAR net.skyscanner.tools.EncodeMain /tmp/fixtures/golden_encodings.json /tmp/java_outputs.json 2>&1 || { echo 'FATAL: Java encoder failed'; exit 1; }\necho '=== L5: Comparing Python vs Java ==='\nPYTHONPATH=src python3 - <<'EOF'\nimport json, sys\nfrom datetime import datetime\nfrom taps_keys.keys import OneWay, Return\nfrom taps_keys.schema import KeyBuilder\n\nfixtures = json.load(open('/tmp/fixtures/golden_encodings.json'))\njava_out = {(e['schema'], e['input_set']): e for e in json.load(open('/tmp/java_outputs.json'))}\n\ndef get_schema(prefix, name):\n    return getattr(OneWay if prefix == 'oneway' else Return, name)\n\npassed = failed = 0\nfor entry in fixtures:\n    schema = get_schema(entry['prefix'], entry['schema'])\n    outbound = datetime.strptime(entry['outbound_date'], '%Y-%m-%d').date()\n    inbound = datetime.strptime(entry['inbound_date'], '%Y-%m-%d').date() if entry['inbound_date'] else None\n    b = (schema.key_builder()\n        .marketing_carrier(entry['carrier'])\n        .origin_airport(entry['origin']).origin_city(entry['origin']).origin_country(entry['origin'])\n        .destination_airport(entry['destination']).destination_city(entry['destination']).destination_country(entry['destination'])\n        .outbound_departure_year_month(outbound).outbound_departure_day(outbound))\n    if inbound:\n        b = b.inbound_departure_year_month(inbound).inbound_departure_day(inbound)\n    is_d = entry['is_direct']\n    b = b.is_direct(KeyBuilder.any_direct() if is_d == 'wildcard' else is_d)\n    key = b.build()\n    jk = (entry['schema'], entry['input_set'])\n    if jk not in java_out:\n        print(f\"FAIL [{entry['schema']}/{entry['input_set']}]: missing from Java output\")\n        failed += 1\n        continue\n    jv = java_out[jk]\n    if key.encode() == jv['encoded_key'] and key.to_string() == jv['to_string'] and key.to_string('|') == jv['to_string_pipe']:\n        passed += 1\n    else:\n        print(f\"FAIL [{entry['schema']}/{entry['input_set']}]: encode={key.encode()!r} Java={jv['encoded_key']!r}\")\n        failed += 1\nprint(f'L5: {passed}/{passed+failed} Java/Python parity checks passed')\nif failed > 0:\n    sys.exit(1)\nEOF",
+        goal_gate=true,
+        retry_target="fix_python"
+    ]
+
+    // ── L6: Fuzz parity ──────────────────────────────────────────────────
+
+    validate_fuzz_parity [
+        label="L6: Fuzz\n14200 random inputs",
+        shape=parallelogram,
+        script="echo '=== L6: Generating 14200 fuzz inputs with Java (seed=42) ==='\njava -cp $TAPS_KEYS_JAR net.skyscanner.tools.FuzzEncoder --seed 42 --count 100 --output /tmp/fuzz_java_outputs.json 2>&1 || { echo 'FATAL: Fuzz encoder failed'; exit 1; }\necho '=== L6: Comparing Python vs Java on fuzz inputs ==='\nPYTHONPATH=src python3 - <<'FUZZ'\nimport json, sys\nfrom datetime import datetime\nfrom taps_keys.keys import OneWay, Return\nfrom taps_keys.schema import KeyBuilder\n\nfuzz = json.load(open('/tmp/fuzz_java_outputs.json'))\n\ndef get_schema(prefix, name):\n    return getattr(OneWay if prefix == 'oneway' else Return, name)\n\npassed = failed = 0\nfor entry in fuzz:\n    try:\n        schema = get_schema(entry['prefix'], entry['schema'])\n        outbound = datetime.strptime(entry['outbound_date'], '%Y-%m-%d').date()\n        inbound = datetime.strptime(entry['inbound_date'], '%Y-%m-%d').date() if entry['inbound_date'] else None\n        b = (schema.key_builder()\n            .marketing_carrier(entry['carrier'])\n            .origin_airport(entry['origin']).origin_city(entry['origin']).origin_country(entry['origin'])\n            .destination_airport(entry['destination']).destination_city(entry['destination']).destination_country(entry['destination'])\n            .outbound_departure_year_month(outbound).outbound_departure_day(outbound))\n        if inbound:\n            b = b.inbound_departure_year_month(inbound).inbound_departure_day(inbound)\n        b = b.is_direct(entry['is_direct'])\n        key = b.build()\n        if key.encode() == entry['encoded_key'] and key.to_string() == entry['to_string'] and key.to_string('|') == entry['to_string_pipe']:\n            passed += 1\n        else:\n            print(f'FAIL [{entry[\"schema\"]}/fuzz-{entry[\"fuzz_id\"]}]: encode={key.encode()!r} Java={entry[\"encoded_key\"]!r}')\n            failed += 1\n    except Exception as e:\n        print(f'FAIL [{entry[\"schema\"]}/fuzz-{entry[\"fuzz_id\"]}]: {type(e).__name__}: {e}')\n        failed += 1\nprint(f'L6: {passed}/{passed+failed} fuzz parity checks passed')\nif failed > 0:\n    sys.exit(1)\nFUZZ",
+        goal_gate=true,
+        retry_target="fix_python"
+    ]
+
+    // ── Publish ──────────────────────────────────────────────────────────
+
+    publish_python [
+        label="PR + e2e verify",
+        shape=parallelogram,
+        script="BRANCH=fabro/python-taps-keys-encoding-library && (git checkout -b $BRANCH 2>/dev/null || git checkout $BRANCH); rm -rf *.egg-info dist 2>/dev/null; git add . && git commit -m 'feat: Python taps-keys encoding library' --allow-empty 2>&1 && git push -u origin $BRANCH 2>&1 && (gh pr list --head $BRANCH --state open 2>&1 | grep -q . || gh pr create --title 'feat: Python taps-keys encoding library' --body 'Byte-for-byte compatible Python implementation of taps-keys encoding. Validated with L1-L3 contract tests (1562 cases), L4 Java binary validation, L5 direct Java/Python parity (1562 cases), and L6 fuzz testing (14200 random inputs).' --head $BRANCH 2>&1) && python3 -c '\nfrom taps_keys.keys import OneWay\nfrom datetime import date\nkey = (OneWay.AIRPORT_AIRPORT_DAY_OW.key_builder()\n    .origin_airport(13554).destination_airport(13555)\n    .outbound_departure_year_month(date(2018,7,8))\n    .outbound_departure_day(date(2018,7,8))\n    .is_direct(True).build().encode())\nassert key == \"0d7i0d7ji681\", f\"Got: {key}\"\nprint(\"e2e OK:\", key)\n' && echo 'PR created + e2e verified'"
+    ]
+
+    human_review [
+        label="Human review\n(merge PR)",
+        shape=box,
+        human=true,
+        prompt="PR has been created for taps-keys-python. Review the changes, request modifications if needed, and merge the PR. Resume the workflow once merged."
+    ]
+
+    // ── Edges ────────────────────────────────────────────────────────────
+
+    start -> setup -> build_python
+
+    build_python         -> validate_python
+    validate_python      -> validate_java_parity   [condition="outcome=success"]
+    validate_python      -> fix_python
+    fix_python           -> validate_python
+    validate_java_parity -> validate_fuzz_parity    [condition="outcome=success"]
+    validate_java_parity -> fix_python
+    validate_fuzz_parity -> publish_python          [condition="outcome=success"]
+    validate_fuzz_parity -> fix_python
+
+    publish_python -> human_review -> exit
+}

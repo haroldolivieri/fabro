@@ -1,0 +1,2 @@
+[run]
+goal = "Build and publish a byte-for-byte compatible Python taps-keys library, validated against a contract repo generated from the Java source of truth."

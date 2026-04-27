@@ -14,7 +14,7 @@
       "cache_input_cost_per_mtok": 0.50
     },
     "estimated_output_tps": 25,
-    "aliases": ["opus", "claude-opus"]
+    "aliases": ["opus", "claude-opus", "eu.anthropic.claude-opus-4-7"]
   },
   {
     "id": "claude-opus-4-6",
@@ -31,7 +31,7 @@
       "cache_input_cost_per_mtok": 0.50
     },
     "estimated_output_tps": 25,
-    "aliases": []
+    "aliases": ["eu.anthropic.claude-opus-4-6"]
   },
   {
     "id": "claude-sonnet-4-5",
@@ -48,7 +48,7 @@
       "cache_input_cost_per_mtok": 0.30
     },
     "estimated_output_tps": 50,
-    "aliases": []
+    "aliases": ["eu.anthropic.claude-sonnet-4-5"]
   },
   {
     "id": "claude-sonnet-4-6",
@@ -65,7 +65,7 @@
       "cache_input_cost_per_mtok": 0.30
     },
     "estimated_output_tps": 50,
-    "aliases": ["sonnet", "claude-sonnet"],
+    "aliases": ["sonnet", "claude-sonnet", "eu.anthropic.claude-sonnet-4-6"],
     "default": true
   },
   {
@@ -83,7 +83,7 @@
       "cache_input_cost_per_mtok": 0.08
     },
     "estimated_output_tps": 100,
-    "aliases": ["haiku", "claude-haiku"]
+    "aliases": ["haiku", "claude-haiku", "eu.anthropic.claude-haiku-4-5"]
   },
   {
     "id": "gpt-5.2",

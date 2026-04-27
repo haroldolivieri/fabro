@@ -675,6 +675,16 @@ where
         &server_secrets,
     )?;
     let artifact_store = fabro_store::ArtifactStore::new(artifact_object_store, artifact_prefix);
+    // Promote server.env entries into the process environment so that spawned
+    // worker subprocesses inherit them (workers don't read server.env).
+    {
+        let file_entries = fabro_config::envfile::read_env_file(&server_env_path)?;
+        for (key, value) in &file_entries {
+            if std::env::var(key).is_err() {
+                std::env::set_var(key, value);
+            }
+        }
+    }
     let env_lookup: EnvLookup = Arc::new(process_env_var);
     resolve_canonical_origin(&resolved_server_settings, &env_lookup).map_err(anyhow::Error::msg)?;
     let state = build_app_state(AppStateConfig {

@@ -233,8 +233,17 @@ impl CredentialResolver {
     }
 
     fn to_api_credential(&self, vault: &Vault, credential: &AuthCredential) -> ApiCredential {
+        let mut portkey_headers = HashMap::new();
+        if let Some(pk) = self.lookup_env_or_vault(vault, "PORTKEY_API_KEY") {
+            portkey_headers.insert("x-portkey-api-key".to_string(), pk);
+        }
+        if let Some(slug) = self.lookup_env_or_vault(vault, "PORTKEY_PROVIDER_SLUG") {
+            portkey_headers.insert("x-portkey-provider".to_string(), slug);
+        }
         let base_url = match credential.provider {
-            Provider::Anthropic => self.lookup_env_or_vault(vault, EnvVars::ANTHROPIC_BASE_URL),
+            Provider::Anthropic => self
+                .lookup_env_or_vault(vault, "PORTKEY_URL")
+                .or_else(|| self.lookup_env_or_vault(vault, EnvVars::ANTHROPIC_BASE_URL)),
             Provider::OpenAi => self.lookup_env_or_vault(vault, EnvVars::OPENAI_BASE_URL),
             Provider::Gemini => self.lookup_env_or_vault(vault, EnvVars::GEMINI_BASE_URL),
             Provider::Kimi | Provider::Zai | Provider::Minimax | Provider::Inception => None,
@@ -246,6 +255,7 @@ impl CredentialResolver {
             AuthDetails::ApiKey { key } => {
                 let mut cred = ApiCredential::from_api_key(credential.provider, key.clone());
                 cred.base_url = base_url;
+                cred.extra_headers = portkey_headers;
                 if credential.provider == Provider::OpenAi {
                     cred.org_id = self.lookup_env_or_vault(vault, EnvVars::OPENAI_ORG_ID);
                     cred.project_id = self.lookup_env_or_vault(vault, EnvVars::OPENAI_PROJECT_ID);

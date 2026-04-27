@@ -157,13 +157,21 @@ impl CommandContext {
         let source = self
             .llm_source
             .get_or_try_init(|| async move {
-                let source: Arc<dyn CredentialSource> =
-                    match Vault::load(Storage::new(&storage_dir).secrets_path()) {
-                        Ok(vault) => Arc::new(VaultCredentialSource::new(Arc::new(
-                            AsyncRwLock::new(vault),
-                        ))),
-                        Err(_) => Arc::new(EnvCredentialSource::new()),
-                    };
+                let storage = Storage::new(&storage_dir);
+                let env_path = storage.runtime_directory().env_path();
+                if let Ok(entries) = fabro_config::envfile::read_env_file(&env_path) {
+                    for (k, v) in entries {
+                        if std::env::var(&k).is_err() {
+                            std::env::set_var(&k, v);
+                        }
+                    }
+                }
+                let source: Arc<dyn CredentialSource> = match Vault::load(storage.secrets_path()) {
+                    Ok(vault) => Arc::new(VaultCredentialSource::new(Arc::new(AsyncRwLock::new(
+                        vault,
+                    )))),
+                    Err(_) => Arc::new(EnvCredentialSource::new()),
+                };
                 Ok::<Arc<dyn CredentialSource>, anyhow::Error>(source)
             })
             .await?;

@@ -191,6 +191,15 @@ mod tests {
     }
 
     #[test]
+    fn builtin_get_eu_alias() {
+        let m = Catalog::builtin()
+            .get("eu.anthropic.claude-sonnet-4-6")
+            .unwrap();
+        assert_eq!(m.id, "claude-sonnet-4-6");
+        assert!(m.costs.input_cost_per_mtok.is_some());
+    }
+
+    #[test]
     fn builtin_get_unknown() {
         assert!(Catalog::builtin().get("nonexistent").is_none());
     }
@@ -485,7 +494,9 @@ mod tests {
             estimated_output_tps: Some(
                 25.0,
             ),
-            aliases: [],
+            aliases: [
+                "eu.anthropic.claude-opus-4-6",
+            ],
             default: false,
         }
         "#);

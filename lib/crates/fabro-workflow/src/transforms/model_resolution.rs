@@ -18,13 +18,10 @@ impl Transform for ModelResolutionTransform {
                 .map(String::from);
             if let Some(model) = model {
                 if let Some(info) = fabro_model::Catalog::builtin().get(&model) {
-                    let canonical_id = info.id.clone();
                     let provider = info.provider.to_string();
-                    // Resolve alias to canonical model ID
-                    if model != canonical_id {
-                        node.attrs
-                            .insert("model".to_string(), AttrValue::String(canonical_id));
-                    }
+                    // Infer provider from catalog but preserve the original model
+                    // name as-is. Custom gateways (e.g. Portkey/Bedrock) need the
+                    // exact model string the user specified, not the canonical ID.
                     if !node.attrs.contains_key("provider") {
                         node.attrs
                             .insert("provider".to_string(), AttrValue::String(provider));
@@ -116,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn model_resolution_resolves_alias_to_canonical_id() {
+    fn model_resolution_preserves_alias_and_infers_provider() {
         let mut graph = Graph::new("test");
         let mut node = Node::new("a");
         node.attrs
@@ -125,13 +122,15 @@ mod tests {
 
         let graph = ModelResolutionTransform.apply(graph).unwrap();
 
+        // Model name preserved as-is (not normalized to canonical ID)
         assert_eq!(
             graph.nodes["a"]
                 .attrs
                 .get("model")
                 .and_then(AttrValue::as_str),
-            Some("gpt-5.4")
+            Some("gpt-54")
         );
+        // Provider still inferred from catalog
         assert_eq!(
             graph.nodes["a"]
                 .attrs

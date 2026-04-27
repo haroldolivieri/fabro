@@ -1107,7 +1107,20 @@ async fn build_api_request(
         request.tools.as_ref().map(|t| translate_tools(t))
     };
 
-    let auto_cache = is_auto_cache_enabled(request.provider_options.as_ref());
+    // Bedrock does not support Anthropic's prompt-caching beta header.
+    // Detect Bedrock routing via Portkey headers set on the adapter and
+    // disable auto-cache automatically — no per-node provider_options needed.
+    let is_bedrock_routing = adapter
+        .http
+        .default_headers
+        .get("x-portkey-provider")
+        .is_some_and(|s| s.contains("bedrock"))
+        || adapter
+            .http
+            .default_headers
+            .contains_key("x-portkey-aws-access-key-id");
+    let auto_cache =
+        is_auto_cache_enabled(request.provider_options.as_ref()) && !is_bedrock_routing;
 
     let mut system_value = system.and_then(|s| {
         if s.trim().is_empty() {
@@ -1141,7 +1154,9 @@ async fn build_api_request(
     // Older reasoning models (e.g. claude-sonnet-4-5) need `thinking` with
     // `budget_tokens` instead.
     let model_info = fabro_model::Catalog::builtin().get(&request.model);
-    let supports_effort = model_info.is_none_or(|m| m.features.effort);
+    // Bedrock does not support output_config.effort — disable it when routing
+    // through Bedrock via Portkey.
+    let supports_effort = model_info.map_or(!is_bedrock_routing, |m| m.features.effort);
 
     let mut resolved_max_tokens = request
         .max_tokens
@@ -1191,7 +1206,10 @@ async fn build_api_request(
         system: system_value,
         temperature: request.temperature,
         top_p: request.top_p,
-        stop_sequences: request.stop_sequences.clone(),
+        stop_sequences: request
+            .stop_sequences
+            .clone()
+            .or_else(|| is_bedrock_routing.then(Vec::new)),
         tools: api_tools,
         tool_choice: tool_choice_json,
         thinking,

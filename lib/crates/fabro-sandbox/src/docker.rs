@@ -183,13 +183,13 @@ impl DockerSandbox {
             .docker
             .create_exec(container_id, exec_opts)
             .await
-            .map_err(|e| crate::Error::message(format!("Failed to create exec: {e}")))?;
+            .map_err(|e| crate::Error::context("Failed to create exec", e))?;
 
         let start_result = self
             .docker
             .start_exec(&exec_instance.id, None)
             .await
-            .map_err(|e| crate::Error::message(format!("Failed to start exec: {e}")))?;
+            .map_err(|e| crate::Error::context("Failed to start exec", e))?;
 
         let mut stdout = String::new();
         let mut stderr = String::new();
@@ -205,9 +205,7 @@ impl DockerSandbox {
                     }
                     Ok(_) => {}
                     Err(e) => {
-                        return Err(crate::Error::message(format!(
-                            "Error reading exec output: {e}"
-                        )));
+                        return Err(crate::Error::context("Error reading exec output", e));
                     }
                 }
             }
@@ -217,7 +215,7 @@ impl DockerSandbox {
             .docker
             .inspect_exec(&exec_instance.id)
             .await
-            .map_err(|e| crate::Error::message(format!("Failed to inspect exec: {e}")))?;
+            .map_err(|e| crate::Error::context("Failed to inspect exec", e))?;
 
         let exit_code = inspect
             .exit_code
@@ -533,6 +531,17 @@ impl DockerSandbox {
         });
         Err(error)
     }
+
+    fn fail_init(&self, init_start: Instant, err: crate::Error) -> crate::Error {
+        let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.emit(SandboxEvent::InitializeFailed {
+            provider: "docker".into(),
+            error: err.to_string(),
+            causes: err.causes(),
+            duration_ms,
+        });
+        err
+    }
 }
 
 fn container_name(run_id: &RunId) -> String {
@@ -634,7 +643,7 @@ fn build_single_file_tar(file_name: &str, bytes: &[u8]) -> crate::Result<Vec<u8>
     let mut header = tar::Header::new_gnu();
     header
         .set_path(file_name)
-        .map_err(|e| crate::Error::message(format!("Failed to set tar path: {e}")))?;
+        .map_err(|e| crate::Error::context("Failed to set tar path", e))?;
     header.set_size(
         u64::try_from(bytes.len())
             .map_err(|_| crate::Error::message("file is too large for tar header"))?,
@@ -643,10 +652,10 @@ fn build_single_file_tar(file_name: &str, bytes: &[u8]) -> crate::Result<Vec<u8>
     header.set_cksum();
     tar_builder
         .append(&header, bytes)
-        .map_err(|e| crate::Error::message(format!("Failed to build tar archive: {e}")))?;
+        .map_err(|e| crate::Error::context("Failed to build tar archive", e))?;
     tar_builder
         .into_inner()
-        .map_err(|e| crate::Error::message(format!("Failed to finalize tar archive: {e}")))
+        .map_err(|e| crate::Error::context("Failed to finalize tar archive", e))
 }
 
 #[async_trait]
@@ -749,14 +758,7 @@ impl Sandbox for DockerSandbox {
         });
         let pull_start = Instant::now();
         if let Err(e) = self.ensure_image().await {
-            let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-            self.emit(SandboxEvent::InitializeFailed {
-                provider: "docker".into(),
-                error: e.to_string(),
-                causes: e.causes(),
-                duration_ms,
-            });
-            return Err(e);
+            return Err(self.fail_init(init_start, e));
         }
         let pull_duration = u64::try_from(pull_start.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.emit(SandboxEvent::SnapshotPulled {
@@ -764,20 +766,10 @@ impl Sandbox for DockerSandbox {
             duration_ms: pull_duration,
         });
 
-        let container_name = match self.ensure_name_available().await {
-            Ok(name) => name,
-            Err(e) => {
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: "docker".into(),
-                    error: e.to_string(),
-                    causes: e.causes(),
-                    duration_ms,
-                });
-                return Err(e);
-            }
-        };
+        let container_name = self
+            .ensure_name_available()
+            .await
+            .map_err(|e| self.fail_init(init_start, e))?;
         let create_options = container_name.map(|name| CreateContainerOptions {
             name,
             platform: None,
@@ -798,16 +790,7 @@ impl Sandbox for DockerSandbox {
                 } else {
                     "Failed to create Docker container".to_string()
                 };
-                let err = crate::Error::context(message, e);
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: "docker".into(),
-                    error: err.to_string(),
-                    causes: err.causes(),
-                    duration_ms,
-                });
-                err
+                self.fail_init(init_start, crate::Error::context(message, e))
             })?;
 
         let id = container.id.clone();
@@ -820,15 +803,7 @@ impl Sandbox for DockerSandbox {
             .await
             .map_err(|e| {
                 let err = crate::Error::context(bash_remediation(&e, &self.config.image), e);
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: "docker".into(),
-                    error: err.to_string(),
-                    causes: err.causes(),
-                    duration_ms,
-                });
-                err
+                self.fail_init(init_start, err)
             })?;
 
         let (stdout, stderr, exit_code) = self
@@ -846,14 +821,7 @@ impl Sandbox for DockerSandbox {
             let err = crate::Error::message(format!(
                 "Docker container health check failed. Docker sandboxes require /bin/bash; use an image with bash and git, such as buildpack-deps:noble. {stderr}"
             ));
-            let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-            self.emit(SandboxEvent::InitializeFailed {
-                provider: "docker".into(),
-                error: err.to_string(),
-                causes: err.causes(),
-                duration_ms,
-            });
-            return Err(err);
+            return Err(self.fail_init(init_start, err));
         }
 
         let (uname_output, _, _) = self
@@ -864,24 +832,12 @@ impl Sandbox for DockerSandbox {
             .cached_os_version
             .set(format!("linux {}", uname_output.trim()));
 
-        let clone_decision = match clone_source::decide_clone(
+        let clone_decision = clone_source::decide_clone(
             self.config.skip_clone,
             self.clone_origin_url.as_deref(),
             self.clone_branch.as_deref(),
-        ) {
-            Ok(decision) => decision,
-            Err(e) => {
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: "docker".into(),
-                    error: e.to_string(),
-                    causes: e.causes(),
-                    duration_ms,
-                });
-                return Err(e);
-            }
-        };
+        )
+        .map_err(|e| self.fail_init(init_start, e))?;
 
         match clone_decision {
             CloneDecision::EmptyWorkspace { reason } => {
@@ -893,29 +849,13 @@ impl Sandbox for DockerSandbox {
                     );
                 }
                 if let Err(e) = self.create_workspace().await {
-                    let duration_ms =
-                        u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                    self.emit(SandboxEvent::InitializeFailed {
-                        provider: "docker".into(),
-                        error: e.to_string(),
-                        causes: e.causes(),
-                        duration_ms,
-                    });
-                    return Err(e);
+                    return Err(self.fail_init(init_start, e));
                 }
                 let _ = self.repo_cloned.set(false);
             }
             CloneDecision::GitHub { origin_url, branch } => {
                 if let Err(e) = self.clone_github_repo(origin_url, branch).await {
-                    let duration_ms =
-                        u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                    self.emit(SandboxEvent::InitializeFailed {
-                        provider: "docker".into(),
-                        error: e.to_string(),
-                        causes: e.causes(),
-                        duration_ms,
-                    });
-                    return Err(e);
+                    return Err(self.fail_init(init_start, e));
                 }
             }
         }

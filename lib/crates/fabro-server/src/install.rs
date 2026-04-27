@@ -629,16 +629,6 @@ pub fn build_install_router(state: InstallAppState) -> Router {
             }
         }))
         .layer(middleware::from_fn(security_headers::layer))
-        .layer(middleware::from_fn(no_store_default))
-}
-
-async fn no_store_default(req: Request, next: middleware::Next) -> Response {
-    let mut response = next.run(req).await;
-    response
-        .headers_mut()
-        .entry(header::CACHE_CONTROL)
-        .or_insert(header::HeaderValue::from_static("no-store"));
-    response
 }
 
 struct InstallFinishGuard {

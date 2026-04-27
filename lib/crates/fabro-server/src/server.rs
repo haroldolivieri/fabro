@@ -1085,13 +1085,13 @@ pub fn build_router_with_options(
 }
 
 async fn http_log_middleware(req: axum_extract::Request, next: Next) -> Response {
+    if req.uri().path().starts_with("/assets/") {
+        return next.run(req).await;
+    }
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     let start = std::time::Instant::now();
     let response = next.run(req).await;
-    if path.starts_with("/assets/") {
-        return response;
-    }
     let status = response.status().as_u16();
     let latency_ms = start.elapsed().as_millis();
     if status >= 500 {

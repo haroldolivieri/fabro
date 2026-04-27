@@ -8,7 +8,7 @@ description: Update documentation in docs/public/ based on recent code changes. 
 Detect code changes since the last run and update affected documentation pages.
 
 - [references/mapping.md](references/mapping.md) — code-to-doc page mapping
-- Follow `docs/public/CONTRIBUTING.md` and `docs/public/AGENTS.md` for writing style
+- Follow `CONTRIBUTING.md` and `AGENTS.md` (repo root) for writing style
 
 ## Workflow
 

@@ -108,7 +108,6 @@ use tokio::time::{sleep, timeout};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{BroadcastStream, UnboundedReceiverStream};
 use tower::{ServiceExt, service_fn};
-use tower_http::trace::TraceLayer;
 use tracing::{Instrument, debug, error, info, warn};
 use ulid::Ulid;
 
@@ -1013,34 +1012,16 @@ pub fn build_router_with_options(
         let demo = demo_router.clone();
         let real = real_router.clone();
         async move {
-            if web_enabled && req.headers().get("x-fabro-demo").is_some_and(|v| v == "1") {
+            let demo_active = web_enabled
+                && req.uri().path().starts_with("/api/")
+                && req.headers().get("x-fabro-demo").is_some_and(|v| v == "1");
+            if demo_active {
                 demo.oneshot(req).await
             } else {
                 real.oneshot(req).await
             }
         }
     });
-
-    let trace_layer = TraceLayer::new_for_http()
-        .make_span_with(|req: &axum_extract::Request| {
-            let method = req.method().as_str();
-            let path = req.uri().path();
-            tracing::debug_span!("http_request", method, path)
-        })
-        .on_request(|req: &axum_extract::Request, _span: &tracing::Span| {
-            debug!(method = %req.method(), path = %req.uri().path(), "HTTP request");
-        })
-        .on_response(
-            |response: &Response, latency: std::time::Duration, _span: &tracing::Span| {
-                let status = response.status().as_u16();
-                let latency_ms = latency.as_millis();
-                if status >= 500 {
-                    error!(status, latency_ms, "HTTP response");
-                } else {
-                    info!(status, latency_ms, "HTTP response");
-                }
-            },
-        );
 
     let mut app_router = Router::new()
         .route("/health", get(health))
@@ -1099,7 +1080,25 @@ pub fn build_router_with_options(
             canonical_host::redirect_middleware,
         ))
         .layer(middleware::from_fn(security_headers::layer))
-        .layer(trace_layer)
+        .layer(middleware::from_fn(http_log_middleware))
+}
+
+async fn http_log_middleware(req: axum_extract::Request, next: axum::middleware::Next) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let start = std::time::Instant::now();
+    let response = next.run(req).await;
+    if path.starts_with("/assets/") {
+        return response;
+    }
+    let status = response.status().as_u16();
+    let latency_ms = start.elapsed().as_millis();
+    if status >= 500 {
+        error!(%method, %path, status, latency_ms, "HTTP response");
+    } else {
+        info!(%method, %path, status, latency_ms, "HTTP response");
+    }
+    response
 }
 
 fn github_webhook_routes(secret: Arc<[u8]>, ip_allowlist_config: Arc<IpAllowlistConfig>) -> Router {

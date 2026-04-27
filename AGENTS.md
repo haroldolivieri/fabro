@@ -53,9 +53,9 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
 
 ## API workflow
 
-The OpenAPI spec at `docs/api-reference/fabro-api.yaml` is the source of truth for the fabro-api HTTP interface.
+The OpenAPI spec at `docs/public/api-reference/fabro-api.yaml` is the source of truth for the fabro-api HTTP interface.
 
-1. Edit `docs/api-reference/fabro-api.yaml`
+1. Edit `docs/public/api-reference/fabro-api.yaml`
 2. `cargo build -p fabro-api` — build.rs regenerates Rust types and client via progenitor
 3. Write/update handler in `lib/crates/fabro-server/src/server.rs`, add route to `build_router()`
 4. `cargo nextest run -p fabro-server` — conformance test catches spec/router drift
@@ -106,10 +106,10 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 
 When working on Rust crates, read the relevant strategy doc **before** making changes:
 
-- **`docs-internal/logging-strategy.md`** — read when adding `tracing` calls (`info!`, `debug!`, `warn!`, `error!`), working on error handling paths, or adding new operations that should be observable
-- **`docs-internal/events-strategy.md`** — read when adding or modifying `Event` variants, touching `Emitter`/`emit()`, changing `progress.jsonl` output, or adding new workflow stage types
-- **`docs-internal/testing-strategy.md`** — read when adding or reorganizing tests, choosing between unit vs `tests/it`, deciding whether a test belongs in `cmd` vs `workflow` vs `scenario`, or deciding how to structure snapshots and fixtures
-- **`docs-internal/server-secrets-strategy.md`** — read when adding or changing server-level secrets, startup validation, install-time secret persistence, or subprocess env inheritance/scrubbing
+- **`docs/internal/logging-strategy.md`** — read when adding `tracing` calls (`info!`, `debug!`, `warn!`, `error!`), working on error handling paths, or adding new operations that should be observable
+- **`docs/internal/events-strategy.md`** — read when adding or modifying `Event` variants, touching `Emitter`/`emit()`, changing `progress.jsonl` output, or adding new workflow stage types
+- **`docs/internal/testing-strategy.md`** — read when adding or reorganizing tests, choosing between unit vs `tests/it`, deciding whether a test belongs in `cmd` vs `workflow` vs `scenario`, or deciding how to structure snapshots and fixtures
+- **`docs/internal/server-secrets-strategy.md`** — read when adding or changing server-level secrets, startup validation, install-time secret persistence, or subprocess env inheritance/scrubbing
 
 ## Shell quoting in sandbox code
 

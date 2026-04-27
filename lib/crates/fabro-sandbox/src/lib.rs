@@ -2,6 +2,9 @@ pub mod config;
 pub mod sandbox;
 pub mod sandbox_spec;
 
+#[cfg(any(feature = "docker", feature = "daytona"))]
+mod clone_source;
+
 pub mod read_guard;
 
 pub mod reconnect;
@@ -23,8 +26,6 @@ pub mod daytona;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
-#[cfg(feature = "daytona")]
-pub use daytona::detect_clone_params;
 #[cfg(feature = "docker")]
 pub use docker::{DockerSandbox, DockerSandboxOptions};
 pub use local::LocalSandbox;

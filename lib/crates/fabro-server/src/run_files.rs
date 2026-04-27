@@ -1840,7 +1840,7 @@ rename to docs/NOTES.md
     // ── fetch_blob_table two-phase error isolation ─────────────────────
 
     use async_trait::async_trait;
-    use fabro_sandbox::ExecResult;
+    use fabro_sandbox::{Error as SandboxError, ExecResult, Result as SandboxResult};
 
     /// Scripted sandbox for the two-phase tests — serves different
     /// `exec_command` responses for `cat-file --batch-check` vs
@@ -1860,15 +1860,15 @@ rename to docs/NOTES.md
             _working_dir: Option<&str>,
             _env_vars: Option<&std::collections::HashMap<String, String>>,
             _cancel_token: Option<tokio_util::sync::CancellationToken>,
-        ) -> std::result::Result<ExecResult, String> {
+        ) -> SandboxResult<ExecResult> {
             if command.contains("cat-file --batch-check") {
                 Ok(self.batch_check_result.clone())
             } else if command.contains("cat-file --batch") {
                 Ok(self.batch_result.clone())
             } else {
-                Err(format!(
+                Err(SandboxError::message(format!(
                     "unexpected command in ScriptedBlobSandbox: {command}"
-                ))
+                )))
             }
         }
 
@@ -1879,23 +1879,23 @@ rename to docs/NOTES.md
             _path: &str,
             _offset: Option<usize>,
             _limit: Option<usize>,
-        ) -> std::result::Result<String, String> {
+        ) -> SandboxResult<String> {
             unimplemented!()
         }
-        async fn write_file(&self, _: &str, _: &str) -> std::result::Result<(), String> {
+        async fn write_file(&self, _: &str, _: &str) -> SandboxResult<()> {
             unimplemented!()
         }
-        async fn delete_file(&self, _: &str) -> std::result::Result<(), String> {
+        async fn delete_file(&self, _: &str) -> SandboxResult<()> {
             unimplemented!()
         }
-        async fn file_exists(&self, _: &str) -> std::result::Result<bool, String> {
+        async fn file_exists(&self, _: &str) -> SandboxResult<bool> {
             unimplemented!()
         }
         async fn list_directory(
             &self,
             _path: &str,
             _depth: Option<usize>,
-        ) -> std::result::Result<Vec<fabro_sandbox::DirEntry>, String> {
+        ) -> SandboxResult<Vec<fabro_sandbox::DirEntry>> {
             unimplemented!()
         }
         async fn grep(
@@ -1903,34 +1903,30 @@ rename to docs/NOTES.md
             _pattern: &str,
             _path: &str,
             _options: &fabro_sandbox::GrepOptions,
-        ) -> std::result::Result<Vec<String>, String> {
+        ) -> SandboxResult<Vec<String>> {
             unimplemented!()
         }
-        async fn glob(
-            &self,
-            _pattern: &str,
-            _path: Option<&str>,
-        ) -> std::result::Result<Vec<String>, String> {
+        async fn glob(&self, _pattern: &str, _path: Option<&str>) -> SandboxResult<Vec<String>> {
             unimplemented!()
         }
         async fn download_file_to_local(
             &self,
             _remote: &str,
             _local: &std::path::Path,
-        ) -> std::result::Result<(), String> {
+        ) -> SandboxResult<()> {
             unimplemented!()
         }
         async fn upload_file_from_local(
             &self,
             _local: &std::path::Path,
             _remote: &str,
-        ) -> std::result::Result<(), String> {
+        ) -> SandboxResult<()> {
             unimplemented!()
         }
-        async fn initialize(&self) -> std::result::Result<(), String> {
+        async fn initialize(&self) -> SandboxResult<()> {
             Ok(())
         }
-        async fn cleanup(&self) -> std::result::Result<(), String> {
+        async fn cleanup(&self) -> SandboxResult<()> {
             Ok(())
         }
         fn working_directory(&self) -> &'static str {

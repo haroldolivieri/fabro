@@ -1,0 +1,70 @@
+digraph TapsKeysSchemas {
+    graph [
+        goal="Extract all 142 key schema definitions from the Java source into schemas.json with structural validation.",
+        model_stylesheet="* { model: eu.anthropic.claude-sonnet-4-6; }",
+        stall_timeout="3600s"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Done"]
+
+    // ── Setup ────────────────────────────────────────────────────────────
+
+    setup [
+        label="Setup:\ninstall fixtures",
+        shape=parallelogram,
+        script="echo '=== Installing taps-keys-fixtures from merged PR ==='\npip install git+ssh://git@github.com/Skyscanner/taps-keys-fixtures.git 2>&1 || { echo 'FATAL: taps-keys-fixtures not available. Merge the taps-keys-fixtures PR first.'; exit 1; }\necho '=== Extracting golden fixtures for cross-validation ==='\nmkdir -p /tmp/fixtures\npython3 -c '\nfrom importlib.resources import files; import pathlib\nsrc = files(\"taps_keys_fixtures.fixtures\")\ndst = pathlib.Path(\"/tmp/fixtures\")\nfor f in [\"golden_encodings.json\", \"golden_signatures.json\"]:\n    (dst / f).write_text((src / f).read_text())\nprint(\"Extracted fixtures from pip package\")\n' 2>&1\necho '=== Setup complete ==='",
+        max_retries=0
+    ]
+
+    // ── Build ────────────────────────────────────────────────────────────
+
+    build_schemas [
+        label="Build schemas repo\n(extract + validate + harness)",
+        prompt="@prompts/schemas-build.md",
+        thread_id="schemas", fidelity=full,
+        max_visits=4
+    ]
+
+    validate_schemas [
+        label="Validate schemas\n(structural + fixture xref)",
+        shape=parallelogram,
+        script="python3 scripts/validate.py --fixtures-dir /tmp/fixtures 2>&1 && python3 -m build 2>&1 && echo 'Schemas: ALL CHECKS PASSED'",
+        goal_gate=true,
+        retry_target="fix_schemas"
+    ]
+
+    fix_schemas [
+        label="Fix schemas errors",
+        prompt="The schemas validation failed. Read the error output and fix the issues. Focus on the first failing check only.\n\nPROHIBITED: Do not modify scripts/validate.py or schemas.schema.json. Fix schemas.json or the harness files.",
+        thread_id="schemas", fidelity=full,
+        max_visits=3
+    ]
+
+    // ── Publish ──────────────────────────────────────────────────────────
+
+    publish_schemas [
+        label="PR + install\ntaps-keys-schemas",
+        shape=parallelogram,
+        script="BRANCH=fabro/schema-definitions-and-validation && (git checkout -b $BRANCH 2>/dev/null || git checkout $BRANCH); rm -rf *.egg-info dist 2>/dev/null; git add . && git commit -m 'feat: schemas.json + validation + Claude Code harness' --allow-empty 2>&1 && git push -u origin $BRANCH 2>&1 && (gh pr list --head $BRANCH --state open 2>&1 | grep -q . || gh pr create --title 'feat: schema definitions, validation, and Claude Code harness' --body '142 key schema definitions extracted from Java Keys.java into language-neutral schemas.json with 13-check structural validation.' --head $BRANCH 2>&1) && echo 'PR created successfully'"
+    ]
+
+    human_review [
+        label="Human review\n(merge PR)",
+        shape=box,
+        human=true,
+        prompt="PR has been created for taps-keys-schemas. Review the changes, request modifications if needed, and merge the PR. Resume the workflow once merged."
+    ]
+
+    // ── Edges ────────────────────────────────────────────────────────────
+
+    start -> setup -> build_schemas
+
+    build_schemas     -> validate_schemas
+    validate_schemas  -> publish_schemas     [condition="outcome=success"]
+    validate_schemas  -> fix_schemas
+    fix_schemas       -> validate_schemas
+
+    publish_schemas -> human_review -> exit
+}

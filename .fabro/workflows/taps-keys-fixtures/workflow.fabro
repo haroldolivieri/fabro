@@ -1,0 +1,90 @@
+digraph TapsKeysFixtures {
+    graph [
+        goal="Build golden fixtures package and contract test runner, validated against the production Java taps-keys library.",
+        model_stylesheet="* { model: eu.anthropic.claude-sonnet-4-6; }",
+        stall_timeout="3600s"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare,  label="Done"]
+
+    // ── Setup ────────────────────────────────────────────────────────────
+
+    setup [
+        label="Setup:\ngenerate fixtures",
+        shape=parallelogram,
+        script="echo '=== Checking shadow JAR ==='\ntest -f $TAPS_KEYS_JAR || { echo 'FATAL: Shadow JAR not found at $TAPS_KEYS_JAR. Run: cd tools/taps-keys-fixture-gen && ./gradlew shadowJar'; exit 1; }\necho '=== Running fixture generator ==='\njava -cp $TAPS_KEYS_JAR net.skyscanner.tools.FixtureGenerator 2>&1 || { echo 'FATAL: fixture generator failed'; exit 1; }\nENCS=$(jq length golden_encodings.json) && SIGS=$(jq length golden_signatures.json)\necho \"fixtures: $ENCS encodings, $SIGS signatures\"\n[ \"$ENCS\" -gt 0 ] && [ \"$SIGS\" -gt 0 ] && [ \"$ENCS\" -eq $((SIGS * 11)) ] || { echo 'FATAL: fixture count mismatch'; exit 1; }\nmkdir -p /tmp/taps-keys-fixtures\ncp golden_encodings.json golden_signatures.json /tmp/taps-keys-fixtures/\nrm -f golden_*.json\necho '=== Setup complete ==='",
+        max_retries=0
+    ]
+
+    // ── Build ────────────────────────────────────────────────────────────
+
+    build_fixtures [
+        label="Build fixtures repo\n(runner + harness)",
+        prompt="@prompts/fixtures-build.md",
+        thread_id="fixtures", fidelity=full,
+        max_visits=4
+    ]
+
+    validate_fixtures [
+        label="Validate fixtures\n(self-test + build)",
+        shape=parallelogram,
+        script="python3 -m pytest tests/ -v 2>&1 && python3 -m build 2>&1 && echo 'Fixtures: ALL CHECKS PASSED'",
+        goal_gate=true,
+        retry_target="fix_fixtures"
+    ]
+
+    fix_fixtures [
+        label="Fix fixtures errors",
+        prompt="The fixtures validation failed. Read the error output and fix the issues.\n\nPROHIBITED: Do not modify the golden fixture JSON files. Fix the runner, tests, or harness.",
+        thread_id="fixtures", fidelity=full,
+        max_visits=3
+    ]
+
+    // ── L4: Java binary validation ───────────────────────────────────────
+
+    validate_fixtures_java [
+        label="L4: Java binary\nvs fixture JSON",
+        shape=parallelogram,
+        script="java -cp $TAPS_KEYS_JAR net.skyscanner.tools.ValidateFixtures /tmp/taps-keys-fixtures/golden_encodings.json 2>&1 || { echo 'FATAL: L4 fixture validation failed'; exit 1; }\necho 'L4: All fixture JSON values verified against production Java library'",
+        goal_gate=true,
+        retry_target="fix_fixture_generator"
+    ]
+
+    fix_fixture_generator [
+        label="Fix FixtureGenerator\n(L4 mismatch)",
+        prompt="The Java L4 validation found that golden_encodings.json contains incorrect expected values.\n\nThe mismatch is between what FixtureGenerator.java stored and what the production taps-keys Java library actually produces.\n\nThis is a critical issue with the fixture generator tool, not the fixtures package itself. The fixture generator needs to be fixed and re-run.\n\nRead the L4 error output carefully for the specific mismatches.",
+        thread_id="fixtures", fidelity=full,
+        max_visits=3
+    ]
+
+    // ── Publish ──────────────────────────────────────────────────────────
+
+    publish_fixtures [
+        label="PR + install\ntaps-keys-fixtures",
+        shape=parallelogram,
+        script="BRANCH=fabro/golden-fixtures-and-contract-runner && (git checkout -b $BRANCH 2>/dev/null || git checkout $BRANCH); rm -f golden_*.json java_outputs.json 2>/dev/null; rm -rf *.egg-info dist 2>/dev/null; git add . && git commit -m 'feat: golden fixtures + contract runner' --allow-empty 2>&1 && git push -u origin $BRANCH 2>&1 && (gh pr list --head $BRANCH --state open 2>&1 | grep -q . || gh pr create --title 'feat: golden fixtures and contract test runner' --body 'Golden fixture dataset (1562 encoding cases, 142 signatures) and 3-layer contract test runner for validating Python taps-keys implementations against the Java reference.' --head $BRANCH 2>&1) && echo 'PR created successfully'"
+    ]
+
+    human_review [
+        label="Human review\n(merge PR)",
+        shape=box,
+        human=true,
+        prompt="PR has been created for taps-keys-fixtures. Review the changes, request modifications if needed, and merge the PR. Resume the workflow once merged."
+    ]
+
+    // ── Edges ────────────────────────────────────────────────────────────
+
+    start -> setup -> build_fixtures
+
+    build_fixtures         -> validate_fixtures
+    validate_fixtures      -> validate_fixtures_java  [condition="outcome=success"]
+    validate_fixtures      -> fix_fixtures
+    fix_fixtures           -> validate_fixtures
+    validate_fixtures_java -> publish_fixtures         [condition="outcome=success"]
+    validate_fixtures_java -> fix_fixture_generator
+    fix_fixture_generator  -> setup
+
+    publish_fixtures -> human_review -> exit
+}

@@ -197,6 +197,17 @@ impl DaytonaSandbox {
         }
     }
 
+    fn fail_init(&self, init_start: Instant, err: crate::Error) -> crate::Error {
+        let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.emit(SandboxEvent::InitializeFailed {
+            provider: "daytona".into(),
+            error: err.to_string(),
+            causes: err.causes(),
+            duration_ms,
+        });
+        err
+    }
+
     #[allow(
         clippy::unused_self,
         reason = "Path resolution stays on the sandbox type even though it only uses constants."
@@ -465,15 +476,7 @@ impl Sandbox for DaytonaSandbox {
                     error:  e.to_string(),
                     causes: e.causes(),
                 });
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: "daytona".into(),
-                    error: e.to_string(),
-                    causes: e.causes(),
-                    duration_ms,
-                });
-                return Err(e);
+                return Err(self.fail_init(init_start, e));
             }
             let snap_duration = u64::try_from(snap_start.elapsed().as_millis()).unwrap_or(u64::MAX);
             self.emit(SandboxEvent::SnapshotReady {
@@ -498,36 +501,18 @@ impl Sandbox for DaytonaSandbox {
             .create(params, daytona_sdk::CreateSandboxOptions::default())
             .await
             .map_err(|e| {
-                let err = crate::Error::context("Failed to create Daytona sandbox", e);
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: "daytona".into(),
-                    error: err.to_string(),
-                    causes: err.causes(),
-                    duration_ms,
-                });
-                err
+                self.fail_init(
+                    init_start,
+                    crate::Error::context("Failed to create Daytona sandbox", e),
+                )
             })?;
 
-        let clone_decision = match clone_source::decide_clone(
+        let clone_decision = clone_source::decide_clone(
             self.config.skip_clone,
             self.clone_origin_url.as_deref(),
             self.clone_branch.as_deref(),
-        ) {
-            Ok(decision) => decision,
-            Err(e) => {
-                let duration_ms =
-                    u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit(SandboxEvent::InitializeFailed {
-                    provider: "daytona".into(),
-                    error: e.to_string(),
-                    causes: e.causes(),
-                    duration_ms,
-                });
-                return Err(e);
-            }
-        };
+        )
+        .map_err(|e| self.fail_init(init_start, e))?;
 
         match clone_decision {
             CloneDecision::EmptyWorkspace { reason } => {
@@ -587,43 +572,21 @@ impl Sandbox for DaytonaSandbox {
                                 error:  err.to_string(),
                                 causes: err.causes(),
                             });
-                            let duration_ms =
-                                u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                            self.emit(SandboxEvent::InitializeFailed {
-                                provider: "daytona".into(),
-                                error: err.to_string(),
-                                causes: err.causes(),
-                                duration_ms,
-                            });
-                            err
+                            self.fail_init(init_start, err)
                         })?
                     }
                     None => (None, None),
                 };
 
-                let git_svc = sandbox
-                    .git()
-                    .await
-                    .map_err(|e| crate::Error::context("Failed to get Daytona git service", e));
-                let git_svc = match git_svc {
-                    Ok(g) => g,
-                    Err(e) => {
-                        self.emit(SandboxEvent::GitCloneFailed {
-                            url:    origin_url.clone(),
-                            error:  e.to_string(),
-                            causes: e.causes(),
-                        });
-                        let duration_ms =
-                            u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                        self.emit(SandboxEvent::InitializeFailed {
-                            provider: "daytona".into(),
-                            error: e.to_string(),
-                            causes: e.causes(),
-                            duration_ms,
-                        });
-                        return Err(e);
-                    }
-                };
+                let git_svc = sandbox.git().await.map_err(|e| {
+                    let err = crate::Error::context("Failed to get Daytona git service", e);
+                    self.emit(SandboxEvent::GitCloneFailed {
+                        url:    origin_url.clone(),
+                        error:  err.to_string(),
+                        causes: err.causes(),
+                    });
+                    self.fail_init(init_start, err)
+                })?;
 
                 let clone_token = password.clone();
                 let clone_result = git_svc
@@ -695,15 +658,7 @@ impl Sandbox for DaytonaSandbox {
                             error:  err.to_string(),
                             causes: err.causes(),
                         });
-                        let duration_ms =
-                            u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                        self.emit(SandboxEvent::InitializeFailed {
-                            provider: "daytona".into(),
-                            error: err.to_string(),
-                            causes: err.causes(),
-                            duration_ms,
-                        });
-                        return Err(err);
+                        return Err(self.fail_init(init_start, err));
                     }
                     Err(e) => {
                         let err =
@@ -713,15 +668,7 @@ impl Sandbox for DaytonaSandbox {
                             error:  err.to_string(),
                             causes: err.causes(),
                         });
-                        let duration_ms =
-                            u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                        self.emit(SandboxEvent::InitializeFailed {
-                            provider: "daytona".into(),
-                            error: err.to_string(),
-                            causes: err.causes(),
-                            duration_ms,
-                        });
-                        return Err(err);
+                        return Err(self.fail_init(init_start, err));
                     }
                 }
             }

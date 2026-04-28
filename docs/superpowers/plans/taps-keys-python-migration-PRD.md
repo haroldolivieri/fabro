@@ -15,7 +15,7 @@ The workflow is a Fabro graph (`workflow.fabro`) that orchestrates three AI agen
 | L1 | Phase 1 self-test + Phase 3 | 2130 encoding test cases: byte-for-byte comparison of `encode()` and `to_string()` against golden values |
 | L2 | Phase 1 self-test + Phase 3 | `schema.signature()` and all 6 disjoint boolean properties match golden booleans |
 | L3 | Phase 1 self-test + Phase 3 | `to_string('|')`, `encoded_length`, `OpenJawFilter` derivation |
-| L4 | Phase 1 + CI | 2130 fixture JSON entries re-run through the live Java library; fat JAR committed to `taps-keys-fixtures/tools/` |
+| L4 | Phase 1 + CI | 2130 fixture JSON entries re-run through the live Java library; fat JAR committed to `tools/taps-keys-fixture-gen/` in fabro repo; fixtures CI downloads it via `curl` |
 | L5 | Phase 3 | Python and Java produce identical output on the same 2130 inputs live, bypassing fixture files entirely |
 | L6 | Phase 3 | 14,200 random inputs (seed=42, 100 schemas × 142) — Java generates, Python encodes, compared byte-for-byte |
 
@@ -159,7 +159,7 @@ The workflow is a Fabro graph (`workflow.fabro`) that orchestrates three AI agen
 - FR-10: `setup_python` clones `taps-keys-python` and installs schemas only (no fixtures installed at this stage)
 - FR-11: `build_python` agent builds the full Python encoding library from the algorithm spec
 - FR-12: `validate_python` gate installs fixtures and runs contract runner + pytest — routes to `fix_python` on failure
-- FR-13: `validate_java_parity` gate runs `EncodeMain.java` then Python L5 comparison script (710 cases) — routes to `fix_python` on failure
+- FR-13: `validate_java_parity` gate runs `EncodeMain.java` then Python L5 comparison script (2130 cases) — routes to `fix_python` on failure
 - FR-14: `validate_fuzz_parity` gate runs `FuzzEncoder.java` then Python L6 comparison script (14,200 random inputs) — routes to `fix_python` on failure
 - FR-15: `publish_python` creates branch + PR in `taps-keys-python`, runs e2e smoke test before declaring success
 
@@ -172,7 +172,7 @@ The workflow is a Fabro graph (`workflow.fabro`) that orchestrates three AI agen
 - No modification of the production `taps-keys` Java library or `Keys.java`
 - No support for partial schema sets — all 142 must pass before publishing
 - No test coverage for the Java source (the Java library is treated as a black box oracle)
-- No CI/CD pipeline configuration in the generated repos (that's a follow-up)
+- No CI/CD pipeline configuration in the generated repos ~~(that's a follow-up)~~ **— DONE: GitHub Actions CI added to all three repos**
 
 ---
 
@@ -184,17 +184,20 @@ The migration is split into 3 independent single-repo workflows to enable fabro'
 
 | Workflow | Repo | Nodes | JAR needed | Validation layers |
 |---|---|---|---|---|
-| `taps-keys-fixtures` | `Skyscanner/taps-keys-fixtures` | 11 nodes, 13 edges | Yes (FixtureGenerator, ValidateFixtures) — JAR committed to repo | L1–L3 self-test, L4 Java binary (2130 cases) |
+| `taps-keys-fixtures` | `Skyscanner/taps-keys-fixtures` | 11 nodes, 13 edges | Yes — JAR at `tools/taps-keys-fixture-gen/taps-keys-fixture-gen.jar` in fabro repo; CI downloads via curl | L1–L3 self-test, L4 Java binary (2130 cases) |
 | `taps-keys-schemas` | `Skyscanner/taps-keys-schemas` | 8 nodes, 8 edges | No | Structural checks 1–13, fixture cross-ref |
 | `taps-keys-python` | `Skyscanner/taps-keys-python` | 12 nodes, 14 edges | Yes (EncodeMain, FuzzEncoder) | L1–L3 contract runner, L5 Java parity, L6 fuzz |
 
 ### Execution order
 
 ```
-1. ./gradlew shadowJar  (pre-build Java tools — once)
-2. fabro run taps-keys-fixtures  →  review PR  →  merge
-3. fabro run taps-keys-schemas   →  review PR  →  merge
-4. fabro run taps-keys-python    →  review PR  →  merge
+# No pre-build needed — JAR committed to tools/taps-keys-fixture-gen/taps-keys-fixture-gen.jar
+# (Rebuild only when Java source changes: cd tools/taps-keys-fixture-gen && ./gradlew shadowJar)
+
+export FABRO_SERVER=http://127.0.0.1:32276
+fabro run taps-keys-fixtures  →  review PR  →  merge
+fabro run taps-keys-schemas   →  review PR  →  merge
+fabro run taps-keys-python    →  review PR  →  merge
 ```
 
 ### Cross-workflow data flow
@@ -496,3 +499,61 @@ The current workflow validates encoding correctness against 5 hardcoded input se
 | 2 | Gap 2 — Consumer integration | Low (test harness) | High — deployment context bugs |
 | 3 | Gap 5 — WebsiteIdFilterKey | Low (extend fixtures) | Medium — Spark partition mismatch |
 | 4 | Gap 4 — Real Spark test | Medium (cluster access) | Low — pickle issues are rare |
+
+---
+
+## Session Improvements Log (April 2026)
+
+All improvements made during the initial real-world workflow run session. Listed in the order they were discovered and fixed.
+
+### Portkey / Bedrock gateway integration
+- Added `eu.anthropic.*` aliases to model catalog
+- `model_resolution.rs` preserves user-specified model string (Bedrock needs the alias, not canonical ID)
+- `resolve.rs` / `env_source.rs`: inject `x-portkey-api-key` / `x-portkey-provider` headers; `PORTKEY_URL` as Anthropic base URL with `/v1` suffix
+- `serve.rs`: promote `server.env` into process env at startup for worker subprocess inheritance
+- `command_context.rs`: load `server.env` in `llm_source()` for direct code path
+- `outcome.rs`: billing alias fix — resolve `eu.anthropic.*` to canonical ID before `ModelPricing::bill()` so USD costs render
+- Worker credential isolation: credentials must be in Fabro vault (`fabro secret set`) not just `server.env`
+
+### Fixture input set expansion (5 → 11 → 14 → 15 per schema)
+- Sets F–K: boundary values, base-32 carry points, YEARMONTH overflow, leap days, carrier edge cases
+- Set L: per-component route node fields (`origin_airport` ≠ `origin_city` ≠ `origin_country`); updated to real Skyscanner node IDs from `quote-aggregator` TestData.java (LHR=13554, London=4698, UK=247, JFK=12712, NYC=5772, US=115, carrier=-12345)
+- Set M: year-end/new-year rollover (Dec 31 → Jan 1)
+- Set N: same-day trip (outbound == inbound)
+- Set Q: mixed YEARMONTH overflow — outbound ≥1024 (3-char encoding), inbound <1024 (2-char) — the only path a Python port applying overflow logic only to outbound would miss
+- `SETS_PER_SCHEMA = 15` constant in `FixtureGenerator.java` — one place to update when adding future sets
+- `ValidateFixtures.java` + `EncodeMain.java` updated to handle per-component route node fields from Set L
+
+### Java fixture-gen JAR management
+- Shadow JAR committed to `tools/taps-keys-fixture-gen/taps-keys-fixture-gen.jar` in fabro repo
+- `workflow.toml` `TAPS_KEYS_JAR` points to committed path — no `./gradlew shadowJar` needed before running workflow
+- `publish-jar.sh` deleted (obsolete)
+- Fixtures repo CI downloads JAR via `curl` from fabro repo raw URL — single source of truth, no duplicate binary
+
+### Workflow robustness fixes
+- `cd <repo> &&` prefix added to ALL script nodes operating inside target subdirs (`validate_*`, `publish_*`)
+- `PYTHONPATH=src` fixed: must be set AFTER `cd taps-keys-python`
+- `pip install -e .` added before validate scripts (taps-keys not always pre-installed)
+- `git config core.hooksPath /tmp` in setup: disables betterleaks and all local hooks for the freshly cloned repo (betterleaks flags base-32 encoded keys as false-positive secrets)
+- `git init` replaced by `git clone` in setup: clones the remote repo at the start so publish has shared history with `origin/main` — fixes "entirely different commit histories" GitHub error
+- `git checkout -B $BRANCH` (not `-b`): resets existing branch instead of failing
+- `git push --force` (not `--force-with-lease`): `--force-with-lease` fails with "stale info" after `git init` (no tracking refs)
+- Cleanup node: `rm -rf taps-keys-<repo>` (full directory delete) so next run clones fresh
+- `goal_gate=true` on publish nodes with `publish → human_review [condition="outcome=success"]` + unconditional `publish → cleanup` fallback — publish failure now terminates cleanly without running human_review
+- Human review `prompt` attribute restored with explicit `PROHIBITED: Do NOT merge` instruction — previously auto-merged
+
+### GitHub Actions CI (added to all three target repos)
+- Runner: `ubuntu-latest-xlarge` (matches Skyscanner org patterns from `quote-aggregator`)
+- `actions/checkout@v5`, `actions/setup-python@v5`, `actions/setup-java@v5`
+- `concurrency` + `permissions` blocks
+- `pytest` and `build` installed explicitly (not in pyproject.toml dev extras)
+- Cross-repo `pip install` uses plain HTTPS for public repos; comment added for private repo PAT pattern
+- L4 job downloads JAR from fabro repo via `curl` (no duplicate binary committed to fixtures repo)
+
+### Combined workflow removed
+- `taps-keys-python-migration` workflow directory deleted — replaced by three standalone per-repo workflows
+- PRD moved to `docs/superpowers/plans/taps-keys-python-migration-PRD.md`
+
+### PR and fork
+- Fork created at `github.com/haroldolivieri/fabro`, rebased onto `fabro-sh/fabro` upstream
+- PR #2 opened: portkey integration + taps-keys workflow + fixture expansion

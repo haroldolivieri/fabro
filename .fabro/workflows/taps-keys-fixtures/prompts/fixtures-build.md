@@ -348,45 +348,21 @@ Use `pytest` for all tests. No external dependencies beyond pytest.
 
 ### README.md
 
-**Always overwrite this file** — the repo may have an older version from a previous run. Write fresh content covering:
+**Always overwrite this file.** Derive the content from the actual code — do not hardcode counts or layer descriptions that may be stale. Specifically:
 
-**What this package is**: golden fixture data and contract test runner for validating any Python implementation of taps-keys encoding against the Java reference.
+1. Read `taps_keys_fixtures/runner/test_runner.py` to understand what layers exist and what each validates.
+2. Read `taps_keys_fixtures/fixtures/golden_encodings.json` to get the actual encoding count (`len(encodings)`) and input set labels.
+3. Read `taps_keys_fixtures/fixtures/golden_signatures.json` to get the signature count.
+4. Read `taps_keys_fixtures/runner/error_formatter.py` to understand the intentional output restrictions.
+5. Read `.github/workflows/ci.yml` to list which validation layers run in CI.
 
-**Installation**: `pip install -e .`
-
-**Running the contract runner**:
-```bash
-# Validate all three layers against a Python module
-python -m taps_keys_fixtures.runner --module taps_keys
-
-# Validate only L1 (encoding)
-python -m taps_keys_fixtures.runner --module taps_keys --layers L1
-```
-
-**What the layers check**:
-
-| Layer | What it verifies |
-|---|---|
-| **L1** | `encode()` byte-for-byte vs 2130 golden cases (142 schemas × 15 input sets) |
-| **L2** | `schema.signature()` and 6 disjoint component properties per schema |
-| **L3** | `to_string()`, `to_string('|')`, `encoded_length`, `OpenJawFilter` |
-| **L4** | Every fixture entry re-run through the **live Java library** — verifies the fixture JSON itself is correct, not just that a Python implementation matches it. Runs in CI via the committed JAR. |
-
-**golden_encodings.json**: 2130 test cases generated from the Java library. Each entry stores the expected encoded key, toString, pipe-delimited toString, schema toString, encoded length, and open-jaw filter result. Set L entries additionally include per-component route node fields (`origin_airport`, `origin_city`, `origin_country`, etc.) to test independent encoding of each node type.
-
-**golden_signatures.json**: 142 entries (one per schema). Records whether each of 6 component types is present in each schema. Used by L2 to verify `schema.signature()` returns the correct component set. Example:
-```json
-{
-  "schema": "AIRPORT_AIRPORT_DAY_OW",
-  "origin_airport_disjoint": false,
-  "inbound_year_month_disjoint": true
-}
-```
-`true` = the schema does NOT contain this component. Catches bugs like accidentally including inbound components in oneway schemas.
-
-**Why error messages are intentionally vague**: The runner never reveals full expected values — at most 4 characters of any expected value appear. This prevents a lookup-table implementation from passing validation by harvesting golden values from error output.
-
-**Note**: Fixture JSON files are generated from the Java library and must not be modified manually.
+The README must accurately reflect the code. It should cover:
+- What this package is (golden fixture data + contract test runner)
+- Installation and usage commands derived from the actual CLI interface in `test_runner.py`
+- A layers table derived from the actual layer implementations — include L4 if CI runs it
+- What `golden_encodings.json` and `golden_signatures.json` contain, with counts from the actual files
+- Why error messages are intentionally vague (derived from `error_formatter.py`)
+- That fixture JSON files are generated from the Java library and must not be modified
 
 ### CLAUDE.md
 

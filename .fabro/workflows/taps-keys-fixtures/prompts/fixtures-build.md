@@ -348,12 +348,44 @@ Use `pytest` for all tests. No external dependencies beyond pytest.
 
 ### README.md
 
-Write a brief README covering:
-- What this package is (golden fixtures + contract test runner for TAPS keys)
-- How to install: `pip install -e .`
-- How to run: `python -m taps_keys_fixtures.runner.test_runner --module <your_module>`
-- Layer descriptions (one sentence each for L1, L2, L3)
-- Note that fixture files are generated from Java and must not be modified
+Write a README covering:
+
+**What this package is**: golden fixture data and contract test runner for validating any Python implementation of taps-keys encoding against the Java reference.
+
+**Installation**: `pip install -e .`
+
+**Running the contract runner**:
+```bash
+# Validate all three layers against a Python module
+python -m taps_keys_fixtures.runner --module taps_keys
+
+# Validate only L1 (encoding)
+python -m taps_keys_fixtures.runner --module taps_keys --layers L1
+```
+
+**What the layers check**:
+
+| Layer | What it verifies |
+|---|---|
+| **L1** | `encode()` byte-for-byte vs 2130 golden cases (142 schemas × 15 input sets) |
+| **L2** | `schema.signature()` and 6 disjoint component properties per schema |
+| **L3** | `to_string()`, `to_string('|')`, `encoded_length`, `OpenJawFilter` |
+
+**golden_encodings.json**: 2130 test cases generated from the Java library. Each entry stores the expected encoded key, toString, pipe-delimited toString, schema toString, encoded length, and open-jaw filter result. Set L entries additionally include per-component route node fields (`origin_airport`, `origin_city`, `origin_country`, etc.) to test independent encoding of each node type.
+
+**golden_signatures.json**: 142 entries (one per schema). Records whether each of 6 component types is present in each schema. Used by L2 to verify `schema.signature()` returns the correct component set. Example:
+```json
+{
+  "schema": "AIRPORT_AIRPORT_DAY_OW",
+  "origin_airport_disjoint": false,
+  "inbound_year_month_disjoint": true
+}
+```
+`true` = the schema does NOT contain this component. Catches bugs like accidentally including inbound components in oneway schemas.
+
+**Why error messages are intentionally vague**: The runner never reveals full expected values — at most 4 characters of any expected value appear. This prevents a lookup-table implementation from passing validation by harvesting golden values from error output.
+
+**Note**: Fixture JSON files are generated from the Java library and must not be modified manually.
 
 ### CLAUDE.md
 

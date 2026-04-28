@@ -69,10 +69,16 @@ An array of objects. Each entry has:
 |---|---|---|
 | `schema` | string | Schema name (e.g. `"OneWay"`, `"Return"`) |
 | `prefix` | string | Schema prefix byte(s) |
-| `input_set` | string | One of `"A"`, `"B"`, `"C"`, `"D"`, `"E"` |
-| `origin` | string | Origin airport code |
-| `destination` | string | Destination airport code |
-| `carrier` | string | Marketing carrier code |
+| `input_set` | string | One of `"A"`–`"N"`, `"Q"` (15 input sets) |
+| `origin` | integer | Origin route node ID (used when per-component fields are absent) |
+| `destination` | integer | Destination route node ID (used when per-component fields are absent) |
+| `origin_airport` | integer (optional) | Origin airport node ID — only present in Set L |
+| `origin_city` | integer (optional) | Origin city node ID — only present in Set L |
+| `origin_country` | integer (optional) | Origin country node ID — only present in Set L |
+| `destination_airport` | integer (optional) | Destination airport node ID — only present in Set L |
+| `destination_city` | integer (optional) | Destination city node ID — only present in Set L |
+| `destination_country` | integer (optional) | Destination country node ID — only present in Set L |
+| `carrier` | integer | Marketing carrier node ID |
 | `outbound_date` | string | Outbound date (ISO format or components) |
 | `inbound_date` | string or null | Inbound date (null for OneWay) |
 | `is_direct` | boolean or string | `true`, `false`, or `"*"` for wildcard (Set E) |
@@ -342,29 +348,111 @@ Use `pytest` for all tests. No external dependencies beyond pytest.
 
 ### README.md
 
-Write a brief README covering:
-- What this package is (golden fixtures + contract test runner for TAPS keys)
-- How to install: `pip install -e .`
-- How to run: `python -m taps_keys_fixtures.runner.test_runner --module <your_module>`
-- Layer descriptions (one sentence each for L1, L2, L3)
-- Note that fixture files are generated from Java and must not be modified
+Write a README covering:
+
+**What this package is**: golden fixture data and contract test runner for validating any Python implementation of taps-keys encoding against the Java reference.
+
+**Installation**: `pip install -e .`
+
+**Running the contract runner**:
+```bash
+# Validate all three layers against a Python module
+python -m taps_keys_fixtures.runner --module taps_keys
+
+# Validate only L1 (encoding)
+python -m taps_keys_fixtures.runner --module taps_keys --layers L1
+```
+
+**What the layers check**:
+
+| Layer | What it verifies |
+|---|---|
+| **L1** | `encode()` byte-for-byte vs 2130 golden cases (142 schemas × 15 input sets) |
+| **L2** | `schema.signature()` and 6 disjoint component properties per schema |
+| **L3** | `to_string()`, `to_string('|')`, `encoded_length`, `OpenJawFilter` |
+
+**golden_encodings.json**: 2130 test cases generated from the Java library. Each entry stores the expected encoded key, toString, pipe-delimited toString, schema toString, encoded length, and open-jaw filter result. Set L entries additionally include per-component route node fields (`origin_airport`, `origin_city`, `origin_country`, etc.) to test independent encoding of each node type.
+
+**golden_signatures.json**: 142 entries (one per schema). Records whether each of 6 component types is present in each schema. Used by L2 to verify `schema.signature()` returns the correct component set. Example:
+```json
+{
+  "schema": "AIRPORT_AIRPORT_DAY_OW",
+  "origin_airport_disjoint": false,
+  "inbound_year_month_disjoint": true
+}
+```
+`true` = the schema does NOT contain this component. Catches bugs like accidentally including inbound components in oneway schemas.
+
+**Why error messages are intentionally vague**: The runner never reveals full expected values — at most 4 characters of any expected value appear. This prevents a lookup-table implementation from passing validation by harvesting golden values from error output.
+
+**Note**: Fixture JSON files are generated from the Java library and must not be modified manually.
 
 ### CLAUDE.md
 
 ```markdown
-# CLAUDE.md
+# CLAUDE.md — taps-keys-fixtures
+
+## What this repo is
+
+`taps-keys-fixtures` provides two things:
+
+1. **Golden fixture data** — 2130 encoding test cases (142 schemas × 15 input sets) and 142 schema signature entries, all generated from the Java reference implementation. These are ground truth for any Python port.
+
+2. **Contract test runner** — a three-layer validation harness that any Python implementation of taps-keys encoding can be validated against without ever seeing the raw fixture values.
+
+## golden_encodings.json
+
+An array of 2130 objects. Each entry represents one schema + input combination and stores the expected output of the Java library: `encoded_key`, `to_string`, `to_string_pipe`, `schema_to_string`, `encoded_length`, `open_jaw_filter`. The contract runner uses these to validate a Python implementation layer by layer.
+
+Set L entries also include per-component route node fields (`origin_airport`, `origin_city`, `origin_country`, `destination_airport`, `destination_city`, `destination_country`) to test that each node type is encoded from its own value, not aliased.
+
+## golden_signatures.json
+
+An array of 142 objects — one per schema. Each entry records 6 boolean flags answering: "does this schema contain this component type?"
+
+```json
+{
+  "schema": "AIRPORT_AIRPORT_DAY_OW",
+  "origin_airport_disjoint": false,      // HAS origin airport
+  "destination_airport_disjoint": false,  // HAS destination airport
+  "inbound_year_month_disjoint": true,    // NO inbound yearmonth (oneway)
+  "inbound_day_disjoint": true            // NO inbound day (oneway)
+}
+```
+
+`true` = the schema does NOT contain this component (the schema's component list and the probe are disjoint). Used by **L2** to verify `schema.signature()` returns the right components. Catches bugs like a Python port that accidentally includes inbound components in oneway schemas.
+
+## error_formatter.py — why errors are intentionally vague
+
+The runner must never reveal full expected values in failure output. A Python implementation that passes L1 by building a lookup table (reading error output to harvest golden values) would be worthless for production use.
+
+The rule: at most 4 characters of any expected value may appear. The formatter shows the nature of the mismatch (length difference, first differing position, boolean flip) without giving the answer.
+
+Do not "improve" this. The restriction is a correctness guarantee, not a readability problem.
+
+## Validation layers
+
+| Layer | What | How to run |
+|---|---|---|
+| **L1** | `encode()` byte-for-byte vs golden | `runner --module taps_keys` |
+| **L2** | `schema.signature()` and 6 disjoint booleans | `runner --module taps_keys` |
+| **L3** | `to_string()`, `encoded_length`, `OpenJawFilter` | `runner --module taps_keys` |
+| **L4** | Every fixture re-run through live Java binary | CI / Fabro workflow |
+
+L4 runs separately (requires the Java JAR) and validates that the fixture JSON itself is correct — not just that a Python implementation matches it.
 
 ## Critical rules
 
-- **Fixture JSON files are immutable.** The files in `taps_keys_fixtures/fixtures/` are generated from the Java reference implementation. Never modify them.
-- **Runner error format is intentional.** The error formatter deliberately never reveals full expected values. At most the first 4 characters of an expected value may appear. Do not "improve" error messages by showing full expected output.
+- **Fixture JSON files are immutable.** Never modify `taps_keys_fixtures/fixtures/*.json`.
+- **Error formatter restriction is intentional.** At most 4 chars of expected value. Do not relax this.
+- **15 input sets per schema.** A–N, Q. Set E is the wildcard set. Set L uses per-component route node fields.
 
 ## Commands
 
-- `pip install -e .` -- install in editable mode
-- `python -m pytest tests/ -v` -- run self-tests
-- `python -m taps_keys_fixtures.runner.test_runner --module <name>` -- run contract tests against a module
-- `python -m taps_keys_fixtures.runner.test_runner --module <name> --layers L1` -- run only L1
+- `pip install -e .` — install in editable mode
+- `python -m pytest tests/ -v` — run self-tests
+- `python -m taps_keys_fixtures.runner --module taps_keys` — run contract tests
+- `python -m taps_keys_fixtures.runner --module taps_keys --layers L1` — run only L1
 ```
 
 ## Completion Criteria
@@ -376,7 +464,10 @@ When you are done, the following must hold:
 3. `pip install -e .` succeeds with no errors.
 4. `python -m pytest tests/ -v` passes (the self-tests).
 5. `python -m taps_keys_fixtures.runner.test_runner --module nonexistent_module` exits with a clear error (not a traceback).
-6. The runner code handles all input sets A through E, including wildcard handling for Set E.
+6. The runner handles all 15 input sets (A–N, Q), including:
+   - Set E wildcard (`is_direct == "wildcard"`)
+   - Set L per-component route node fields (`origin_airport`, `origin_city`, `origin_country`, `destination_airport`, `destination_city`, `destination_country`) — when these are present, use them instead of the single `origin`/`destination` value
 7. No fixture data (encoded keys, expected strings, golden bytes) appears in error output beyond the 4-character prefix limit.
+8. The package will be validated by the Java L4 binary (`ValidateFixtures.java`) after pytest — the runner must produce fixture JSON that the Java library can independently verify. This means the contract runner must read and expose the same fields that `ValidateFixtures` uses.
 
 Run all verification steps before declaring the task complete.

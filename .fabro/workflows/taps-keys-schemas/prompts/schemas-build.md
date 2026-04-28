@@ -450,15 +450,18 @@ missing_from_fixtures = all_schema_names - fixture_schema_names
 assert not missing_from_fixtures, f"Schemas missing from fixtures: {missing_from_fixtures}"
 ```
 
-### Check 10: Cross-ref -- golden_encodings.json has 5 entries per schema (sets A-E)
+### Check 10: Cross-ref -- golden_encodings.json has 15 entries per schema (sets A–N, Q)
 
 ```python
 from collections import Counter
 
+SETS_PER_SCHEMA = 15
+TOTAL_SCHEMAS = 142
 schema_counts = Counter(entry["schema"] for entry in encodings)
 for schema_name, count in schema_counts.items():
-    assert count == 5, f"Schema {schema_name} has {count} encoding entries, expected 5"
-assert len(encodings) == 710, f"Expected 710 encoding entries (142 x 5), got {len(encodings)}"
+    assert count == SETS_PER_SCHEMA, f"Schema {schema_name} has {count} encoding entries, expected {SETS_PER_SCHEMA}"
+expected_total = TOTAL_SCHEMAS * SETS_PER_SCHEMA
+assert len(encodings) == expected_total, f"Expected {expected_total} encoding entries ({TOTAL_SCHEMAS} x {SETS_PER_SCHEMA}), got {len(encodings)}"
 ```
 
 ### Check 11: Cross-ref -- toString values from fixtures match schemas.json to_string field

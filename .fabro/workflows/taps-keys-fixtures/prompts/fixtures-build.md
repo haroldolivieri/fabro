@@ -370,6 +370,7 @@ python -m taps_keys_fixtures.runner --module taps_keys --layers L1
 | **L1** | `encode()` byte-for-byte vs 2130 golden cases (142 schemas × 15 input sets) |
 | **L2** | `schema.signature()` and 6 disjoint component properties per schema |
 | **L3** | `to_string()`, `to_string('|')`, `encoded_length`, `OpenJawFilter` |
+| **L4** | Every fixture entry re-run through the **live Java library** — verifies the fixture JSON itself is correct, not just that a Python implementation matches it. Runs in CI via the committed JAR. |
 
 **golden_encodings.json**: 2130 test cases generated from the Java library. Each entry stores the expected encoded key, toString, pipe-delimited toString, schema toString, encoded length, and open-jaw filter result. Set L entries additionally include per-component route node fields (`origin_airport`, `origin_city`, `origin_country`, etc.) to test independent encoding of each node type.
 

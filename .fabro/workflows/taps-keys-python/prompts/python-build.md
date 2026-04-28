@@ -309,6 +309,25 @@ Constitution for AI agents working in this repo:
 - KeySchema must remain picklable — required for PySpark UDF serialisation
 - Always run `make validate` before committing
 
+## Validation layers
+
+The encoding is validated across six independent layers. Understanding what each catches helps diagnose failures correctly:
+
+| Layer | What | Where |
+|---|---|---|
+| **L1** | `encode()` byte-for-byte vs 2130 golden cases | contract runner |
+| **L2** | `schema.signature()` and 6 disjoint booleans per schema | contract runner |
+| **L3** | `to_string()`, `to_string('|')`, `encoded_length`, `OpenJawFilter` | contract runner |
+| **Unit tests** | Base-32 boundaries, YEARMONTH overflow, builder edge cases, picklability | pytest |
+| **L5** | Python vs Java on same 2130 inputs **live** — no fixture files in chain | Fabro workflow + CI |
+| **L6** | 14,200 random fuzz inputs (Java generates, Python encodes) | Fabro workflow + CI |
+
+**L5 and L6 are the strongest guarantees.** A port that passes L1–L3 via a lookup table will fail L5 on the first out-of-fixture input.
+
+**If L1–L3 pass but L5 fails**: the encoding is algorithmically wrong for inputs outside the 15 fixed sets. Fix the formula.
+
+**If L5 passes but L6 fails**: there is an edge case in random combinations (unusual date/carrier boundary). The fuzz output identifies the exact failing input.
+
 ### 5.6 — scripts/validate.py
 
 ```python

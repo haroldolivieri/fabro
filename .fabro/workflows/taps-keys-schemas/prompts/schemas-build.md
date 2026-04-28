@@ -675,7 +675,7 @@ taps_keys_schemas = ["schemas.json", "schemas.schema.json"]
 
 ### README.md
 
-Create `taps-keys-schemas/README.md` covering:
+**Always overwrite this file** — the repo may have an older version from a previous run. Create `taps-keys-schemas/README.md` covering:
 
 - What this package is (canonical schema definitions for taps-keys)
 - Who consumes it (Java taps-keys library, Python taps-keys port)

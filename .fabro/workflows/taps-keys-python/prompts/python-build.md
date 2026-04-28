@@ -274,6 +274,8 @@ lint:
 
 ### 5.3 — README.md
 
+**Always overwrite this file** — the repo may have an older version from a previous run.
+
 What this library is, installation (`pip install taps-keys`), usage example:
 
 ```python

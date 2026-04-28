@@ -348,7 +348,7 @@ Use `pytest` for all tests. No external dependencies beyond pytest.
 
 ### README.md
 
-Write a README covering:
+**Always overwrite this file** — the repo may have an older version from a previous run. Write fresh content covering:
 
 **What this package is**: golden fixture data and contract test runner for validating any Python implementation of taps-keys encoding against the Java reference.
 
@@ -388,6 +388,8 @@ python -m taps_keys_fixtures.runner --module taps_keys --layers L1
 **Note**: Fixture JSON files are generated from the Java library and must not be modified manually.
 
 ### CLAUDE.md
+
+**Always overwrite this file.**
 
 ```markdown
 # CLAUDE.md — taps-keys-fixtures

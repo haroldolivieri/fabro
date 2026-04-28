@@ -12,4 +12,4 @@ repository = "taps-keys-python"
 provider = "local"
 
 [run.sandbox.env]
-TAPS_KEYS_JAR = "tools/taps-keys-fixture-gen/build/libs/taps-keys-fixture-gen.jar"
+TAPS_KEYS_JAR = "tools/taps-keys-fixture-gen/taps-keys-fixture-gen.jar"

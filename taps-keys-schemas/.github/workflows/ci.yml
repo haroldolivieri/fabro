@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate schemas package
+    runs-on: ubuntu-latest-xlarge
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Install taps-keys-schemas
+        run: pip install -e .
+
+      - name: Install taps-keys-fixtures
+        # Uses HTTPS — works for public repos. For private repos, replace with:
+        # pip install "git+https://x-access-token:${{ secrets.GH_PAT }}@github.com/Skyscanner/taps-keys-fixtures.git"
+        run: pip install "git+https://github.com/Skyscanner/taps-keys-fixtures.git"
+
+      - name: Extract golden fixtures
+        run: |
+          mkdir -p /tmp/fixtures
+          python3 -c "
+          from importlib.resources import files; import pathlib
+          src = files('taps_keys_fixtures.fixtures')
+          dst = pathlib.Path('/tmp/fixtures')
+          for f in ['golden_encodings.json', 'golden_signatures.json']:
+              (dst / f).write_text((src / f).read_text())
+          print('Extracted fixtures')
+          "
+
+      - name: Structural + fixture cross-ref validation (13 checks)
+        run: python3 scripts/validate.py --fixtures-dir /tmp/fixtures
+
+      - name: Build check
+        run: python3 -m build

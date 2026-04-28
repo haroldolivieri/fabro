@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Taps-keys migration workflows — scope rule
+
+**Never directly edit files in `taps-keys-fixtures/`, `taps-keys-schemas/`, or `taps-keys-python/`.** These directories are output repos — their content is generated and managed by the Fabro workflows in `.fabro/workflows/taps-keys-*/`. Editing them directly bypasses the workflow validation layers and creates drift between what the workflow produces and what is committed.
+
+When improving the migration:
+- **Workflow logic** (validation gates, publish steps, CI configuration): edit `.fabro/workflows/taps-keys-*/workflow.fabro`
+- **Agent instructions** (what the agent builds, how it structures the repos): edit `.fabro/workflows/taps-keys-*/prompts/*.md`
+- **Fixture generator / validator / Java tools**: edit `tools/taps-keys-fixture-gen/src/` — these are Fabro-owned tools
+- **Fabro core fixes** (billing, model resolution, credential routing): edit the relevant `lib/crates/` Rust source — only when explicitly asked
+
+---
+
 ## Build and test commands
 
 ### Rust

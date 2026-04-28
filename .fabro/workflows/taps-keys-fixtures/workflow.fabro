@@ -14,7 +14,7 @@ digraph TapsKeysFixtures {
     setup [
         label="Setup:\ngenerate fixtures",
         shape=parallelogram,
-        script="echo '=== Checking shadow JAR ==='\ntest -f $TAPS_KEYS_JAR || { echo 'FATAL: Shadow JAR not found at $TAPS_KEYS_JAR. Run: cd tools/taps-keys-fixture-gen && ./gradlew shadowJar'; exit 1; }\necho '=== Running fixture generator ==='\njava -cp $TAPS_KEYS_JAR net.skyscanner.tools.FixtureGenerator 2>&1 || { echo 'FATAL: fixture generator failed'; exit 1; }\nENCS=$(jq length golden_encodings.json) && SIGS=$(jq length golden_signatures.json)\necho \"fixtures: $ENCS encodings, $SIGS signatures\"\n[ \"$ENCS\" -gt 0 ] && [ \"$SIGS\" -gt 0 ] && [ \"$ENCS\" -eq $((SIGS * 11)) ] || { echo 'FATAL: fixture count mismatch'; exit 1; }\nmkdir -p /tmp/taps-keys-fixtures\ncp golden_encodings.json golden_signatures.json /tmp/taps-keys-fixtures/\nrm -f golden_*.json\necho '=== Setup complete ==='",
+        script="echo '=== Checking shadow JAR ==='\ntest -f $TAPS_KEYS_JAR || { echo 'FATAL: Shadow JAR not found at $TAPS_KEYS_JAR. Run: cd tools/taps-keys-fixture-gen && ./gradlew shadowJar'; exit 1; }\necho '=== Setting up taps-keys-fixtures repo ==='\n[ -d taps-keys-fixtures ] && [ ! -d taps-keys-fixtures/.git ] && rm -rf taps-keys-fixtures\nif [ ! -d taps-keys-fixtures/.git ]; then git clone --depth=1 git@github.com:Skyscanner/taps-keys-fixtures.git taps-keys-fixtures 2>&1 || { echo 'FATAL: clone failed'; exit 1; }; fi\ngit -C taps-keys-fixtures config core.hooksPath /tmp\necho '=== Running fixture generator ==='\njava -cp $TAPS_KEYS_JAR net.skyscanner.tools.FixtureGenerator 2>&1 || { echo 'FATAL: fixture generator failed'; exit 1; }\nENCS=$(jq length golden_encodings.json) && SIGS=$(jq length golden_signatures.json)\necho \"fixtures: $ENCS encodings, $SIGS signatures\"\n[ \"$ENCS\" -gt 0 ] && [ \"$SIGS\" -gt 0 ] && [ \"$ENCS\" -eq $((SIGS * 15)) ] || { echo 'FATAL: fixture count mismatch'; exit 1; }\nmkdir -p /tmp/taps-keys-fixtures\ncp golden_encodings.json golden_signatures.json /tmp/taps-keys-fixtures/\nrm -f golden_*.json\necho '=== Setup complete ==='",
         max_retries=0
     ]
 
@@ -30,7 +30,7 @@ digraph TapsKeysFixtures {
     validate_fixtures [
         label="Validate fixtures\n(self-test + build)",
         shape=parallelogram,
-        script="python3 -m pytest tests/ -v 2>&1 && python3 -m build 2>&1 && echo 'Fixtures: ALL CHECKS PASSED'",
+        script="cd taps-keys-fixtures && python3 -m pytest tests/ -v 2>&1 && python3 -m build 2>&1 && echo 'Fixtures: ALL CHECKS PASSED'",
         goal_gate=true,
         retry_target="fix_fixtures"
     ]
@@ -47,7 +47,7 @@ digraph TapsKeysFixtures {
     validate_fixtures_java [
         label="L4: Java binary\nvs fixture JSON",
         shape=parallelogram,
-        script="java -cp $TAPS_KEYS_JAR net.skyscanner.tools.ValidateFixtures /tmp/taps-keys-fixtures/golden_encodings.json 2>&1 || { echo 'FATAL: L4 fixture validation failed'; exit 1; }\necho 'L4: All fixture JSON values verified against production Java library'",
+        script="OUTPUT=$(java -cp $TAPS_KEYS_JAR net.skyscanner.tools.ValidateFixtures /tmp/taps-keys-fixtures/golden_encodings.json 2>&1); RC=$?; echo \"$OUTPUT\"; [ $RC -eq 0 ] || { echo 'FATAL: L4 fixture validation failed'; exit 1; }; echo \"$OUTPUT\" | grep -qE 'L4: [0-9]+/[0-9]+ passed' || { echo 'FATAL: L4 summary line missing — ValidateFixtures may have processed 0 entries'; exit 1; }; echo 'L4: All fixture JSON values verified against production Java library'",
         goal_gate=true,
         retry_target="fix_fixture_generator"
     ]
@@ -64,14 +64,21 @@ digraph TapsKeysFixtures {
     publish_fixtures [
         label="PR + install\ntaps-keys-fixtures",
         shape=parallelogram,
-        script="BRANCH=fabro/golden-fixtures-and-contract-runner && (git checkout -b $BRANCH 2>/dev/null || git checkout $BRANCH); rm -f golden_*.json java_outputs.json 2>/dev/null; rm -rf *.egg-info dist 2>/dev/null; git add . && git commit -m 'feat: golden fixtures + contract runner' --allow-empty 2>&1 && git push -u origin $BRANCH 2>&1 && (gh pr list --head $BRANCH --state open 2>&1 | grep -q . || gh pr create --title 'feat: golden fixtures and contract test runner' --body 'Golden fixture dataset (1562 encoding cases, 142 signatures) and 3-layer contract test runner for validating Python taps-keys implementations against the Java reference.' --head $BRANCH 2>&1) && echo 'PR created successfully'"
+        goal_gate=true,
+        script="ABS_JAR=$(realpath $TAPS_KEYS_JAR); cd taps-keys-fixtures && BRANCH=fabro/golden-fixtures-and-contract-runner && git checkout -B $BRANCH; rm -f golden_*.json java_outputs.json 2>/dev/null; rm -rf *.egg-info dist 2>/dev/null; mkdir -p tools && cp $ABS_JAR tools/taps-keys-fixture-gen.jar; mkdir -p .github/workflows && cat > .github/workflows/ci.yml << 'CIEOF'\nname: CI\non:\n  push:\n  pull_request:\njobs:\n  validate:\n    runs-on: ubuntu-latest-xlarge\n    steps:\n      - uses: actions/checkout@v5\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.11\"\n      - name: Install\n        run: pip install -e . pytest build\n      - name: Self-tests (L1-L3 runner infrastructure)\n        run: python3 -m pytest tests/ -v\n      - name: Build check\n        run: python3 -m build\n  validate-l4:\n    name: L4 Java binary validation\n    runs-on: ubuntu-latest-xlarge\n    steps:\n      - uses: actions/checkout@v5\n      - uses: actions/setup-java@v5\n        with:\n          distribution: adopt\n          java-version: \"11\"\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.11\"\n      - name: Extract golden fixtures\n        run: |\n          pip install -e .\n          mkdir -p /tmp/fixtures\n          python3 -c \"\nfrom importlib.resources import files; import pathlib\nsrc = files('taps_keys_fixtures.fixtures')\ndst = pathlib.Path('/tmp/fixtures')\nfor f in ['golden_encodings.json', 'golden_signatures.json']:\n    (dst / f).write_text((src / f).read_text())\nprint('Extracted fixtures')\n          \"\n      - name: L4 - validate fixtures against live Java library\n        run: |\n          OUTPUT=\\$(java -cp tools/taps-keys-fixture-gen.jar net.skyscanner.tools.ValidateFixtures /tmp/fixtures/golden_encodings.json 2>&1)\n          RC=\\$?\n          echo \"\\$OUTPUT\"\n          [ \\$RC -eq 0 ] || { echo 'FATAL: L4 validation failed'; exit 1; }\n          echo \"\\$OUTPUT\" | grep -qE 'L4: [0-9]+/[0-9]+ passed' || { echo 'FATAL: L4 summary missing'; exit 1; }\nCIEOF\ngit add . && git commit -m 'feat: golden fixtures + contract runner' --allow-empty 2>&1 && git push --force -u origin $BRANCH 2>&1 && (gh pr list --head $BRANCH --state open 2>&1 | grep -q . || gh pr create --title 'feat: golden fixtures and contract test runner' --body 'Golden fixture dataset (1988 encoding cases, 142 signatures) and 3-layer contract test runner for validating Python taps-keys implementations against the Java reference.' --head $BRANCH 2>&1) && echo 'PR created successfully'"
     ]
 
     human_review [
         label="Human review\n(merge PR)",
         shape=box,
         human=true,
-        prompt="PR has been created for taps-keys-fixtures. Review the changes, request modifications if needed, and merge the PR. Resume the workflow once merged."
+        prompt="Review the open PR for taps-keys-fixtures. Run: gh pr view --head fabro/golden-fixtures-and-contract-runner to inspect it. Check for merge conflicts, failing CI checks, and code quality issues. If there are conflicts or failures, fix them and push to the branch. Rerun any failing validation if needed.\n\nPROHIBITED: Do NOT merge the PR. Merging is the human's responsibility.\n\nWhen done, summarise what you reviewed and any fixes made."
+    ]
+
+    cleanup [
+        label="Cleanup\n(delete local branch)",
+        shape=parallelogram,
+        script="rm -rf taps-keys-fixtures && echo 'Repo removed — next run clones fresh'"
     ]
 
     // ── Edges ────────────────────────────────────────────────────────────
@@ -86,5 +93,7 @@ digraph TapsKeysFixtures {
     validate_fixtures_java -> fix_fixture_generator
     fix_fixture_generator  -> setup
 
-    publish_fixtures -> human_review -> exit
+    publish_fixtures -> human_review  [condition="outcome=success"]
+    publish_fixtures -> cleanup
+    human_review -> cleanup -> exit
 }

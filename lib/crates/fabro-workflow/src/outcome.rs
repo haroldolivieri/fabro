@@ -18,9 +18,18 @@ pub fn billed_model_usage_from_llm(
     usage: &LlmTokenCounts,
 ) -> BilledModelUsage {
     let speed = parse_speed(requested_speed);
+    let catalog = Catalog::builtin();
+    // Resolve alias to canonical ID so billing comparison in ModelPricing::bill
+    // succeeds.
+    let catalog_info = catalog
+        .get(model_id)
+        .filter(|candidate| candidate.provider == provider);
+    let canonical_id = catalog_info
+        .map(|info| info.id.as_str())
+        .unwrap_or(model_id);
     let model = ModelRef {
         provider,
-        model_id: model_id.to_string(),
+        model_id: canonical_id.to_string(),
         speed,
     };
     let tokens = token_counts_from_llm_usage(usage);
@@ -33,9 +42,7 @@ pub fn billed_model_usage_from_llm(
         facts,
     };
 
-    let total_usd_micros = Catalog::builtin()
-        .get(model_id)
-        .filter(|candidate| candidate.provider == provider)
+    let total_usd_micros = catalog_info
         .and_then(|candidate| candidate.pricing_for(speed))
         .and_then(|pricing| pricing.bill(&input))
         .map(|amount| amount.0);

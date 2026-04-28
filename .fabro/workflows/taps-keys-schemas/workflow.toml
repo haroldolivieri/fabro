@@ -1,0 +1,12 @@
+[run]
+goal = "Build taps-keys schemas package."
+
+[run.execution]
+retros = true
+
+[run.scm]
+owner = "Skyscanner"
+repository = "taps-keys-schemas"
+
+[run.sandbox]
+provider = "local"

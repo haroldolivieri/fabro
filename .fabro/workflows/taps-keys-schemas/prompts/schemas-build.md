@@ -675,14 +675,14 @@ taps_keys_schemas = ["schemas.json", "schemas.schema.json"]
 
 ### README.md
 
-**Always overwrite this file** — the repo may have an older version from a previous run. Create `taps-keys-schemas/README.md` covering:
+**Always overwrite this file.** Derive the content from the actual code:
 
-- What this package is (canonical schema definitions for taps-keys)
-- Who consumes it (Java taps-keys library, Python taps-keys port)
-- What schemas.json contains (142 schemas with components, derived properties)
-- How to validate (`make validate` with FIXTURES_DIR pointing to taps-keys-fixtures)
-- How to add a schema (use the add-schema Claude Code skill, then regenerate fixtures from Java)
-- Package installation (`pip install -e .`)
+1. Read `taps_keys_schemas/schemas.json` to get the actual schema count (oneway + return).
+2. Read `scripts/validate.py` to understand what the 13 checks cover — list them accurately.
+3. Read `taps_keys_schemas/schemas.schema.json` to understand the enforced structure.
+4. Read `.github/workflows/ci.yml` to describe what CI runs.
+
+The README must accurately reflect the code. Cover: what this repo is, who consumes it, what schemas.json contains (with real counts from the file), how to validate, how to add a schema, installation.
 
 ### CONTRIBUTING.md
 

@@ -274,9 +274,15 @@ lint:
 
 ### 5.3 — README.md
 
-**Always overwrite this file** — the repo may have an older version from a previous run.
+**Always overwrite this file.** Derive the content from the actual code:
 
-What this library is, installation (`pip install taps-keys`), usage example:
+1. Read `src/taps_keys/keys.py` to get the actual available schemas and namespaces.
+2. Read `src/taps_keys/schema.py` to understand `KeyBuilder`, `Key`, `KeySchema` public API.
+3. Read `src/taps_keys/encoding.py` to get the base-32 alphabet and component types.
+4. Read `.github/workflows/ci.yml` to list the validation layers that run in CI.
+5. Read `scripts/validate.py` to describe how to run validation locally.
+
+The README must accurately reflect the code. Cover: what this library is, installation, a usage example derived from the actual API, available schemas, `to_string()` format, wildcard components, how schemas are loaded, base-32 alphabet, and validation layers with CI vs workflow split.
 
 ```python
 from taps_keys.keys import OneWay

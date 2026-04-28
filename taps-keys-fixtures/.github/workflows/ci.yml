@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate fixtures package
+    runs-on: ubuntu-latest-xlarge
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e . pytest build
+
+      - name: Self-tests (L1–L3 runner infrastructure)
+        run: python3 -m pytest tests/ -v
+
+      - name: Build check
+        run: python3 -m build
+
+  validate-l4:
+    name: L4 Java binary validation
+    runs-on: ubuntu-latest-xlarge
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: adopt
+          java-version: "11"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download fixture validator JAR from fabro
+        run: |
+          curl -fsSL -o /tmp/taps-keys-fixture-gen.jar \
+            "https://github.com/haroldolivieri/fabro/raw/main/tools/taps-keys-fixture-gen/taps-keys-fixture-gen.jar"
+
+      - name: Extract golden fixtures from package
+        run: |
+          pip install -e .
+          mkdir -p /tmp/fixtures
+          python3 -c "
+          from importlib.resources import files; import pathlib
+          src = files('taps_keys_fixtures.fixtures')
+          dst = pathlib.Path('/tmp/fixtures')
+          for f in ['golden_encodings.json', 'golden_signatures.json']:
+              (dst / f).write_text((src / f).read_text())
+          print('Extracted fixtures')
+          "
+
+      - name: Fixture count ratio check (ENCS == SIGS * 15)
+        run: |
+          ENCS=$(python3 -c "import json; print(len(json.load(open('/tmp/fixtures/golden_encodings.json'))))")
+          SIGS=$(python3 -c "import json; print(len(json.load(open('/tmp/fixtures/golden_signatures.json'))))")
+          echo "encodings=$ENCS signatures=$SIGS expected=$((SIGS * 15))"
+          [ "$ENCS" -gt 0 ] && [ "$SIGS" -gt 0 ] && [ "$ENCS" -eq $((SIGS * 15)) ] || { echo "FATAL: fixture count mismatch"; exit 1; }
+
+      - name: L4 — validate fixtures against live Java library
+        run: |
+          OUTPUT=$(java -cp /tmp/taps-keys-fixture-gen.jar net.skyscanner.tools.ValidateFixtures /tmp/fixtures/golden_encodings.json 2>&1)
+          RC=$?
+          echo "$OUTPUT"
+          [ $RC -eq 0 ] || { echo "FATAL: L4 validation failed"; exit 1; }
+          echo "$OUTPUT" | grep -qE 'L4: [0-9]+/[0-9]+ passed' || { echo "FATAL: L4 summary missing — 0 entries processed?"; exit 1; }

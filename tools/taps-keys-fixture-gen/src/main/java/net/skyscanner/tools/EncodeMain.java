@@ -52,8 +52,18 @@ public class EncodeMain {
 
             KeySchema schema = ValidateFixtures.lookupSchema(prefix, schemaName);
 
-            int origin = entry.get("origin").getAsInt();
-            int destination = entry.get("destination").getAsInt();
+            int origAirport = entry.has("origin_airport")
+                    ? entry.get("origin_airport").getAsInt() : entry.get("origin").getAsInt();
+            int origCity    = entry.has("origin_city")
+                    ? entry.get("origin_city").getAsInt()    : origAirport;
+            int origCountry = entry.has("origin_country")
+                    ? entry.get("origin_country").getAsInt() : origAirport;
+            int destAirport = entry.has("destination_airport")
+                    ? entry.get("destination_airport").getAsInt() : entry.get("destination").getAsInt();
+            int destCity    = entry.has("destination_city")
+                    ? entry.get("destination_city").getAsInt()    : destAirport;
+            int destCountry = entry.has("destination_country")
+                    ? entry.get("destination_country").getAsInt() : destAirport;
             int carrier = entry.get("carrier").getAsInt();
             LocalDate outbound = LocalDate.parse(entry.get("outbound_date").getAsString());
             LocalDate inbound =
@@ -70,7 +80,9 @@ public class EncodeMain {
             Key key;
             try {
                 key = ValidateFixtures.buildKey(
-                        schema, origin, destination, carrier, outbound, inbound, wildcard,
+                        schema, origAirport, origCity, origCountry,
+                        destAirport, destCity, destCountry,
+                        carrier, outbound, inbound, wildcard,
                         wildcard ? false : isDirectEl.getAsBoolean());
             } catch (Exception e) {
                 System.err.printf(

@@ -19,6 +19,9 @@ import net.skyscanner.taps.keys.encoding.KeyComponentSignature;
 
 public class FixtureGenerator {
 
+    /** Total input sets per schema — update this when adding new sets. */
+    static final int SETS_PER_SCHEMA = 15;
+
     // Input Set A: Standard (same as KeyTest.java)
     static final int ORIG_A = 13554;
     static final int DEST_A = 13555;
@@ -99,6 +102,45 @@ public class FixtureGenerator {
     static final LocalDate INBOUND_K = LocalDate.parse("2000-02-28");
     static final boolean DIRECT_K = true;
 
+    // Input Set L: Real Skyscanner node IDs — airport ≠ city ≠ country (LHR→JFK)
+    // Production always passes three different hierarchy values per side.
+    // Uses canonical test constants from quote-aggregator TestData.java.
+    static final int ORIG_AIRPORT_L = 13554; // LHR
+    static final int ORIG_CITY_L    = 4698;  // London
+    static final int ORIG_COUNTRY_L = 247;   // UK
+    static final int DEST_AIRPORT_L = 12712; // JFK
+    static final int DEST_CITY_L    = 5772;  // NYC
+    static final int DEST_COUNTRY_L = 115;   // US
+    static final int CARRIER_L      = -12345; // production test carrier
+    static final LocalDate OUTBOUND_L = LocalDate.parse("2020-06-15");
+    static final LocalDate INBOUND_L  = LocalDate.parse("2020-07-20");
+    static final boolean DIRECT_L = true;
+
+    // Input Set Q: Mixed YEARMONTH overflow — outbound overflows (≥1024), inbound does not
+    // Catches Python ports that apply the 3-char overflow path only to outbound.
+    static final int ORIG_Q = 13554;
+    static final int DEST_Q = 13555;
+    static final int CARRIER_Q = -32480;
+    static final LocalDate OUTBOUND_Q = LocalDate.parse("2055-05-15"); // ym=1024, overflows → 3 chars
+    static final LocalDate INBOUND_Q  = LocalDate.parse("2018-07-08"); // ym=582, no overflow → 2 chars
+    static final boolean DIRECT_Q = true;
+
+    // Input Set M: Year-end / new-year rollover
+    static final int ORIG_M = 13554;
+    static final int DEST_M = 13555;
+    static final int CARRIER_M = 200;
+    static final LocalDate OUTBOUND_M = LocalDate.parse("2023-12-31");
+    static final LocalDate INBOUND_M  = LocalDate.parse("2024-01-01");
+    static final boolean DIRECT_M = true;
+
+    // Input Set N: Same-day trip (outbound == inbound)
+    static final int ORIG_N = 13554;
+    static final int DEST_N = 13555;
+    static final int CARRIER_N = -32480;
+    static final LocalDate OUTBOUND_N = LocalDate.parse("2022-06-15");
+    static final LocalDate INBOUND_N  = LocalDate.parse("2022-06-15");
+    static final boolean DIRECT_N = false;
+
     // Signature probe schemas
     static final List<KeyComponentSignature> ORIGIN_AIRPORT_SIG =
         KeySchema.builder("").originAirport().build().signature();
@@ -126,8 +168,8 @@ public class FixtureGenerator {
                 String name = f.getName();
                 int before = encodings.size();
                 generateEncodings(encodings, name, "oneway", schema);
-                if (encodings.size() - before < 11) {
-                    skipped.add("oneway." + name + " (" + (encodings.size() - before) + "/11 sets)");
+                if (encodings.size() - before < SETS_PER_SCHEMA) {
+                    skipped.add("oneway." + name + " (" + (encodings.size() - before) + "/" + SETS_PER_SCHEMA + " sets)");
                 }
                 generateSignatures(signatures, name, schema);
                 onewayCount++;
@@ -142,8 +184,8 @@ public class FixtureGenerator {
                 String name = f.getName();
                 int before = encodings.size();
                 generateEncodings(encodings, name, "return", schema);
-                if (encodings.size() - before < 11) {
-                    skipped.add("return." + name + " (" + (encodings.size() - before) + "/11 sets)");
+                if (encodings.size() - before < SETS_PER_SCHEMA) {
+                    skipped.add("return." + name + " (" + (encodings.size() - before) + "/" + SETS_PER_SCHEMA + " sets)");
                 }
                 generateSignatures(signatures, name, schema);
                 returnCount++;
@@ -160,7 +202,7 @@ public class FixtureGenerator {
         }
 
         System.out.println("Schemas found: " + onewayCount + " oneway + " + returnCount + " return = " + (onewayCount + returnCount) + " total");
-        System.out.println("Generated " + encodings.size() + " encoding fixtures (expected " + (onewayCount + returnCount) * 11 + ")");
+        System.out.println("Generated " + encodings.size() + " encoding fixtures (expected " + (onewayCount + returnCount) * SETS_PER_SCHEMA + ")");
         System.out.println("Generated " + signatures.size() + " signature fixtures (expected " + (onewayCount + returnCount) + ")");
         if (!skipped.isEmpty()) {
             System.err.println("WARNING: " + skipped.size() + " schemas had incomplete fixture sets:");
@@ -169,7 +211,7 @@ public class FixtureGenerator {
 
         // Fail hard if counts don't match — don't let broken fixtures propagate
         int expectedSigs = onewayCount + returnCount;
-        int expectedEncs = expectedSigs * 11;
+        int expectedEncs = expectedSigs * SETS_PER_SCHEMA;
         if (signatures.size() != expectedSigs || encodings.size() != expectedEncs) {
             System.err.println("FATAL: Fixture count mismatch. Expected " + expectedEncs + " encodings and " + expectedSigs + " signatures.");
             System.exit(1);
@@ -189,6 +231,9 @@ public class FixtureGenerator {
             {"I", ORIG_I, DEST_I, CARRIER_I, OUTBOUND_I, INBOUND_I, DIRECT_I},
             {"J", ORIG_J, DEST_J, CARRIER_J, OUTBOUND_J, INBOUND_J, DIRECT_J},
             {"K", ORIG_K, DEST_K, CARRIER_K, OUTBOUND_K, INBOUND_K, DIRECT_K},
+            {"M", ORIG_M, DEST_M, CARRIER_M, OUTBOUND_M, INBOUND_M, DIRECT_M},
+            {"N", ORIG_N, DEST_N, CARRIER_N, OUTBOUND_N, INBOUND_N, DIRECT_N},
+            {"Q", ORIG_Q, DEST_Q, CARRIER_Q, OUTBOUND_Q, INBOUND_Q, DIRECT_Q},
         };
 
         for (Object[] set : sets) {
@@ -217,6 +262,37 @@ public class FixtureGenerator {
             }
         }
 
+        // Set L: Different values per route node (airport ≠ city ≠ country)
+        try {
+            Key key = buildKeyPerComponent(schema,
+                    ORIG_AIRPORT_L, ORIG_CITY_L, ORIG_COUNTRY_L,
+                    DEST_AIRPORT_L, DEST_CITY_L, DEST_COUNTRY_L,
+                    CARRIER_L, OUTBOUND_L, INBOUND_L, DIRECT_L);
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("schema", name);
+            entry.put("prefix", prefix);
+            entry.put("input_set", "L");
+            entry.put("origin_airport", ORIG_AIRPORT_L);
+            entry.put("origin_city",    ORIG_CITY_L);
+            entry.put("origin_country", ORIG_COUNTRY_L);
+            entry.put("destination_airport", DEST_AIRPORT_L);
+            entry.put("destination_city",    DEST_CITY_L);
+            entry.put("destination_country", DEST_COUNTRY_L);
+            entry.put("carrier", CARRIER_L);
+            entry.put("outbound_date", OUTBOUND_L.toString());
+            entry.put("inbound_date", INBOUND_L.toString());
+            entry.put("is_direct", DIRECT_L);
+            entry.put("encoded_key", key.encode());
+            entry.put("to_string", key.toString());
+            entry.put("to_string_pipe", key.toString('|'));
+            entry.put("schema_to_string", schema.toString());
+            entry.put("encoded_length", schema.encodedLength());
+            entry.put("open_jaw_filter", schema.getOpenJawFilter().name());
+            out.add(entry);
+        } catch (Exception e) {
+            System.err.println("WARN: Set L failed for " + name + ": " + e.getMessage());
+        }
+
         // Set E: trailing wildcard (anyDirect)
         try {
             Key key = buildKeyWithWildcard(schema, ORIG_A, DEST_A, CARRIER_A, OUTBOUND_A, INBOUND_A);
@@ -240,6 +316,26 @@ public class FixtureGenerator {
         } catch (Exception e) {
             System.err.println("WARN: Set E failed for " + name + ": " + e.getMessage());
         }
+    }
+
+    static Key buildKeyPerComponent(KeySchema schema,
+            int origAirport, int origCity, int origCountry,
+            int destAirport, int destCity, int destCountry,
+            int carrier, LocalDate outbound, LocalDate inbound, boolean isDirect) {
+        return schema.keyBuilder()
+                .marketingCarrier(carrier)
+                .originAirport(origAirport)
+                .originCity(origCity)
+                .originCountry(origCountry)
+                .destinationAirport(destAirport)
+                .destinationCity(destCity)
+                .destinationCountry(destCountry)
+                .outboundDepartureYearMonth(outbound)
+                .outboundDepartureDay(outbound)
+                .inboundDepartureYearMonth(inbound)
+                .inboundDepartureDay(inbound)
+                .isDirect(isDirect)
+                .build();
     }
 
     static Key buildKey(KeySchema schema, int orig, int dest, int carrier,

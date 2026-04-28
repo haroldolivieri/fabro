@@ -44,8 +44,19 @@ public class ValidateFixtures {
 
             KeySchema schema = lookupSchema(prefix, schemaName);
 
-            int origin = entry.get("origin").getAsInt();
-            int destination = entry.get("destination").getAsInt();
+            // Set L stores per-component route nodes; all others use a single value for all three
+            int origAirport = entry.has("origin_airport")
+                    ? entry.get("origin_airport").getAsInt() : entry.get("origin").getAsInt();
+            int origCity    = entry.has("origin_city")
+                    ? entry.get("origin_city").getAsInt()    : origAirport;
+            int origCountry = entry.has("origin_country")
+                    ? entry.get("origin_country").getAsInt() : origAirport;
+            int destAirport = entry.has("destination_airport")
+                    ? entry.get("destination_airport").getAsInt() : entry.get("destination").getAsInt();
+            int destCity    = entry.has("destination_city")
+                    ? entry.get("destination_city").getAsInt()    : destAirport;
+            int destCountry = entry.has("destination_country")
+                    ? entry.get("destination_country").getAsInt() : destAirport;
             int carrier = entry.get("carrier").getAsInt();
             LocalDate outbound = LocalDate.parse(entry.get("outbound_date").getAsString());
             LocalDate inbound =
@@ -61,7 +72,9 @@ public class ValidateFixtures {
 
             Key key;
             try {
-                key = buildKey(schema, origin, destination, carrier, outbound, inbound, wildcard,
+                key = buildKey(schema, origAirport, origCity, origCountry,
+                        destAirport, destCity, destCountry,
+                        carrier, outbound, inbound, wildcard,
                         wildcard ? false : isDirectEl.getAsBoolean());
             } catch (Exception e) {
                 System.out.printf(
@@ -139,8 +152,8 @@ public class ValidateFixtures {
 
     static Key buildKey(
             KeySchema schema,
-            int origin,
-            int destination,
+            int origAirport, int origCity, int origCountry,
+            int destAirport, int destCity, int destCountry,
             int carrier,
             LocalDate outbound,
             LocalDate inbound,
@@ -149,12 +162,12 @@ public class ValidateFixtures {
         KeyBuilder b =
                 schema.keyBuilder()
                         .marketingCarrier(carrier)
-                        .originAirport(origin)
-                        .originCity(origin)
-                        .originCountry(origin)
-                        .destinationAirport(destination)
-                        .destinationCity(destination)
-                        .destinationCountry(destination)
+                        .originAirport(origAirport)
+                        .originCity(origCity)
+                        .originCountry(origCountry)
+                        .destinationAirport(destAirport)
+                        .destinationCity(destCity)
+                        .destinationCountry(destCountry)
                         .outboundDepartureYearMonth(outbound)
                         .outboundDepartureDay(outbound);
         if (inbound != null) {

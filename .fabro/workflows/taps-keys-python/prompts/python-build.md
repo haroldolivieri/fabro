@@ -20,7 +20,7 @@ You are building the complete `taps-keys-python` repo in one pass: the core enco
 
 ## Section 1 — Algorithm Reference
 
-Read the encoding seed document at `.fabro/workflows/taps-keys/prompts/python-encoding-seed.md` (in the fabro repo root) in full before writing any code. It contains the base-32 alphabet, all 8 component types, 10 worked examples with step-by-step arithmetic, KeyBuilder behaviour, KeySchema.toString() format, signature/disjoint checks, OpenJawFilter derivation, Spark serialisation requirements, anti-patterns, and self-check criteria.
+Read the encoding seed document at `.fabro/workflows/taps-keys-python/prompts/python-encoding-seed.md` (in the fabro repo root) in full before writing any code. It contains the base-32 alphabet, all 8 component types, 10 worked examples with step-by-step arithmetic, KeyBuilder behaviour, KeySchema.toString() format, signature/disjoint checks, OpenJawFilter derivation, Spark serialisation requirements, anti-patterns, and self-check criteria.
 
 Do not proceed without reading that document. The examples are your test cases.
 
@@ -440,3 +440,9 @@ Run these mentally or as assertions before declaring completion:
 - [ ] Can you encode a value you have never seen in the examples? (proves algorithmic, not lookup-based)
 - [ ] All 142 schemas load from `taps_keys_schemas` without error
 - [ ] `validate.py` calls the contract runner, NOT your own fixture tests
+- [ ] The contract runner passes L1–L3 for all 2130 fixture cases (142 schemas × 15 input sets)
+- [ ] After the workflow validates L1–L3, two further Java-binary parity gates run automatically:
+  - **L5**: `EncodeMain` generates live Java outputs for all 2130 cases; Python must match on `encode()`, `to_string()`, and `to_string('|')`
+  - **L6**: `FuzzEncoder` generates 14,200 random inputs (seed=42); Python must match on all three output forms
+  - These run via the workflow's `validate_java_parity` and `validate_fuzz_parity` nodes — you do not need to implement them, but your encoding must be correct or they will fail
+- [ ] The e2e smoke: `OneWay.AIRPORT_AIRPORT_DAY_OW` with LHR→EDI inputs of Set A must produce `"0d7i0d7ji681"`

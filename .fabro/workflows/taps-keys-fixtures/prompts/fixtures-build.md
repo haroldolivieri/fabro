@@ -69,10 +69,16 @@ An array of objects. Each entry has:
 |---|---|---|
 | `schema` | string | Schema name (e.g. `"OneWay"`, `"Return"`) |
 | `prefix` | string | Schema prefix byte(s) |
-| `input_set` | string | One of `"A"`, `"B"`, `"C"`, `"D"`, `"E"` |
-| `origin` | string | Origin airport code |
-| `destination` | string | Destination airport code |
-| `carrier` | string | Marketing carrier code |
+| `input_set` | string | One of `"A"`–`"N"`, `"Q"` (15 input sets) |
+| `origin` | integer | Origin route node ID (used when per-component fields are absent) |
+| `destination` | integer | Destination route node ID (used when per-component fields are absent) |
+| `origin_airport` | integer (optional) | Origin airport node ID — only present in Set L |
+| `origin_city` | integer (optional) | Origin city node ID — only present in Set L |
+| `origin_country` | integer (optional) | Origin country node ID — only present in Set L |
+| `destination_airport` | integer (optional) | Destination airport node ID — only present in Set L |
+| `destination_city` | integer (optional) | Destination city node ID — only present in Set L |
+| `destination_country` | integer (optional) | Destination country node ID — only present in Set L |
+| `carrier` | integer | Marketing carrier node ID |
 | `outbound_date` | string | Outbound date (ISO format or components) |
 | `inbound_date` | string or null | Inbound date (null for OneWay) |
 | `is_direct` | boolean or string | `true`, `false`, or `"*"` for wildcard (Set E) |
@@ -376,7 +382,10 @@ When you are done, the following must hold:
 3. `pip install -e .` succeeds with no errors.
 4. `python -m pytest tests/ -v` passes (the self-tests).
 5. `python -m taps_keys_fixtures.runner.test_runner --module nonexistent_module` exits with a clear error (not a traceback).
-6. The runner code handles all input sets A through E, including wildcard handling for Set E.
+6. The runner handles all 15 input sets (A–N, Q), including:
+   - Set E wildcard (`is_direct == "wildcard"`)
+   - Set L per-component route node fields (`origin_airport`, `origin_city`, `origin_country`, `destination_airport`, `destination_city`, `destination_country`) — when these are present, use them instead of the single `origin`/`destination` value
 7. No fixture data (encoded keys, expected strings, golden bytes) appears in error output beyond the 4-character prefix limit.
+8. The package will be validated by the Java L4 binary (`ValidateFixtures.java`) after pytest — the runner must produce fixture JSON that the Java library can independently verify. This means the contract runner must read and expose the same fields that `ValidateFixtures` uses.
 
 Run all verification steps before declaring the task complete.

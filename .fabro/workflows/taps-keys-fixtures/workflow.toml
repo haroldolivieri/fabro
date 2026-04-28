@@ -1,0 +1,15 @@
+[run]
+goal = "Build taps-keys fixtures package and contract runner."
+
+[run.execution]
+retros = true
+
+[run.scm]
+owner = "Skyscanner"
+repository = "taps-keys-fixtures"
+
+[run.sandbox]
+provider = "local"
+
+[run.sandbox.env]
+TAPS_KEYS_JAR = "tools/taps-keys-fixture-gen/taps-keys-fixture-gen.jar"

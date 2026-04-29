@@ -10,8 +10,8 @@ The workflow is a Fabro graph (`workflow.fabro`) that orchestrates three AI agen
 
 | Layer | Where | What it catches |
 |---|---|---|
-| **Schemas structural** (checks 1–7) | Phase 2 | JSON Schema conformance, 142 schemas, valid component types, no duplicates, toString derivation, encoded_length, OpenJawFilter |
-| **Schemas × fixtures cross-ref** (checks 8–13) | Phase 2 | Every schema appears in fixtures and vice versa; 14 input sets per schema; toString matches; disjoint properties consistent |
+| **Schemas structural** (checks 1–7) | Phase 2 | JSON Schema conformance, dynamic schema count (from SchemaExporter seed), valid component types, no duplicates, toString derivation, encoded_length, OpenJawFilter |
+| **Schemas × fixtures cross-ref** (checks 8–13) | Phase 2 | Every schema appears in fixtures and vice versa; 15 input sets per schema; toString matches; disjoint properties consistent |
 | L1 | Phase 1 self-test + Phase 3 | 2130 encoding test cases: byte-for-byte comparison of `encode()` and `to_string()` against golden values |
 | L2 | Phase 1 self-test + Phase 3 | `schema.signature()` and all 6 disjoint boolean properties match golden booleans |
 | L3 | Phase 1 self-test + Phase 3 | `to_string('|')`, `encoded_length`, `OpenJawFilter` derivation |
@@ -74,7 +74,7 @@ The workflow is a Fabro graph (`workflow.fabro`) that orchestrates three AI agen
 - [ ] All failures printed before exit — never stops at first failure
 - [ ] Exits 1 on any mismatch; exits 0 with `L4: 2130/2130 passed`; workflow script asserts `L4: X/Y passed` summary line is present (catches silent 0-entry runs)
 - [ ] Set E wildcard (`is_direct == "wildcard"`) handled via `KeyBuilder.anyDirect()`
-- [ ] Fat JAR committed to `taps-keys-fixtures/tools/taps-keys-fixture-gen.jar` — L4 runs in GitHub Actions CI without needing the fabro repo
+- [ ] Fat JAR built locally via `cd tools/taps-keys-fixture-gen && ./gradlew shadowJar` — **never committed** (bundles internal Skyscanner bytecode); CI builds from source using Skyscanner Artifactory secrets (`SKYSCANNER_ARTIFACTORY_MAVEN_USER`, `SKYSCANNER_ARTIFACTORY_MAVEN_PASSWORD`)
 - [ ] `validateFixtures` Gradle task wired in `build.gradle`
 - [ ] `validate_fixtures_java` workflow node runs after `validate_fixtures` success
 - [ ] On L4 failure, workflow routes to `fix_fixture_generator` (not `fix_fixtures`) which fixes `FixtureGenerator.java` and re-runs from `setup`
@@ -86,11 +86,12 @@ The workflow is a Fabro graph (`workflow.fabro`) that orchestrates three AI agen
 **Description:** As a workflow agent, I need to extract all schema definitions from `Keys.java` into `taps-keys-schemas` so that both the Java and Python libraries consume a single source of truth.
 
 **Acceptance Criteria:**
-- [ ] `taps_keys_schemas/schemas.json` contains exactly 71 oneway + 71 return schemas
+- [ ] `taps_keys_schemas/schemas.json` contains the same number of schemas as `SchemaExporter` outputs (dynamic — typically 71+71=142 but derived from the compiled library, not hardcoded)
+- [ ] Schemas are built by reading `/tmp/schema_seed.json` (output of `SchemaExporter`) and parsing `to_string` to reconstruct the component list — no `Keys.java` source parsing
 - [ ] Each schema has: `name`, `prefix`, `components` (ordered), `to_string`, `encoded_length`, `open_jaw_filter`
-- [ ] All 13 checks in `scripts/validate.py` pass (JSON Schema conformance, counts, types, no duplicates, toString derivation, encoded_length, OpenJawFilter, 5 cross-ref checks)
+- [ ] All 13 checks in `scripts/validate.py` pass (JSON Schema conformance, dynamic count from seed, valid component types, no duplicates, toString derivation, encoded_length, OpenJawFilter, 5 cross-ref checks)
 - [ ] `python3 -m build` succeeds
-- [ ] `python3 scripts/validate.py --fixtures-dir /tmp/taps-keys-fixtures` exits 0
+- [ ] `python3 scripts/validate.py --fixtures-dir /tmp/fixtures` exits 0
 
 ---
 
@@ -153,7 +154,7 @@ The workflow is a Fabro graph (`workflow.fabro`) that orchestrates three AI agen
 - FR-4: `validate_fixtures_java` gate runs `ValidateFixtures.java` against `/tmp/taps-keys-fixtures/golden_encodings.json` — routes to `fix_fixture_generator` on failure
 - FR-5: `fix_fixture_generator` agent fixes `FixtureGenerator.java` and is followed by a full restart from `setup`
 - FR-6: `publish_fixtures` creates branch + PR in `taps-keys-fixtures`, installs locally via `pip install -e .`
-- FR-7: `build_schemas` agent extracts all 142 schemas from `Keys.java` into `schemas.json` with all derived fields
+- FR-7: `build_schemas` agent reads `/tmp/schema_seed.json` (output of `SchemaExporter` Java tool run against the compiled library) and builds `schemas.json` by parsing `to_string` to reconstruct component lists — no `Keys.java` source required
 - FR-8: `validate_schemas` gate runs all 13 validate.py checks — routes to `fix_schemas` on failure
 - FR-9: `publish_schemas` creates branch + PR in `taps-keys-schemas`, installs locally
 - FR-10: `setup_python` clones `taps-keys-python` and installs schemas only (no fixtures installed at this stage)
@@ -185,14 +186,16 @@ The migration is split into 3 independent single-repo workflows to enable fabro'
 | Workflow | Repo | Nodes | JAR needed | Validation layers |
 |---|---|---|---|---|
 | `taps-keys-fixtures` | `Skyscanner/taps-keys-fixtures` | 11 nodes, 13 edges | Yes — JAR at `tools/taps-keys-fixture-gen/taps-keys-fixture-gen.jar` in fabro repo; CI downloads via curl | L1–L3 self-test, L4 Java binary (2130 cases) |
-| `taps-keys-schemas` | `Skyscanner/taps-keys-schemas` | 8 nodes, 8 edges | No | Structural checks 1–13, fixture cross-ref |
+| `taps-keys-schemas` | `Skyscanner/taps-keys-schemas` | 9 nodes, 10 edges | Yes — `SchemaExporter` run in setup to export schema seed from compiled library | Structural checks 1–13, fixture cross-ref |
 | `taps-keys-python` | `Skyscanner/taps-keys-python` | 12 nodes, 14 edges | Yes (EncodeMain, FuzzEncoder) | L1–L3 contract runner, L5 Java parity, L6 fuzz |
 
 ### Execution order
 
 ```
-# No pre-build needed — JAR committed to tools/taps-keys-fixture-gen/taps-keys-fixture-gen.jar
-# (Rebuild only when Java source changes: cd tools/taps-keys-fixture-gen && ./gradlew shadowJar)
+# Pre-build required — JAR is NOT committed (bundles internal Skyscanner bytecode, public repo)
+cd tools/taps-keys-fixture-gen && ./gradlew shadowJar
+export TAPS_KEYS_JAR=$(pwd)/build/libs/taps-keys-fixture-gen.jar
+cd ../..
 
 export FABRO_SERVER=http://127.0.0.1:32276
 fabro run taps-keys-fixtures  →  review PR  →  merge

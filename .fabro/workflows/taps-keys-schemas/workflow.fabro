@@ -37,7 +37,7 @@ digraph TapsKeysSchemas {
 
     fix_schemas [
         label="Fix schemas errors",
-        prompt="The schemas validation failed. Read the error output and fix the issues. Focus on the first failing check only.\n\nPROHIBITED: Do not modify scripts/validate.py or schemas.schema.json. Fix schemas.json or the harness files.",
+        prompt="The schemas validation failed. Read the error output and fix the issues. Focus on the first failing check only.\n\nPROHIBITED: Do not modify scripts/validate.py or schemas.schema.json UNLESS the only issue is a stale hardcoded constant (e.g. SCHEMAS_PER_SECTION or TOTAL_SCHEMAS) that does not match the dynamic count in /tmp/schema_seed.json. In that case, update the constant to match len(seed) and len(seed)/2 respectively. Otherwise fix schemas.json or harness files only.",
         thread_id="schemas", fidelity=full,
         max_visits=3
     ]
@@ -66,7 +66,8 @@ digraph TapsKeysSchemas {
 
     // ── Edges ────────────────────────────────────────────────────────────
 
-    start -> setup -> build_schemas
+    start -> setup
+    setup -> build_schemas [condition="outcome=success"]
 
     build_schemas     -> validate_schemas
     validate_schemas  -> publish_schemas     [condition="outcome=success"]

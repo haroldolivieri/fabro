@@ -457,10 +457,12 @@ assert not missing_from_fixtures, f"Schemas in schemas.json missing from fixture
 ### Check 10: Cross-ref -- golden_encodings.json has 15 entries per schema (sets A–N, Q)
 
 ```python
+import json as _json
 from collections import Counter
 
-SETS_PER_SCHEMA = 15
-TOTAL_SCHEMAS = 142
+seed = _json.load(open("/tmp/schema_seed.json"))
+TOTAL_SCHEMAS = len(seed)
+SETS_PER_SCHEMA = 15  # fixture generator always produces 15 input sets per schema
 schema_counts = Counter(entry["schema"] for entry in encodings)
 for schema_name, count in schema_counts.items():
     assert count == SETS_PER_SCHEMA, f"Schema {schema_name} has {count} encoding entries, expected {SETS_PER_SCHEMA}"

@@ -83,7 +83,8 @@ digraph TapsKeysFixtures {
 
     // ── Edges ────────────────────────────────────────────────────────────
 
-    start -> setup -> build_fixtures
+    start -> setup
+    setup -> build_fixtures [condition="outcome=success"]
 
     build_fixtures         -> validate_fixtures
     validate_fixtures      -> validate_fixtures_java  [condition="outcome=success"]

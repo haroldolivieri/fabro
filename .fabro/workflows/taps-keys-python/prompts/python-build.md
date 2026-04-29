@@ -45,12 +45,7 @@ The Java source contains **71 OneWay + 71 Return = 142 total KeySchema constants
 
 ## Section 3 — Java Source Reference
 
-These paths are available for reading the original Java implementation if you need to resolve ambiguities:
-
-- **Keys.java**: `/Users/haroldoolivieri/Development/Skyscanner/backend/dependencies/taps-keys/src/main/java/net/skyscanner/taps/keys/Keys.java`
-- **Encoding types**: `/Users/haroldoolivieri/Development/Skyscanner/backend/dependencies/taps-keys/src/main/java/net/skyscanner/taps/keys/encoding/`
-- **KeyTest.java**: `/Users/haroldoolivieri/Development/Skyscanner/backend/dependencies/taps-keys/src/test/java/net/skyscanner/taps/keys/KeyTest.java`
-- **Quote-aggregator consumer**: `/Users/haroldoolivieri/Development/Skyscanner/backend/code-as-source/indicative-domain/fcp-writers/quote-aggregator/`
+The encoding algorithm is fully specified in the seed document and the worked examples below. You do NOT need to read any Java source files. All necessary information is self-contained in this prompt and the encoding seed.
 
 ---
 

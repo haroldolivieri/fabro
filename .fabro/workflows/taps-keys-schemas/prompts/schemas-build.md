@@ -624,24 +624,71 @@ Create `taps-keys-schemas/CLAUDE.md` with this constitution for AI agents workin
 - Never edit schemas.json by hand without re-running validation
 - The `scripts/validate.py` script requires a `--fixtures-dir` argument pointing to the taps-keys-fixtures directory
 
+### add_schema.py helper script
+
+Create `taps-keys-schemas/scripts/add_schema.py`. This script encodes the derivation formulas so agents and humans don't apply them manually (and can't make formula errors).
+
+**Interface:**
+
+```bash
+python3 scripts/add_schema.py --prefix oneway --name AIRPORT_AIRPORT_DAY_OW \
+  --components "originAirport,destinationAirport,outboundDepartureYearMonth,outboundDepartureDay,Direct"
+```
+
+The `--components` argument is a comma-separated list of `to_string` part names (each is `componentName + DisplayName` as it appears in to_string, e.g. `originAirport`, `outboundDepartureYearMonth`, `Direct`, `MarketingCarrier`).
+
+**What the script does:**
+
+1. Parses each component part using the reverse display-name mapping (same table as validate.py Check 5) to recover `type` and `name`.
+2. Looks up `bits` and `encoded_length` from the component type properties table.
+3. Derives `to_string` = `prefix + "_" + "_".join(parts)`.
+4. Derives `encoded_length` = sum of component `encoded_length` values.
+5. Derives `open_jaw_filter` using the return-schema AIRPORT presence rule (NONE for oneway).
+6. Prints the complete JSON object ready to paste into schemas.json, and also appends it directly to the correct array in `taps_keys_schemas/schemas.json`.
+7. Exits 0 on success, exits 1 with a clear error if any component part is unrecognized.
+
+The script must use the SAME display-name mapping and open_jaw_filter logic as `scripts/validate.py` — copy the constants, do not redefine them.
+
+**Example output (printed to stdout before writing):**
+
+```json
+{
+  "name": "AIRPORT_AIRPORT_DAY_OW",
+  "prefix": "oneway",
+  "components": [
+    {"type": "AIRPORT", "name": "origin", "bits": 16, "encoded_length": 4},
+    {"type": "AIRPORT", "name": "destination", "bits": 16, "encoded_length": 4},
+    {"type": "YEARMONTH", "name": "outboundDeparture", "bits": 10, "encoded_length": 2},
+    {"type": "DAY", "name": "outboundDeparture", "bits": 5, "encoded_length": 1},
+    {"type": "DIRECT", "name": "", "bits": 1, "encoded_length": 1}
+  ],
+  "to_string": "oneway_originAirport_destinationAirport_outboundDepartureYearMonth_outboundDepartureDay_Direct",
+  "encoded_length": 12,
+  "open_jaw_filter": "NONE"
+}
+```
+
 ### Add-schema skill
 
 Create `taps-keys-schemas/.claude/agents/add-schema.md` with these steps:
 
-1. Ask the user for: prefix (`oneway` or `return`), schema name (Java constant name), and ordered list of components (builder method names)
-2. Map each builder method to its component object using the builder method mapping table
-3. Derive `to_string`, `encoded_length`, and `open_jaw_filter` from the component list
-4. Add the new schema object to the appropriate array in `taps_keys_schemas/schemas.json`
-5. Run `make validate` to verify structural consistency
-6. If validation passes, commit the change
-7. Note: golden fixtures must be regenerated from the Java library after adding a schema -- this is a separate step outside this repo
+1. Ask the user for: prefix (`oneway` or `return`), schema name (Java constant name), and the ordered list of component parts as they appear in the `to_string` format (e.g. `originAirport`, `destinationAirport`, `outboundDepartureYearMonth`, `outboundDepartureDay`, `Direct`).
+2. Run the helper script to generate and insert the schema:
+   ```bash
+   python3 scripts/add_schema.py --prefix <prefix> --name <NAME> --components "<part1>,<part2>,..."
+   ```
+3. Run `make validate` to verify all 13 structural checks pass.
+4. If validation passes, commit the change.
+5. Note: golden fixtures must be regenerated from the Java library after adding a schema -- that is a separate step outside this repo.
+
+Do NOT derive `to_string`, `encoded_length`, or `open_jaw_filter` manually. The helper script is the single source of truth for derivation logic — using it prevents formula drift.
 
 ### Makefile
 
 Create `taps-keys-schemas/Makefile`:
 
 ```makefile
-.PHONY: validate build clean
+.PHONY: validate build clean add-schema
 
 FIXTURES_DIR ?= ../taps-keys-fixtures
 
@@ -653,6 +700,10 @@ build:
 
 clean:
 	rm -rf dist/ build/ *.egg-info
+
+# Usage: make add-schema PREFIX=oneway NAME=MY_SCHEMA COMPONENTS="originAirport,destinationAirport,Direct"
+add-schema:
+	python3 scripts/add_schema.py --prefix $(PREFIX) --name $(NAME) --components "$(COMPONENTS)"
 ```
 
 ### pyproject.toml
@@ -722,6 +773,7 @@ taps-keys-schemas/
     schemas.schema.json
   scripts/
     validate.py
+    add_schema.py
   .claude/
     agents/
       add-schema.md
@@ -732,7 +784,7 @@ taps-keys-schemas/
   CLAUDE.md
 ```
 
-**Total: ~11 files.** The most critical is `schemas.json` (extracted from Java source with all 142 schemas and correctly derived properties).
+**Total: ~12 files.** The most critical is `schemas.json` (extracted from Java source with all 142 schemas and correctly derived properties).
 
 ---
 
@@ -768,7 +820,8 @@ Before signaling completion, verify:
 - [ ] Is open_jaw_filter derived correctly (NONE for oneway; BOTH/ORIGIN/DESTINATION/NONE for return based on AIRPORT components)?
 - [ ] Does schemas.schema.json validate schemas.json without errors?
 - [ ] Does `python scripts/validate.py --fixtures-dir <path>` exit 0?
-- [ ] Are all harness files present (CLAUDE.md, Makefile, pyproject.toml, README.md, CONTRIBUTING.md, add-schema skill)?
+- [ ] Are all harness files present (CLAUDE.md, Makefile, pyproject.toml, README.md, CONTRIBUTING.md, add-schema skill, scripts/add_schema.py)?
+- [ ] Does `python3 scripts/add_schema.py --prefix oneway --name TEST --components "originAirport,Direct"` run without error?
 - [ ] Does pyproject.toml include schemas.json and schemas.schema.json as package_data?
 
 Read the Java source file, extract all 142 schemas, build the complete repo, and run `make validate` when done.

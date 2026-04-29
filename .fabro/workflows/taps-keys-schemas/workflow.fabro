@@ -14,7 +14,7 @@ digraph TapsKeysSchemas {
     setup [
         label="Setup:\ninstall fixtures",
         shape=parallelogram,
-        script="echo '=== Installing taps-keys-fixtures from merged PR ==='\npip install git+ssh://git@github.com/Skyscanner/taps-keys-fixtures.git 2>&1 || { echo 'FATAL: taps-keys-fixtures not available. Merge the taps-keys-fixtures PR first.'; exit 1; }\necho '=== Extracting golden fixtures for cross-validation ==='\nmkdir -p /tmp/fixtures\npython3 -c '\nfrom importlib.resources import files; import pathlib\nsrc = files(\"taps_keys_fixtures.fixtures\")\ndst = pathlib.Path(\"/tmp/fixtures\")\nfor f in [\"golden_encodings.json\", \"golden_signatures.json\"]:\n    (dst / f).write_text((src / f).read_text())\nprint(\"Extracted fixtures from pip package\")\n' 2>&1\necho '=== Setup complete ==='",
+        script="echo '=== Installing taps-keys-fixtures from merged PR ==='\npython3 -c 'import taps_keys_fixtures' 2>/dev/null || python3 -m pip install git+https://github.com/Skyscanner/taps-keys-fixtures.git --break-system-packages 2>&1 || python3 -m pip install git+https://github.com/Skyscanner/taps-keys-fixtures.git 2>&1 || { echo 'FATAL: taps-keys-fixtures not available. Merge the taps-keys-fixtures PR first.'; exit 1; }\necho '=== Extracting golden fixtures for cross-validation ==='\nmkdir -p /tmp/fixtures\npython3 -c '\nfrom importlib.resources import files; import pathlib\nsrc = files(\"taps_keys_fixtures.fixtures\")\ndst = pathlib.Path(\"/tmp/fixtures\")\nfor f in [\"golden_encodings.json\", \"golden_signatures.json\"]:\n    (dst / f).write_text((src / f).read_text())\nprint(\"Extracted fixtures from pip package\")\n' 2>&1\necho '=== Setup complete ==='",
         max_retries=0
     ]
 

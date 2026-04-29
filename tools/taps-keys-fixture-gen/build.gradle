@@ -26,8 +26,6 @@ repositories {
     }
 }
 
-// Dependency coordinates from quote-aggregator:
-// /Users/haroldoolivieri/Development/Skyscanner/backend/code-as-source/indicative-domain/fcp-writers/quote-aggregator/
 dependencies {
     implementation 'net.skyscanner.taps-keys:taps-keys:0.0.58'
     implementation 'com.google.code.gson:gson:2.10.1'

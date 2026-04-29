@@ -10,17 +10,26 @@ A reusable, installable skill bundle that helps engineers set up Fabro and creat
 
 **Fabro source pinned to `fabro-fork`** (not upstream Fabro). The fork includes Portkey gateway support that upstream lacks. Bootstrap skill installs the `fabro` binary from a fabro-fork release/build, not from upstream. This constraint is revisited when upstream gains Portkey support — see Section 15.
 
-**Hybrid architecture** — Claude Code skills for interactive UX, Fabro workflows for multi-agent synthesis and self-validation. This dogfoods the harness: the harness uses the harness to author migration specs and scaffolds.
+**Hybrid architecture** — Claude Code skills for interactive UX, a single Fabro workflow for multi-agent synthesis that does QA + scaffold together. This dogfoods the harness: the harness uses Fabro to author Fabro migration workflows.
 
-Three skills + two Fabro workflows:
+Two skills + one Fabro workflow:
 
-- `/migration:bootstrap` — installs Fabro from fork, configures credentials (server.env + vault), starts server, validates end-to-end. Stays a Claude Code skill (can't self-bootstrap).
-- `/migration:design` — Claude Code skill. Phase A: interactive Q&A, writes `docs/migrations/<name>-inputs.json`. Phase B: launches Fabro `design-synthesis` workflow that writes the final spec with multi-agent review loop.
-- `/migration:scaffold <name>` — Claude Code skill. Phase A: reads spec, confirms output-repo harness selections. Phase B: launches Fabro `scaffold-synthesis` workflow that writes workflow.fabro, prompts, tools, CI, harness with multi-agent validate/fix loop.
+- `/migration:bootstrap` — installs Fabro from fork, configures credentials, starts server. Claude Code skill (can't self-bootstrap).
+- `/migration:start <name>` — Claude Code skill. Interactive Q&A via AskUserQuestion, writes `docs/migrations/<name>-inputs.json`. Launches `migration-synthesis` Fabro workflow.
+- `migration-synthesis` (Fabro workflow, ships with skill bundle) — multi-agent pipeline that:
+  1. Analyzes source repo (with access to full scenarios)
+  2. Drafts spec (restricted to seeds only — cannot see scenarios)
+  3. Validates spec against scenarios (validator has full access)
+  4. Loops through fixer on failures (max 3)
+  5. Generates N migration workflows + tools + CI from validated spec
+  6. Validates generated workflows (fabro validate + parity + anti-pattern scan)
+  7. Loops through fixer-scaffold on failures
+  8. Human review gate before commit
+  9. Atomic commit
 
-Plus the two Fabro workflows shipped with the skill bundle:
-- `design-synthesis` — analyzer → drafter → validate-spec → (fixer loop) → approver → write
-- `scaffold-synthesis` — reader → generator → validate-scaffold → (fixer loop) → write + `fabro validate` gate
+**Seeds vs scenarios isolation** (same pattern taps-keys uses for fixtures applied to design): drafter/fixer/generator agents can only see seeds (inputs.json, PATTERNS.md, reference examples, top-level source summary). Validator agents can see scenarios (full source repo, external docs, idiomatic target-lang reference, other migration specs). Prevents drafter from gaming its way to a "valid" spec by pattern-matching without real grounding.
+
+**Output: N migration workflows per spec.** Default 2 (oracle + target). Third (contract) opt-in via `backwards_compat_required: true` when source library stays active and schema drift would cause silent bugs.
 
 The harness ships with PATTERNS.md documenting the principles, recipes, and gotchas extracted from the taps-keys migration. Scaffold-agent cites PATTERNS.md when generating files.
 
@@ -422,10 +431,17 @@ retry_budget:
   fix_max_visits: 3
 
 output_repos:
-  - name: <name>-oracle
+  # Default: 2 repos (oracle + target). 3rd (contract) only if backwards_compat_required=true
+  - name: <name>-oracle         # role: generate fixtures + contract runner, publish package
+    role: oracle
     github: <org>/<name>-oracle
-  - name: <name>-target
+  - name: <name>-target         # role: final port in target language
+    role: target
     github: <org>/<name>-target
+  # Optional (backwards_compat_required=true only):
+  # - name: <name>-contract     # role: language-neutral schema consumed at runtime by source + target
+  #   role: contract
+  #   github: <org>/<name>-contract
 
 references:
   - <url1>

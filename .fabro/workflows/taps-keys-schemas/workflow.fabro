@@ -15,7 +15,8 @@ digraph TapsKeysSchemas {
         label="Setup:\ninstall fixtures",
         shape=parallelogram,
         script="echo '=== Checking shadow JAR ==='\ntest -f $TAPS_KEYS_JAR || { echo 'FATAL: Shadow JAR not found at $TAPS_KEYS_JAR. Run: cd tools/taps-keys-fixture-gen && ./gradlew shadowJar then export TAPS_KEYS_JAR=tools/taps-keys-fixture-gen/build/libs/taps-keys-fixture-gen.jar'; exit 1; }\necho '=== Exporting schema seed from compiled Java library ==='\njava -cp $TAPS_KEYS_JAR net.skyscanner.tools.SchemaExporter > /tmp/schema_seed.json 2>/tmp/schema_export.log\nRC=$?; cat /tmp/schema_export.log\n[ $RC -eq 0 ] || { echo 'FATAL: SchemaExporter failed'; exit 1; }\nSCHEMA_COUNT=$(python3 -c 'import json; d=json.load(open(\"/tmp/schema_seed.json\")); print(len(d))')\necho \"Exported $SCHEMA_COUNT schemas to /tmp/schema_seed.json\"\n[ \"$SCHEMA_COUNT\" -gt 0 ] || { echo 'FATAL: schema_seed.json is empty'; exit 1; }\necho '=== Installing taps-keys-fixtures from merged PR ==='\npython3 -c 'import taps_keys_fixtures' 2>/dev/null || python3 -m pip install git+https://github.com/Skyscanner/taps-keys-fixtures.git --break-system-packages 2>&1 || python3 -m pip install git+https://github.com/Skyscanner/taps-keys-fixtures.git 2>&1 || { echo 'FATAL: taps-keys-fixtures not available. Merge the taps-keys-fixtures PR first.'; exit 1; }\necho '=== Extracting golden fixtures for cross-validation ==='\nmkdir -p /tmp/fixtures\npython3 -c '\nfrom importlib.resources import files; import pathlib\nsrc = files(\"taps_keys_fixtures.fixtures\")\ndst = pathlib.Path(\"/tmp/fixtures\")\nfor f in [\"golden_encodings.json\", \"golden_signatures.json\"]:\n    (dst / f).write_text((src / f).read_text())\nprint(\"Extracted fixtures from pip package\")\n' 2>&1\necho '=== Setup complete ==='",
-        max_retries=0
+        max_retries=0,
+        goal_gate=true
     ]
 
     // ── Build ────────────────────────────────────────────────────────────
@@ -66,8 +67,7 @@ digraph TapsKeysSchemas {
 
     // ── Edges ────────────────────────────────────────────────────────────
 
-    start -> setup
-    setup -> build_schemas [condition="outcome=success"]
+    start -> setup -> build_schemas
 
     build_schemas     -> validate_schemas
     validate_schemas  -> publish_schemas     [condition="outcome=success"]

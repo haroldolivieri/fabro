@@ -8,11 +8,19 @@
 
 A reusable, installable skill bundle that helps engineers set up Fabro and create migration workflows for porting backend libraries and data pipelines between languages. The harness is Fabro-specific (not engine-agnostic) and targets algorithm/library ports with existing test suites — not web apps, UIs, or full service extractions.
 
-Three skills:
+**Fabro source pinned to `fabro-fork`** (not upstream Fabro). The fork includes Portkey gateway support that upstream lacks. Bootstrap skill installs the `fabro` binary from a fabro-fork release/build, not from upstream. This constraint is revisited when upstream gains Portkey support — see Section 15.
 
-- `/migration:bootstrap` — installs Fabro, configures credentials (server.env + vault), starts server, validates end-to-end
-- `/migration:design` — interactive migration spec elicitation, writes spec to `docs/migrations/<name>-spec.md`
-- `/migration:scaffold` — reads spec, writes `.fabro/workflows/<name>-*/`, `tools/<name>-exporter/`, CI YAML, output-repo Claude Code harness
+**Hybrid architecture** — Claude Code skills for interactive UX, Fabro workflows for multi-agent synthesis and self-validation. This dogfoods the harness: the harness uses the harness to author migration specs and scaffolds.
+
+Three skills + two Fabro workflows:
+
+- `/migration:bootstrap` — installs Fabro from fork, configures credentials (server.env + vault), starts server, validates end-to-end. Stays a Claude Code skill (can't self-bootstrap).
+- `/migration:design` — Claude Code skill. Phase A: interactive Q&A, writes `docs/migrations/<name>-inputs.json`. Phase B: launches Fabro `design-synthesis` workflow that writes the final spec with multi-agent review loop.
+- `/migration:scaffold <name>` — Claude Code skill. Phase A: reads spec, confirms output-repo harness selections. Phase B: launches Fabro `scaffold-synthesis` workflow that writes workflow.fabro, prompts, tools, CI, harness with multi-agent validate/fix loop.
+
+Plus the two Fabro workflows shipped with the skill bundle:
+- `design-synthesis` — analyzer → drafter → validate-spec → (fixer loop) → approver → write
+- `scaffold-synthesis` — reader → generator → validate-scaffold → (fixer loop) → write + `fabro validate` gate
 
 The harness ships with PATTERNS.md documenting the principles, recipes, and gotchas extracted from the taps-keys migration. Scaffold-agent cites PATTERNS.md when generating files.
 
@@ -39,14 +47,27 @@ The harness ships with PATTERNS.md documenting the principles, recipes, and gotc
 
 ```
 ~/.claude/skills/migration-harness/
-├── bootstrap/
-│   └── SKILL.md
-├── design/
-│   └── SKILL.md
-├── scaffold/
-│   └── SKILL.md
+├── bootstrap/SKILL.md
+├── design/SKILL.md
+├── scaffold/SKILL.md
 └── reference/
     ├── PATTERNS.md                       ← principles + recipes + case study
+    ├── synthesis-workflows/              ← Fabro workflows shipped with skill
+    │   ├── design-synthesis/
+    │   │   ├── workflow.fabro
+    │   │   ├── workflow.toml
+    │   │   └── prompts/
+    │   │       ├── analyzer.md
+    │   │       ├── drafter.md
+    │   │       ├── reviewer.md
+    │   │       ├── fixer.md
+    │   │       └── approver.md
+    │   └── scaffold-synthesis/
+    │       ├── workflow.fabro
+    │       ├── workflow.toml
+    │       └── prompts/
+    │           ├── generator.md
+    │           └── fixer.md
     ├── examples/
     │   ├── 2repo-oracle.fabro            ← abstract reference workflow
     │   ├── 2repo-target.fabro
@@ -68,9 +89,8 @@ The harness ships with PATTERNS.md documenting the principles, recipes, and gotc
     │       └── cargo-contract-runner.rs
     └── validation-layers.md              ← L1-L6 recipes
 
-~/.claude/agents/
-├── repo-analyzer.md
-└── scaffold-agent.md
+Skill `scaffold` copies `reference/synthesis-workflows/*` into the user's
+`.fabro/workflows/` on first use (or points at them directly via absolute path).
 ```
 
 Reference examples are **abstract** — no Skyscanner names, no taps-keys specifics. They encode the shape of each workflow type.
@@ -142,7 +162,11 @@ Reference examples are **abstract** — no Skyscanner names, no taps-keys specif
 5. Overwrite existing vault secrets? (if present)
 
 **Steps:**
-1. Check `fabro --version`; install via release binary or cargo if missing
+1. Check `fabro --version` — confirm it's the fabro-fork build (detect via version string / `--help` text). If missing or wrong fork, install from fabro-fork:
+   - Prompt user for path to fabro-fork checkout (default: `~/Development/Skyscanner/backend/fabro-fork`)
+   - Run `cargo build --release --bin fabro` in that checkout
+   - Symlink the binary into `~/.local/bin/fabro` (or prompt user for preferred install path)
+   - Verify `fabro --version` now reports the fork build
 2. Write `~/.fabro/storage/server.env` with chosen credentials (`chmod 600`)
 3. `fabro secret set ANTHROPIC_API_KEY <value>` (and related PORTKEY_* / AWS_* as applicable) — worker env allowlist strips these, so vault is mandatory
 4. Start server: `fabro server start &` — store PID in state file
@@ -254,7 +278,82 @@ Next: /migration:design
 
 **Produces:** all workflow files. Does text-level adaptation of reference examples to spec. Never invents validation layers not in spec. Always invokes `fabro validate` before exiting.
 
-### 4.6 `tool-generator` agent (escape hatch)
+### 4.6 `design-synthesis` Fabro workflow (Phase B of design)
+
+**Input:** `docs/migrations/<name>-inputs.json` written by `/migration:design` Phase A.
+
+**Multi-agent graph** (nodes with per-node model pins):
+
+```
+start
+  └─ setup (script, max_retries=0, goal_gate=true):
+     - validate inputs JSON schema
+     - clone/checkout source repo at specified ref
+     - stage PATTERNS.md + reference/ as agent-readable
+  └─ analyzer (agent, model=sonnet):
+     - reads source repo, reconciles with user answers
+     - proposes validation layer defaults, input set matrix, oracle strategy
+     - writes /tmp/analysis.json
+  └─ drafter (agent, model=sonnet):
+     - synthesizes first-pass spec YAML + markdown body from inputs + analysis
+     - writes /tmp/draft-spec.md
+  └─ validate-spec (script, goal_gate=true, retry_target="fixer"):
+     - schema check (YAML front-matter parses, all required fields)
+     - PATTERNS.md anti-pattern scan (no LLM-generated fixtures, no hardcoded counts)
+     - consistency check (backwards_compat_required implies 3 output_repos, etc.)
+     - completeness check (source_quirks_to_replicate non-empty if analyzer flagged any)
+     - exit 0 + specific fail messages
+  └─ fixer (agent, model=sonnet, max_visits=3):
+     - reads /tmp/draft-spec.md + validate-spec error output
+     - addresses each specific failure
+     - writes new /tmp/draft-spec.md
+     - loop back to validate-spec
+  └─ approver (agent, model=opus, max_visits=1):
+     - final cross-check: spec internal consistency, coverage gaps vs PATTERNS.md
+     - approves or sends back to fixer
+  └─ write-spec (script, goal_gate=true):
+     - copies /tmp/draft-spec.md to docs/migrations/<name>-spec.md
+     - prints path for user review
+  └─ exit
+```
+
+**Models per node** (cost-tuned):
+- analyzer, drafter, fixer → `sonnet` (needs reasoning over code/spec)
+- validate-spec → script only (no agent cost)
+- approver → `opus` (final quality gate; runs once)
+
+**Retry budget:** fixer max_visits=3 — if still failing, run halts at human review gate with error summary.
+
+### 4.7 `scaffold-synthesis` Fabro workflow (Phase B of scaffold)
+
+**Input:** `docs/migrations/<name>-spec.md` + `reference/` bundle.
+
+```
+start
+  └─ setup (script, max_retries=0, goal_gate=true):
+     - validate spec file present + parses
+     - stage reference/ examples as agent-readable
+  └─ generator (agent, model=sonnet):
+     - reads spec + PATTERNS.md + reference/examples/<2|3>-repo.fabro
+     - writes candidate .fabro/workflows/<name>-*, tools/<name>-exporter/, CI YAML
+  └─ validate-scaffold (script, goal_gate=true, retry_target="fixer"):
+     - fabro validate <name>-oracle (and -contract, -target)
+     - Makefile target match: spec.validation.layers ⇔ Makefile .PHONY list
+     - CI YAML match: same Makefile targets invoked
+     - Output-repo CLAUDE.md forbids output-repo-edits
+     - Anti-pattern scan: no ${{ }} in workflow script attrs, no SSH pip installs, etc.
+  └─ fixer (agent, model=sonnet, max_visits=3):
+     - reads validate-scaffold error output + generated files
+     - targeted fixes
+  └─ commit-files (script, goal_gate=true):
+     - moves staged files into place atomically
+     - prints pre-first-run checklist (Section 10)
+  └─ exit
+```
+
+**Tool-generator escape hatch** (Section 4.8) is invoked by `generator` when source lang not in `reference/tools/exporters/`.
+
+### 4.8 `tool-generator` agent (escape hatch)
 
 **Invoked when:** spec source language isn't in `reference/tools/exporters/<lang>/`.
 
@@ -577,14 +676,16 @@ Ships in `reference/PATTERNS.md`. Scaffold-agent cites specific sections when ge
 ## 13. Rollout plan
 
 Phase 1 — MVP (this design + implementation plan):
-- Bootstrap skill (Anthropic-direct path only first)
-- Design skill (manual Q&A, no repo-analyzer yet)
-- Scaffold skill (2-repo template only)
+- Bootstrap skill (fabro-fork build + Anthropic-direct path only first)
+- Design skill Phase A (Claude skill interactive Q&A → inputs.json)
+- Scaffold skill Phase A (Claude skill reads spec → confirms harness proposals)
+- `design-synthesis` Fabro workflow with analyzer + drafter + validate-spec + fixer (no approver yet; approver comes Phase 2)
+- `scaffold-synthesis` Fabro workflow with generator + validate-scaffold + fixer
 - PATTERNS.md v1 (Sections 1-6, 11-14 from Section 11 structure above)
-- Smoke-test: scaffold regenerates taps-keys-python migration; diff against hand-written version; all validators pass
+- Smoke-test: design + scaffold regenerate taps-keys-python migration end-to-end via workflows; diff against hand-written version; all validators pass
 
 Phase 2 — parity with taps-keys:
-- repo-analyzer subagent
+- Add approver node to design-synthesis (opus model, final quality gate)
 - 3-repo scaffolding
 - Portkey/Bedrock bootstrap paths
 - tool-generator escape hatch for non-Java sources
@@ -620,6 +721,7 @@ The MVP harness targets taps-keys-like algorithm ports + libraries with S3/Dynam
 
 ## 15. Open questions
 
-1. Should bootstrap auto-install Fabro CLI if missing, or just print install instructions? (Recommend: auto-install from official release channel on macOS/Linux; print for Windows)
-2. Where does the skill bundle actually live — `~/.claude/skills/` user-level, or published as a superpowers plugin? (Recommend: start at user-level, evolve to plugin)
-3. Should `/migration:design` let users resume a partial spec from disk, or start fresh each time? (Recommend: resume if file exists; prompt to overwrite or extend)
+1. **When does the harness switch from fabro-fork to upstream Fabro?** Pinned to fork for now (Portkey gateway support). Switch triggered by: upstream PR merging Portkey support → harness bootstrap detects via `fabro --version` capability probe and offers upgrade path. Until then, bootstrap requires a fabro-fork checkout path.
+2. Should bootstrap auto-build Fabro from the fork if missing, or just print install instructions? (Recommend: auto-build via `cargo build --release --bin fabro` in the user-provided fork checkout; print manual steps only if cargo not found)
+3. Where does the skill bundle actually live — `~/.claude/skills/` user-level, or published as a superpowers plugin? (Recommend: start at user-level, evolve to plugin)
+4. Should `/migration:design` let users resume a partial spec from disk, or start fresh each time? (Recommend: resume if file exists; prompt to overwrite or extend)

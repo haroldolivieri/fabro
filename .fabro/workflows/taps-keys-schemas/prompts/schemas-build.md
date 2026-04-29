@@ -41,47 +41,69 @@ Both the Java and Python pipelines must produce byte-for-byte identical keys for
 
 ## Section 2 -- Input File
 
-You must read one Java source file to extract all schema definitions:
+The setup step has already run `SchemaExporter` (a Java tool in the fat JAR) against the compiled taps-keys library and written the output to `/tmp/schema_seed.json`. Read this file — it is the authoritative list of all schemas.
 
-### Keys.java
+**Path:** `/tmp/schema_seed.json`
 
-**Path:** `/Users/haroldoolivieri/Development/Skyscanner/backend/dependencies/taps-keys/src/main/java/net/skyscanner/taps/keys/Keys.java`
+This file is a JSON array. Each element has:
 
-This file contains two inner classes -- `Keys.OneWay` and `Keys.Return` -- each with public static `KeySchema` fields. Every field is constructed via a builder chain like:
-
-```java
-public static final KeySchema AIRPORT_AIRPORT_DAY_OW =
-    KeySchema.builder("oneway")
-        .originAirport()
-        .destinationAirport()
-        .outboundDepartureYearMonth()
-        .outboundDepartureDay()
-        .isDirect()
-        .build();
+```json
+{
+  "name": "AIRPORT_AIRPORT_DAY_OW",
+  "prefix": "oneway",
+  "to_string": "oneway_originAirport_destinationAirport_outboundDepartureYearMonth_outboundDepartureDay_Direct",
+  "encoded_length": 12,
+  "open_jaw_filter": "NONE"
+}
 ```
 
-You must extract ALL 142 schemas (71 from `Keys.OneWay`, 71 from `Keys.Return`).
+You must process ALL entries in schema_seed.json — the count varies by library version (typically 142 but may change). Do NOT hardcode the count.
 
-### Builder Method Mapping
+### Parsing to_string to recover the component list
 
-Each builder method call appends exactly one component to the schema's component list. The complete mapping is:
+The `to_string` field encodes the full component list. Parse it as:
 
-| Builder method | Component type | Component name |
+```
+prefix + "_" + part1 + "_" + part2 + ...
+```
+
+Each `part` is `componentName + DisplayName` (concatenated, no separator between them). Reverse the display name mapping to recover type and name:
+
+| part (suffix match) | Component type | Component name |
 |---|---|---|
-| `originAirport()` | AIRPORT | "origin" |
-| `originCity()` | CITY | "origin" |
-| `originCountry()` | COUNTRY | "origin" |
-| `origin()` | LOCATION | "origin" |
-| `destinationAirport()` | AIRPORT | "destination" |
-| `destinationCity()` | CITY | "destination" |
-| `destinationCountry()` | COUNTRY | "destination" |
-| `destination()` | LOCATION | "destination" |
-| `outboundDepartureYearMonth()` | YEARMONTH | "outboundDeparture" |
-| `outboundDepartureDay()` | DAY | "outboundDeparture" |
-| `inboundDepartureYearMonth()` | YEARMONTH | "inboundDeparture" |
-| `inboundDepartureDay()` | DAY | "inboundDeparture" |
-| `isDirect()` | DIRECT | "" |
-| `marketingCarrier()` | MARKETING_CARRIER | "" |
+| ends with `Airport` | AIRPORT | everything before `Airport` |
+| ends with `City` | CITY | everything before `City` |
+| ends with `Country` | COUNTRY | everything before `Country` |
+| ends with `Location` | LOCATION | everything before `Location` |
+| ends with `YearMonth` | YEARMONTH | everything before `YearMonth` |
+| ends with `Day` | DAY | everything before `Day` |
+| exactly `Direct` | DIRECT | "" |
+| exactly `MarketingCarrier` | MARKETING_CARRIER | "" |
+
+Example: `to_string = "oneway_originAirport_destinationAirport_outboundDepartureYearMonth_outboundDepartureDay_Direct"`
+- Split on `_` after prefix: `["originAirport", "destinationAirport", "outboundDepartureYearMonth", "outboundDepartureDay", "Direct"]`
+- `originAirport` → type=AIRPORT, name="origin"
+- `destinationAirport` → type=AIRPORT, name="destination"
+- `outboundDepartureYearMonth` → type=YEARMONTH, name="outboundDeparture"
+- `outboundDepartureDay` → type=DAY, name="outboundDeparture"
+- `Direct` → type=DIRECT, name=""
+
+**Important:** Split on `_` only after stripping the prefix. The prefix itself contains `_` in some cases for return schemas? No — prefix is always `oneway` or `return`, no underscores. Safe to split the full to_string on `_` and treat the first element as prefix, remainder as parts.
+
+### Component type properties
+
+After recovering type and name, add the fixed `bits` and `encoded_length` for each component:
+
+| Type | bits | encoded_length |
+|---|---|---|
+| AIRPORT | 16 | 4 |
+| CITY | 16 | 4 |
+| COUNTRY | 16 | 4 |
+| LOCATION | 16 | 4 |
+| YEARMONTH | 10 | 2 |
+| DAY | 5 | 1 |
+| DIRECT | 1 | 1 |
+| MARKETING_CARRIER | 16 | 4 |
 
 ---
 
@@ -157,42 +179,28 @@ Each component object has these fields:
 
 ## Section 4 -- Extraction Rules
 
-To convert a Java builder chain into a schemas.json schema object:
+For each entry in `/tmp/schema_seed.json`:
 
-1. Find the `KeySchema.builder(prefix)` call. The `prefix` argument is either `"oneway"` or `"return"`.
-2. Read each chained method call after `.builder(prefix)` and before `.build()`.
-3. For each method call, look up the builder method in the mapping table (Section 2) to get the component type and name.
-4. Build the component object by combining the type and name with the fixed bits/encoded_length from the component type properties table.
-5. Append that component to the `components` array in the order it appears in the Java source.
-6. Derive `to_string`, `encoded_length`, and `open_jaw_filter` from the component list (Sections 5 and 6).
+1. Take `name`, `prefix`, `to_string`, `encoded_length`, `open_jaw_filter` directly from the seed.
+2. Parse `to_string` to reconstruct the `components` array (see the parsing rules in Section 2).
+3. Add `bits` and `encoded_length` to each component from the component type properties table.
+4. Do NOT re-derive `to_string`, `encoded_length`, or `open_jaw_filter` — copy them verbatim from the seed. They come from the compiled Java library and are already correct.
 
-### Example: Parsing a builder chain
+### Example: Converting a seed entry
 
-Java source:
-```java
-public static final KeySchema CARRIER_CITY_COUNTRY_ANYTIME_OW =
-    KeySchema.builder("oneway")
-        .marketingCarrier()
-        .originCity()
-        .destinationCountry()
-        .outboundDepartureYearMonth()
-        .isDirect()
-        .build();
+Seed entry:
+```json
+{"name": "CARRIER_CITY_COUNTRY_ANYTIME_OW", "prefix": "oneway",
+ "to_string": "oneway_MarketingCarrier_originCity_destinationCountry_outboundDepartureYearMonth_Direct",
+ "encoded_length": 15, "open_jaw_filter": "NONE"}
 ```
 
-Extraction:
-1. prefix = `"oneway"` -- goes in the `oneway` array
-2. name = `"CARRIER_CITY_COUNTRY_ANYTIME_OW"` -- from the Java field name
-3. `.marketingCarrier()` -> `{"type": "MARKETING_CARRIER", "name": "", "bits": 16, "encoded_length": 4}`
-4. `.originCity()` -> `{"type": "CITY", "name": "origin", "bits": 16, "encoded_length": 4}`
-5. `.destinationCountry()` -> `{"type": "COUNTRY", "name": "destination", "bits": 16, "encoded_length": 4}`
-6. `.outboundDepartureYearMonth()` -> `{"type": "YEARMONTH", "name": "outboundDeparture", "bits": 10, "encoded_length": 2}`
-7. `.isDirect()` -> `{"type": "DIRECT", "name": "", "bits": 1, "encoded_length": 1}`
-
-Derived fields:
-- `to_string`: `"oneway_MarketingCarrier_originCity_destinationCountry_outboundDepartureYearMonth_Direct"` (Section 5)
-- `encoded_length`: 4 + 4 + 4 + 2 + 1 = `15`
-- `open_jaw_filter`: `"NONE"` (oneway schemas are always NONE)
+Parse `to_string` parts (after stripping prefix `oneway_`):
+- `MarketingCarrier` → type=MARKETING_CARRIER, name=""
+- `originCity` → type=CITY, name="origin"
+- `destinationCountry` → type=COUNTRY, name="destination"
+- `outboundDepartureYearMonth` → type=YEARMONTH, name="outboundDeparture"
+- `Direct` → type=DIRECT, name=""
 
 Result in schemas.json:
 ```json
@@ -211,18 +219,6 @@ Result in schemas.json:
   "open_jaw_filter": "NONE"
 }
 ```
-
-### Common patterns
-
-- **Day schemas** (name contains `DAY`): include both `YEARMONTH` and `DAY` components for the relevant departure(s).
-- **Anytime schemas** (name contains `ANYTIME`): include only `YEARMONTH`, no `DAY`.
-- **Anywhere schemas** (name contains `ANYWHERE`): omit the corresponding origin or destination component. Check the builder chain -- only components that appear get included.
-- **Return schemas** (`_RTN` suffix): may include inbound departure components (`inboundDepartureYearMonth`, `inboundDepartureDay`).
-- **Carrier schemas** (name starts with `CARRIER`): include `MARKETING_CARRIER` as the first component.
-
-### Critical: component ORDER matters
-
-The order of components in the `components` array must match the order of builder method calls in the Java source. This order determines the encoding output -- swapping two components produces a different (wrong) key.
 
 ---
 
@@ -313,11 +309,17 @@ jsonschema.validate(instance=schemas, schema=json_schema)
 
 ### Check 2: Schema count
 
-Assert exactly 71 schemas in the `oneway` array and exactly 71 in the `return` array. Total: 142.
+The expected count comes from the schema seed at `/tmp/schema_seed.json` — count entries with `prefix == "oneway"` and `prefix == "return"` separately. This matches whatever the compiled Java library exports (typically 71+71=142 but may change with library updates).
 
 ```python
-assert len(schemas["oneway"]) == 71, f"Expected 71 oneway schemas, got {len(schemas['oneway'])}"
-assert len(schemas["return"]) == 71, f"Expected 71 return schemas, got {len(schemas['return'])}"
+import json as _json
+seed = _json.load(open("/tmp/schema_seed.json"))
+expected_oneway = sum(1 for s in seed if s["prefix"] == "oneway")
+expected_return = sum(1 for s in seed if s["prefix"] == "return")
+assert len(schemas["oneway"]) == expected_oneway, \
+    f"Expected {expected_oneway} oneway schemas (from seed), got {len(schemas['oneway'])}"
+assert len(schemas["return"]) == expected_return, \
+    f"Expected {expected_return} return schemas (from seed), got {len(schemas['return'])}"
 ```
 
 ### Check 3: Valid component types
@@ -445,9 +447,11 @@ assert not missing_from_schemas, f"Schemas in fixtures but not in schemas.json: 
 
 ### Check 9: Cross-ref -- every schema in schemas.json has fixture entries
 
+The schema seed comes from the same library version as the golden fixtures, so they must match exactly.
+
 ```python
 missing_from_fixtures = all_schema_names - fixture_schema_names
-assert not missing_from_fixtures, f"Schemas missing from fixtures: {missing_from_fixtures}"
+assert not missing_from_fixtures, f"Schemas in schemas.json missing from fixtures: {missing_from_fixtures}"
 ```
 
 ### Check 10: Cross-ref -- golden_encodings.json has 15 entries per schema (sets A–N, Q)
@@ -752,7 +756,7 @@ The `validate.py` script you write will be reviewed by a human. Design it with t
 
 Before signaling completion, verify:
 
-- [ ] Did you read Keys.java and extract all 142 schemas (71 oneway + 71 return)?
+- [ ] Did you read `/tmp/schema_seed.json` and process ALL entries (count matches seed)?
 - [ ] Does schemas.json conform to the format in Section 3 (arrays of objects, not dictionaries)?
 - [ ] Does every schema object have all 6 required fields (name, prefix, components, to_string, encoded_length, open_jaw_filter)?
 - [ ] Does every component object have all 4 required fields (type, name, bits, encoded_length)?

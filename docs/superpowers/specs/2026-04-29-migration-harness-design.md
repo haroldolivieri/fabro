@@ -29,7 +29,7 @@ Two skills + one Fabro workflow:
 
 **Seeds vs scenarios isolation** (same pattern taps-keys uses for fixtures applied to design): drafter/fixer/generator agents can only see seeds (inputs.json, PATTERNS.md, reference examples, top-level source summary). Validator agents can see scenarios (full source repo, external docs, idiomatic target-lang reference, other migration specs). Prevents drafter from gaming its way to a "valid" spec by pattern-matching without real grounding.
 
-**Output: N migration workflows per spec.** Default 2 (oracle + target). Third (contract) opt-in via `backwards_compat_required: true` when source library stays active and schema drift would cause silent bugs.
+**Output: N migration workflows per spec.** Default 2 (oracle + target). User declares any number of additional custom workflows with `role: custom` + `purpose` + `responsibilities` + optional `validation_layers` and `depends_on`. Agent uses the user's declared purpose/responsibilities as prompt input to synthesize each custom workflow's setup/build/validate/publish stages — applies generic workflow patterns with user-provided specifics. No predefined "contract" role; taps-keys-schemas is just one example of a `custom` repo.
 
 The harness ships with PATTERNS.md documenting the principles, recipes, and gotchas extracted from the taps-keys migration. Scaffold-agent cites PATTERNS.md when generating files.
 
@@ -431,17 +431,22 @@ retry_budget:
   fix_max_visits: 3
 
 output_repos:
-  # Default: 2 repos (oracle + target). 3rd (contract) only if backwards_compat_required=true
-  - name: <name>-oracle         # role: generate fixtures + contract runner, publish package
+  # Default: 2 repos (oracle + target). User declares any additional custom repos.
+  - name: <name>-oracle         # role=oracle: generate fixtures + contract runner, publish package
     role: oracle
     github: <org>/<name>-oracle
-  - name: <name>-target         # role: final port in target language
+  - name: <name>-target         # role=target: final port in target language
     role: target
     github: <org>/<name>-target
-  # Optional (backwards_compat_required=true only):
-  # - name: <name>-contract     # role: language-neutral schema consumed at runtime by source + target
-  #   role: contract
-  #   github: <org>/<name>-contract
+  # Optional user-declared custom repos (any number):
+  # - name: <name>-schemas
+  #   role: custom
+  #   purpose: "one-sentence why this repo exists"
+  #   responsibilities:
+  #     - "bullet 1"
+  #     - "bullet 2"
+  #   validation_layers: [L-custom-struct]  # user-named layers
+  #   depends_on: [<name>-oracle]            # ordering; synthesis enforces topological order
 
 references:
   - <url1>

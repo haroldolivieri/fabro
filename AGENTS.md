@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Public repo — never commit sensitive data
+
+This is a **public GitHub repository**. Never commit:
+- Pre-built JARs or binaries that bundle internal Skyscanner bytecode (e.g. `taps-keys-fixture-gen.jar`)
+- Source code or compiled artifacts from other internal Skyscanner repositories
+- Internal hostnames, Artifactory URLs, or path comments that reveal monorepo structure
+- API keys, tokens, passwords, or any credentials
+
+JARs built from `tools/taps-keys-fixture-gen/` are in `.gitignore`. Build locally with `./gradlew shadowJar` and set `TAPS_KEYS_JAR`. See `tools/taps-keys-fixture-gen/README.md`.
+
+If you are ever unsure whether something is sensitive, do not commit it.
+
+---
+
 ## Taps-keys migration workflows — scope rule
 
 **Never directly edit files in `taps-keys-fixtures/`, `taps-keys-schemas/`, or `taps-keys-python/`.** These directories are output repos — their content is generated and managed by the Fabro workflows in `.fabro/workflows/taps-keys-*/`. Editing them directly bypasses the workflow validation layers and creates drift between what the workflow produces and what is committed.

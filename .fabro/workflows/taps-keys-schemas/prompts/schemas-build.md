@@ -12,6 +12,7 @@ build/
 __pycache__/
 *.pyc
 .pytest_cache/
+.DS_Store
 ```
 
 You are building the `taps-keys-schemas` repo -- a language-neutral, single source of truth for Skyscanner's flight pricing key schemas. This repo will be consumed by both the existing Java `taps-keys` library and a new Python port. Your job is to extract schema definitions from the Java source, produce `schemas.json`, write structural validation, build a JSON Schema, and wire up all repo tooling (CLAUDE.md, Makefile, pyproject.toml, add-schema skill, README, CONTRIBUTING).
@@ -454,7 +455,9 @@ missing_from_fixtures = all_schema_names - fixture_schema_names
 assert not missing_from_fixtures, f"Schemas in schemas.json missing from fixtures: {missing_from_fixtures}"
 ```
 
-### Check 10: Cross-ref -- golden_encodings.json has 15 entries per schema (sets A–N, Q)
+### Check 10: Cross-ref -- golden_encodings.json has SETS_PER_SCHEMA entries per schema
+
+The fixture generator produces 13 base sets (A, B, C, D, F, G, H, I, J, K, M, N, Q) plus Set L (per-component hierarchy) and Set E (wildcard isDirect) = 15 sets per schema. The count is self-computed from the generator; do not hardcode 15 — derive it from the fixture data itself.
 
 ```python
 import json as _json
@@ -462,8 +465,11 @@ from collections import Counter
 
 seed = _json.load(open("/tmp/schema_seed.json"))
 TOTAL_SCHEMAS = len(seed)
-SETS_PER_SCHEMA = 15  # fixture generator always produces 15 input sets per schema
 schema_counts = Counter(entry["schema"] for entry in encodings)
+# All schemas must have the same number of sets; derive expected from first schema
+counts = list(schema_counts.values())
+assert len(set(counts)) == 1, f"Inconsistent set counts across schemas: {dict(schema_counts)}"
+SETS_PER_SCHEMA = counts[0]
 for schema_name, count in schema_counts.items():
     assert count == SETS_PER_SCHEMA, f"Schema {schema_name} has {count} encoding entries, expected {SETS_PER_SCHEMA}"
 expected_total = TOTAL_SCHEMAS * SETS_PER_SCHEMA
@@ -520,7 +526,7 @@ for entry in signatures:
 ### Check 13: Valid JSON structure throughout
 
 All fixture files must be valid JSON with the expected structure:
-- `golden_encodings.json`: array of objects, each with at least `schema`, `input_set`, `encoded_key`, `schema_to_string`, `encoded_length`, `open_jaw_filter`
+- `golden_encodings.json`: array of objects, each with at least `schema`, `input_set`, `encoded_key`, `schema_to_string`, `encoded_length`, `open_jaw_filter`. Note: `inbound_date` is present on all entries but is `null` for oneway schemas (which have no inbound components) — treat null as valid.
 - `golden_signatures.json`: array of objects, each with at least `schema` and the 6 disjoint fields
 
 **Exit behavior:**

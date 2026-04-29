@@ -12,6 +12,7 @@ build/
 __pycache__/
 *.pyc
 .pytest_cache/
+.DS_Store
 ```
 
 You are building the complete `taps-keys-python` repo in one pass: the core encoding library, repo harness, unit tests, and validation scripts. The goal is a Python library that produces encoding results **byte-for-byte identical** to the Java taps-keys library. FCP consumers depend on exact key matching — a single wrong character means a cache miss in production.

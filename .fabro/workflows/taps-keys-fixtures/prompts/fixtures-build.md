@@ -16,6 +16,7 @@ build/
 __pycache__/
 *.pyc
 .pytest_cache/
+.DS_Store
 ```
 
 ## IMPORTANT: No duplicate files at root

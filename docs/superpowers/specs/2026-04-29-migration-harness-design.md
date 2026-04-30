@@ -388,6 +388,10 @@ source:
     type: compiled-binary-reflection
     binary_target: tools/<name>-exporter/build/libs/<name>.jar
     env_var: SOURCE_JAR
+  scope:
+    source_paths: [src/, tests/]     # what analyzer stages as scenario; narrows for monorepos
+
+max_cost_usd: 20                      # synthesis halts if exceeded (I6)
 
 target:
   language: python
@@ -740,7 +744,73 @@ The MVP harness targets taps-keys-like algorithm ports + libraries with S3/Dynam
 | Any DB-backed library | ✓ Full | — (use `test_env.services: [{name: postgres, ...}]`) |
 | Any pipeline with Spark/Beam consumer | Partial | Spark interop validation deferred to Phase 2 |
 
-## 15. Open questions
+## 15. Resolutions to design gaps (incorporated)
+
+The following 22 gaps were identified in critical review and resolved:
+
+### Blockers (L1–L6)
+
+**L1 — Isolation mechanism.** Local sandbox + convention. SEEDS at `/tmp/seeds/<run_id>/`; SCENARIOS at `/tmp/scenarios/<run_id>/`. Drafter/generator/fixer prompts explicitly state "you may not read files under /tmp/scenarios/*". Validator prompts state the inverse. Soft enforcement; monitor for leakage. Revisit with docker sandbox if real leaks observed.
+
+**L2 — Analyzer output schema.** Strict JSON Schema shipped at `reference/schemas/analysis.schema.json`:
+```json
+{
+  "build_system": "string",
+  "languages": ["string"],
+  "test_framework": "string",
+  "public_api_entry_points": [{"name": "...", "signature": "...", "module": "..."}],
+  "existing_fixtures": [{"path": "...", "format": "...", "purpose": "..."}],
+  "external_deps": [{"name": "...", "version": "...", "role": "runtime|test"}],
+  "suggests": {
+    "oracle_type": "enum",
+    "exporter_strategy": "enum",
+    "boundary_cases_hint": ["string (bullet text only)"]
+  }
+}
+```
+No raw source snippets. Free-text only in `boundary_cases_hint`. Setup validates analyzer output before passing to drafter.
+
+**L3 — Human review rejection path.** On reject → AskUserQuestion "revise [spec / scaffold / both]?" → loops to drafter or generator. Max 2 re-synthesis cycles total. After exhaustion, halt with "manual edit + `/migration:start --resume`" option.
+
+**L4 — Bootstrap ⇄ synthesis chicken-egg.** Bootstrap copies `reference/synthesis-workflows/migration-synthesis/` into `~/.fabro/workflows/migration-synthesis/` (user-level). `fabro run migration-synthesis` works from any cwd. Phase 1 verifies Fabro fork supports user-level workflows; fallback per-project copy if not.
+
+**L5 — inputs.json JSON Schema.** Ship `reference/schemas/inputs.schema.json` (draft-07). `/migration:start` validates client-side before launch. Synthesis setup re-validates.
+
+**L6 — Scenario fetch resilience.** Git clone: `--depth=1`, 3 retries (1s/4s/16s). Cache at `~/.migration-harness/scenario-cache/<repo-hash>/` 7-day TTL. External docs: curl 3 retries; on fail → mark "unavailable" in scenarios-index. Required: full source repo + spec.references[]. Optional (degraded mode): idiomatic-target-lang reference, other migration specs.
+
+### Important (I1–I12)
+
+**I1 — Validator nondeterminism.** Pool of ~30 spot checks at `reference/validators/spec-spot-checks.md`. Validator agent gets 5-7 at random per run. Fixer can't memorize.
+
+**I2 — Source repo size.** Spec field `scope.source_paths: [string]` defaults `["src/", "tests/"]`. Analyzer stages only declared paths.
+
+**I3 — depends_on cycle detection.** Setup runs topological sort. Refuses with printed cycle on detection.
+
+**I4 — Naming collision.** Setup checks `.fabro/workflows/<name>-*/` existence. On collision → AskUserQuestion (overwrite / rename / abort).
+
+**I5 — Resume (deferred MVP).** Idempotent setup+analyzer; non-idempotent generator+commit. Document: "on crash, clean `.migration-harness-staging/<name>/` + re-run". Phase 2 adds `--resume` flag.
+
+**I6 — Cost budget.** Spec field `max_cost_usd: 20` default. Synthesis tracks token cost per agent node. Halts + prints breakdown if exceeded.
+
+**I7 — Reference bundle freshness.** Skill version string. `/migration-harness: upgrade` re-copies fresh references. PATTERNS.md records last-updated date.
+
+**I8 — scaffold-agent ≡ generator.** Collapsed. Remove prior §4.5 scaffold-agent reference; generator in synthesis §4.7 is the single implementation.
+
+**I9 — Parallel synthesis runs.** Scratch dirs: `/tmp/migration-synthesis-<ulid>/`. No collision. Final output paths serialized (single writer per `<cwd>/.fabro/workflows/<name>-*/`).
+
+**I10 — Staging location.** Generator writes to `<cwd>/.migration-harness-staging/<name>/` (gitignored). `commit-files` does atomic `mv` to final paths.
+
+**I11 — Coexisting migrations.** Generator's file scope: `.fabro/workflows/<spec.name>-*/` only. Pre-write check validates prefix match.
+
+**I12 — Per-node model pins (Phase 1 verify).** `model_stylesheet="#analyzer { model: sonnet } #approver { model: opus }"` — if fork supports selectors, use that. If not, single model + differentiated prompts. Phase 1 smoke test verifies + adjusts.
+
+### Nice-to-have (deferred Phase 2)
+- N1: Clean rollback after rejection
+- N2: Broader smoke tests (2-repo only + 3-repo)
+- N3: `fabro validate migration-synthesis` self-check before shipping
+- N4: Re-run generator only if user edits spec
+
+## 16. Open questions
 
 1. **When does the harness switch from fabro-fork to upstream Fabro?** Pinned to fork for now (Portkey gateway support). Switch triggered by: upstream PR merging Portkey support → harness bootstrap detects via `fabro --version` capability probe and offers upgrade path. Until then, bootstrap requires a fabro-fork checkout path.
 2. Should bootstrap auto-build Fabro from the fork if missing, or just print install instructions? (Recommend: auto-build via `cargo build --release --bin fabro` in the user-provided fork checkout; print manual steps only if cargo not found)

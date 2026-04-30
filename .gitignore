@@ -32,3 +32,4 @@ tools/**/build/
 /taps-keys-schemas/
 /taps-keys-fixtures/
 /taps-keys-python/
+tools/**/gradle.properties
